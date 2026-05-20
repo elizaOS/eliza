@@ -377,7 +377,7 @@ function extractViewId(text: string): string {
   }
   // Try to extract quoted word
   const quoted = text.match(/["']([^"']+)["']/);
-  if (quoted) return quoted[1]!;
+  if (quoted) return quoted[1] ?? "";
   return "";
 }
 

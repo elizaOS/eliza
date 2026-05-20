@@ -1,5 +1,5 @@
 /**
- * Functional parity — plugin-facewear merges plugin-xr and plugin-smartglasses.
+ * Functional parity — plugin-facewear owns XR and smartglasses surfaces.
  *
  * Validates that:
  *   A. All XR session service exports are re-exported from plugin-facewear
@@ -28,6 +28,41 @@ function fileExists(relPath: string): boolean {
 }
 
 describe("plugin-facewear functional parity", () => {
+  it("uses plugin-facewear as the only workspace package for smartglasses surfaces", () => {
+    const removedPackage = ["@elizaos/plugin", "smartglasses"].join("-");
+    const removedWorkspace = ["plugins/plugin", "smartglasses"].join("-");
+    const removedRegistryEntry = [
+      "packages/app-core/src/registry/entries/plugins",
+      "smartglasses.json",
+    ].join("/");
+    const packageSources = [
+      "package.json",
+      "packages/app/package.json",
+      "packages/examples/smartglasses/package.json",
+    ];
+
+    for (const relPath of packageSources) {
+      const source = readFile(relPath);
+      expect(
+        source,
+        `${relPath} should not reference removed package`,
+      ).not.toContain(removedPackage);
+      expect(
+        source,
+        `${relPath} should not reference removed workspace`,
+      ).not.toContain(removedWorkspace);
+    }
+
+    expect(fileExists(removedWorkspace)).toBe(false);
+    expect(fileExists(removedRegistryEntry)).toBe(false);
+    expect(readFile("packages/app/package.json")).toContain(
+      '"@elizaos/plugin-facewear": "workspace:*"',
+    );
+    expect(readFile("packages/examples/smartglasses/package.json")).toContain(
+      '"@elizaos/plugin-facewear": "workspace:*"',
+    );
+  });
+
   // A. XR session service re-exports ──────────────────────────────────────────
 
   it("A — plugin-facewear re-exports XR_SERVICE_TYPE and XRSessionService", () => {

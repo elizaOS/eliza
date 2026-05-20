@@ -8,7 +8,12 @@
  * shared gateway number.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const repo = "elizaOS/elizaos.github.io";
 const expectedDomain = "eliza.app";
 const expectedGatewayNumber = "+14159611510";
@@ -22,6 +27,44 @@ const expectedApexRecords = new Set([
 ]);
 const expectedWwwCname = "elizaos.github.io.";
 const registryRdapUrl = `https://pubapi.registry.google/rdap/domain/${expectedDomain}`;
+const defaultEvidencePath = path.join(
+  repoRoot,
+  ".eliza-local",
+  "homepage-public-readiness-latest.json",
+);
+
+function usage() {
+  return [
+    "Usage: node packages/app-core/scripts/check-homepage-public-readiness.mjs [options]",
+    "",
+    "Options:",
+    "  --evidence <path>  Write structured proof JSON. Defaults to .eliza-local/homepage-public-readiness-latest.json.",
+    "  --no-evidence      Do not write a proof JSON file.",
+  ].join("\n");
+}
+
+function parseArgs(argv) {
+  const args = {
+    evidencePath: defaultEvidencePath,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const next = () => {
+      const value = argv[++i];
+      if (!value) throw new Error(`${arg} requires a value`);
+      return value;
+    };
+    if (arg === "--evidence") args.evidencePath = path.resolve(next());
+    else if (arg === "--no-evidence") args.evidencePath = null;
+    else if (arg === "--help" || arg === "-h") {
+      console.log(usage());
+      process.exit(0);
+    } else {
+      throw new Error(`Unknown argument: ${arg}\n${usage()}`);
+    }
+  }
+  return args;
+}
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -35,7 +78,14 @@ function run(command, args) {
   };
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const evidenceChecks = [];
+
 function check(name, passed, detail) {
+  evidenceChecks.push({ name, passed, detail });
   console.log(
     `[homepage-public] ${passed ? "PASS" : "BLOCKED"} ${name}: ${detail}`,
   );
@@ -45,11 +95,15 @@ function check(name, passed, detail) {
 function ghJson(path, jq) {
   const args = ["api", path];
   if (jq) args.push("--jq", jq);
-  const result = run("gh", args);
-  if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || result.stdout.trim() || "gh api failed");
+  let lastResult = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    lastResult = run("gh", args);
+    if (lastResult.status === 0) return lastResult.stdout.trim();
+    if (attempt < 3) sleepSync(500 * attempt);
   }
-  return result.stdout.trim();
+  throw new Error(
+    lastResult?.stderr.trim() || lastResult?.stdout.trim() || "gh api failed",
+  );
 }
 
 function decodeGhContent(path) {
@@ -95,8 +149,30 @@ function findJsAssets() {
     .filter((path) => /^assets\/(get-started|connected|contact)-.*\.js$/.test(path));
 }
 
+function writeEvidence({ evidencePath, ok, next, details }) {
+  if (!evidencePath) return;
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  const evidence = {
+    ok,
+    checkedAt: new Date().toISOString(),
+    domain: expectedDomain,
+    expectedGatewayNumber,
+    expectedFormattedNumber,
+    expectedApexRecords: [...expectedApexRecords],
+    expectedWwwCname,
+    checks: evidenceChecks,
+    next: next ?? null,
+    details,
+  };
+  fs.writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(`[homepage-public] evidence=${evidencePath}`);
+}
+
 function main() {
+  const args = parseArgs(process.argv.slice(2));
   let allPassed = true;
+  let pagesSummary = null;
+  let assetSummary = null;
 
   try {
     const pages = JSON.parse(
@@ -114,6 +190,7 @@ function main() {
           pages.source?.path === "/",
         `status=${pages.status} cname=${pages.cname ?? "none"} source=${pages.source?.branch ?? "none"}:${pages.source?.path ?? "none"}`,
       ) && allPassed;
+    pagesSummary = pages;
   } catch (error) {
     allPassed =
       check(
@@ -149,6 +226,12 @@ function main() {
       bundle.includes(expectedGatewayNumber) &&
       bundle.includes(expectedFormattedNumber);
     const hasPersonalNumber = disallowedNumbers.some((value) => bundle.includes(value));
+    assetSummary = {
+      count: assets.length,
+      assets,
+      hasGateway,
+      hasPersonalNumber,
+    };
     allPassed =
       check(
         "homepage-bundle",
@@ -221,12 +304,50 @@ function main() {
     ) && allPassed;
 
   if (!allPassed) {
+    const dnsRecordInstructions =
+      `A ${expectedDomain} -> ${[...expectedApexRecords].join(", ")}; ` +
+      `CNAME www.${expectedDomain} -> ${expectedWwwCname}`;
     const next = registryStatuses.includes("client hold")
-      ? "clear client hold at Porkbun/registrar, then add GitHub Pages DNS records and rerun this script."
-      : "delegate eliza.app to DNS nameservers, add GitHub Pages DNS records, then rerun this script.";
+      ? `clear client hold at Porkbun/registrar, then add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`
+      : `delegate eliza.app to DNS nameservers, add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`;
     console.error(`[homepage-public] next: ${next}`);
+    writeEvidence({
+      evidencePath: args.evidencePath,
+      ok: false,
+      next,
+      details: {
+        pages: pagesSummary,
+        assets: assetSummary,
+        registryStatuses,
+        registryNameservers,
+        delegatedNameservers,
+        apexRecords: [...apexRecords],
+        wwwCnames,
+      },
+    });
     process.exitCode = 1;
+    return;
   }
+
+  writeEvidence({
+    evidencePath: args.evidencePath,
+    ok: true,
+    next: null,
+    details: {
+      pages: pagesSummary,
+      assets: assetSummary,
+      registryStatuses,
+      registryNameservers,
+      delegatedNameservers,
+      apexRecords: [...apexRecords],
+      wwwCnames,
+    },
+  });
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(`[homepage-public] ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}

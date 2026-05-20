@@ -12,6 +12,10 @@ import {
   Service,
 } from "@elizaos/core";
 import { type WebSocket, WebSocketServer } from "ws";
+import type {
+  G1Event,
+  SmartglassesAudioEncoding,
+} from "../protocol/smartglasses.ts";
 import {
   decodeBinaryFrame,
   encodeBinaryFrame,
@@ -22,6 +26,7 @@ import {
   type XRTTSAudioHeader,
 } from "../protocol/xr.ts";
 import { AudioPipeline } from "./audio-pipeline.ts";
+import { getSmartglassesService } from "./smartglasses-service.ts";
 import { VisionPipeline } from "./vision-pipeline.ts";
 
 export const XR_SERVICE_TYPE = "xr-session";
@@ -91,6 +96,11 @@ export class XRSessionService extends Service {
 
   getConnections(): XRConnection[] {
     return [...this.connections.values()];
+  }
+
+  getWebSocketPort(): number | null {
+    const address = this.wss.address();
+    return typeof address === "object" && address ? address.port : null;
   }
 
   hasActiveConnections(): boolean {
@@ -227,7 +237,9 @@ export class XRSessionService extends Service {
       this.connections.set(connId, conn);
       ws.send(JSON.stringify({ type: "ready", sessionId: connId }));
       void this.ensureEntities(runtime, conn);
-      console.info(`[plugin-facewear/xr] ${msg.deviceType} connected: ${connId}`);
+      console.info(
+        `[plugin-facewear/xr] ${msg.deviceType} connected: ${connId}`,
+      );
       return;
     }
 
@@ -236,13 +248,27 @@ export class XRSessionService extends Service {
       return;
     }
 
+    if (msg.type === "g1_raw") {
+      void this.handleSmartglassesRaw(runtime, connId, msg);
+      return;
+    }
+
+    if (msg.type === "mic_lc3" || msg.type === "mic_pcm") {
+      void this.handleSmartglassesAudio(runtime, msg);
+      return;
+    }
+
     if (msg.type === "view_ready") {
-      console.info(`[plugin-facewear/xr] view ready on ${connId}: ${msg.viewId}`);
+      console.info(
+        `[plugin-facewear/xr] view ready on ${connId}: ${msg.viewId}`,
+      );
       return;
     }
 
     if (msg.type === "view_closed") {
-      console.info(`[plugin-facewear/xr] view closed on ${connId}: ${msg.viewId}`);
+      console.info(
+        `[plugin-facewear/xr] view closed on ${connId}: ${msg.viewId}`,
+      );
       return;
     }
 
@@ -253,6 +279,66 @@ export class XRSessionService extends Service {
         msg.event,
       );
       return;
+    }
+  }
+
+  private async handleSmartglassesRaw(
+    runtime: IAgentRuntime,
+    connId: string,
+    msg: {
+      type: "g1_raw";
+      side?: "left" | "right";
+      data?: number[];
+      base64?: string;
+    },
+  ): Promise<void> {
+    const service = getSmartglassesService(runtime);
+    if (!service) return;
+    const data = bytesFromMessagePayload(msg.data, msg.base64);
+    if (!data) return;
+    const side = msg.side ?? "right";
+    const event = await service.receiveExternalRawEvent(side, data, {
+      applyControls: false,
+    });
+    this.sendSmartglassesControl(connId, event);
+  }
+
+  private async handleSmartglassesAudio(
+    runtime: IAgentRuntime,
+    msg: {
+      type: "mic_lc3" | "mic_pcm";
+      side?: "left" | "right";
+      sampleRate?: number;
+      sequence?: number;
+      lc3?: number[];
+      pcm?: number[];
+      base64?: string;
+    },
+  ): Promise<void> {
+    const service = getSmartglassesService(runtime);
+    if (!service) return;
+    const data = bytesFromMessagePayload(
+      msg.type === "mic_pcm" ? msg.pcm : msg.lc3,
+      msg.base64,
+    );
+    if (!data) return;
+    await service.receiveExternalAudioChunk(data, {
+      sampleRate: msg.sampleRate,
+      side: msg.side ?? "right",
+      encoding: smartglassesEncodingForMessage(msg.type),
+      sequence: msg.sequence,
+    });
+  }
+
+  private sendSmartglassesControl(connId: string, event: G1Event): void {
+    const conn = this.connections.get(connId);
+    if (!conn || conn.ws.readyState !== conn.ws.OPEN) return;
+    if (conn.deviceType !== "even-realities") return;
+    if (event.label === "single_tap" || event.label === "long_press") {
+      conn.ws.send(JSON.stringify({ type: "mic_control", enabled: true }));
+    }
+    if (event.label === "double_tap" || event.label === "stop_ai_recording") {
+      conn.ws.send(JSON.stringify({ type: "mic_control", enabled: false }));
     }
   }
 
@@ -379,4 +465,23 @@ export class XRSessionService extends Service {
       console.error("[plugin-facewear/xr] entity setup error:", err);
     }
   }
+}
+
+function bytesFromMessagePayload(
+  bytes?: number[],
+  base64?: string,
+): Uint8Array | null {
+  if (Array.isArray(bytes) && bytes.every((value) => Number.isInteger(value))) {
+    return Uint8Array.from(bytes.map((value) => value & 0xff));
+  }
+  if (typeof base64 === "string" && base64.trim()) {
+    return Uint8Array.from(Buffer.from(base64, "base64"));
+  }
+  return null;
+}
+
+function smartglassesEncodingForMessage(
+  type: "mic_lc3" | "mic_pcm",
+): SmartglassesAudioEncoding {
+  return type === "mic_pcm" ? "pcm16" : "lc3";
 }

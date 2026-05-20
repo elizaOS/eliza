@@ -15,6 +15,7 @@ export enum G1Command {
   Init = 0x4d,
   RightInit = 0xf4,
   Heartbeat = 0x25,
+  Battery = 0x2c,
   SendResult = 0x4e,
   QuickNote = 0x21,
   Dashboard = 0x22,
@@ -227,6 +228,7 @@ export interface G1Event {
     | "voice-note-list"
     | "voice-note-audio"
     | "serial"
+    | "battery-status"
     | "heartbeat"
     | "response"
     | "error"
@@ -264,6 +266,24 @@ export interface G1Event {
   totalPackets?: number;
   currentPacket?: number;
   noteIndex?: number;
+  batteryPercent?: number;
+  batteryFlags?: number;
+  batteryVoltageMv?: number;
+}
+
+export type G1MicrophoneInteractionAction = "enable" | "disable";
+
+export function microphoneActionForInteractionEvent(
+  event: Pick<G1Event, "type" | "label">,
+): G1MicrophoneInteractionAction | null {
+  if (event.type !== "state") return null;
+  if (event.label === "single_tap" || event.label === "long_press") {
+    return "enable";
+  }
+  if (event.label === "double_tap" || event.label === "stop_ai_recording") {
+    return "disable";
+  }
+  return null;
 }
 
 export const G1_DISPLAY = {
@@ -708,6 +728,10 @@ export function encodeHeartbeat(seq: number): Uint8Array {
   return Uint8Array.from([G1Command.Heartbeat, 0x06, 0x00, s, 0x04, s]);
 }
 
+export function encodeBatteryStatusRequest(): Uint8Array {
+  return Uint8Array.from([G1Command.Battery, 0x01]);
+}
+
 export function encodeConnectionReady(
   side: GlassSide,
   mode: G1ConnectionReadyMode = "lens-specific",
@@ -794,6 +818,29 @@ export function encodeDashboard(
     0x02,
     stateValue,
     position & 0xff,
+  ]);
+}
+
+export function encodeDashboardPosition(
+  height: number,
+  depth: number,
+  seqId = 1,
+): Uint8Array {
+  if (!Number.isInteger(height) || height < 0 || height > 8) {
+    throw new RangeError("Dashboard height must be an integer between 0 and 8");
+  }
+  if (!Number.isInteger(depth) || depth < 1 || depth > 9) {
+    throw new RangeError("Dashboard depth must be an integer between 1 and 9");
+  }
+  return Uint8Array.from([
+    G1Command.DashboardPosition,
+    0x08,
+    0x00,
+    seqId & 0xff,
+    0x02,
+    0x01,
+    height & 0xff,
+    depth & 0xff,
   ]);
 }
 
@@ -1196,6 +1243,17 @@ export function encodeVoiceNoteFetch(
   ]);
 }
 
+export function encodeVoiceNoteList(syncId: number): Uint8Array {
+  return Uint8Array.from([
+    G1Command.Note,
+    0x06,
+    0x00,
+    syncId & 0xff,
+    G1VoiceNoteSubCommand.RequestAudioInfo,
+    0x00,
+  ]);
+}
+
 export function encodeVoiceNoteDelete(
   noteIndex: number,
   syncId: number,
@@ -1208,6 +1266,17 @@ export function encodeVoiceNoteDelete(
     syncId & 0xff,
     G1VoiceNoteSubCommand.DeleteAudioStream,
     noteIndex & 0xff,
+  ]);
+}
+
+export function encodeVoiceNoteDeleteAll(syncId: number): Uint8Array {
+  return Uint8Array.from([
+    G1Command.Note,
+    0x06,
+    0x00,
+    syncId & 0xff,
+    G1VoiceNoteSubCommand.DeleteAll,
+    0x00,
   ]);
 }
 
@@ -1463,6 +1532,9 @@ export function parseG1Notification(
   if (command === G1Command.Heartbeat) {
     return { side, raw: data, type: "heartbeat", label: "heartbeat" };
   }
+  if (command === G1Command.Battery) {
+    return parseBatteryStatus(side, data);
+  }
   if (command === 0x03) {
     return {
       side,
@@ -1487,6 +1559,30 @@ export function parseG1Notification(
     type: "unknown",
     code: command,
     label: `unknown_0x${command?.toString(16)}`,
+  };
+}
+
+function parseBatteryStatus(side: GlassSide, data: Uint8Array): G1Event {
+  if (data.length < 6 || data[1] !== 0x66) {
+    return {
+      side,
+      raw: data,
+      type: "battery-status",
+      responseStatus: data[1],
+      responseOk: false,
+      label: "battery_status_invalid",
+    };
+  }
+  return {
+    side,
+    raw: data,
+    type: "battery-status",
+    responseStatus: data[1],
+    responseOk: true,
+    batteryPercent: data[2],
+    batteryFlags: data[3],
+    batteryVoltageMv: (((data[5] ?? 0) << 8) | (data[4] ?? 0)) / 10,
+    label: "battery_status",
   };
 }
 

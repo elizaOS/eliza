@@ -20,7 +20,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import org.json.JSONArray
 import org.json.JSONObject
+import android.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -57,8 +59,7 @@ class AgentBridgeService : Service() {
     private val g1Connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             g1Service = (binder as G1BleService.LocalBinder).service
-            // Forward mic data from G1 to agent (stub — implement when mic BLE data is decoded)
-            g1Service?.onDataReceived = { bytes -> forwardG1DataToAgent(bytes) }
+            g1Service?.onDataReceived = { side, bytes -> forwardG1DataToAgent(side, bytes) }
         }
         override fun onServiceDisconnected(name: ComponentName) { g1Service = null }
     }
@@ -126,6 +127,30 @@ class AgentBridgeService : Service() {
                         g1Service?.displayText(msg) ?: Log.w(TAG, "G1 service not bound")
                     }
                 }
+                "clear_display" -> {
+                    g1Service?.clearDisplay() ?: Log.w(TAG, "G1 service not bound")
+                }
+                "mic_control" -> {
+                    g1Service?.setMicEnabled(json.optBoolean("enabled", true))
+                        ?: Log.w(TAG, "G1 service not bound")
+                }
+                "brightness" -> {
+                    g1Service?.setBrightness(json.optInt("level", 10), json.optBoolean("auto", false))
+                        ?: Log.w(TAG, "G1 service not bound")
+                }
+                "battery_status" -> {
+                    g1Service?.requestBatteryStatus() ?: Log.w(TAG, "G1 service not bound")
+                }
+                "heartbeat" -> {
+                    g1Service?.sendHeartbeat() ?: Log.w(TAG, "G1 service not bound")
+                }
+                "g1_write" -> {
+                    val bytes = jsonArrayToByteArray(json.optJSONArray("data"))
+                    if (bytes.isNotEmpty()) {
+                        g1Service?.sendRaw(json.optString("side", "both"), bytes)
+                            ?: Log.w(TAG, "G1 service not bound")
+                    }
+                }
                 "transcript" -> {
                     if (json.optBoolean("final", false)) {
                         val transcript = json.optString("text")
@@ -142,11 +167,37 @@ class AgentBridgeService : Service() {
         }
     }
 
-    private fun forwardG1DataToAgent(bytes: ByteArray) {
-        // Stub: G1 BLE → agent bridge for mic/gesture data.
-        // When G1 sends mic audio via BLE (if firmware supports it), encode it
-        // as a binary frame matching XRAudioHeader and send via webSocket.
-        Log.d(TAG, "G1 data received: ${bytes.size} bytes (not yet forwarded)")
+    private fun jsonArrayToByteArray(array: JSONArray?): ByteArray {
+        if (array == null) return ByteArray(0)
+        return ByteArray(array.length()) { index ->
+            (array.optInt(index) and 0xff).toByte()
+        }
+    }
+
+    private fun forwardG1DataToAgent(side: GlassSide, bytes: ByteArray) {
+        val sideName = if (side == GlassSide.LEFT) "left" else "right"
+        val frame = JSONObject().apply {
+            put("type", "g1_raw")
+            put("side", sideName)
+            put("data", JSONArray(bytes.map { it.toInt() and 0xff }))
+            put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP))
+        }
+        webSocket?.send(frame.toString())
+
+        if (bytes.isNotEmpty() && (bytes[0].toInt() and 0xff) == 0xF1) {
+            val sequence = if (bytes.size > 1) bytes[1].toInt() and 0xff else JSONObject.NULL
+            val audioPayload = if (bytes.size > 2) bytes.copyOfRange(2, bytes.size) else ByteArray(0)
+            val audioFrame = JSONObject().apply {
+                put("type", "mic_lc3")
+                put("side", sideName)
+                put("sampleRate", 16000)
+                put("encoding", "lc3")
+                put("sequence", sequence)
+                put("lc3", JSONArray(audioPayload.map { it.toInt() and 0xff }))
+                put("base64", Base64.encodeToString(audioPayload, Base64.NO_WRAP))
+            }
+            webSocket?.send(audioFrame.toString())
+        }
     }
 
     fun sendPing() {

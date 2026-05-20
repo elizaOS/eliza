@@ -1,16 +1,38 @@
-import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { FACEWEAR_SERVICE_TYPE, FacewearService } from "../services/facewear-service.ts";
-import { XR_SERVICE_TYPE, XRSessionService } from "../services/xr-session-service.ts";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import {
+  FACEWEAR_SERVICE_TYPE,
+  type FacewearService,
+} from "../services/facewear-service.ts";
 import { SMARTGLASSES_SERVICE_NAME } from "../services/smartglasses-service.ts";
+import {
+  XR_SERVICE_TYPE,
+  type XRSessionService,
+} from "../services/xr-session-service.ts";
 
 export const facewearDebugAction: Action = {
   name: "FACEWEAR_DEBUG",
   description: "Show diagnostics for all connected facewear devices.",
-  similes: ["DEBUG_GLASSES", "DIAGNOSE_HEADSET", "FACEWEAR_DIAGNOSTICS", "CHECK_XR"],
+  similes: [
+    "DEBUG_GLASSES",
+    "DIAGNOSE_HEADSET",
+    "FACEWEAR_DIAGNOSTICS",
+    "CHECK_XR",
+  ],
   examples: [
     [
       { name: "{{user1}}", content: { text: "Debug my XR connection" } },
-      { name: "{{user2}}", content: { text: "XR session service is running. No active connections." } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "XR session service is running. No active connections.",
+        },
+      },
     ],
   ],
   validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
@@ -29,7 +51,9 @@ export const facewearDebugAction: Action = {
       lines.push(`**XR Session Service:** running`);
       lines.push(`**XR Connections:** ${conns.length}`);
       for (const c of conns) {
-        lines.push(`  - ${c.id}: ${c.deviceType} (connected ${c.connectedAt.toISOString()})`);
+        lines.push(
+          `  - ${c.id}: ${c.deviceType} (connected ${c.connectedAt.toISOString()})`,
+        );
       }
     } else {
       lines.push("**XR Session Service:** not running");

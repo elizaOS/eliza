@@ -65,6 +65,17 @@ export interface Prediction {
   latencyMs: number;
   /** When the runtime errored, this is set and `text` is empty. */
   error?: string;
+  /** Optional model usage telemetry surfaced by bridged runtimes. */
+  usage?: UsageTelemetry;
+}
+
+export interface UsageTelemetry {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cached_tokens?: number;
+  cache_creation_tokens?: number;
+  llm_call_count?: number;
 }
 
 /** A single OSWorld action: minimal subset of OSWorld's `computer_13` space. */
@@ -145,6 +156,8 @@ export interface VisionRuntime {
     initialScreenshotPath: string;
     maxSteps: number;
   }): Promise<PredictedAction[]>;
+  /** Optional aggregate usage collected during the current run. */
+  usage?(): UsageTelemetry;
   /** Optional teardown hook (release model, close session). */
   cleanup?(): Promise<void>;
 }
@@ -169,6 +182,13 @@ export interface BenchReport {
   runtime_seconds: number;
   /** Number of samples whose prediction errored. */
   error_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  cache_creation_tokens: number;
+  cached_token_percent: number | null;
+  llm_call_count: number;
   /** Per-sample scores for downstream analysis. */
   samples: SampleResult[];
 }

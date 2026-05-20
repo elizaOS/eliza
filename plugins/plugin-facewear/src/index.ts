@@ -112,6 +112,70 @@ export const facewearPlugin: Plugin = {
       description: "XR view for facewear device status and control.",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
     },
+    {
+      id: "smartglasses",
+      viewType: "gui",
+      path: "/apps/smartglasses",
+      label: "Smartglasses",
+      description:
+        "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
+      icon: "Glasses",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "SmartglassesView",
+      tags: [
+        "facewear",
+        "smartglasses",
+        "wearable",
+        "bluetooth",
+        "wifi",
+        "hardware",
+        "even-realities",
+      ],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+      capabilities: [
+        {
+          id: "connect-headset",
+          description:
+            "Guide the user through whole-headset pairing and connection.",
+        },
+        {
+          id: "run-hardware-check",
+          description:
+            "Exercise display, serial, microphone, and settings paths and build a diagnostics report.",
+        },
+        {
+          id: "guided-side-tap-audio-validation",
+          description:
+            "Guide single-tap microphone enable, speech audio, and double-tap microphone disable validation.",
+        },
+        {
+          id: "configure-wifi",
+          description:
+            "Scan and configure headset Wi-Fi when a native bridge exposes Wi-Fi APIs.",
+        },
+      ],
+    },
+    {
+      id: "smartglasses",
+      viewType: "xr",
+      path: "/apps/smartglasses/xr",
+      label: "Smartglasses XR",
+      description:
+        "XR smartglasses setup and diagnostics panel from the same component as the GUI view.",
+      icon: "Glasses",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "SmartglassesView",
+      tags: [
+        "facewear",
+        "smartglasses",
+        "wearable",
+        "bluetooth",
+        "hardware",
+        "xr",
+      ],
+      visibleInManager: false,
+    },
   ],
 
   app: {

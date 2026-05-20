@@ -11,16 +11,16 @@
  */
 
 export {
-  xrOpenViewAction as XR_OPEN_VIEW,
   xrCloseViewAction as XR_CLOSE_VIEW,
-  xrSwitchViewAction as XR_SWITCH_VIEW,
-  xrListViewsAction as XR_LIST_VIEWS,
-  xrResizeViewAction as XR_RESIZE_VIEW,
-  xrOpenViewAction,
   xrCloseViewAction,
-  xrSwitchViewAction,
+  xrListViewsAction as XR_LIST_VIEWS,
   xrListViewsAction,
+  xrOpenViewAction as XR_OPEN_VIEW,
+  xrOpenViewAction,
+  xrResizeViewAction as XR_RESIZE_VIEW,
   xrResizeViewAction,
+  xrSwitchViewAction as XR_SWITCH_VIEW,
+  xrSwitchViewAction,
 } from "./view-actions.ts";
 
 /**
@@ -71,7 +71,7 @@ export function extractViewId(text: string): XRViewId | "" {
   // Try quoted identifier
   const quoted = text.match(/["']([^"']+)["']/);
   if (quoted) {
-    const q = quoted[1]!.toLowerCase();
+    const q = quoted[1]?.toLowerCase() ?? "";
     for (const id of ALL_XR_VIEW_IDS) {
       if (q === id) return id;
     }

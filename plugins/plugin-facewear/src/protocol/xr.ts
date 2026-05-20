@@ -5,7 +5,7 @@
 //
 // Text frames are JSON control messages (no binary payload).
 
-export type XRDeviceType = "quest3" | "xreal" | "simulator";
+export type XRDeviceType = "quest3" | "xreal" | "even-realities" | "simulator";
 
 // ── Client → Server (text frames) ──────────────────────────────────────────
 
@@ -20,6 +20,21 @@ export interface XRViewPanelState {
 export type XRClientControl =
   | { type: "hello"; deviceType: XRDeviceType; sessionId: string }
   | { type: "ping" }
+  | {
+      type: "g1_raw";
+      side?: "left" | "right";
+      data?: number[];
+      base64?: string;
+    }
+  | {
+      type: "mic_lc3" | "mic_pcm";
+      side?: "left" | "right";
+      sampleRate?: number;
+      sequence?: number;
+      lc3?: number[];
+      pcm?: number[];
+      base64?: string;
+    }
   | { type: "view_ready"; viewId: string }
   | { type: "view_closed"; viewId: string }
   | { type: "view_event"; viewId: string; event: string; payload?: unknown };

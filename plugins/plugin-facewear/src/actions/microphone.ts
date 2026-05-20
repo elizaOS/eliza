@@ -24,6 +24,10 @@ function enabledFromMessage(message: Memory): boolean | null {
   return null;
 }
 
+function actionErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const smartglassesMicrophoneAction: Action = {
   name: "SMARTGLASSES_MICROPHONE",
   similes: [
@@ -51,7 +55,20 @@ export const smartglassesMicrophoneAction: Action = {
       return { success: false, text: "Smartglasses service not loaded" };
     const requested = enabledFromMessage(message);
     const enabled = requested ?? !service.getStatus().microphoneEnabled;
-    await service.setMicrophoneEnabled(enabled);
+    try {
+      await service.setMicrophoneEnabled(enabled);
+    } catch (error) {
+      const response = `Smartglasses microphone command failed: ${actionErrorMessage(error)}`;
+      await callback?.({ text: response });
+      return {
+        success: false,
+        text: response,
+        values: {
+          microphoneEnabled: enabled,
+          error: actionErrorMessage(error),
+        },
+      };
+    }
     const response = `Smartglasses microphone ${enabled ? "enabled" : "disabled"}.`;
     await callback?.({ text: response });
     return {

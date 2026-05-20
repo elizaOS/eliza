@@ -93,10 +93,16 @@ describe("XR feature parity audit", () => {
     expect(source, "facewear view id").toContain('id: "facewear"');
   });
 
-  it("axis 1 — plugin-facewear re-exports SmartglassesView for backward compatibility", () => {
+  it("axis 1 — plugin-facewear declares focused Smartglasses GUI and XR views", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
-    expect(source, "SmartglassesService export").toContain("SmartglassesService");
-    expect(source, "XRSessionService export").toContain("XRSessionService");
+    expect(source, "smartglasses view id").toContain('id: "smartglasses"');
+    expect(source, "smartglasses path").toContain('path: "/apps/smartglasses"');
+    expect(source, "smartglasses xr path").toContain(
+      'path: "/apps/smartglasses/xr"',
+    );
+    expect(source, "shared Smartglasses component").toContain(
+      'componentExport: "SmartglassesView"',
+    );
   });
 
   // 2. Route infrastructure ───────────────────────────────────────────────────
@@ -278,6 +284,29 @@ describe("XR feature parity audit", () => {
     expect(manifest).toContain("android.permission.RECORD_AUDIO");
     expect(manifest).toContain("android.permission.INTERNET");
     expect(manifest).toContain("ai.xreal.permission.TRACKING");
+  });
+
+  it("axis 6 — Even Realities Android bridge uses whole-headset G1 protocol and forwards mic frames", () => {
+    const base =
+      "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities";
+    const g1Service = readFile(`${base}/G1BleService.kt`);
+    const agentBridge = readFile(`${base}/AgentBridgeService.kt`);
+
+    expect(g1Service).toContain("enum class GlassSide");
+    expect(g1Service).toContain("GlassSide.LEFT");
+    expect(g1Service).toContain("GlassSide.RIGHT");
+    expect(g1Service).toContain("cmdSendResult = 0x4E");
+    expect(g1Service).toContain("cmdOpenMic = 0x0E");
+    expect(g1Service).toContain("cmdBrightness = 0x01");
+    expect(g1Service).toContain("cmdBattery = 0x2C");
+    expect(g1Service).toContain("connectionReadyPacket");
+    expect(g1Service).toContain("writeBoth");
+
+    expect(agentBridge).not.toContain("stub");
+    expect(agentBridge).not.toContain("not yet forwarded");
+    expect(agentBridge).toContain('"g1_raw"');
+    expect(agentBridge).toContain('"mic_lc3"');
+    expect(agentBridge).toContain('"g1_write"');
   });
 
   // 7. PWA manifest ───────────────────────────────────────────────────────────

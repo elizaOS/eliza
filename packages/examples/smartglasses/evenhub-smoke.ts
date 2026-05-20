@@ -7,8 +7,8 @@ import {
   G1ScreenAction,
   paginateDisplayText,
   type SmartglassesAudioEncoding,
-} from "../../../plugins/plugin-smartglasses/src/protocol.js";
-import { EvenBridgeTransport } from "../../../plugins/plugin-smartglasses/src/transport/even-bridge.js";
+} from "../../../plugins/plugin-facewear/src/protocol/smartglasses.js";
+import { EvenBridgeTransport } from "../../../plugins/plugin-facewear/src/transport/even-bridge.js";
 
 const logEl = document.getElementById("log") as HTMLPreElement;
 

@@ -49,24 +49,30 @@ function makeCtx(viewId: string) {
 }
 
 async function fetchHtml(viewId: string): Promise<string> {
-  const result = await viewHostRoute.routeHandler!(makeCtx(viewId) as never);
+  const result = await callViewHostRoute(makeCtx(viewId));
   expect(result.status).toBe(200);
   expect(result.headers?.["Content-Type"]).toMatch(/text\/html/);
   return result.body as string;
 }
 
+async function callViewHostRoute(input: unknown) {
+  const handler = viewHostRoute.routeHandler;
+  if (!handler) throw new Error("viewHostRoute has no routeHandler");
+  return handler(input as never);
+}
+
 describe("viewHostRoute — real route handler", () => {
   it("returns 400 for missing view id", async () => {
-    const result = await viewHostRoute.routeHandler!({
+    const result = await callViewHostRoute({
       params: {},
       runtime: {},
-    } as never);
+    });
     expect(result.status).toBe(400);
   });
 
   it("returns 200 with Content-Type text/html for every registered view id", async () => {
     for (const id of ALL_VIEW_IDS) {
-      const result = await viewHostRoute.routeHandler!(makeCtx(id) as never);
+      const result = await callViewHostRoute(makeCtx(id));
       expect(result.status, `${id}: expected status 200`).toBe(200);
       expect(
         result.headers?.["Content-Type"],
@@ -170,7 +176,7 @@ describe("viewHostRoute — real route handler", () => {
 
   it("Content-Security-Policy header allows the agent origin and esm.sh", async () => {
     for (const id of ALL_VIEW_IDS) {
-      const result = await viewHostRoute.routeHandler!(makeCtx(id) as never);
+      const result = await callViewHostRoute(makeCtx(id));
       const csp = result.headers?.["Content-Security-Policy"] ?? "";
       expect(csp, `${id}: CSP must include esm.sh`).toContain("esm.sh");
       expect(csp, `${id}: CSP must include localhost agent origin`).toContain(

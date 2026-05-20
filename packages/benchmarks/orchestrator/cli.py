@@ -363,7 +363,13 @@ def _cmd_calibration_report(args: argparse.Namespace) -> int:
 
 def _cmd_validate_latest_publishability(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
-    report = validate_latest_publishability(workspace_root)
+    latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
+    report = validate_latest_publishability(
+        workspace_root,
+        latest_dir=latest_dir,
+        include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
+        exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
+    )
     if args.json:
         print(report.to_json())
     else:
@@ -373,9 +379,13 @@ def _cmd_validate_latest_publishability(args: argparse.Namespace) -> int:
 
 def _cmd_validate_latest_comparability(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
+    latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
     report = validate_latest_comparability(
         workspace_root,
         tolerance=float(args.tolerance),
+        latest_dir=latest_dir,
+        include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
+        exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
     )
     if args.json:
         print(report.to_json())
@@ -386,9 +396,14 @@ def _cmd_validate_latest_comparability(args: argparse.Namespace) -> int:
 
 def _cmd_validate_latest_readiness(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
+    latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
     report = validate_latest_readiness(
         workspace_root,
         tolerance=float(args.tolerance),
+        latest_dir=latest_dir,
+        check_runtime_gates=not bool(args.skip_runtime_gates),
+        include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
+        exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
     )
     if args.json:
         print(report.to_json())
@@ -871,6 +886,21 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-latest-publishability",
         help="Fail if published latest benchmark rows contain sample/demo/mock/stub markers",
     )
+    p_publishability.add_argument(
+        "--latest-dir",
+        default=None,
+        help="Explicit latest snapshot directory to validate (default: benchmark_results/latest)",
+    )
+    p_publishability.add_argument(
+        "--include-benchmarks",
+        default="",
+        help="Comma-separated benchmark ids to include",
+    )
+    p_publishability.add_argument(
+        "--exclude-benchmarks",
+        default="",
+        help="Comma-separated benchmark ids to exclude",
+    )
     p_publishability.add_argument("--json", action="store_true", help="Print full JSON report")
     p_publishability.set_defaults(func=_cmd_validate_latest_publishability)
 
@@ -884,6 +914,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.08,
         help="Allowed absolute score spread across required real harnesses",
     )
+    p_latest_comparability.add_argument(
+        "--latest-dir",
+        default=None,
+        help="Explicit latest snapshot directory to validate (default: benchmark_results/latest)",
+    )
+    p_latest_comparability.add_argument(
+        "--include-benchmarks",
+        default="",
+        help="Comma-separated benchmark ids to include",
+    )
+    p_latest_comparability.add_argument(
+        "--exclude-benchmarks",
+        default="",
+        help="Comma-separated benchmark ids to exclude",
+    )
     p_latest_comparability.add_argument("--json", action="store_true", help="Print full JSON report")
     p_latest_comparability.set_defaults(func=_cmd_validate_latest_comparability)
 
@@ -896,6 +941,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.08,
         help="Allowed absolute/relative score spread across required real harnesses",
+    )
+    p_latest_readiness.add_argument(
+        "--latest-dir",
+        default=None,
+        help="Explicit latest snapshot directory to validate (default: benchmark_results/latest)",
+    )
+    p_latest_readiness.add_argument(
+        "--skip-runtime-gates",
+        action="store_true",
+        help="Validate published latest artifacts without probing host runtime prerequisites",
+    )
+    p_latest_readiness.add_argument(
+        "--include-benchmarks",
+        default=None,
+        help="Comma-separated benchmark IDs to include in readiness validation",
+    )
+    p_latest_readiness.add_argument(
+        "--exclude-benchmarks",
+        default=None,
+        help="Comma-separated benchmark IDs to exclude from readiness validation",
     )
     p_latest_readiness.add_argument("--json", action="store_true", help="Print full JSON report")
     p_latest_readiness.set_defaults(func=_cmd_validate_latest_readiness)

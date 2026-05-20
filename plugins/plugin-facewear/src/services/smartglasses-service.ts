@@ -2,6 +2,7 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type DisplayPage,
   encodeAppWhitelist,
+  encodeBatteryStatusRequest,
   encodeBmpTransfer,
   encodeBrightness,
   encodeClearScreen,
@@ -9,6 +10,7 @@ import {
   encodeDashboard,
   encodeDashboardCalendarItem,
   encodeDashboardLayout,
+  encodeDashboardPosition,
   encodeDashboardTimeWeather,
   encodeExitFunction,
   encodeG1MonochromeBmp,
@@ -35,7 +37,9 @@ import {
   encodeTranslateStart,
   encodeTranslateText,
   encodeVoiceNoteDelete,
+  encodeVoiceNoteDeleteAll,
   encodeVoiceNoteFetch,
+  encodeVoiceNoteList,
   G1AiStatus,
   type G1ConnectionReadyMode,
   type G1DashboardLayout,
@@ -47,7 +51,9 @@ import {
   G1SubCommand,
   G1TextStatus,
   type GlassSide,
+  microphoneActionForInteractionEvent,
   paginateDisplayText,
+  parseG1Notification,
   pcm16ToFloat32,
   type SmartglassesAudioEncoding,
 } from "../protocol/smartglasses.ts";
@@ -102,6 +108,8 @@ export interface SmartglassesStatus {
   audioSequenceGaps: number;
   physicalState: string | null;
   batteryState: string | null;
+  batteryLevels: Partial<Record<GlassSide, number>>;
+  batteryVoltagesMv: Partial<Record<GlassSide, number>>;
   deviceState: string | null;
   lastSerialNumber: string | null;
   connectedLenses: SmartglassesConnectedLenses;
@@ -162,6 +170,8 @@ export class SmartglassesService extends Service {
   private audioSequenceGaps = 0;
   private physicalState: string | null = null;
   private batteryState: string | null = null;
+  private batteryLevels: Partial<Record<GlassSide, number>> = {};
+  private batteryVoltagesMv: Partial<Record<GlassSide, number>> = {};
   private deviceState: string | null = null;
   private lastSerialNumber: string | null = null;
   private lastWifiStatus: SmartglassesWifiResult | null = null;
@@ -285,6 +295,8 @@ export class SmartglassesService extends Service {
       audioSequenceGaps: this.audioSequenceGaps,
       physicalState: this.physicalState,
       batteryState: this.batteryState,
+      batteryLevels: { ...this.batteryLevels },
+      batteryVoltagesMv: { ...this.batteryVoltagesMv },
       deviceState: this.deviceState,
       lastSerialNumber: this.lastSerialNumber,
       connectedLenses: this.transport?.getConnectedLenses?.() ?? {},
@@ -379,6 +391,12 @@ export class SmartglassesService extends Service {
     this.lastHeartbeatAt = Date.now();
   }
 
+  async requestBatteryStatus(
+    side: SmartglassesWriteTarget = "both",
+  ): Promise<void> {
+    await this.sendRaw(encodeBatteryStatusRequest(), side);
+  }
+
   startHeartbeatLoop(
     options: { intervalMs?: number; immediate?: boolean } = {},
   ): void {
@@ -388,7 +406,10 @@ export class SmartglassesService extends Service {
     if (options.immediate !== false) void this.sendHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       void this.sendHeartbeat().catch((error) => {
-        logger.warn({ error }, "[plugin-facewear/smartglasses] heartbeat failed");
+        logger.warn(
+          { error },
+          "[plugin-facewear/smartglasses] heartbeat failed",
+        );
       });
     }, intervalMs);
     this.heartbeatTimer.unref?.();
@@ -496,6 +517,12 @@ export class SmartglassesService extends Service {
 
   async setDashboard(enabled: boolean, position = 0): Promise<void> {
     await this.writeBoth(encodeDashboard(enabled, position));
+  }
+
+  async setDashboardPosition(height: number, depth: number): Promise<void> {
+    await this.writeBoth(
+      encodeDashboardPosition(height, depth, this.nextDashboardSeq()),
+    );
   }
 
   async setDashboardLayout(layout: G1DashboardLayout): Promise<void> {
@@ -670,6 +697,14 @@ export class SmartglassesService extends Service {
     return { syncId };
   }
 
+  async requestVoiceNoteList(
+    options: { syncId?: number; side?: GlassSide } = {},
+  ): Promise<{ syncId: number }> {
+    const syncId = options.syncId ?? this.nextVoiceNoteSyncId();
+    await this.writeSide(options.side ?? "right", encodeVoiceNoteList(syncId));
+    return { syncId };
+  }
+
   async deleteVoiceNoteAudio(
     noteIndex: number,
     options: { syncId?: number; side?: GlassSide } = {},
@@ -678,6 +713,17 @@ export class SmartglassesService extends Service {
     await this.writeSide(
       options.side ?? "right",
       encodeVoiceNoteDelete(noteIndex, syncId),
+    );
+    return { syncId };
+  }
+
+  async deleteAllVoiceNoteAudio(
+    options: { syncId?: number; side?: GlassSide } = {},
+  ): Promise<{ syncId: number }> {
+    const syncId = options.syncId ?? this.nextVoiceNoteSyncId();
+    await this.writeSide(
+      options.side ?? "right",
+      encodeVoiceNoteDeleteAll(syncId),
     );
     return { syncId };
   }
@@ -736,6 +782,34 @@ export class SmartglassesService extends Service {
       isFinal,
       metadata,
     });
+  }
+
+  async receiveExternalRawEvent(
+    side: GlassSide,
+    data: Uint8Array,
+    options: { applyControls?: boolean } = {},
+  ): Promise<G1Event> {
+    const event = parseG1Notification(side, data);
+    await this.handleEvent(event, options);
+    return event;
+  }
+
+  async receiveExternalAudioChunk(
+    audioData: Uint8Array,
+    options: {
+      sampleRate?: number;
+      side?: GlassSide;
+      encoding?: SmartglassesAudioEncoding;
+      sequence?: number;
+    } = {},
+  ): Promise<void> {
+    await this.handleAudioChunk(
+      audioData,
+      options.sampleRate ?? 16_000,
+      options.side ?? "right",
+      options.encoding ?? "lc3",
+      options.sequence,
+    );
   }
 
   private async handleAudioChunk(
@@ -817,7 +891,10 @@ export class SmartglassesService extends Service {
     }
   }
 
-  private async handleEvent(event: G1Event): Promise<void> {
+  private async handleEvent(
+    event: G1Event,
+    options: { applyControls?: boolean } = {},
+  ): Promise<void> {
     this.lastEvent = event;
     void this.emitPluginEvent(SMARTGLASSES_EVENT, { event });
     if (
@@ -834,16 +911,27 @@ export class SmartglassesService extends Service {
       } else if (event.stateCategory === "device") {
         this.deviceState = event.stateName ?? event.label ?? null;
       }
-      if (event.label === "single_tap") await this.setMicrophoneEnabled(true);
-      if (event.label === "double_tap") await this.setMicrophoneEnabled(false);
-      if (event.label === "long_press") await this.setMicrophoneEnabled(true);
-      if (event.label === "stop_ai_recording")
-        await this.setMicrophoneEnabled(false);
-      if (event.label === "scroll_up") await this.pageUp();
-      if (event.label === "scroll_down") await this.pageDown();
+      const applyControls = options.applyControls !== false;
+      const microphoneAction = microphoneActionForInteractionEvent(event);
+      if (microphoneAction) {
+        const enabled = microphoneAction === "enable";
+        if (applyControls) await this.setMicrophoneEnabled(enabled);
+        else this.microphoneEnabled = enabled;
+      }
+      if (applyControls && event.label === "scroll_up") await this.pageUp();
+      if (applyControls && event.label === "scroll_down") await this.pageDown();
     }
     if (event.type === "serial" && event.serialNumber) {
       this.lastSerialNumber = event.serialNumber;
+    }
+    if (
+      event.type === "battery-status" &&
+      typeof event.batteryPercent === "number"
+    ) {
+      this.batteryLevels[event.side] = event.batteryPercent;
+      if (typeof event.batteryVoltageMv === "number") {
+        this.batteryVoltagesMv[event.side] = event.batteryVoltageMv;
+      }
     }
   }
 
@@ -970,10 +1058,10 @@ async function chooseTransport(
       SMARTGLASSES_TRANSPORT_SETTING,
     ]),
   );
-  const scanTimeoutMs = readPositiveIntegerSetting(
-    runtime,
-    [FACEWEAR_SCAN_TIMEOUT_SETTING, SMARTGLASSES_SCAN_TIMEOUT_SETTING],
-  );
+  const scanTimeoutMs = readPositiveIntegerSetting(runtime, [
+    FACEWEAR_SCAN_TIMEOUT_SETTING,
+    SMARTGLASSES_SCAN_TIMEOUT_SETTING,
+  ]);
 
   if (preferred === "even-bridge") return getGlobalEvenBridgeTransport();
   if (preferred === "web-bluetooth") return getWebBluetoothG1Transport();

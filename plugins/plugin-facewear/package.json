@@ -23,17 +23,17 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
-    "test": "bunx vitest run --config ./vitest.config.ts",
+    "test": "bun run build:views && bun run emulator:build && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vitest@4.1.5 vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "build:views": "vite build --config vite.config.views.ts",
+    "build:types": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noCheck -p tsconfig.build.json",
+    "build:views": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@7.2.7 vite build --config vite.config.views.ts",
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
     "emulator:cli": "bun run --cwd emulator src/cli.ts",
-    "verify:app": "bunx vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
+    "verify:app": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vitest@4.1.5 vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -60,7 +60,7 @@
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
+    "vite": "7.2.7",
     "vitest": "^4.0.17"
   },
   "elizaos": {
@@ -83,7 +83,12 @@
         "description": "Even Realities transport selection.",
         "required": false,
         "default": "auto",
-        "enum": ["auto", "even-bridge", "web-bluetooth", "noble"]
+        "enum": [
+          "auto",
+          "even-bridge",
+          "web-bluetooth",
+          "noble"
+        ]
       },
       "FACEWEAR_SCAN_TIMEOUT_MS": {
         "type": "number",
@@ -102,7 +107,11 @@
         "description": "G1 connection-ready init mode.",
         "required": false,
         "default": "lens-specific",
-        "enum": ["lens-specific", "official", "android-f4"]
+        "enum": [
+          "lens-specific",
+          "official",
+          "android-f4"
+        ]
       }
     }
   },
@@ -110,5 +119,8 @@
     "access": "public"
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "docs"]
+  "files": [
+    "dist",
+    "docs"
+  ]
 }

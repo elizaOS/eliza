@@ -1,6 +1,6 @@
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { FacewearDeviceProfile, FacewearDeviceType } from "../devices/registry.ts";
+import { useCallback, useEffect, useState } from "react";
+import type { FacewearDeviceType } from "../devices/registry.ts";
 
 interface ConnectedDevice {
   id: string;
@@ -144,7 +144,7 @@ export function FacewearView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchStatus(): Promise<void> {
+  const fetchStatus = useCallback(async (): Promise<void> => {
     try {
       const res = await fetch("/api/facewear/status");
       if (res.ok) {
@@ -157,13 +157,13 @@ export function FacewearView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void fetchStatus();
     const interval = setInterval(() => void fetchStatus(), 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus]);
 
   function handleConnect(deviceType: FacewearDeviceType): void {
     const instructions: Record<FacewearDeviceType, string> = {
@@ -178,7 +178,10 @@ export function FacewearView() {
       simulator:
         "The WebXR simulator connects automatically when you open the emulator page",
     };
-    alert(instructions[deviceType] ?? "Follow the connection instructions for your device.");
+    alert(
+      instructions[deviceType] ??
+        "Follow the connection instructions for your device.",
+    );
   }
 
   const activeCount = status.devices.length;

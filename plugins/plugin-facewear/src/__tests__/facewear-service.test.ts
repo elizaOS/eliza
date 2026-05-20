@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { FACEWEAR_SERVICE_TYPE, FacewearService } from "../services/facewear-service.ts";
+import {
+  FACEWEAR_SERVICE_TYPE,
+  FacewearService,
+} from "../services/facewear-service.ts";
 
 describe("FacewearService", () => {
   it("has correct serviceType", () => {

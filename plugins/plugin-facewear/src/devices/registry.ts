@@ -19,13 +19,22 @@ export interface FacewearDeviceProfile {
   nativeAppPath?: string;
 }
 
-export const DEVICE_REGISTRY: Record<FacewearDeviceType, FacewearDeviceProfile> = {
+export const DEVICE_REGISTRY: Record<
+  FacewearDeviceType,
+  FacewearDeviceProfile
+> = {
   "meta-quest": {
     id: "meta-quest",
     displayName: "Meta Quest 3 / 3S / Pro",
     manufacturer: "Meta",
     connectionType: "webxr",
-    features: ["webxr", "hand-tracking", "passthrough", "room-scale", "eye-tracking"],
+    features: [
+      "webxr",
+      "hand-tracking",
+      "passthrough",
+      "room-scale",
+      "eye-tracking",
+    ],
     sdkName: "Meta XR SDK",
     sdkVersion: "68.0",
     sdkUrl: "https://developer.oculus.com/downloads/",
@@ -51,7 +60,13 @@ export const DEVICE_REGISTRY: Record<FacewearDeviceType, FacewearDeviceProfile> 
     displayName: "Even Realities G1 / G2",
     manufacturer: "Even Realities",
     connectionType: "ble",
-    features: ["ble", "oled-display", "microphone", "side-tap", "wifi-provisioning"],
+    features: [
+      "ble",
+      "oled-display",
+      "microphone",
+      "side-tap",
+      "wifi-provisioning",
+    ],
     sdkName: "G1 BLE Protocol (built-in)",
     emulatorSupported: true,
     nativeAppPlatform: "android",
@@ -62,7 +77,15 @@ export const DEVICE_REGISTRY: Record<FacewearDeviceType, FacewearDeviceProfile> 
     displayName: "Apple Vision Pro",
     manufacturer: "Apple",
     connectionType: "webxr",
-    features: ["visionos", "webxr", "eye-tracking", "hand-tracking", "spatial-audio", "passthrough", "realitykit"],
+    features: [
+      "visionos",
+      "webxr",
+      "eye-tracking",
+      "hand-tracking",
+      "spatial-audio",
+      "passthrough",
+      "realitykit",
+    ],
     sdkName: "visionOS SDK",
     sdkVersion: "2.4",
     sdkUrl: "https://developer.apple.com/visionos/",
@@ -80,7 +103,9 @@ export const DEVICE_REGISTRY: Record<FacewearDeviceType, FacewearDeviceProfile> 
   },
 };
 
-export function getDeviceProfile(deviceType: FacewearDeviceType): FacewearDeviceProfile {
+export function getDeviceProfile(
+  deviceType: FacewearDeviceType,
+): FacewearDeviceProfile {
   return DEVICE_REGISTRY[deviceType];
 }
 

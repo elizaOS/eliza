@@ -57,3 +57,33 @@ bun run --filter eliza-app build
 ```
 
 The build copies `index.html` to `404.html` for GitHub Pages deep-link fallback. Hosts that understand `_redirects` and `_headers` can use the files in `public/` for SPA fallback and long-cache asset headers.
+
+### Public `eliza.app` DNS
+
+The shared SMS gateway homepage depends on `eliza.app` resolving to the
+published GitHub Pages site. Before switching traffic to the apex domain, clear
+any registrar hold such as `client hold`, then configure:
+
+| Record | Value |
+|---|---|
+| `A eliza.app` | `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` |
+| `CNAME www.eliza.app` | `elizaos.github.io.` |
+
+Verify the public entry point without rebuilding:
+
+```bash
+node packages/app-core/scripts/check-homepage-public-readiness.mjs
+```
+
+If Porkbun API access is available, preview the exact DNS plan with:
+
+```bash
+bun run --cwd packages/app-core sms-gateway:homepage:dns
+```
+
+Apply the plan only after clearing registrar holds such as `client hold`:
+
+```bash
+PORKBUN_API_KEY=... PORKBUN_SECRET_API_KEY=... \
+  bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply
+```

@@ -1,14 +1,14 @@
 /**
- * XR view bundle coverage — validates that every registered XR view plugin
- * has a built dist/views/bundle.js that is non-empty, valid JavaScript,
- * and exports the component named in the plugin manifest.
+ * Facewear view bundle coverage — validates that the plugin's XR view bundle
+ * is built, non-empty, valid JavaScript, and exports the component named in the
+ * plugin manifest.
  *
  * This is the "real elizaOS plugin infrastructure" layer the simulator tests
  * cannot reach: it proves that the actual view content (the React component
  * that loads inside the XR shell) is built, present, and structurally sound.
  *
  * What is tested:
- *   - bundle.js exists for all 23 source-buildable plugins
+ *   - bundle.js exists for the facewear plugin
  *   - bundle.js is non-empty (not a build stub)
  *   - bundle.js contains the componentExport name from the manifest
  *   - bundle.js is valid JavaScript (no JSON or HTML accidentally written there)
@@ -94,107 +94,17 @@ function extractXrViews(
   return results;
 }
 
-// The 24 plugin manifests → (plugin directory, manifest path)
+// Keep this test scoped to plugin-facewear. Monorepo-wide view bundle coverage
+// belongs in an app-level integration suite because unrelated plugin bundles
+// are not guaranteed to exist when this package's test script runs.
 const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
-  {
-    pluginDir: "plugins/plugin-companion",
-    manifestPath: "plugins/plugin-companion/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-contacts",
-    manifestPath: "plugins/plugin-contacts/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-hyperliquid-app",
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-lifeops",
-    manifestPath: "plugins/plugin-lifeops/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-messages",
-    manifestPath: "plugins/plugin-messages/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/app-model-tester",
-    manifestPath: "plugins/app-model-tester/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-phone",
-    manifestPath: "plugins/plugin-phone/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-polymarket-app",
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-shopify-ui",
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-steward-app",
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-vincent",
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-wallet-ui",
-    manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-2004scape",
-    manifestPath: "plugins/plugin-2004scape/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-babylon",
-    manifestPath: "plugins/plugin-babylon/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-app-control",
-    manifestPath: "plugins/plugin-app-control/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-defense-of-the-agents",
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-hyperscape",
-    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-scape",
-    manifestPath: "plugins/plugin-scape/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-screenshare",
-    manifestPath: "plugins/plugin-screenshare/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-task-coordinator",
-    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-trajectory-logger",
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-training",
-    manifestPath: "plugins/plugin-training/src/setup-routes.ts",
-  },
   {
     pluginDir: "plugins/plugin-facewear",
     manifestPath: "plugins/plugin-facewear/src/index.ts",
   },
 ];
 
-describe("XR view bundle coverage — all 24 plugin bundles built and valid", () => {
+describe("Facewear view bundle coverage", () => {
   it("dist/views/bundle.js exists for every plugin with an XR view", () => {
     const missing: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
@@ -247,7 +157,7 @@ describe("XR view bundle coverage — all 24 plugin bundles built and valid", ()
       for (const view of xrViews) {
         // componentExport may be a full path like "@pkg/name#ExportName" — extract just the export name
         const exportName = view.componentExport.includes("#")
-          ? view.componentExport.split("#").pop()!
+          ? (view.componentExport.split("#").pop() ?? view.componentExport)
           : view.componentExport;
         if (!bundle.includes(exportName)) {
           mismatches.push(

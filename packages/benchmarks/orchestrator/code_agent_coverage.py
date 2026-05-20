@@ -73,16 +73,17 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
     ),
     CodeAgentBenchmark(
         benchmark_id="nl2repo",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding",),
         reason=(
-            "Selectable for harness validation, but release-comparable scoring "
-            "still depends on Docker evaluator readiness."
+            "Natural-language-to-repository coding benchmark with built-in "
+            "ElizaOS/OpenCode agent command wiring, trajectory/token capture, "
+            "and Docker-backed live scoring."
         ),
         promotion_requirements=(
-            "run Docker-backed evaluator in CI or a local daemon",
+            "keep Docker-backed evaluator available in CI or a local daemon",
             "capture non-mock ElizaOS and OpenCode trajectories with token usage",
-            "enable coverage gate after live scored rows are stable",
+            "monitor live scored rows for stability before raising task counts",
         ),
         promotion_priority="p0",
     ),
@@ -91,74 +92,78 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
         status=DEFERRED_STATUS,
         domains=("coding",),
         reason=(
-            "Long-horizon SWE-bench Pro tasks require a dedicated prediction "
-            "generation bridge and Docker/Modal evaluation plumbing."
+            "Long-horizon SWE-bench Pro now has a patch-generation wrapper, "
+            "but remains deferred until matched non-mock ElizaOS/OpenCode "
+            "runs are validated against the Docker/Modal evaluator."
         ),
         promotion_requirements=(
-            "build ElizaOS/OpenCode prediction-generation commands",
-            "normalize patch outcomes into right/wrong/total metrics",
-            "extract per-agent trajectory token and call telemetry",
+            "run non-mock ElizaOS/OpenCode patch generation on the public split",
+            "validate local Docker or Modal scoring for generated patches",
+            "capture live per-agent trajectory token and call telemetry",
         ),
         promotion_priority="p1",
     ),
     CodeAgentBenchmark(
         benchmark_id="agentbench",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("terminal", "browser", "web", "computer-use"),
         reason=(
-            "AgentBench includes OS, WebShop, and Mind2Web-related environments, "
-            "but its current harness targets Eliza/Hermes/OpenClaw rather than "
-            "the ElizaOS/OpenCode matrix adapters."
+            "AgentBench OS, WebShop, and Mind2Web-related fixture tasks run "
+            "through the ElizaOS/OpenCode bridge with deterministic environment "
+            "scoring, right/wrong totals, and trajectory/token telemetry."
         ),
         promotion_requirements=(
-            "map AgentBench OS/WebShop/Mind2Web environments to matrix cells",
-            "add an OpenCode-compatible harness alongside ElizaOS",
-            "normalize environment success rates into comparable outcome rows",
+            "keep the included AgentBench slice limited to OS/WebShop/Mind2Web-related tasks",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "promote full upstream AgentBench splits only after data dependencies are stable",
         ),
-        promotion_priority="p1",
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="mint",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding", "tool-use"),
         reason=(
-            "MINT includes HumanEval/MBPP code-generation tool tasks, but it "
-            "needs an ElizaOS/OpenCode code-agent adapter bridge before "
-            "head-to-head matrix scoring."
+            "MINT HumanEval/MBPP coding subtasks run through the ElizaOS/OpenCode "
+            "agent bridge with the benchmark's multi-turn tool/feedback loop, "
+            "turn-k scoring, right/wrong totals, and trajectory/token telemetry."
         ),
         promotion_requirements=(
-            "select coding subtasks for the code-agent matrix",
-            "run both adapters through the same multi-turn tool protocol",
-            "surface turn-k success and token telemetry in matrix results",
+            "keep the selected MINT slice limited to code-generation subtasks",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "monitor turn-k success stability before raising task counts",
         ),
-        promotion_priority="p1",
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="app_eval_coding",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding",),
         reason=(
-            "App Eval has coding tasks, but they are heuristic app-agent "
-            "regression checks without an OpenCode-comparable adapter path."
+            "App Eval coding tasks are materialized into isolated TypeScript "
+            "workspaces and run through matched ElizaOS/OpenCode command "
+            "templates with file, command, test, trajectory, and token telemetry."
         ),
         promotion_requirements=(
-            "decide whether heuristic app-agent scoring is acceptable for code-agent release gates",
-            "add OpenCode execution path or keep as non-release advisory only",
-            "normalize coding-task scores into right/wrong/total if promoted",
+            "keep coding-task assertions deterministic and non-LLM judged",
+            "capture non-mock ElizaOS and OpenCode workspace trajectories with token usage",
+            "monitor live task stability before raising task counts",
         ),
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="standard_humaneval",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding",),
         reason=(
-            "HumanEval is a model-level code-generation benchmark; it needs a "
-            "workspace/code-agent wrapper before it is comparable to OpenCode."
+            "HumanEval is wrapped as a code-agent function-body task with "
+            "ElizaOS/OpenCode agent command execution, sandboxed pass/fail "
+            "scoring, and trajectory/token telemetry."
         ),
         promotion_requirements=(
-            "wrap HumanEval prompts as workspace tasks for code agents",
-            "execute generated code in the same sandbox for both adapters",
-            "record pass/fail and per-call telemetry per task",
+            "keep the sandboxed HumanEval executor green for both adapters",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "monitor pass@1 stability before raising task counts",
         ),
     ),
     CodeAgentBenchmark(
@@ -178,66 +183,88 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
     ),
     CodeAgentBenchmark(
         benchmark_id="openclaw_benchmark",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding", "terminal"),
         reason=(
-            "The local OpenClaw benchmark contains coding-assistant and "
-            "OpenCode-plugin tasks, but it is not yet normalized into the "
-            "ElizaOS/OpenCode matrix artifact schema."
+            "OpenClaw benchmark execution scenarios run through the same "
+            "ElizaOS/OpenCode agent bridge with shared-sandbox tool execution, "
+            "deterministic rubric scoring, right/wrong totals, and "
+            "trajectory/token telemetry."
         ),
         promotion_requirements=(
-            "map standard coding tasks to matrix benchmark cells",
-            "run ElizaOS and OpenCode through the same isolated task harness",
-            "emit right/wrong/total plus token and LLM-call telemetry per task",
+            "keep setup/implementation/testing scenarios deterministic",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "run the full ordered scenario set for release-comparable reports",
         ),
-        promotion_priority="p1",
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="claw_eval",
-        status=DEFERRED_STATUS,
-        domains=("coding", "browser", "computer-use", "agent"),
+        status=INCLUDED_STATUS,
+        domains=("coding", "terminal", "agent"),
         reason=(
-            "Claw-Eval includes webpage generation, multimodal, and "
-            "real-world autonomous-agent tasks, but its Pass^3/trial runner "
-            "and judge flow are not adapted for ElizaOS/OpenCode head-to-head rows."
+            "Claw-Eval deterministic coding tasks run through matched "
+            "ElizaOS/OpenCode command templates and are scored with the "
+            "benchmark's non-LLM YAML keyword/tool-call components."
         ),
         promotion_requirements=(
-            "select coding/browser/computer-use task slices from Claw-Eval",
-            "add ElizaOS/OpenCode execution configs with matched trials",
-            "normalize Pass^3 and judge outcomes into comparable matrix rows",
+            "keep the included slice limited to non-LLM-judged coding tasks",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "promote browser/computer-use and Pass^3 judge tasks only after stable non-LLM scoring exists",
         ),
-        promotion_priority="p1",
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="qwen_claw_bench",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding", "terminal", "computer-use", "agent"),
         reason=(
-            "QwenClawBench exercises workspace, system-operations, data, "
-            "security, and orchestration tasks through OpenClaw containers, "
-            "but only OpenClaw model configs are wired today."
+            "QwenClawBench's deterministic automated workspace task runs "
+            "through matched ElizaOS/OpenCode command templates with embedded "
+            "Python grading, right/wrong totals, and trajectory/token telemetry."
         ),
         promotion_requirements=(
-            "add ElizaOS and OpenCode agents to the QwenClawBench runner config",
-            "capture transcript, anomaly, score, token, and LLM-call artifacts per run",
-            "aggregate repeated runs into stable head-to-head matrix outcomes",
+            "keep the included slice limited to automated non-LLM-judged tasks",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "promote hybrid and LLM-judge tasks only after judge dependencies are stable",
         ),
-        promotion_priority="p1",
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="clawbench",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("terminal", "browser", "computer-use", "tool-use"),
         reason=(
             "ClawBench is a deterministic multi-tool workspace benchmark with "
-            "exec, read, and web tools, but it targets OpenClaw scenarios rather "
-            "than the ElizaOS/OpenCode matrix adapters."
+            "exec, read, Slack, memory, and web tools; the matrix runs the same "
+            "scenario fixtures through the ElizaOS/OpenCode bridge and "
+            "normalizes rubric scores into right/wrong totals with trajectory "
+            "and token telemetry."
         ),
         promotion_requirements=(
-            "map ClawBench scenarios to matrix cells",
-            "add OpenCode and ElizaOS drivers against the same mock tools",
-            "convert rubric points into right/wrong/total and trajectory telemetry",
+            "keep ClawBench scenarios deterministic and non-LLM judged",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "monitor full-scenario score stability before raising release gates",
         ),
+        promotion_priority="p0",
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="vision_language",
+        status=DEFERRED_STATUS,
+        domains=("computer-use", "browser", "vision"),
+        reason=(
+            "The eliza-1 vision-CUA harness exercises real screen capture, VLM "
+            "grounding, OCR, and plugin-computeruse clicks, and the "
+            "vision-language runner now exposes ElizaOS/OpenCode harness "
+            "labels, but it still needs non-stub matched-driver runs before "
+            "release-comparable inclusion."
+        ),
+        promotion_requirements=(
+            "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels",
+            "require real eliza-1/VLM input bundles and non-stub desktop capture",
+            "normalize grounding/click verification into right/wrong/total plus token and LLM-call telemetry",
+        ),
+        promotion_priority="p1",
     ),
 )
 
@@ -261,6 +288,7 @@ REPO_LOCAL_RELATED_BENCHMARK_DIRS: tuple[RepoLocalBenchmarkDirectory, ...] = (
     RepoLocalBenchmarkDirectory("claw_eval", "claw-eval", ("coding", "browser", "computer-use", "agent")),
     RepoLocalBenchmarkDirectory("qwen_claw_bench", "qwen-claw-bench", ("coding", "terminal", "computer-use", "agent")),
     RepoLocalBenchmarkDirectory("clawbench", "clawbench", ("terminal", "browser", "computer-use", "tool-use")),
+    RepoLocalBenchmarkDirectory("vision_language", "eliza-1/vision-cua-e2e", ("computer-use", "browser", "vision")),
 )
 
 

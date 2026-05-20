@@ -238,16 +238,34 @@ function fallbackReply(args: {
 }
 
 function sanitizeReplyText(reply: string): string {
-  return reply.replaceAll("httpshttps://", "https://").replaceAll("httphttp://", "http://").trim();
+  return reply
+    .replaceAll("httpshttps://", "https://")
+    .replaceAll("httphttp://", "http://")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\*\*([^*\n][\s\S]*?[^*\n])\*\*/g, "$1")
+    .replace(/__([^_\n][\s\S]*?[^_\n])__/g, "$1")
+    .replace(/[\u00a0\u202f]/g, " ")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "")
+    .trim();
+}
+
+function mentionsStarterCredit(text: string): boolean {
+  return /\$5\b[\s\S]{0,80}\bfree\b[\s\S]{0,80}\bcredits?\b/i.test(text);
 }
 
 function ensureExactLoginUrl(reply: string, loginUrl: string): string {
   const sanitized = sanitizeReplyText(reply);
 
-  const withoutGeneratedUrls = sanitized
+  let withoutGeneratedUrls = sanitized
     .replace(/https?:\/\/\S+/g, "")
+    .replace(/^\s*[*_`~]+\s*$/gm, "")
     .replace(/[ \t]+$/gm, "")
     .trim();
+  if (!mentionsStarterCredit(withoutGeneratedUrls)) {
+    withoutGeneratedUrls = `${withoutGeneratedUrls ? `${withoutGeneratedUrls}\n\n` : ""}You get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it.`;
+  }
   return `${withoutGeneratedUrls ? `${withoutGeneratedUrls}\n\n` : ""}Connect Eliza Cloud here: ${loginUrl}`;
 }
 

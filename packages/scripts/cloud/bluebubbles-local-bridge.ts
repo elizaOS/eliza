@@ -20,7 +20,7 @@
 
 import { Database } from "bun:sqlite";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -32,6 +32,7 @@ import {
   outboundReadiness as computeOutboundReadiness,
   recipientFromChatGuid,
   senderOptions as computeSenderOptions,
+  shortcutValidationMatches,
   type BlueBubblesSendMethod,
   type OutboundReadiness,
 } from "./bluebubbles-local-bridge-readiness";
@@ -120,6 +121,7 @@ type ShortcutsDiagnostics = {
   available: boolean;
   shortcutCount?: number;
   shortcuts?: string[];
+  shortcutIdentifiers?: Record<string, string>;
   error?: string;
   validation?: {
     required: boolean;
@@ -135,10 +137,18 @@ type RetryPendingRepliesResult = {
   skipped?: string;
 };
 
+type ShortcutInputSnapshot = {
+  fileName: string;
+  path: string;
+  size: number;
+  modifiedAt: string;
+};
+
 type OutboundValidationRecord = {
   validatedAt: string;
   method: BlueBubblesSendMethod;
   shortcutName?: string;
+  shortcutId?: string;
   recipient: string;
   messagePreview: string;
 };
@@ -170,9 +180,14 @@ const blueBubblesSendTimeoutMs = Number.parseInt(
   process.env.BLUEBUBBLES_SEND_TIMEOUT_MS ?? "45000",
   10,
 );
+const blueBubblesAutoStart =
+  process.env.BLUEBUBBLES_AUTO_START !== "false" && process.platform === "darwin";
 const shortcutsSendShortcutName = (
   process.env.BLUEBUBBLES_SHORTCUT_NAME ?? "Eliza Cloud Send Message Ready"
 ).trim();
+const shortcutsSendShortcutId =
+  process.env.BLUEBUBBLES_SHORTCUT_ID?.trim() || null;
+const shortcutsRunTarget = shortcutsSendShortcutId ?? shortcutsSendShortcutName;
 const shortcutsInputDir =
   process.env.BLUEBUBBLES_SHORTCUT_INPUT_DIR ??
   join(process.cwd(), ".eliza-local/bluebubbles-shortcut-inputs");
@@ -203,6 +218,11 @@ let lastPendingRetry: {
   finishedAt?: string;
   trigger: "manual" | "automatic";
   result?: RetryPendingRepliesResult;
+} | null = null;
+let lastBlueBubblesAutoStart: {
+  attemptedAt: string;
+  ok: boolean;
+  detail: string;
 } | null = null;
 const shortcutsInputContract = {
   inputType: "json-file",
@@ -332,10 +352,22 @@ async function runAppleEventsProbe(
         : error && typeof error === "object" && "message" in error
           ? String((error as { message?: unknown }).message)
           : String(error);
+    const details = commandErrorMessage(error);
+    const timedOut =
+      error &&
+      typeof error === "object" &&
+      "signal" in error &&
+      String((error as { signal?: unknown }).signal ?? "") === "SIGTERM";
+    const errorParts = timedOut
+      ? [`${target} AppleEvents probe timed out after 3000ms`, details]
+      : [message, details];
     return {
       target,
       ok: false,
-      error: message,
+      error: errorParts
+        .filter(Boolean)
+        .filter((item, index, items) => items.indexOf(item) === index)
+        .join("; "),
     };
   }
 }
@@ -360,20 +392,33 @@ async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
   const validationRecord = await readOutboundValidation();
   const validation = {
     required: outboundValidationRequired,
-    validated: Boolean(
-      validationRecord &&
-        validationRecord.method === "shortcuts" &&
-        validationRecord.shortcutName === shortcutsSendShortcutName,
-    ),
+    validated: shortcutValidationMatches({
+      record: validationRecord,
+      shortcutsSendShortcutName,
+      shortcutsSendShortcutId,
+    }),
     detail: validationRecord
       ? `last ${validationRecord.method} validation at ${validationRecord.validatedAt}`
       : "no successful validation send recorded",
   };
 
   try {
-    const { stdout } = await execFileAsync(nativeCliPath, ["list"], {
-      timeout: 5_000,
-    });
+    const [{ stdout }, identifiersResult] = await Promise.all([
+      execFileAsync(nativeCliPath, ["list"], {
+        timeout: 5_000,
+      }),
+      execFileAsync(nativeCliPath, ["list", "--show-identifiers"], {
+        timeout: 5_000,
+      }).catch(() => null),
+    ]);
+    const shortcutIdentifiers: Record<string, string> = {};
+    for (const line of identifiersResult?.stdout
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []) {
+      const match = /^(.*) \(([0-9A-F-]{36})\)$/.exec(line);
+      if (match) shortcutIdentifiers[match[1]] = match[2];
+    }
     const shortcuts = stdout
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -384,6 +429,7 @@ async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
       available: true,
       shortcutCount: shortcuts.length,
       shortcuts,
+      shortcutIdentifiers,
       validation,
     };
   } catch (error) {
@@ -403,6 +449,38 @@ async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isBlueBubblesConnectionError(error: unknown): boolean {
+  const text =
+    error instanceof Error
+      ? `${error.name} ${error.message} ${(error as { cause?: unknown }).cause ?? ""}`
+      : String(error);
+  return /\bECONNREFUSED\b|\bfetch failed\b|Unable to connect|connection refused/i.test(
+    text,
+  );
+}
+
+async function tryAutoStartBlueBubbles(): Promise<void> {
+  if (!blueBubblesAutoStart) return;
+  try {
+    await execFileAsync("open", ["-a", "BlueBubbles"], { timeout: 5_000 });
+    lastBlueBubblesAutoStart = {
+      attemptedAt: new Date().toISOString(),
+      ok: true,
+      detail: "open -a BlueBubbles completed",
+    };
+  } catch (error) {
+    lastBlueBubblesAutoStart = {
+      attemptedAt: new Date().toISOString(),
+      ok: false,
+      detail: commandErrorMessage(error),
+    };
+  }
+}
+
 async function readBlueBubblesServerInfo(): Promise<
   BlueBubblesServerInfo | { error: string }
 > {
@@ -412,6 +490,7 @@ async function readBlueBubblesServerInfo(): Promise<
 
   const url = new URL("/api/v1/server/info", blueBubblesServerUrl);
   url.searchParams.set("password", blueBubblesPassword);
+  let firstError: unknown = null;
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
     const text = await response.text();
@@ -419,8 +498,37 @@ async function readBlueBubblesServerInfo(): Promise<
       ? (JSON.parse(text) as BlueBubblesServerInfo)
       : { status: response.status };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    firstError = error;
   }
+
+  if (isBlueBubblesConnectionError(firstError)) {
+    await tryAutoStartBlueBubbles();
+    await sleep(2_000);
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      const text = await response.text();
+      return text
+        ? (JSON.parse(text) as BlueBubblesServerInfo)
+        : { status: response.status };
+    } catch (retryError) {
+      return {
+        error: `BlueBubbles server unavailable after auto-start: ${
+          retryError instanceof Error ? retryError.message : String(retryError)
+        }`,
+      };
+    }
+  }
+
+  return {
+    error: firstError instanceof Error ? firstError.message : String(firstError),
+  };
+}
+
+function blueBubblesAutoStartSnapshot(): Record<string, unknown> {
+  return {
+    enabled: blueBubblesAutoStart,
+    last: lastBlueBubblesAutoStart,
+  };
 }
 
 function hasServerInfoData(
@@ -442,6 +550,7 @@ function outboundReadiness(args: {
     method: args.method ?? blueBubblesSendMethod,
     hasBlueBubblesPassword: Boolean(blueBubblesPassword),
     shortcutsSendShortcutName,
+    shortcutsSendShortcutId: shortcutsSendShortcutId ?? undefined,
   });
 }
 
@@ -456,6 +565,7 @@ function senderOptions(args: {
     ...args,
     hasBlueBubblesPassword: Boolean(blueBubblesPassword),
     shortcutsSendShortcutName,
+    shortcutsSendShortcutId: shortcutsSendShortcutId ?? undefined,
   });
 }
 
@@ -503,6 +613,36 @@ async function writePendingReplies(replies: PendingReply[]): Promise<void> {
 
 async function pendingReplyCount(): Promise<number> {
   return (await readPendingReplies()).length;
+}
+
+async function readRecentShortcutInputs(
+  limit = 5,
+): Promise<ShortcutInputSnapshot[]> {
+  try {
+    const entries = await readdir(shortcutsInputDir, { withFileTypes: true });
+    const snapshots = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+        .map(async (entry) => {
+          const path = join(shortcutsInputDir, entry.name);
+          const stats = await stat(path);
+          return {
+            fileName: entry.name,
+            path,
+            size: stats.size,
+            modifiedAt: stats.mtime.toISOString(),
+          };
+        }),
+    );
+    return snapshots
+      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt))
+      .slice(0, limit);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 async function enqueuePendingReply(args: {
@@ -620,6 +760,7 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
     (webhook) => webhook.url === expectedBlueBubblesWebhookUrl,
   );
   const pendingReplies = await readPendingReplies();
+  const recentShortcutInputs = await readRecentShortcutInputs();
   const [serverInfo, sipStatus, appleEvents, shortcuts] = await Promise.all([
     readBlueBubblesServerInfo(),
     readSipStatus(),
@@ -642,8 +783,11 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       sendMethod: blueBubblesSendMethod,
       sendTimeoutMs: blueBubblesSendTimeoutMs,
       shortcutsSendShortcutName,
+      shortcutsSendShortcutId,
+      shortcutsRunTarget,
       shortcutsInputContract,
       shortcutsInputDir,
+      recentShortcutInputs,
       outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
@@ -666,6 +810,7 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
     },
     blueBubbles: {
       serverInfo,
+      autoStart: blueBubblesAutoStartSnapshot(),
       config: readBlueBubblesConfigSnapshot(),
       webhooks,
       queueCount: readBlueBubblesQueueCount(),
@@ -700,6 +845,7 @@ async function gatewayDoctor(): Promise<{
     status?: string;
     outboundReadiness?: { ready?: boolean; method?: string; reasons?: string[] };
     pendingReplyCount?: number;
+    recentShortcutInputs?: ShortcutInputSnapshot[];
     hasGatewaySecret?: boolean;
     hasBlueBubblesPassword?: boolean;
   };
@@ -790,13 +936,27 @@ async function gatewayDoctor(): Promise<{
       const shortcutInstalled = macos.shortcuts?.shortcuts?.includes(
         shortcutsSendShortcutName,
       );
-      if (!shortcutInstalled) {
+      const shortcutIdInstalled =
+        shortcutsSendShortcutId &&
+        Object.values(macos.shortcuts?.shortcutIdentifiers ?? {}).includes(
+          shortcutsSendShortcutId,
+        );
+      if (shortcutsSendShortcutId && !shortcutIdInstalled) {
+        next.push(
+          `Install a Shortcut with id "${shortcutsSendShortcutId}" that reads JSON input keys ${shortcutsInputContract.requiredKeys.join(", ")} and sends without prompting.`,
+        );
+      } else if (!shortcutsSendShortcutId && !shortcutInstalled) {
         next.push(
           `Install a Shortcut named "${shortcutsSendShortcutName}" that reads JSON input keys ${shortcutsInputContract.requiredKeys.join(", ")} and sends without prompting.`,
         );
       } else {
         next.push(
-          `Run POST /outbound/validate successfully; Shortcut "${shortcutsSendShortcutName}" is installed but has not completed a real send validation.`,
+          `Run bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send successfully; Shortcut "${shortcutsRunTarget}" is installed but has not completed a real send validation.`,
+        );
+      }
+      if (bridge.recentShortcutInputs?.length) {
+        next.push(
+          `Latest preserved Shortcut input: ${bridge.recentShortcutInputs[0].path}`,
         );
       }
       const messagesProbe = macos.appleEvents?.find(
@@ -943,6 +1103,7 @@ async function sendShortcutsReply(chatGuid: string, text: string): Promise<void>
     shortcutsInputDir,
     `message-${Date.now()}-${crypto.randomUUID()}.json`,
   );
+  let preserveInput = false;
   try {
     await writeFile(
       inputPath,
@@ -957,15 +1118,18 @@ async function sendShortcutsReply(chatGuid: string, text: string): Promise<void>
     );
     await execFileAsync(
       "/usr/bin/shortcuts",
-      ["run", shortcutsSendShortcutName, "--input-path", inputPath],
+      ["run", shortcutsRunTarget, "--input-path", inputPath],
       { timeout: blueBubblesSendTimeoutMs },
     );
   } catch (error) {
+    preserveInput = true;
     throw new Error(
-      `Shortcuts send failed using "${shortcutsSendShortcutName}": ${commandErrorMessage(error)}`,
+      `Shortcuts send failed using "${shortcutsRunTarget}" with input ${inputPath}: ${commandErrorMessage(error)}`,
     );
   } finally {
-    await rm(inputPath, { force: true });
+    if (!preserveInput) {
+      await rm(inputPath, { force: true });
+    }
   }
 }
 
@@ -1128,6 +1292,7 @@ async function validateOutboundSend(
     validatedAt: new Date().toISOString(),
     method,
     shortcutName: method === "shortcuts" ? shortcutsSendShortcutName : undefined,
+    shortcutId: method === "shortcuts" ? shortcutsSendShortcutId ?? undefined : undefined,
     recipient,
     messagePreview:
       message.length > 160 ? `${message.slice(0, 157)}...` : message,
@@ -1147,6 +1312,7 @@ async function handleRequest(
 
   if (req.method === "GET" && url.pathname === "/health") {
     const pendingReplies = await readPendingReplies();
+    const recentShortcutInputs = await readRecentShortcutInputs();
     const [serverInfo, sipStatus, appleEvents, shortcuts] = await Promise.all([
       readBlueBubblesServerInfo(),
       readSipStatus(),
@@ -1161,9 +1327,13 @@ async function handleRequest(
       hasBlueBubblesPassword: Boolean(blueBubblesPassword),
       sendMethod: blueBubblesSendMethod,
       sendTimeoutMs: blueBubblesSendTimeoutMs,
+      blueBubblesAutoStart: blueBubblesAutoStartSnapshot(),
       shortcutsSendShortcutName,
+      shortcutsSendShortcutId,
+      shortcutsRunTarget,
       shortcutsInputContract,
       shortcutsInputDir,
+      recentShortcutInputs,
       outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,

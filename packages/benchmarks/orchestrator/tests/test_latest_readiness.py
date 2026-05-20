@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
+from benchmarks.orchestrator import cli
 from benchmarks.orchestrator.latest_readiness import validate_latest_readiness
 
 
@@ -141,5 +143,114 @@ def test_latest_readiness_includes_current_runtime_gate_findings(
     assert any(
         finding.scope == "runtime_gate:gaia_official_dataset"
         and finding.reason == "runtime_gate_blocked"
+        for finding in report.findings
+    )
+
+
+def test_latest_readiness_cli_accepts_latest_dir_and_skip_runtime_gates(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    latest = tmp_path / "custom-latest"
+    _write_json(latest / "index.json", _contract("bfcl"))
+    for agent in ("eliza", "hermes", "openclaw"):
+        _write_json(latest / f"bfcl__{agent}.json", _row("bfcl", agent))
+
+    code = cli._cmd_validate_latest_readiness(
+        argparse.Namespace(
+            tolerance=0.08,
+            latest_dir=str(latest),
+            skip_runtime_gates=True,
+            include_benchmarks=None,
+            exclude_benchmarks=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["latest_dir"] == str(latest)
+
+
+def test_latest_readiness_filters_excluded_code_agent_benchmarks(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    index = _contract("voicebench")
+    index["matrix_contract"]["status"] = "incomplete"
+    index["matrix_contract"]["benchmarks"]["terminal_bench"] = _contract(
+        "terminal_bench"
+    )["matrix_contract"]["benchmarks"]["terminal_bench"]
+    index["matrix_contract"]["benchmarks"]["terminal_bench"]["complete"] = False
+    index["matrix_contract"]["benchmarks"]["terminal_bench"]["cells"]["openclaw"] = {
+        "required": True,
+        "state": "missing",
+        "status": "missing",
+        "score": None,
+    }
+    _write_json(latest / "index.json", index)
+    for agent in ("eliza", "hermes", "openclaw"):
+        _write_json(latest / f"voicebench__{agent}.json", _row("voicebench", agent))
+    _write_json(
+        latest / "terminal_bench__eliza.json",
+        {
+            "benchmark_id": "terminal_bench",
+            "agent": "eliza",
+            "status": "failed",
+            "score": None,
+            "metrics": {"mock": True},
+        },
+    )
+
+    report = validate_latest_readiness(
+        tmp_path,
+        check_runtime_gates=False,
+        exclude_benchmarks={"terminal_bench"},
+    )
+
+    assert report.ok
+
+
+def test_latest_readiness_filtered_scope_requires_selected_benchmark(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _contract("terminal_bench"))
+    for agent in ("eliza", "hermes", "openclaw"):
+        _write_json(latest / f"terminal_bench__{agent}.json", _row("terminal_bench", agent))
+
+    report = validate_latest_readiness(
+        tmp_path,
+        check_runtime_gates=False,
+        exclude_benchmarks={"terminal_bench"},
+    )
+
+    assert not report.ok
+    assert any(
+        finding.scope == "matrix_contract.benchmarks"
+        and finding.reason == "no_selected_benchmarks"
+        for finding in report.findings
+    )
+
+
+def test_latest_readiness_include_filter_requires_matching_benchmark(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _contract("voicebench"))
+    for agent in ("eliza", "hermes", "openclaw"):
+        _write_json(latest / f"voicebench__{agent}.json", _row("voicebench", agent))
+
+    report = validate_latest_readiness(
+        tmp_path,
+        check_runtime_gates=False,
+        include_benchmarks={"terminal_bench"},
+    )
+
+    assert not report.ok
+    assert any(
+        finding.scope == "matrix_contract.benchmarks"
+        and finding.reason == "no_selected_benchmarks"
         for finding in report.findings
     )

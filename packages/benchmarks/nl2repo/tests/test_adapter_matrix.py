@@ -58,6 +58,47 @@ def test_token_metrics_from_usage_sums_nested_calls() -> None:
     assert metrics["llm_call_count"] == 2
 
 
+def test_token_metrics_from_usage_reads_provider_token_detail_shapes() -> None:
+    metrics = token_metrics_from_usage(
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 25,
+            "prompt_tokens_details": {"cached_tokens": 40},
+            "cache_creation_input_tokens": 10,
+            "llm_call_count": 3,
+        }
+    )
+
+    assert metrics["input_tokens"] == 100
+    assert metrics["output_tokens"] == 25
+    assert metrics["total_tokens"] == 125
+    assert metrics["cached_tokens"] == 40
+    assert metrics["cache_creation_tokens"] == 10
+    assert metrics["cached_token_percent"] == 40.0
+    assert metrics["llm_call_count"] == 3
+
+
+def test_token_metrics_from_usage_reads_opencode_token_cache_shape() -> None:
+    metrics = token_metrics_from_usage(
+        {
+            "tokens": {
+                "input": 80,
+                "output": 20,
+                "total": 100,
+                "cache": {"read": 30, "write": 7},
+            }
+        }
+    )
+
+    assert metrics["input_tokens"] == 80
+    assert metrics["output_tokens"] == 20
+    assert metrics["total_tokens"] == 100
+    assert metrics["cached_tokens"] == 30
+    assert metrics["cache_creation_tokens"] == 7
+    assert metrics["cached_token_percent"] == 37.5
+    assert metrics["llm_call_count"] == 1
+
+
 def test_run_agent_generation_writes_result_and_reviewable_trajectory(
     tmp_path: Path,
 ) -> None:

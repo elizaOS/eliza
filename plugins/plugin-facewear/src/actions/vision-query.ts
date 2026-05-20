@@ -10,7 +10,6 @@ import {
   XR_SERVICE_TYPE,
   type XRSessionService,
 } from "../services/xr-session-service.ts";
-import type { VisionPipeline } from "../services/vision-pipeline.ts";
 
 export const xrQueryVisionAction: Action = {
   name: "XR_QUERY_VISION",

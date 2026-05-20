@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEVICE_REGISTRY,
+  type FacewearDeviceType,
   getAllDeviceProfiles,
   getDeviceProfile,
-  type FacewearDeviceType,
 } from "../devices/registry.ts";
 
 describe("FacewearDeviceRegistry", () => {
@@ -62,9 +62,17 @@ describe("FacewearDeviceRegistry", () => {
   });
 
   it("native devices have nativeAppPath", () => {
-    expect(getDeviceProfile("meta-quest").nativeAppPath).toBe("native/android/quest");
-    expect(getDeviceProfile("xreal").nativeAppPath).toBe("native/android/xreal");
-    expect(getDeviceProfile("even-realities").nativeAppPath).toBe("native/android/even-realities");
-    expect(getDeviceProfile("apple-vision-pro").nativeAppPath).toBe("native/visionos");
+    expect(getDeviceProfile("meta-quest").nativeAppPath).toBe(
+      "native/android/quest",
+    );
+    expect(getDeviceProfile("xreal").nativeAppPath).toBe(
+      "native/android/xreal",
+    );
+    expect(getDeviceProfile("even-realities").nativeAppPath).toBe(
+      "native/android/even-realities",
+    );
+    expect(getDeviceProfile("apple-vision-pro").nativeAppPath).toBe(
+      "native/visionos",
+    );
   });
 });

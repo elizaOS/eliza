@@ -51,6 +51,12 @@ const ALL_VIEW_IDS = [
 let baseUrl = "";
 let closeServer: () => Promise<void>;
 
+async function callViewHostRoute(input: unknown) {
+  const handler = viewHostRoute.routeHandler;
+  if (!handler) throw new Error("viewHostRoute has no routeHandler");
+  return handler(input as never);
+}
+
 beforeAll(() => {
   return new Promise<void>((resolve) => {
     const server = createServer(async (req, res) => {
@@ -60,16 +66,16 @@ beforeAll(() => {
         return;
       }
 
-      const url = new URL(req.url!, "http://localhost");
+      const url = new URL(req.url ?? "/", "http://localhost");
 
       // Route: GET /api/xr/view-host/:id
       const match = url.pathname.match(/^\/api\/xr\/view-host\/(.+)$/);
       if (match) {
         const viewId = decodeURIComponent(match[1]);
-        const result = await viewHostRoute.routeHandler!({
+        const result = await callViewHostRoute({
           params: { id: viewId },
           runtime: { port: 31337 },
-        } as never);
+        });
 
         res.writeHead(result.status, result.headers as Record<string, string>);
         res.end(result.body as string);
@@ -78,10 +84,10 @@ beforeAll(() => {
 
       // Route: GET /api/xr/view-host (no id — should 400)
       if (url.pathname === "/api/xr/view-host") {
-        const result = await viewHostRoute.routeHandler!({
+        const result = await callViewHostRoute({
           params: {},
           runtime: { port: 31337 },
-        } as never);
+        });
         res.writeHead(result.status);
         res.end(JSON.stringify(result.body));
         return;

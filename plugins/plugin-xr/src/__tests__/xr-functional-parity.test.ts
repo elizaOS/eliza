@@ -260,9 +260,9 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["FineTuningView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-smartglasses",
-    manifestPath: "plugins/plugin-smartglasses/src/index.ts",
-    xrComponentSrc: "plugins/plugin-smartglasses/src/ui/SmartglassesView.tsx",
+    pluginDir: "plugins/plugin-facewear",
+    manifestPath: "plugins/plugin-facewear/src/index.ts",
+    xrComponentSrc: "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
     requiredTerms: ["SmartglassesView", "useState"],
   },
 ];

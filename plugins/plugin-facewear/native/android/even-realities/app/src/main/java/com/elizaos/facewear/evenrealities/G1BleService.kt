@@ -1,5 +1,6 @@
 package com.elizaos.facewear.evenrealities
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -12,69 +13,68 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
+import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+enum class GlassSide { LEFT, RIGHT }
+
 /**
- * BLE GATT service that connects to Even Realities G1 glasses.
+ * BLE GATT service for Even Realities G1 whole-headset pairing.
  *
- * G1 BLE profile uses the Nordic UART Service (NUS):
- *   Service UUID:   6e400001-b5a3-f393-e0a9-e50e24dcca9e
- *   TX (write):     6e400002-b5a3-f393-e0a9-e50e24dcca9e  (phone → glasses)
- *   RX (notify):    6e400003-b5a3-f393-e0a9-e50e24dcca9e  (glasses → phone)
+ * G1 exposes each lens as a separate Nordic UART Service peripheral:
+ *   Service UUID: 6e400001-b5a3-f393-e0a9-e50e24dcca9e
+ *   TX write:     6e400002-b5a3-f393-e0a9-e50e24dcca9e
+ *   RX notify:    6e400003-b5a3-f393-e0a9-e50e24dcca9e
  *
- * Command format (from Even Realities SDK / BLE sniffing):
- *   Byte 0: command byte
- *   Byte 1+: payload
- *
- * Known command bytes:
- *   0x4E - display text (followed by UTF-8 string, max ~250 bytes per packet)
- *   0x06 - clear display
- *   0x4B - set brightness (byte 1 = 0x01-0x06)
- *   0x26 - mic enable/disable (byte 1 = 0x01/0x00)
- *
- * Note: Even Realities does not publish an official BLE SDK. The protocol above
- * is derived from community reverse engineering. Check https://github.com/even-realities/
- * for any official SDK updates.
+ * This native bridge intentionally mirrors the TypeScript protocol in
+ * plugin-facewear: display text uses 0x4E framed packets, mic control writes
+ * 0x0E to the right lens, brightness writes 0x01 to both lenses, and pairing is
+ * not considered ready until both left and right lenses are connected.
  */
 class G1BleService : Service() {
 
-    private val TAG = "G1BleService"
+    private val tag = "G1BleService"
 
-    // Nordic UART Service UUIDs
-    private val NUS_SERVICE_UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-    private val NUS_TX_CHAR_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
-    private val NUS_RX_CHAR_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
-    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    private val nusServiceUuid = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+    private val nusTxCharUuid = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+    private val nusRxCharUuid = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+    private val cccdUuid = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-    // Command bytes
-    private val CMD_DISPLAY_TEXT: Byte = 0x4E.toByte()
-    private val CMD_CLEAR_DISPLAY: Byte = 0x06.toByte()
-    private val CMD_SET_BRIGHTNESS: Byte = 0x4B.toByte()
-    private val CMD_MIC_CONTROL: Byte = 0x26.toByte()
+    private val cmdSendResult = 0x4E.toByte()
+    private val cmdStartAi = 0xF5.toByte()
+    private val cmdOpenMic = 0x0E.toByte()
+    private val cmdHeartbeat = 0x25.toByte()
+    private val cmdBattery = 0x2C.toByte()
+    private val cmdBrightness = 0x01.toByte()
+    private val cmdInit = 0x4D.toByte()
+    private val cmdRightInit = 0xF4.toByte()
 
     private val binder = LocalBinder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var leScanner: BluetoothLeScanner? = null
-    private var gatt: BluetoothGatt? = null
-    private var txCharacteristic: BluetoothGattCharacteristic? = null
+    private val gatts = mutableMapOf<GlassSide, BluetoothGatt>()
+    private val txCharacteristics = mutableMapOf<GlassSide, BluetoothGattCharacteristic>()
+    private val discoveredAddresses = mutableSetOf<String>()
+    private var displaySeq = 0
+    private var heartbeatSeq = 0
 
     var onStatusChange: ((String) -> Unit)? = null
-    var onDataReceived: ((ByteArray) -> Unit)? = null
+    var onDataReceived: ((GlassSide, ByteArray) -> Unit)? = null
 
     inner class LocalBinder : Binder() {
         val service: G1BleService get() = this@G1BleService
@@ -89,40 +89,52 @@ class G1BleService : Service() {
 
     override fun onBind(intent: Intent): IBinder = binder
 
+    @SuppressLint("MissingPermission")
     fun startScan() {
         val scanner = leScanner ?: run {
             onStatusChange?.invoke("Bluetooth LE scanner not available")
             return
         }
-        onStatusChange?.invoke("Scanning for G1 glasses...")
+
+        disconnect()
+        discoveredAddresses.clear()
+        onStatusChange?.invoke("Scanning for G1 left and right lenses...")
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        // Filter by NUS service UUID to find G1 specifically
-        val filters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(android.os.ParcelUuid(NUS_SERVICE_UUID))
-                .build()
-        )
+        scanner.startScan(emptyList(), settings, scanCallback)
 
-        scanner.startScan(filters, settings, scanCallback)
-
-        // Auto-stop scan after 15 seconds
         scope.launch {
-            kotlinx.coroutines.delay(15_000)
+            delay(15_000)
             scanner.stopScan(scanCallback)
-            onStatusChange?.invoke("Scan complete")
+            val connected = connectedSides()
+            onStatusChange?.invoke(
+                if (connected.size == 2) {
+                    "Whole G1 headset connected"
+                } else {
+                    "Scan complete; connected ${connected.joinToString().ifBlank { "no lenses" }}"
+                }
+            )
         }
     }
 
     private val scanCallback = object : ScanCallback() {
+        @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            leScanner?.stopScan(this)
-            val device = result.device
-            onStatusChange?.invoke("Found G1: ${device.name ?: device.address} — connecting…")
-            connectToDevice(device)
+            val side = classifyG1Lens(result) ?: return
+            val address = result.device.address ?: return
+            if (!discoveredAddresses.add(address)) return
+            if (gatts.containsKey(side)) return
+
+            val name = result.device.name ?: result.scanRecord?.deviceName ?: address
+            onStatusChange?.invoke("Found G1 ${sideLabel(side)} lens: $name — connecting...")
+            connectToDevice(result.device, side)
+
+            if (gatts.keys.containsAll(listOf(GlassSide.LEFT, GlassSide.RIGHT))) {
+                leScanner?.stopScan(this)
+            }
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -130,47 +142,60 @@ class G1BleService : Service() {
         }
     }
 
-    fun connectToDevice(device: BluetoothDevice) {
-        gatt?.close()
-        gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+    @SuppressLint("MissingPermission")
+    fun connectToDevice(device: BluetoothDevice, side: GlassSide) {
+        gatts[side]?.close()
+        txCharacteristics.remove(side)
+        gatts[side] = device.connectGatt(this, false, gattCallback(side), BluetoothDevice.TRANSPORT_LE)
     }
 
-    private val gattCallback = object : BluetoothGattCallback() {
+    private fun gattCallback(side: GlassSide) = object : BluetoothGattCallback() {
+        @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    onStatusChange?.invoke("Connected to G1 — discovering services…")
+                    onStatusChange?.invoke("Connected to G1 ${sideLabel(side)} lens — discovering services...")
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    onStatusChange?.invoke("Disconnected from G1")
-                    txCharacteristic = null
+                    onStatusChange?.invoke("Disconnected from G1 ${sideLabel(side)} lens")
+                    txCharacteristics.remove(side)
+                    gatts.remove(side)
+                    gatt.close()
                 }
             }
         }
 
+        @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                onStatusChange?.invoke("Service discovery failed: $status")
+                onStatusChange?.invoke("G1 ${sideLabel(side)} service discovery failed: $status")
                 return
             }
-            val service: BluetoothGattService = gatt.getService(NUS_SERVICE_UUID) ?: run {
-                onStatusChange?.invoke("G1 NUS service not found — wrong device?")
+            val service: BluetoothGattService = gatt.getService(nusServiceUuid) ?: run {
+                onStatusChange?.invoke("G1 ${sideLabel(side)} NUS service not found")
                 return
             }
-            txCharacteristic = service.getCharacteristic(NUS_TX_CHAR_UUID)
+            txCharacteristics[side] = service.getCharacteristic(nusTxCharUuid)
 
-            // Enable notifications on RX characteristic (glasses → phone)
-            val rxChar = service.getCharacteristic(NUS_RX_CHAR_UUID)
+            val rxChar = service.getCharacteristic(nusRxCharUuid)
             if (rxChar != null) {
                 gatt.setCharacteristicNotification(rxChar, true)
-                val descriptor = rxChar.getDescriptor(CCCD_UUID)
-                descriptor?.let {
-                    it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt.writeDescriptor(it)
+                rxChar.getDescriptor(cccdUuid)?.let { descriptor ->
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt.writeDescriptor(descriptor)
                 }
             }
-            onStatusChange?.invoke("G1 ready — NUS service connected")
+
+            writeSide(side, connectionReadyPacket(side))
+            val connected = connectedSides()
+            onStatusChange?.invoke(
+                if (connected.size == 2) {
+                    "G1 ready — whole headset connected"
+                } else {
+                    "G1 ${sideLabel(side)} lens ready; waiting for ${missingSides().joinToString()}"
+                }
+            )
         }
 
         @Suppress("DEPRECATION")
@@ -178,49 +203,186 @@ class G1BleService : Service() {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
-            if (characteristic.uuid == NUS_RX_CHAR_UUID) {
-                onDataReceived?.invoke(characteristic.value ?: return)
+            if (characteristic.uuid == nusRxCharUuid) {
+                onDataReceived?.invoke(side, characteristic.value ?: return)
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            if (characteristic.uuid == nusRxCharUuid) {
+                onDataReceived?.invoke(side, value)
             }
         }
     }
 
-    /** Display up to 250 bytes of UTF-8 text on the G1 display. */
     fun displayText(text: String) {
-        val payload = text.toByteArray(Charsets.UTF_8).take(250)
-        val cmd = byteArrayOf(CMD_DISPLAY_TEXT) + payload.toByteArray()
-        writeCommand(cmd)
+        val pages = paginateDisplayText(text)
+        for ((pageIndex, page) in pages.withIndex()) {
+            val status = if (pageIndex == pages.lastIndex) 0x40 else 0x31
+            for (packet in encodeTextPackets(page, nextDisplaySeq(), status, pageIndex + 1, pages.size)) {
+                writeBoth(packet)
+            }
+        }
     }
 
-    /** Clear the G1 display. */
     fun clearDisplay() {
-        writeCommand(byteArrayOf(CMD_CLEAR_DISPLAY))
+        writeBoth(byteArrayOf(cmdStartAi, 0x18.toByte(), 0x00, 0x00, 0x00))
     }
 
-    /** Set display brightness (1–6). */
-    fun setBrightness(level: Int) {
-        val clamped = level.coerceIn(1, 6).toByte()
-        writeCommand(byteArrayOf(CMD_SET_BRIGHTNESS, clamped))
+    fun setBrightness(level: Int, auto: Boolean = false) {
+        val clamped = level.coerceIn(0, 0x29).toByte()
+        writeBoth(byteArrayOf(cmdBrightness, clamped, (if (auto) 0x01 else 0x00).toByte()))
     }
 
-    /** Enable or disable the G1 microphone. */
     fun setMicEnabled(enabled: Boolean) {
-        writeCommand(byteArrayOf(CMD_MIC_CONTROL, if (enabled) 0x01 else 0x00))
+        writeSide(GlassSide.RIGHT, byteArrayOf(cmdOpenMic, (if (enabled) 0x01 else 0x00).toByte()))
     }
 
-    @Suppress("DEPRECATION")
-    private fun writeCommand(bytes: ByteArray) {
-        val char = txCharacteristic ?: run {
-            Log.w(TAG, "TX characteristic not ready — command dropped")
+    fun requestBatteryStatus() {
+        writeBoth(byteArrayOf(cmdBattery, 0x01.toByte()))
+    }
+
+    fun sendRaw(sideName: String, bytes: ByteArray) {
+        when (sideName.lowercase()) {
+            "left" -> writeSide(GlassSide.LEFT, bytes)
+            "right" -> writeSide(GlassSide.RIGHT, bytes)
+            else -> writeBoth(bytes)
+        }
+    }
+
+    fun sendHeartbeat() {
+        val seq = nextHeartbeatSeq().toByte()
+        writeBoth(byteArrayOf(cmdHeartbeat, 0x06.toByte(), 0x00, seq, 0x04.toByte(), seq))
+    }
+
+    @SuppressLint("MissingPermission")
+    fun disconnect() {
+        for (gatt in gatts.values) {
+            gatt.disconnect()
+            gatt.close()
+        }
+        gatts.clear()
+        txCharacteristics.clear()
+    }
+
+    private fun classifyG1Lens(result: ScanResult): GlassSide? {
+        val name = result.device.name ?: result.scanRecord?.deviceName ?: ""
+        val serviceUuids = result.scanRecord?.serviceUuids?.map(ParcelUuid::getUuid).orEmpty()
+        val looksLikeG1 = name.contains("Even", ignoreCase = true) ||
+            name.contains("G1", ignoreCase = true) ||
+            serviceUuids.contains(nusServiceUuid)
+        if (!looksLikeG1) return null
+        return when {
+            name.contains("_L_", ignoreCase = true) || name.endsWith("_L", ignoreCase = true) -> GlassSide.LEFT
+            name.contains("_R_", ignoreCase = true) || name.endsWith("_R", ignoreCase = true) -> GlassSide.RIGHT
+            else -> null
+        }
+    }
+
+    private fun connectionReadyPacket(side: GlassSide): ByteArray =
+        byteArrayOf(if (side == GlassSide.LEFT) cmdInit else cmdRightInit, 0x01.toByte())
+
+    private fun paginateDisplayText(text: String): List<String> {
+        val normalized = text.trim().ifEmpty { " " }
+        val words = normalized.split(Regex("\\s+"))
+        val lines = mutableListOf<String>()
+        var current = ""
+        for (word in words) {
+            val candidate = if (current.isEmpty()) word else "$current $word"
+            if (candidate.length <= 40) {
+                current = candidate
+            } else {
+                if (current.isNotEmpty()) lines.add(current)
+                current = word
+            }
+        }
+        if (current.isNotEmpty()) lines.add(current)
+        if (lines.isEmpty()) lines.add(" ")
+        return lines.chunked(5).map { it.joinToString("\n") }
+    }
+
+    private fun encodeTextPackets(
+        text: String,
+        seq: Int,
+        status: Int,
+        pageNumber: Int,
+        maxPages: Int
+    ): List<ByteArray> {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val chunks = splitUtf8Chunks(bytes, 191)
+        return chunks.mapIndexed { index, chunk ->
+            val charPosition = index * 191
+            byteArrayOf(
+                cmdSendResult,
+                (seq and 0xff).toByte(),
+                (chunks.size and 0xff).toByte(),
+                (index and 0xff).toByte(),
+                (status and 0xff).toByte(),
+                ((charPosition ushr 8) and 0xff).toByte(),
+                (charPosition and 0xff).toByte(),
+                (pageNumber and 0xff).toByte(),
+                (maxPages and 0xff).toByte()
+            ) + chunk
+        }
+    }
+
+    private fun splitUtf8Chunks(bytes: ByteArray, maxBytes: Int): List<ByteArray> {
+        if (bytes.isEmpty()) return listOf(ByteArray(0))
+        val chunks = mutableListOf<ByteArray>()
+        var offset = 0
+        while (offset < bytes.size) {
+            val end = minOf(offset + maxBytes, bytes.size)
+            chunks.add(bytes.copyOfRange(offset, end))
+            offset = end
+        }
+        return chunks
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun writeBoth(bytes: ByteArray) {
+        writeSide(GlassSide.LEFT, bytes)
+        writeSide(GlassSide.RIGHT, bytes)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun writeSide(side: GlassSide, bytes: ByteArray) {
+        val char = txCharacteristics[side] ?: run {
+            Log.w(tag, "TX characteristic for ${sideLabel(side)} lens not ready — command dropped")
             return
         }
         char.value = bytes
-        gatt?.writeCharacteristic(char)
+        gatts[side]?.writeCharacteristic(char)
+    }
+
+    private fun connectedSides(): Set<GlassSide> = txCharacteristics.keys
+
+    private fun missingSides(): List<String> =
+        listOf(GlassSide.LEFT, GlassSide.RIGHT)
+            .filterNot { txCharacteristics.containsKey(it) }
+            .map(::sideLabel)
+
+    private fun sideLabel(side: GlassSide): String =
+        if (side == GlassSide.LEFT) "left" else "right"
+
+    private fun nextDisplaySeq(): Int {
+        val seq = displaySeq and 0xff
+        displaySeq = (displaySeq + 1) and 0xff
+        return seq
+    }
+
+    private fun nextHeartbeatSeq(): Int {
+        val seq = heartbeatSeq and 0xff
+        heartbeatSeq = (heartbeatSeq + 1) and 0xff
+        return seq
     }
 
     override fun onDestroy() {
         scope.cancel()
-        gatt?.close()
-        gatt = null
+        disconnect()
         super.onDestroy()
     }
 }

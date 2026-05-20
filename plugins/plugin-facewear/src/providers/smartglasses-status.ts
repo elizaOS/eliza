@@ -29,6 +29,7 @@ export const smartglassesStatusProvider: Provider = {
         `lastEvent=${status.lastEvent?.label ?? "none"}, ` +
         `physical=${status.physicalState ?? "none"}, ` +
         `battery=${status.batteryState ?? "none"}, ` +
+        `batteryLevels=${formatBatteryLevels(status.batteryLevels)}, ` +
         `device=${status.deviceState ?? "none"}, ` +
         `setup=${setup.setupHint ?? "none"}, ` +
         `wholeHeadset=${setup.wholeHeadsetConnected}, ` +
@@ -46,3 +47,11 @@ export const smartglassesStatusProvider: Provider = {
     };
   },
 };
+
+function formatBatteryLevels(
+  levels: Partial<Record<"left" | "right", number>>,
+): string {
+  const left = levels.left === undefined ? "unknown" : `${levels.left}%`;
+  const right = levels.right === undefined ? "unknown" : `${levels.right}%`;
+  return `left:${left} right:${right}`;
+}

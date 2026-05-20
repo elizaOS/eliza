@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import {
   NobleG1Transport,
   SmartglassesService,
-} from "@elizaos/plugin-smartglasses";
+} from "@elizaos/plugin-facewear";
 import {
   createHardwareEvidenceReport,
   markHardwareMicrophoneCommand,
@@ -46,6 +46,13 @@ async function loadNoble() {
     };
     return mod.default ?? mod;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("No native build was found")) {
+      throw new Error(
+        `@abandonware/noble is installed, but its native BLE binding is unavailable for this runtime: ${message}`,
+        { cause: error },
+      );
+    }
     throw new Error(
       "Missing optional dependency @abandonware/noble. Install plugin optional dependencies before running Node BLE hardware smoke.",
       { cause: error },
@@ -58,46 +65,49 @@ function log(message: string, data?: unknown): void {
   console.log(`[smartglasses:noble-smoke] ${message}${suffix}`);
 }
 
-const noble = await loadNoble();
-const transport = new NobleG1Transport(noble as never, { scanTimeoutMs });
 const service = new SmartglassesService();
-service.setTransport(transport);
 
-const originalWrite = transport.write.bind(transport);
-transport.write = async (side, data) => {
-  recordHardwareWrite(report, side, data);
-  await originalWrite(side, data);
-};
-const originalWriteBoth = transport.writeBoth.bind(transport);
-transport.writeBoth = async (data) => {
-  recordHardwareWrite(report, "both", data);
-  await originalWriteBoth(data);
-};
-const originalOpenMicrophone = transport.openMicrophone.bind(transport);
-transport.openMicrophone = async (enabled) => {
-  markHardwareMicrophoneCommand(report, enabled);
-  await originalOpenMicrophone(enabled);
-};
+async function configureNobleTransport(): Promise<void> {
+  const noble = await loadNoble();
+  const transport = new NobleG1Transport(noble as never, { scanTimeoutMs });
+  service.setTransport(transport);
 
-service.onRawAudio((audio, sampleRate, side, encoding, sequence) => {
-  recordHardwareAudio(report, audio, sampleRate, side, encoding, sequence);
-  log("audio", {
-    side,
-    sampleRate,
-    encoding,
-    sequence,
-    bytes: audio.length,
+  const originalWrite = transport.write.bind(transport);
+  transport.write = async (side, data) => {
+    recordHardwareWrite(report, side, data);
+    await originalWrite(side, data);
+  };
+  const originalWriteBoth = transport.writeBoth.bind(transport);
+  transport.writeBoth = async (data) => {
+    recordHardwareWrite(report, "both", data);
+    await originalWriteBoth(data);
+  };
+  const originalOpenMicrophone = transport.openMicrophone.bind(transport);
+  transport.openMicrophone = async (enabled) => {
+    markHardwareMicrophoneCommand(report, enabled);
+    await originalOpenMicrophone(enabled);
+  };
+
+  service.onRawAudio((audio, sampleRate, side, encoding, sequence) => {
+    recordHardwareAudio(report, audio, sampleRate, side, encoding, sequence);
+    log("audio", {
+      side,
+      sampleRate,
+      encoding,
+      sequence,
+      bytes: audio.length,
+    });
   });
-});
-transport.onEvent((event) => {
-  recordHardwareEvent(report, event);
-  log("event", {
-    side: event.side,
-    type: event.type,
-    label: event.label,
-    serialNumber: event.serialNumber,
+  transport.onEvent((event) => {
+    recordHardwareEvent(report, event);
+    log("event", {
+      side: event.side,
+      type: event.type,
+      label: event.label,
+      serialNumber: event.serialNumber,
+    });
   });
-});
+}
 
 async function waitForWearing(): Promise<void> {
   if (wearingTimeoutMs <= 0) return;
@@ -153,6 +163,7 @@ async function runTapAudioValidation(): Promise<void> {
 }
 
 try {
+  await configureNobleTransport();
   log("scanning", { scanTimeoutMs });
   await service.connect();
   report.checks.connected = true;

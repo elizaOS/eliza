@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   encodeAppWhitelist,
+  encodeBatteryStatusRequest,
   encodeBmpTransfer,
   encodeBrightness,
   encodeConnectionReady,
   encodeDashboard,
   encodeDashboardCalendarItem,
   encodeDashboardLayout,
+  encodeDashboardPosition,
   encodeDashboardTimeWeather,
   encodeExitFunction,
   encodeG1MonochromeBmp,
@@ -32,7 +34,9 @@ import {
   encodeTranslateStart,
   encodeTranslateText,
   encodeVoiceNoteDelete,
+  encodeVoiceNoteDeleteAll,
   encodeVoiceNoteFetch,
+  encodeVoiceNoteList,
   formatDisplayLines,
   G1AiStatus,
   G1Command,
@@ -157,9 +161,9 @@ describe("Even G1 protocol", () => {
       decoder.decode(packet.slice(9)),
     );
     expect(packets.every((packet) => packet.byteLength - 9 <= 191)).toBe(true);
-    expect(
-      packetTexts.every((packetText) => !packetText.includes("�")),
-    ).toBe(true);
+    expect(packetTexts.every((packetText) => !packetText.includes("�"))).toBe(
+      true,
+    );
     expect(text).not.toContain("�");
     expect(text.replaceAll("\n", "")).toBe("界".repeat(80));
     expect(() => encodeTextPacket(page, 9)).toThrow(/encodeTextPackets/);
@@ -194,6 +198,10 @@ describe("Even G1 protocol", () => {
       0,
       0x04,
       0,
+    ]);
+    expect(Array.from(encodeBatteryStatusRequest())).toEqual([
+      G1Command.Battery,
+      0x01,
     ]);
   });
 
@@ -290,6 +298,16 @@ describe("Even G1 protocol", () => {
       0x01,
       0x08,
     ]);
+    expect(Array.from(encodeDashboardPosition(3, 7, 0x42))).toEqual([
+      G1Command.DashboardPosition,
+      0x08,
+      0x00,
+      0x42,
+      0x02,
+      0x01,
+      0x03,
+      0x07,
+    ]);
     expect(Array.from(encodeHeadUpAngle(30))).toEqual([
       G1Command.HeadUpAngle,
       30,
@@ -317,6 +335,14 @@ describe("Even G1 protocol", () => {
       0x02,
       0x01,
     ]);
+    expect(Array.from(encodeVoiceNoteList(7))).toEqual([
+      G1Command.Note,
+      0x06,
+      0x00,
+      0x07,
+      0x01,
+      0x00,
+    ]);
     expect(Array.from(encodeVoiceNoteDelete(1, 2))).toEqual([
       G1Command.Note,
       0x06,
@@ -324,6 +350,14 @@ describe("Even G1 protocol", () => {
       0x02,
       0x04,
       0x01,
+    ]);
+    expect(Array.from(encodeVoiceNoteDeleteAll(8))).toEqual([
+      G1Command.Note,
+      0x06,
+      0x00,
+      0x08,
+      0x05,
+      0x00,
     ]);
 
     const [notification] = encodeNotification({
@@ -687,6 +721,31 @@ describe("Even G1 protocol", () => {
       label: "voice_note_audio",
     });
     expect(Array.from(audio.audioData ?? [])).toEqual([0xaa, 0xbb]);
+  });
+
+  it("parses MentraOS G1 battery status responses", () => {
+    expect(
+      parseG1Notification(
+        "left",
+        Uint8Array.from([G1Command.Battery, 0x66, 87, 0x02, 0x9c, 0x0f]),
+      ),
+    ).toMatchObject({
+      type: "battery-status",
+      responseOk: true,
+      batteryPercent: 87,
+      batteryFlags: 0x02,
+      batteryVoltageMv: 399.6,
+      label: "battery_status",
+    });
+
+    expect(
+      parseG1Notification("right", Uint8Array.from([G1Command.Battery, 0x00])),
+    ).toMatchObject({
+      type: "battery-status",
+      responseOk: false,
+      responseStatus: 0x00,
+      label: "battery_status_invalid",
+    });
   });
 
   it("converts little-endian PCM16 audio to float samples", () => {

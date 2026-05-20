@@ -6,6 +6,7 @@ const root = resolve(import.meta.dirname, "../..");
 const nativeRoot = resolve(root, "native");
 const questRoot = resolve(nativeRoot, "android/quest");
 const xrealRoot = resolve(nativeRoot, "android/xreal");
+const evenRealitiesRoot = resolve(nativeRoot, "android/even-realities");
 const visionosRoot = resolve(nativeRoot, "visionos/ElizaFacewear");
 const emulatorRoot = resolve(root, "emulator");
 
@@ -36,6 +37,15 @@ describe("native build infrastructure", () => {
       expect(existsSync(resolve(xrealRoot, "gradlew"))).toBe(true);
     });
 
+    it("Gradle wrapper jar and version catalog exist", () => {
+      expect(
+        existsSync(resolve(xrealRoot, "gradle/wrapper/gradle-wrapper.jar")),
+      ).toBe(true);
+      expect(existsSync(resolve(xrealRoot, "gradle/libs.versions.toml"))).toBe(
+        true,
+      );
+    });
+
     it("settings.gradle.kts exists", () => {
       expect(existsSync(resolve(xrealRoot, "settings.gradle.kts"))).toBe(true);
     });
@@ -48,6 +58,48 @@ describe("native build infrastructure", () => {
       expect(
         existsSync(resolve(xrealRoot, "app/src/main/AndroidManifest.xml")),
       ).toBe(true);
+    });
+  });
+
+  describe("Even Realities Android Gradle files", () => {
+    it("Gradle wrapper, settings, version catalog, and app build files exist", () => {
+      expect(existsSync(resolve(evenRealitiesRoot, "gradlew"))).toBe(true);
+      expect(
+        existsSync(
+          resolve(evenRealitiesRoot, "gradle/wrapper/gradle-wrapper.jar"),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(resolve(evenRealitiesRoot, "gradle/libs.versions.toml")),
+      ).toBe(true);
+      expect(
+        existsSync(resolve(evenRealitiesRoot, "settings.gradle.kts")),
+      ).toBe(true);
+      expect(
+        existsSync(resolve(evenRealitiesRoot, "app/build.gradle.kts")),
+      ).toBe(true);
+      expect(
+        existsSync(
+          resolve(evenRealitiesRoot, "app/src/main/AndroidManifest.xml"),
+        ),
+      ).toBe(true);
+    });
+
+    it("Kotlin bridge sources are present and not placeholders", () => {
+      const base = resolve(
+        evenRealitiesRoot,
+        "app/src/main/java/com/elizaos/facewear/evenrealities",
+      );
+      const g1 = readFileSync(resolve(base, "G1BleService.kt"), "utf-8");
+      const bridge = readFileSync(
+        resolve(base, "AgentBridgeService.kt"),
+        "utf-8",
+      );
+      expect(g1).toContain("GlassSide.LEFT");
+      expect(g1).toContain("GlassSide.RIGHT");
+      expect(g1).toContain("cmdOpenMic = 0x0E");
+      expect(bridge).toContain('"mic_lc3"');
+      expect(bridge).not.toContain("not yet forwarded");
     });
   });
 

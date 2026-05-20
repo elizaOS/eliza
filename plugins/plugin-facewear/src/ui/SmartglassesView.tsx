@@ -13,15 +13,21 @@ import {
 } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
+  type DisplayPage,
+  encodeBatteryStatusRequest,
   encodeBrightness,
   encodeClearScreen,
   encodeConnectionReady,
   encodeGetSerial,
   encodeSilentMode,
   encodeTextPackets,
+  G1AiStatus,
   type G1Event,
+  G1ScreenAction,
+  G1TextStatus,
   type GlassSide,
   paginateDisplayText,
+  type SmartglassesAudioEncoding,
 } from "../protocol/smartglasses.ts";
 import { EvenBridgeTransport } from "../transport/even-bridge.ts";
 import type { SmartglassesTransport } from "../transport/types.ts";
@@ -32,11 +38,41 @@ import {
 
 export type LensState = "idle" | "prompting" | "connected" | "failed";
 type PlatformKey = "desktop" | "ios" | "android";
+export type ViewScanDiagnosis =
+  | "not_scanned"
+  | "left_lens_missing"
+  | "right_lens_missing"
+  | "whole_headset_seen"
+  | "pairing_failed";
+export type ViewPhysicalBlocker =
+  | "not_connected"
+  | "partial_headset"
+  | "in_charging_base"
+  | "wearing_state_missing"
+  | "evidence_missing"
+  | null;
 
 interface ReportEvent {
   at: string;
   type: string;
   detail: string;
+}
+
+interface ReportWrite {
+  at: string;
+  side: GlassSide | "both";
+  command: string;
+  bytes: number;
+  hex: string;
+}
+
+interface ReportAudio {
+  at: string;
+  side: GlassSide;
+  sampleRate: number;
+  encoding: SmartglassesAudioEncoding | null;
+  sequence?: number;
+  bytes: number;
 }
 
 interface HardwareReport {
@@ -45,9 +81,16 @@ interface HardwareReport {
   transport: string | null;
   connected: boolean;
   lenses: Record<GlassSide, LensState>;
+  scanDiagnosis: ViewScanDiagnosis;
+  physicalBlocker: ViewPhysicalBlocker;
+  setupHint: string | null;
+  nextAction: string | null;
+  serialNumber: string | null;
   tests: Record<string, boolean>;
   missingEvidence: string[];
   events: ReportEvent[];
+  writes: ReportWrite[];
+  audio: ReportAudio[];
   wifi: {
     available: boolean;
     status: string;
@@ -56,6 +99,7 @@ interface HardwareReport {
   headsetState: {
     physical: string | null;
     battery: string | null;
+    batteryLevels: Partial<Record<GlassSide, number>>;
     device: string | null;
   };
 }
@@ -120,7 +164,7 @@ declare global {
   interface Window {
     __evenBridge?: SmartglassesBridge;
     __mentraBridge?: SmartglassesBridge;
-    smartglassesHardwareReport?: HardwareReport;
+    facewearSmartglassesReport?: HardwareReport;
   }
 }
 
@@ -196,6 +240,39 @@ function isMicDisableTap(label?: string | null): boolean {
   return label === "double_tap" || label === "stop_ai_recording";
 }
 
+function reportTimeMs(value: string): number | null {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function reportHappenedAfter(
+  later: { at: string },
+  earlier: { at: string },
+): boolean {
+  const laterMs = reportTimeMs(later.at);
+  const earlierMs = reportTimeMs(earlier.at);
+  return laterMs !== null && earlierMs !== null ? laterMs >= earlierMs : false;
+}
+
+function hasTapDrivenViewMicWrite(
+  events: ReportEvent[],
+  writes: ReportWrite[],
+  mode: "enable" | "disable",
+): boolean {
+  const isTap = mode === "enable" ? isMicEnableTap : isMicDisableTap;
+  const expectedHex = mode === "enable" ? "0e01" : "0e00";
+  const tapEvents = events.filter((event) => isTap(event.detail));
+  const micWrites = writes.filter(
+    (write) =>
+      write.side === "right" &&
+      write.command === "open-mic" &&
+      write.hex.startsWith(expectedHex),
+  );
+  return tapEvents.some((event) =>
+    micWrites.some((write) => reportHappenedAfter(write, event)),
+  );
+}
+
 function isCradleOrChargingState(
   physicalState: string | null,
   batteryState: string | null,
@@ -229,7 +306,19 @@ export function missingViewEvidence(
   lenses: Record<GlassSide, LensState>,
   physicalState: string | null,
   batteryState: string | null,
+  events: ReportEvent[] = [],
+  writes: ReportWrite[] = [],
 ): string[] {
+  const hasTapDrivenEnableWrite = hasTapDrivenViewMicWrite(
+    events,
+    writes,
+    "enable",
+  );
+  const hasTapDrivenDisableWrite = hasTapDrivenViewMicWrite(
+    events,
+    writes,
+    "disable",
+  );
   const missing = [
     lenses.left !== "connected" && "leftLensConnected",
     lenses.right !== "connected" && "rightLensConnected",
@@ -238,14 +327,174 @@ export function missingViewEvidence(
     !tests.init && "connectionReadySent",
     !tests.display && "displayPacketsSent",
     !tests.serial && "serialRequested",
+    !tests.serialObserved && "serialObserved",
     !tests.settings && "settingsSent",
-    !tests.micEnableWrite && "rightMicEnableWrite",
-    !tests.micDisableWrite && "rightMicDisableWrite",
+    !hasTapDrivenEnableWrite && "rightMicEnableWrite",
+    !hasTapDrivenDisableWrite && "rightMicDisableWrite",
     !tests.tapMicEnable && "tapMicEnable",
     !tests.tapMicDisable && "tapMicDisable",
     !tests.audio && "rightOrBridgeAudio",
   ].filter((value): value is string => typeof value === "string");
   return [...new Set(missing)];
+}
+
+export function viewScanDiagnosis(
+  lenses: Record<GlassSide, LensState>,
+): ViewScanDiagnosis {
+  if (lenses.left === "connected" && lenses.right === "connected") {
+    return "whole_headset_seen";
+  }
+  if (lenses.left === "failed" || lenses.right === "failed") {
+    return "pairing_failed";
+  }
+  if (lenses.left === "connected") return "right_lens_missing";
+  if (lenses.right === "connected") return "left_lens_missing";
+  return "not_scanned";
+}
+
+export function viewPhysicalBlocker(
+  tests: Record<string, boolean>,
+  lenses: Record<GlassSide, LensState>,
+  physicalState: string | null,
+  batteryState: string | null,
+  events: ReportEvent[] = [],
+  writes: ReportWrite[] = [],
+): ViewPhysicalBlocker {
+  const wholeHeadset =
+    lenses.left === "connected" && lenses.right === "connected";
+  if (
+    !wholeHeadset &&
+    (lenses.left === "connected" || lenses.right === "connected")
+  ) {
+    return "partial_headset";
+  }
+  if (!wholeHeadset) return "not_connected";
+  if (isCradleOrChargingState(physicalState, batteryState)) {
+    return "in_charging_base";
+  }
+  if (physicalState !== "wearing") return "wearing_state_missing";
+  return missingViewEvidence(
+    tests,
+    lenses,
+    physicalState,
+    batteryState,
+    events,
+    writes,
+  ).length
+    ? "evidence_missing"
+    : null;
+}
+
+export function viewSetupHint(
+  blocker: ViewPhysicalBlocker,
+  physicalState: string | null,
+  batteryState: string | null,
+): string | null {
+  if (blocker === "not_connected") {
+    return "Connect both left and right lenses as one headset before running validation.";
+  }
+  if (blocker === "partial_headset") {
+    return "Reconnect the whole headset so both left and right lenses are present.";
+  }
+  if (blocker === "in_charging_base" || blocker === "wearing_state_missing") {
+    return headsetValidationBlocker(physicalState, batteryState);
+  }
+  if (blocker === "evidence_missing") {
+    return "Run check, then guided validation to capture display, settings, side taps, mic writes, and audio.";
+  }
+  return null;
+}
+
+export function viewNextAction(blocker: ViewPhysicalBlocker): string | null {
+  if (blocker === "not_connected") return "Connect Headset";
+  if (blocker === "partial_headset") return "Reconnect the missing lens";
+  if (blocker === "in_charging_base") {
+    return "Remove the glasses from the charging base and wear them";
+  }
+  if (blocker === "wearing_state_missing") {
+    return "Wear the glasses until wearing state appears";
+  }
+  if (blocker === "evidence_missing") return "Run Check and Guided Validation";
+  return null;
+}
+
+export function viewCommandName(data: Uint8Array): string {
+  switch (data[0]) {
+    case 0x01:
+      return "brightness";
+    case 0x0e:
+      return "open-mic";
+    case 0x1c:
+      return "silent-mode";
+    case 0x2c:
+      return "battery-status";
+    case 0x34:
+      return "get-serial";
+    case 0x4d:
+      return "init";
+    case 0x4e:
+      return "display-result";
+    case 0xf4:
+      return "right-init";
+    default:
+      return data.length > 0
+        ? `0x${data[0].toString(16).padStart(2, "0")}`
+        : "empty";
+  }
+}
+
+export function buildViewDisplayPackets(
+  text: string,
+  options: {
+    startSeq?: number;
+    mode?: "ai" | "text";
+    includeCompletion?: boolean;
+  } = {},
+): { packets: Uint8Array[]; pages: number; nextSeq: number } {
+  const mode = options.mode ?? "ai";
+  let seq = options.startSeq ?? 0;
+  const packets: Uint8Array[] = [];
+  const pages = paginateDisplayText(text);
+  for (const [pageIndex, page] of pages.entries()) {
+    packets.push(
+      ...encodeTextPackets(
+        withViewScreenStatus(page, viewStreamingStatus(mode, pageIndex)),
+        seq,
+      ),
+    );
+    seq = (seq + 1) & 0xff;
+  }
+  if (mode !== "text" && options.includeCompletion !== false) {
+    const lastPage = pages.at(-1);
+    if (lastPage) {
+      packets.push(
+        ...encodeTextPackets(
+          withViewScreenStatus(lastPage, G1AiStatus.DisplayComplete),
+          seq,
+        ),
+      );
+      seq = (seq + 1) & 0xff;
+    }
+  }
+  return { packets, pages: pages.length, nextSeq: seq };
+}
+
+function withViewScreenStatus(
+  page: DisplayPage,
+  screenStatus: number,
+): DisplayPage {
+  return { ...page, screenStatus };
+}
+
+function viewStreamingStatus(mode: "ai" | "text", pageIndex: number): number {
+  if (mode === "text") return G1TextStatus.TextShow | G1ScreenAction.NewContent;
+  return pageIndex === 0
+    ? G1AiStatus.Displaying | G1ScreenAction.NewContent
+    : G1AiStatus.Displaying;
+}
+
+function bytesToHex(data: Uint8Array): string {
+  return [...data].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function parseWifiNetworks(result: unknown): string[] {
@@ -317,7 +566,12 @@ export async function callWifiBridge(
       return bridge.sendWifiCredentials(ssid, password);
     }
   }
-  return bridge.rawBridge?.callEvenApp?.(command, payload);
+  if (bridge.rawBridge?.callEvenApp) {
+    return bridge.rawBridge.callEvenApp(command, payload);
+  }
+  throw new Error(
+    `Native smartglasses bridge does not support Wi-Fi command: ${command}`,
+  );
 }
 
 export function SmartglassesView() {
@@ -329,6 +583,8 @@ export function SmartglassesView() {
     right: "idle",
   });
   const [events, setEvents] = useState<ReportEvent[]>([]);
+  const [writes, setWrites] = useState<ReportWrite[]>([]);
+  const [audioChunks, setAudioChunks] = useState<ReportAudio[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testText, setTestText] = useState(
@@ -342,12 +598,17 @@ export function SmartglassesView() {
   const [activePlatform, setActivePlatform] = useState<PlatformKey>("desktop");
   const [physicalState, setPhysicalState] = useState<string | null>(null);
   const [batteryState, setBatteryState] = useState<string | null>(null);
+  const [batteryLevels, setBatteryLevels] = useState<
+    Partial<Record<GlassSide, number>>
+  >({});
   const [deviceState, setDeviceState] = useState<string | null>(null);
+  const [serialNumber, setSerialNumber] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, boolean>>({
     headsetConnected: false,
     init: false,
     display: false,
     serial: false,
+    serialObserved: false,
     settings: false,
     microphone: false,
     micEnableWrite: false,
@@ -359,14 +620,35 @@ export function SmartglassesView() {
     eventStream: false,
   });
   const testsRef = useRef(tests);
+  const displaySeqRef = useRef(0);
 
   const bridge = getBridge();
   const webBluetoothAvailable = Boolean(getWebBluetoothG1Transport());
   const headsetConnected =
     lenses.left === "connected" && lenses.right === "connected";
   const missingEvidence = useMemo(
-    () => missingViewEvidence(tests, lenses, physicalState, batteryState),
-    [batteryState, lenses, physicalState, tests],
+    () =>
+      missingViewEvidence(
+        tests,
+        lenses,
+        physicalState,
+        batteryState,
+        events,
+        writes,
+      ),
+    [batteryState, events, lenses, physicalState, tests, writes],
+  );
+  const physicalBlocker = useMemo(
+    () =>
+      viewPhysicalBlocker(
+        tests,
+        lenses,
+        physicalState,
+        batteryState,
+        events,
+        writes,
+      ),
+    [batteryState, events, lenses, physicalState, tests, writes],
   );
   const report = useMemo<HardwareReport>(
     () => ({
@@ -375,9 +657,16 @@ export function SmartglassesView() {
       transport: transport?.name ?? (bridge ? "native-bridge" : null),
       connected: headsetConnected,
       lenses,
+      scanDiagnosis: viewScanDiagnosis(lenses),
+      physicalBlocker,
+      setupHint: viewSetupHint(physicalBlocker, physicalState, batteryState),
+      nextAction: viewNextAction(physicalBlocker),
+      serialNumber,
       tests,
       missingEvidence,
       events,
+      writes,
+      audio: audioChunks,
       wifi: {
         available: Boolean(bridge),
         status: wifiStatus,
@@ -386,22 +675,28 @@ export function SmartglassesView() {
       headsetState: {
         physical: physicalState,
         battery: batteryState,
+        batteryLevels,
         device: deviceState,
       },
     }),
     [
       bridge,
+      audioChunks,
       events,
       headsetConnected,
       lenses,
       missingEvidence,
+      physicalBlocker,
       physicalState,
+      serialNumber,
       tests,
       transport,
       batteryState,
+      batteryLevels,
       deviceState,
       wifiNetworks,
       wifiStatus,
+      writes,
     ],
   );
 
@@ -417,6 +712,46 @@ export function SmartglassesView() {
       testsRef.current = next;
       return next;
     });
+  }
+
+  function recordWrite(side: GlassSide | "both", data: Uint8Array): void {
+    setWrites((current) =>
+      [
+        ...current,
+        {
+          at: now(),
+          side,
+          command: viewCommandName(data),
+          bytes: data.length,
+          hex: bytesToHex(data.slice(0, 24)),
+        },
+      ].slice(-120),
+    );
+  }
+
+  async function writeSide(
+    nextTransport: SmartglassesTransport,
+    side: GlassSide,
+    data: Uint8Array,
+  ): Promise<void> {
+    await nextTransport.write(side, data);
+    recordWrite(side, data);
+  }
+
+  async function writeBoth(
+    nextTransport: SmartglassesTransport,
+    data: Uint8Array,
+  ): Promise<void> {
+    await nextTransport.writeBoth(data);
+    recordWrite("both", data);
+  }
+
+  async function setTransportMic(
+    nextTransport: SmartglassesTransport,
+    enabled: boolean,
+  ): Promise<void> {
+    await nextTransport.openMicrophone(enabled);
+    recordWrite("right", Uint8Array.from([0x0e, enabled ? 1 : 0]));
   }
 
   async function connectHeadset(): Promise<void> {
@@ -438,12 +773,33 @@ export function SmartglassesView() {
         } else if (event.stateCategory === "device") {
           setDeviceState(event.stateName ?? event.label ?? null);
         }
+        if (
+          event.type === "battery-status" &&
+          typeof event.batteryPercent === "number"
+        ) {
+          setBatteryLevels((current) => ({
+            ...current,
+            [event.side]: event.batteryPercent,
+          }));
+        }
+        if (event.type === "serial" && event.serialNumber) {
+          setSerialNumber(event.serialNumber);
+          markTest("serialObserved");
+        }
         if (isMicEnableTap(event.label)) {
           markTest("tapMicEnable");
           setMicEnabled(true);
+          const eventAt = now();
+          setEvents((current) =>
+            [
+              ...current,
+              { at: eventAt, type: "tap", detail: event.label ?? "" },
+            ].slice(-80),
+          );
           void nextTransport
             .openMicrophone(true)
             .then(() => {
+              recordWrite("right", Uint8Array.from([0x0e, 1]));
               markTest("microphone");
               markTest("micEnableWrite");
               appendEvent("microphone", "Enabled by tap");
@@ -453,9 +809,17 @@ export function SmartglassesView() {
         if (isMicDisableTap(event.label)) {
           markTest("tapMicDisable");
           setMicEnabled(false);
+          const eventAt = now();
+          setEvents((current) =>
+            [
+              ...current,
+              { at: eventAt, type: "tap", detail: event.label ?? "" },
+            ].slice(-80),
+          );
           void nextTransport
             .openMicrophone(false)
             .then(() => {
+              recordWrite("right", Uint8Array.from([0x0e, 0]));
               markTest("microphone");
               markTest("micDisableWrite");
               appendEvent("microphone", "Disabled by tap");
@@ -467,10 +831,30 @@ export function SmartglassesView() {
           `${event.side} ${event.type}${event.label ? ` ${event.label}` : ""}`,
         );
       });
-      const audioDispose = nextTransport.onAudio((audio, _rate, side) => {
-        if (audio.byteLength > 0) markTest("audio");
-        appendEvent("audio", `${side} ${audio.byteLength} bytes`);
-      });
+      const audioDispose = nextTransport.onAudio(
+        (audio, sampleRate, side, encoding, sequence) => {
+          if (audio.byteLength > 0) markTest("audio");
+          setAudioChunks((current) =>
+            [
+              ...current,
+              {
+                at: now(),
+                side,
+                sampleRate,
+                encoding: encoding ?? null,
+                sequence,
+                bytes: audio.byteLength,
+              },
+            ].slice(-80),
+          );
+          appendEvent(
+            "audio",
+            `${side} ${audio.byteLength} bytes @ ${sampleRate}Hz${
+              encoding ? ` ${encoding}` : ""
+            }`,
+          );
+        },
+      );
       const transcriptDispose =
         "onTranscript" in nextTransport && nextTransport.onTranscript
           ? nextTransport.onTranscript((text, isFinal) => {
@@ -495,8 +879,8 @@ export function SmartglassesView() {
         transcriptDispose?.();
         throw err;
       }
-      await nextTransport.write("left", encodeConnectionReady("left"));
-      await nextTransport.write("right", encodeConnectionReady("right"));
+      await writeSide(nextTransport, "left", encodeConnectionReady("left"));
+      await writeSide(nextTransport, "right", encodeConnectionReady("right"));
       markTest("headsetConnected");
       markTest("init");
       appendEvent("connect", "Whole headset connected");
@@ -540,14 +924,15 @@ export function SmartglassesView() {
     setError(null);
     try {
       const nextTransport = await requireTransport();
-      const pages = paginateDisplayText(testText);
-      for (const page of pages) {
-        for (const packet of encodeTextPackets(page, 1)) {
-          await nextTransport.writeBoth(packet);
-        }
+      const display = buildViewDisplayPackets(testText, {
+        startSeq: displaySeqRef.current,
+      });
+      displaySeqRef.current = display.nextSeq;
+      for (const packet of display.packets) {
+        await writeBoth(nextTransport, packet);
       }
       markTest("display");
-      appendEvent("display", `Sent ${pages.length} display page(s)`);
+      appendEvent("display", `Sent ${display.pages} display page(s)`);
     } catch (err) {
       setError(normalizeError(err));
       appendEvent("error", normalizeError(err));
@@ -561,7 +946,7 @@ export function SmartglassesView() {
     setError(null);
     try {
       const nextTransport = await requireTransport();
-      await nextTransport.writeBoth(encodeClearScreen());
+      await writeBoth(nextTransport, encodeClearScreen());
       appendEvent("display", "Cleared display");
     } catch (err) {
       setError(normalizeError(err));
@@ -576,12 +961,13 @@ export function SmartglassesView() {
     setError(null);
     try {
       const nextTransport = await requireTransport();
-      await nextTransport.write("left", encodeGetSerial());
-      await nextTransport.writeBoth(encodeBrightness(32));
-      await nextTransport.writeBoth(encodeSilentMode(false));
+      await writeSide(nextTransport, "left", encodeGetSerial());
+      await writeBoth(nextTransport, encodeBatteryStatusRequest());
+      await writeBoth(nextTransport, encodeBrightness(32));
+      await writeBoth(nextTransport, encodeSilentMode(false));
       markTest("serial");
       markTest("settings");
-      appendEvent("test", "Requested serial and sent settings packets");
+      appendEvent("test", "Requested serial/battery and sent settings packets");
       await sendDisplay();
     } catch (err) {
       setError(normalizeError(err));
@@ -600,18 +986,18 @@ export function SmartglassesView() {
       if (blocker) {
         throw new Error(blocker);
       }
-      await nextTransport.openMicrophone(false);
+      await setTransportMic(nextTransport, false);
       setMicEnabled(false);
       markTest("microphone");
       markTest("micDisableWrite");
 
-      const pages = paginateDisplayText(
+      const display = buildViewDisplayPackets(
         "Validation: single tap, speak clearly, then double tap.",
+        { startSeq: displaySeqRef.current },
       );
-      for (const page of pages) {
-        for (const packet of encodeTextPackets(page, 1)) {
-          await nextTransport.writeBoth(packet);
-        }
+      displaySeqRef.current = display.nextSeq;
+      for (const packet of display.packets) {
+        await writeBoth(nextTransport, packet);
       }
       markTest("display");
       appendEvent("validation", "Single tap, speak clearly, then double tap");
@@ -638,8 +1024,10 @@ export function SmartglassesView() {
       appendEvent("error", normalizeError(err));
     } finally {
       try {
-        await nextTransport?.openMicrophone(false);
-        setMicEnabled(false);
+        if (nextTransport) {
+          await setTransportMic(nextTransport, false);
+          setMicEnabled(false);
+        }
       } catch {
         // The validation result should preserve the original failure.
       }
@@ -652,7 +1040,7 @@ export function SmartglassesView() {
     setError(null);
     try {
       const nextTransport = await requireTransport();
-      await nextTransport.openMicrophone(enabled);
+      await setTransportMic(nextTransport, enabled);
       setMicEnabled(enabled);
       markTest("microphone");
       markTest(enabled ? "micEnableWrite" : "micDisableWrite");
@@ -752,13 +1140,13 @@ export function SmartglassesView() {
   }
 
   async function copyReport(): Promise<void> {
-    window.smartglassesHardwareReport = report;
+    window.facewearSmartglassesReport = report;
     await navigator.clipboard?.writeText(JSON.stringify(report, null, 2));
     appendEvent("report", "Copied diagnostics report");
   }
 
   function downloadReport(): void {
-    window.smartglassesHardwareReport = report;
+    window.facewearSmartglassesReport = report;
     const blob = new Blob([JSON.stringify(report, null, 2)], {
       type: "application/json",
     });
@@ -994,6 +1382,16 @@ export function SmartglassesView() {
               <ReportRow label="Transport" value={report.transport ?? "none"} />
               <ReportRow label="Complete" value={report.ok ? "yes" : "no"} />
               <ReportRow
+                label="Serial"
+                value={report.serialNumber ?? "unknown"}
+              />
+              <ReportRow label="Pairing" value={report.scanDiagnosis} />
+              <ReportRow
+                label="Blocker"
+                value={report.physicalBlocker ?? "none"}
+              />
+              <ReportRow label="Next" value={report.nextAction ?? "none"} />
+              <ReportRow
                 label="Missing"
                 value={
                   report.missingEvidence.length === 0
@@ -1010,6 +1408,12 @@ export function SmartglassesView() {
                     .join(" / ") || "none"
                 }
               />
+              <ReportRow
+                label="Battery"
+                value={formatBatteryLevels(batteryLevels)}
+              />
+              <ReportRow label="Writes" value={String(writes.length)} />
+              <ReportRow label="Audio" value={String(audioChunks.length)} />
               <ReportRow label="Events" value={String(events.length)} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -1187,12 +1591,21 @@ function ReportRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatBatteryLevels(
+  levels: Partial<Record<GlassSide, number>>,
+): string {
+  const left = levels.left === undefined ? "unknown" : `${levels.left}%`;
+  const right = levels.right === undefined ? "unknown" : `${levels.right}%`;
+  return `L ${left} / R ${right}`;
+}
+
 function labelForTest(id: string): string {
   const labels: Record<string, string> = {
     headsetConnected: "Whole headset",
     init: "Init packets",
     display: "Display",
     serial: "Serial request",
+    serialObserved: "Serial observed",
     settings: "Settings",
     microphone: "Microphone",
     micEnableWrite: "Mic enable write",

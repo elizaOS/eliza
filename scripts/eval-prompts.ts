@@ -614,26 +614,27 @@ const BASELINE_PROMPTS: Record<string, string> = {
   should_respond: `Decide whether to respond to this message.
 
 Respond (YES):
-- The message directly addresses or mentions you
-- The message asks a question or makes a request you can address
-- The message is a general request for assistance or information with no specific addressee
-- Generic "someone/anyone" help requests you can fulfill (e.g., "Can someone look up X?", "Does anyone know X?")
+- The message directly addresses or mentions you by name or handle
+- The message is a direct question you can answer (factual, conversational, or help-seeking)
+- The message asks for help from "anyone/someone" where the request is for information or assistance you can provide:
+  - "Can someone look up X?" → YES
+  - "Does anyone know X?" → YES
 
 Do not respond (NO):
-- The message is addressed to someone else by name
-- The message is purely gratitude, agreement, or acknowledgment with no request
-- The message is only an emoji, punctuation, or ambient reaction
-- The message is a social/group question about personal intentions (e.g., "Anyone going to the party?", "Anyone want to grab lunch?")
-- The message is an announcement or statement with no question or request
-- No response is expected or needed
+- The message is addressed to a specific named person other than you
+- Purely gratitude, agreement, reaction, or acknowledgment with no request
+- Emoji-only or single punctuation
+- Social/group intention questions (e.g., "Anyone going to the party?", "Anyone want lunch?")
+- Passive third-person statements about what should happen (e.g., "Someone should check X", "X needs to be done") — these are NOT requests to you, even if you could help
+- Announcements or statements with no question (e.g., "The meeting is at 4pm")
 
-Output exactly one token: either YES or NO, with no surrounding whitespace.`,
+Output exactly one token: YES or NO.`,
 
   action_planner: `Select the next action based on the conversation context.
 
 Actions:
-- REPLY: Send a text response (greetings, factual answers, questions, general chat)
-- SEARCH: Look up information online (current events, product details, facts not in training)
+- REPLY: Send a text response (greetings, conversational chat, simple arithmetic, general knowledge)
+- SEARCH: Look up information online — use for news, current events, sports results, prices, weather, recent data, or any fact requiring external verification (even if you think you know the answer)
 - SCHEDULE: Create a calendar event — use when the user says "schedule", "book", "block", "meeting", "appointment", or "add to calendar"
 - REMIND: Set a time-based alert — use when the user says "remind me", "reminder", or "alert me at [time]"
 - NOTES: Save information for later — use when the user says "note", "jot down", "remember", or captures an idea
@@ -687,8 +688,8 @@ current — time-bound state (stale within weeks)
   Categories: feeling, physical_state, working_on, going_through, schedule_context
 
 Rules:
-- If a claim already exists in Known facts, emit strengthen (not add)
-- "strengthen" means the same fact is reaffirmed — this includes indirect reaffirmations (e.g., "X is treating me well" where X is a known location reaffirms presence there)
+- If a claim already exists in Known facts, emit strengthen (not add) — do not also emit add ops for the same message
+- "strengthen" means the same fact is reaffirmed — includes indirect reaffirmations (e.g., "X is treating me well" where X is a known location reaffirms presence there → emit ONLY strengthen for fact_abc, nothing else)
 - "contradict" means new information conflicts with an existing fact — if user says "I moved to X" or "I'm now in X" and there's a known location, emit contradict (not add_durable)
 - Paraphrases count as duplicates — match meaning, not exact words
 - Return {"ops":[]} for questions, small talk, or messages with no factual claims about the user
@@ -777,7 +778,7 @@ Critical rules:
 - Do NOT use any information from your training data or general knowledge
 - If the answer is not explicitly in the provided context, say so: "Context is insufficient to answer this"
 - This applies even to well-known facts (capitals, dates, famous people) — if it's not in the notes, say context is insufficient
-- Include ALL relevant information from the notes (medications AND allergies, for example)
+- Include ALL relevant information from the notes, not just what directly matches the query wording — if notes contain related health data (e.g., allergies when asked about medications), include it
 - Keep the answer under 120 words
 
 JSON only. Return one JSON object with an "answer" field. No prose, fences, thinking, or markdown.`,

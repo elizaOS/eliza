@@ -35,6 +35,7 @@ type SmartglassesControlOp =
   | "heartbeat"
   | "heartbeat_start"
   | "heartbeat_stop"
+  | "battery_status"
   | "raw"
   | "get_serial"
   | "app_whitelist"
@@ -42,6 +43,7 @@ type SmartglassesControlOp =
   | "silent_mode"
   | "brightness"
   | "dashboard"
+  | "dashboard_position"
   | "dashboard_layout"
   | "dashboard_calendar"
   | "dashboard_time_weather"
@@ -64,8 +66,10 @@ type SmartglassesControlOp =
   | "translate_translated"
   | "note_add"
   | "note_delete"
+  | "voice_note_list"
   | "voice_note_fetch"
   | "voice_note_delete"
+  | "voice_note_delete_all"
   | "notification"
   | "bmp_image";
 
@@ -83,6 +87,7 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "heartbeat",
   "heartbeat_start",
   "heartbeat_stop",
+  "battery_status",
   "raw",
   "get_serial",
   "app_whitelist",
@@ -90,6 +95,7 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "silent_mode",
   "brightness",
   "dashboard",
+  "dashboard_position",
   "dashboard_layout",
   "dashboard_calendar",
   "dashboard_time_weather",
@@ -112,8 +118,10 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "translate_translated",
   "note_add",
   "note_delete",
+  "voice_note_list",
   "voice_note_fetch",
   "voice_note_delete",
+  "voice_note_delete_all",
   "notification",
   "bmp_image",
 ];
@@ -134,6 +142,9 @@ const OP_ALIASES = new Map<string, SmartglassesControlOp>([
   ["setup", "g1_setup"],
   ["app_setup", "g1_setup"],
   ["dashboard_calendar_item", "dashboard_calendar"],
+  ["set_dashboard_position", "dashboard_position"],
+  ["dashboard_height_depth", "dashboard_position"],
+  ["dashboard_depth", "dashboard_position"],
   ["time_weather", "dashboard_time_weather"],
   ["navigation_init", "navigation_start"],
   ["navigation_direction", "navigation_directions"],
@@ -154,12 +165,24 @@ const OP_ALIASES = new Map<string, SmartglassesControlOp>([
   ["start_heartbeat", "heartbeat_start"],
   ["heartbeat_loop", "heartbeat_start"],
   ["stop_heartbeat", "heartbeat_stop"],
+  ["battery", "battery_status"],
+  ["get_battery", "battery_status"],
+  ["request_battery", "battery_status"],
+  ["battery_request", "battery_status"],
   ["rsvp", "rsvp_text"],
   ["rsvp_display", "rsvp_text"],
   ["bmp", "bmp_image"],
   ["image", "bmp_image"],
   ["quick_note_fetch", "voice_note_fetch"],
+  ["quick_note_list", "voice_note_list"],
+  ["quick_note_info", "voice_note_list"],
+  ["voice_note_info", "voice_note_list"],
+  ["voice_notes", "voice_note_list"],
   ["quick_note_delete", "voice_note_delete"],
+  ["quick_note_delete_all", "voice_note_delete_all"],
+  ["delete_all_voice_notes", "voice_note_delete_all"],
+  ["voice_notes_delete_all", "voice_note_delete_all"],
+  ["clear_voice_notes", "voice_note_delete_all"],
   ["voice_note_audio", "voice_note_fetch"],
   ["scan_wifi", "wifi_scan"],
   ["wifi_networks", "wifi_scan"],
@@ -400,6 +423,10 @@ function statusActionValue(
   };
 }
 
+function actionErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const smartglassesControlAction: Action = {
   name: "SMARTGLASSES_CONTROL",
   similes: [
@@ -409,7 +436,7 @@ export const smartglassesControlAction: Action = {
     "SMARTGLASSES_NOTE",
   ],
   description:
-    "Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+    "Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, battery status request, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard position/content, navigation, translation overlays, head-up angle, wear detection, notes, voice-note list/fetch/delete/delete-all, notifications, and BMP images. Provide JSON with op and parameters.",
   descriptionCompressed:
     "smartglasses-control: connect, display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
   contexts: ["smartglasses", "wearable", "operations"],
@@ -439,325 +466,376 @@ export const smartglassesControlAction: Action = {
     }
 
     let operationResult: Record<string, unknown> | undefined;
-    switch (op) {
-      case "connect":
-        await service.connect();
-        if (boolParam(params, "init", true)) {
+    try {
+      switch (op) {
+        case "connect":
+          await service.connect();
+          if (boolParam(params, "init", true)) {
+            await service.sendConnectionReady(
+              sideParam(params),
+              connectionReadyModeParam(params),
+            );
+          }
+          operationResult = statusActionValue(service.getStatus());
+          break;
+        case "disconnect":
+          await service.disconnect();
+          operationResult = statusActionValue(service.getStatus());
+          break;
+        case "clear":
+          await service.clearDisplay();
+          break;
+        case "exit_dashboard":
+          await service.exitToDashboard();
+          break;
+        case "exit_function":
+          await service.exitFunction();
+          break;
+        case "start_ai":
+          await service.sendStartAi(
+            startAiSubcommand(params.subcommand),
+            params.param === undefined
+              ? new Uint8Array()
+              : bytesParam({ data: params.param }),
+          );
+          break;
+        case "connection_ready":
           await service.sendConnectionReady(
             sideParam(params),
             connectionReadyModeParam(params),
           );
-        }
-        operationResult = statusActionValue(service.getStatus());
-        break;
-      case "disconnect":
-        await service.disconnect();
-        operationResult = statusActionValue(service.getStatus());
-        break;
-      case "clear":
-        await service.clearDisplay();
-        break;
-      case "exit_dashboard":
-        await service.exitToDashboard();
-        break;
-      case "exit_function":
-        await service.exitFunction();
-        break;
-      case "start_ai":
-        await service.sendStartAi(
-          startAiSubcommand(params.subcommand),
-          params.param === undefined
-            ? new Uint8Array()
-            : bytesParam({ data: params.param }),
-        );
-        break;
-      case "connection_ready":
-        await service.sendConnectionReady(
-          sideParam(params),
-          connectionReadyModeParam(params),
-        );
-        break;
-      case "page_up":
-        await service.pageUp();
-        break;
-      case "page_down":
-        await service.pageDown();
-        break;
-      case "rsvp_text":
-        await service.displayRsvpText(stringParam(params, "text"), {
-          wordsPerGroup:
-            params.wordsPerGroup === undefined
-              ? undefined
-              : numberParam(params, "wordsPerGroup"),
-          wpm:
-            params.wpm === undefined ? undefined : numberParam(params, "wpm"),
-          paddingChar:
-            typeof params.paddingChar === "string"
-              ? params.paddingChar
-              : undefined,
-          mode:
-            params.mode === "text" || params.mode === "ai"
-              ? params.mode
-              : undefined,
-          skipDelay: boolParam(params, "skipDelay", false),
-        });
-        break;
-      case "heartbeat":
-        await service.sendHeartbeat(
-          params.seq === undefined ? undefined : numberParam(params, "seq"),
-        );
-        break;
-      case "heartbeat_start":
-        service.startHeartbeatLoop({
-          intervalMs:
-            params.intervalMs === undefined
-              ? undefined
-              : numberParam(params, "intervalMs"),
-          immediate: boolParam(params, "immediate", true),
-        });
-        break;
-      case "heartbeat_stop":
-        service.stopHeartbeatLoop();
-        break;
-      case "raw":
-        await service.sendRaw(bytesParam(params), sideParam(params));
-        break;
-      case "get_serial":
-        await service.requestSerial(sideParam(params));
-        break;
-      case "app_whitelist":
-        await service.sendAppWhitelist(
-          whitelistParam(params),
-          sideParam(params, "left"),
-        );
-        break;
-      case "g1_setup":
-        await service.sendG1Setup(
-          whitelistParam(params),
-          sideParam(params, "left"),
-        );
-        break;
-      case "silent_mode":
-        await service.setSilentMode(boolParam(params, "enabled", true));
-        break;
-      case "brightness":
-        await service.setBrightness(
-          numberParam(params, "level"),
-          boolParam(params, "auto", false),
-        );
-        break;
-      case "dashboard":
-        await service.setDashboard(
-          boolParam(params, "enabled", true),
-          params.position === undefined ? 0 : numberParam(params, "position"),
-        );
-        break;
-      case "dashboard_layout":
-        await service.setDashboardLayout(dashboardLayoutParam(params));
-        break;
-      case "dashboard_calendar":
-        await service.sendDashboardCalendarItem({
-          name: stringParam(params, "name"),
-          time: stringParam(params, "time"),
-          location: stringParam(params, "location"),
-        });
-        break;
-      case "dashboard_time_weather":
-        await service.sendDashboardTimeWeather({
-          seqId:
-            params.seqId === undefined
-              ? undefined
-              : numberParam(params, "seqId"),
-          timestampMs:
-            params.timestampMs === undefined
-              ? undefined
-              : numberParam(params, "timestampMs"),
-          timezoneOffsetSeconds:
-            params.timezoneOffsetSeconds === undefined
-              ? undefined
-              : numberParam(params, "timezoneOffsetSeconds"),
-          temperatureInCelsius: numberParam(params, "temperatureInCelsius"),
-          weatherIcon:
-            params.weatherIcon === undefined
-              ? undefined
-              : numberParam(params, "weatherIcon"),
-          temperatureUnit: temperatureUnitParam(params.temperatureUnit),
-          timeFormat: timeFormatParam(params.timeFormat),
-        });
-        break;
-      case "headup_angle":
-        await service.setHeadUpAngle(numberParam(params, "angle"));
-        break;
-      case "wear_detection":
-        await service.setGlassesWearDetection(
-          boolParam(params, "enabled", true),
-        );
-        break;
-      case "wifi_scan":
-        operationResult = wifiActionValue(await service.scanWifi());
-        break;
-      case "wifi_status":
-        operationResult = wifiActionValue(await service.getWifiStatus());
-        break;
-      case "wifi_configure":
-        operationResult = wifiActionValue(
-          await service.configureWifi(
-            stringParam(params, "ssid"),
-            typeof params.password === "string" ? params.password : "",
-          ),
-        );
-        break;
-      case "wifi_setup":
-        operationResult = wifiActionValue(
-          await service.requestWifiSetup(
-            typeof params.reason === "string" ? params.reason : undefined,
-          ),
-        );
-        break;
-      case "navigation_start":
-        await service.startNavigation();
-        break;
-      case "navigation_directions":
-        await service.sendNavigationDirections({
-          seqId:
-            params.seqId === undefined
-              ? undefined
-              : numberParam(params, "seqId"),
-          totalDuration: stringParam(params, "totalDuration"),
-          totalDistance: stringParam(params, "totalDistance"),
-          direction: stringParam(params, "direction"),
-          distance: stringParam(params, "distance"),
-          speed: stringParam(params, "speed"),
-          directionTurn: numberParam(params, "directionTurn"),
-          customX: Array.isArray(params.customX)
-            ? (params.customX as number[])
-            : undefined,
-          customY:
-            params.customY === undefined
-              ? undefined
-              : numberParam(params, "customY"),
-        });
-        break;
-      case "navigation_primary_image":
-        await service.sendNavigationPrimaryImage(
-          bitPlaneParam(params, "image", 136 * 136),
-          bitPlaneParam(params, "overlay", 136 * 136, 0),
-        );
-        break;
-      case "navigation_secondary_image":
-        await service.sendNavigationSecondaryImage(
-          bitPlaneParam(params, "image", 488 * 136),
-          bitPlaneParam(params, "overlay", 488 * 136, 0),
-        );
-        break;
-      case "navigation_poller":
-        await service.sendNavigationPoller();
-        break;
-      case "navigation_end":
-        await service.endNavigation();
-        break;
-      case "translate_setup":
-        await service.sendTranslateSetup();
-        break;
-      case "translate_start":
-        await service.startTranslate();
-        break;
-      case "translate_languages":
-        await service.setTranslateLanguages(
-          numberParam(params, "fromLanguage"),
-          numberParam(params, "toLanguage"),
-        );
-        break;
-      case "translate_original":
-        await service.sendTranslateText(
-          "original",
-          stringParam(params, "text"),
-          params.syncId === undefined
-            ? undefined
-            : numberParam(params, "syncId"),
-        );
-        break;
-      case "translate_translated":
-        await service.sendTranslateText(
-          "translated",
-          stringParam(params, "text"),
-          params.syncId === undefined
-            ? undefined
-            : numberParam(params, "syncId"),
-        );
-        break;
-      case "note_add":
-        await service.addOrUpdateNote(
-          numberParam(params, "noteNumber"),
-          stringParam(params, "title"),
-          stringParam(params, "text"),
-        );
-        break;
-      case "note_delete":
-        await service.deleteNote(numberParam(params, "noteNumber"));
-        break;
-      case "voice_note_fetch":
-        await service.requestVoiceNoteAudio(numberParam(params, "noteIndex"), {
-          syncId:
-            params.syncId === undefined
-              ? undefined
-              : numberParam(params, "syncId"),
-          side: singleSideParam(params, "right"),
-        });
-        break;
-      case "voice_note_delete":
-        await service.deleteVoiceNoteAudio(numberParam(params, "noteIndex"), {
-          syncId:
-            params.syncId === undefined
-              ? undefined
-              : numberParam(params, "syncId"),
-          side: singleSideParam(params, "right"),
-        });
-        break;
-      case "notification":
-        await service.sendNotification({
-          msgId:
-            params.msgId === undefined
-              ? undefined
-              : numberParam(params, "msgId"),
-          type:
-            params.type === undefined ? undefined : numberParam(params, "type"),
-          appIdentifier: stringParam(params, "appIdentifier"),
-          title: stringParam(params, "title"),
-          subtitle:
-            typeof params.subtitle === "string" ? params.subtitle : undefined,
-          message: stringParam(params, "message"),
-          timeS:
-            params.timeS === undefined
-              ? undefined
-              : numberParam(params, "timeS"),
-          date: typeof params.date === "string" ? params.date : undefined,
-          displayName:
-            typeof params.displayName === "string"
-              ? params.displayName
-              : undefined,
-        });
-        break;
-      case "bmp_image":
-        if (params.pixels !== undefined || params.pixelData !== undefined) {
-          await service.sendMonochromeBmpImage(pixelBytesParam(params), {
-            width:
-              params.width === undefined
+          break;
+        case "page_up":
+          await service.pageUp();
+          break;
+        case "page_down":
+          await service.pageDown();
+          break;
+        case "rsvp_text":
+          await service.displayRsvpText(stringParam(params, "text"), {
+            wordsPerGroup:
+              params.wordsPerGroup === undefined
                 ? undefined
-                : numberParam(params, "width"),
-            height:
-              params.height === undefined
-                ? undefined
-                : numberParam(params, "height"),
-            threshold:
-              params.threshold === undefined
-                ? undefined
-                : numberParam(params, "threshold"),
+                : numberParam(params, "wordsPerGroup"),
+            wpm:
+              params.wpm === undefined ? undefined : numberParam(params, "wpm"),
+            paddingChar:
+              typeof params.paddingChar === "string"
+                ? params.paddingChar
+                : undefined,
+            mode:
+              params.mode === "text" || params.mode === "ai"
+                ? params.mode
+                : undefined,
+            skipDelay: boolParam(params, "skipDelay", false),
           });
-        } else {
-          await service.sendBmpImage(bytesParam(params));
-        }
-        break;
+          break;
+        case "heartbeat":
+          await service.sendHeartbeat(
+            params.seq === undefined ? undefined : numberParam(params, "seq"),
+          );
+          break;
+        case "heartbeat_start":
+          service.startHeartbeatLoop({
+            intervalMs:
+              params.intervalMs === undefined
+                ? undefined
+                : numberParam(params, "intervalMs"),
+            immediate: boolParam(params, "immediate", true),
+          });
+          break;
+        case "heartbeat_stop":
+          service.stopHeartbeatLoop();
+          break;
+        case "battery_status":
+          await service.requestBatteryStatus(sideParam(params));
+          break;
+        case "raw":
+          await service.sendRaw(bytesParam(params), sideParam(params));
+          break;
+        case "get_serial":
+          await service.requestSerial(sideParam(params));
+          break;
+        case "app_whitelist":
+          operationResult = await service.sendAppWhitelist(
+            whitelistParam(params),
+            sideParam(params, "left"),
+          );
+          break;
+        case "g1_setup":
+          operationResult = await service.sendG1Setup(
+            whitelistParam(params),
+            sideParam(params, "left"),
+          );
+          break;
+        case "silent_mode":
+          await service.setSilentMode(boolParam(params, "enabled", true));
+          break;
+        case "brightness":
+          await service.setBrightness(
+            numberParam(params, "level"),
+            boolParam(params, "auto", false),
+          );
+          break;
+        case "dashboard":
+          await service.setDashboard(
+            boolParam(params, "enabled", true),
+            params.position === undefined ? 0 : numberParam(params, "position"),
+          );
+          break;
+        case "dashboard_position":
+          await service.setDashboardPosition(
+            numberParam(params, "height"),
+            numberParam(params, "depth"),
+          );
+          break;
+        case "dashboard_layout":
+          await service.setDashboardLayout(dashboardLayoutParam(params));
+          break;
+        case "dashboard_calendar":
+          await service.sendDashboardCalendarItem({
+            name: stringParam(params, "name"),
+            time: stringParam(params, "time"),
+            location: stringParam(params, "location"),
+          });
+          break;
+        case "dashboard_time_weather":
+          await service.sendDashboardTimeWeather({
+            seqId:
+              params.seqId === undefined
+                ? undefined
+                : numberParam(params, "seqId"),
+            timestampMs:
+              params.timestampMs === undefined
+                ? undefined
+                : numberParam(params, "timestampMs"),
+            timezoneOffsetSeconds:
+              params.timezoneOffsetSeconds === undefined
+                ? undefined
+                : numberParam(params, "timezoneOffsetSeconds"),
+            temperatureInCelsius: numberParam(params, "temperatureInCelsius"),
+            weatherIcon:
+              params.weatherIcon === undefined
+                ? undefined
+                : numberParam(params, "weatherIcon"),
+            temperatureUnit: temperatureUnitParam(params.temperatureUnit),
+            timeFormat: timeFormatParam(params.timeFormat),
+          });
+          break;
+        case "headup_angle":
+          await service.setHeadUpAngle(numberParam(params, "angle"));
+          break;
+        case "wear_detection":
+          await service.setGlassesWearDetection(
+            boolParam(params, "enabled", true),
+          );
+          break;
+        case "wifi_scan":
+          operationResult = wifiActionValue(await service.scanWifi());
+          break;
+        case "wifi_status":
+          operationResult = wifiActionValue(await service.getWifiStatus());
+          break;
+        case "wifi_configure":
+          operationResult = wifiActionValue(
+            await service.configureWifi(
+              stringParam(params, "ssid"),
+              typeof params.password === "string" ? params.password : "",
+            ),
+          );
+          break;
+        case "wifi_setup":
+          operationResult = wifiActionValue(
+            await service.requestWifiSetup(
+              typeof params.reason === "string" ? params.reason : undefined,
+            ),
+          );
+          break;
+        case "navigation_start":
+          await service.startNavigation();
+          break;
+        case "navigation_directions":
+          await service.sendNavigationDirections({
+            seqId:
+              params.seqId === undefined
+                ? undefined
+                : numberParam(params, "seqId"),
+            totalDuration: stringParam(params, "totalDuration"),
+            totalDistance: stringParam(params, "totalDistance"),
+            direction: stringParam(params, "direction"),
+            distance: stringParam(params, "distance"),
+            speed: stringParam(params, "speed"),
+            directionTurn: numberParam(params, "directionTurn"),
+            customX: Array.isArray(params.customX)
+              ? (params.customX as number[])
+              : undefined,
+            customY:
+              params.customY === undefined
+                ? undefined
+                : numberParam(params, "customY"),
+          });
+          break;
+        case "navigation_primary_image":
+          operationResult = await service.sendNavigationPrimaryImage(
+            bitPlaneParam(params, "image", 136 * 136),
+            bitPlaneParam(params, "overlay", 136 * 136, 0),
+          );
+          break;
+        case "navigation_secondary_image":
+          operationResult = await service.sendNavigationSecondaryImage(
+            bitPlaneParam(params, "image", 488 * 136),
+            bitPlaneParam(params, "overlay", 488 * 136, 0),
+          );
+          break;
+        case "navigation_poller":
+          await service.sendNavigationPoller();
+          break;
+        case "navigation_end":
+          await service.endNavigation();
+          break;
+        case "translate_setup":
+          await service.sendTranslateSetup();
+          break;
+        case "translate_start":
+          await service.startTranslate();
+          break;
+        case "translate_languages":
+          await service.setTranslateLanguages(
+            numberParam(params, "fromLanguage"),
+            numberParam(params, "toLanguage"),
+          );
+          break;
+        case "translate_original":
+          await service.sendTranslateText(
+            "original",
+            stringParam(params, "text"),
+            params.syncId === undefined
+              ? undefined
+              : numberParam(params, "syncId"),
+          );
+          break;
+        case "translate_translated":
+          await service.sendTranslateText(
+            "translated",
+            stringParam(params, "text"),
+            params.syncId === undefined
+              ? undefined
+              : numberParam(params, "syncId"),
+          );
+          break;
+        case "note_add":
+          await service.addOrUpdateNote(
+            numberParam(params, "noteNumber"),
+            stringParam(params, "title"),
+            stringParam(params, "text"),
+          );
+          break;
+        case "note_delete":
+          await service.deleteNote(numberParam(params, "noteNumber"));
+          break;
+        case "voice_note_list":
+          operationResult = await service.requestVoiceNoteList({
+            syncId:
+              params.syncId === undefined
+                ? undefined
+                : numberParam(params, "syncId"),
+            side: singleSideParam(params, "right"),
+          });
+          break;
+        case "voice_note_fetch":
+          operationResult = await service.requestVoiceNoteAudio(
+            numberParam(params, "noteIndex"),
+            {
+              syncId:
+                params.syncId === undefined
+                  ? undefined
+                  : numberParam(params, "syncId"),
+              side: singleSideParam(params, "right"),
+            },
+          );
+          break;
+        case "voice_note_delete":
+          operationResult = await service.deleteVoiceNoteAudio(
+            numberParam(params, "noteIndex"),
+            {
+              syncId:
+                params.syncId === undefined
+                  ? undefined
+                  : numberParam(params, "syncId"),
+              side: singleSideParam(params, "right"),
+            },
+          );
+          break;
+        case "voice_note_delete_all":
+          operationResult = await service.deleteAllVoiceNoteAudio({
+            syncId:
+              params.syncId === undefined
+                ? undefined
+                : numberParam(params, "syncId"),
+            side: singleSideParam(params, "right"),
+          });
+          break;
+        case "notification":
+          operationResult = await service.sendNotification({
+            msgId:
+              params.msgId === undefined
+                ? undefined
+                : numberParam(params, "msgId"),
+            type:
+              params.type === undefined
+                ? undefined
+                : numberParam(params, "type"),
+            appIdentifier: stringParam(params, "appIdentifier"),
+            title: stringParam(params, "title"),
+            subtitle:
+              typeof params.subtitle === "string" ? params.subtitle : undefined,
+            message: stringParam(params, "message"),
+            timeS:
+              params.timeS === undefined
+                ? undefined
+                : numberParam(params, "timeS"),
+            date: typeof params.date === "string" ? params.date : undefined,
+            displayName:
+              typeof params.displayName === "string"
+                ? params.displayName
+                : undefined,
+          });
+          break;
+        case "bmp_image":
+          if (params.pixels !== undefined || params.pixelData !== undefined) {
+            operationResult = await service.sendMonochromeBmpImage(
+              pixelBytesParam(params),
+              {
+                width:
+                  params.width === undefined
+                    ? undefined
+                    : numberParam(params, "width"),
+                height:
+                  params.height === undefined
+                    ? undefined
+                    : numberParam(params, "height"),
+                threshold:
+                  params.threshold === undefined
+                    ? undefined
+                    : numberParam(params, "threshold"),
+              },
+            );
+          } else {
+            operationResult = await service.sendBmpImage(bytesParam(params));
+          }
+          break;
+      }
+    } catch (error) {
+      const text = `Smartglasses ${op} command failed: ${actionErrorMessage(error)}`;
+      await callback?.({ text });
+      return {
+        success: false,
+        text,
+        values: {
+          op,
+          error: actionErrorMessage(error),
+        },
+      };
     }
 
     const response = `Smartglasses ${op} command sent.`;

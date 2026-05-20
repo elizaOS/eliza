@@ -2,7 +2,7 @@ import {
   type G1ConnectionReadyMode,
   SmartglassesService,
   WebBluetoothG1Transport,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+} from "../../../plugins/plugin-facewear/src/index.js";
 import {
   createHardwareEvidenceReport,
   headsetSetupHint,

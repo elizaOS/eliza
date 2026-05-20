@@ -58,6 +58,10 @@ function normalizeMode(value: unknown): SmartglassesDisplayMode | undefined {
   return undefined;
 }
 
+function actionErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const displaySmartglassesTextAction: Action = {
   name: "SMARTGLASSES_DISPLAY_TEXT",
   similes: ["DISPLAY_ON_GLASSES", "EVEN_DISPLAY_TEXT", "SHOW_ON_SMARTGLASSES"],
@@ -81,11 +85,24 @@ export const displaySmartglassesTextAction: Action = {
     const { text, mode, pageHoldMs, completionDelayMs } =
       displayParamsFromMessage(message);
     if (!text) return { success: false, text: "No display text provided" };
-    const result = await service.displayText(text, {
-      mode,
-      pageHoldMs,
-      completionDelayMs,
-    });
+    let result: { pages: number };
+    try {
+      result = await service.displayText(text, {
+        mode,
+        pageHoldMs,
+        completionDelayMs,
+      });
+    } catch (error) {
+      const response = `Smartglasses display command failed: ${actionErrorMessage(error)}`;
+      await callback?.({ text: response });
+      return {
+        success: false,
+        text: response,
+        values: {
+          error: actionErrorMessage(error),
+        },
+      };
+    }
     const response = `Displayed ${result.pages} page${result.pages === 1 ? "" : "s"} on smartglasses.`;
     await callback?.({ text: response });
     return {

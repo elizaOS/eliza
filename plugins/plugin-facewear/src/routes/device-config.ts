@@ -1,10 +1,13 @@
 import type { Route } from "@elizaos/core";
 import {
+  type FacewearDeviceType,
   getAllDeviceProfiles,
   getDeviceProfile,
-  type FacewearDeviceType,
 } from "../devices/registry.ts";
-import { FACEWEAR_SERVICE_TYPE, FacewearService } from "../services/facewear-service.ts";
+import {
+  FACEWEAR_SERVICE_TYPE,
+  type FacewearService,
+} from "../services/facewear-service.ts";
 
 export const facewearDevicesRoute: Route = {
   path: "/api/facewear/devices",
@@ -29,7 +32,10 @@ export const facewearDeviceRoute: Route = {
         body: JSON.stringify(profile),
       };
     } catch {
-      return { status: 404, body: JSON.stringify({ error: "Device not found" }) };
+      return {
+        status: 404,
+        body: JSON.stringify({ error: "Device not found" }),
+      };
     }
   },
 };

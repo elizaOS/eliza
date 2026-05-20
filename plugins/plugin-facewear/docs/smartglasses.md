@@ -37,7 +37,7 @@ Even Realities G1/G2 smartglasses integration for ElizaOS.
   - manual-mode page up/down (`0xF5 0x01`, left for page-up and right for page-down)
   - silent mode
   - brightness
-  - dashboard show/hide and position
+  - dashboard show/hide, legacy position, and official height/depth positioning
   - dashboard layout, calendar item, time/weather, and setup payload packets from the Fahrplan G1 dashboard model
   - navigation init, direction text, primary/secondary image, poller, and end packets
   - translation setup/start/language/original/translated text overlay packets
@@ -86,7 +86,7 @@ before sending the final completion frame:
 { "op": "brightness", "level": 10, "auto": true }
 ```
 
-Supported `op` values: `connect`, `disconnect`, `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `wifi_setup`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+Supported `op` values: `connect`, `disconnect`, `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `battery_status`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `wifi_setup`, `dashboard`, `dashboard_position`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_list`, `voice_note_fetch`, `voice_note_delete`, `voice_note_delete_all`, `notification`, `bmp_image`.
 
 `connect` pairs or reconnects the whole headset through the configured
 transport and sends connection-ready init packets by default. Aliases include
@@ -153,6 +153,10 @@ Dashboard/navigation/translation operations expose the packet families used by
 Fahrplan in addition to plain text display:
 
 ```json
+{ "op": "dashboard_position", "height": 3, "depth": 7 }
+```
+
+```json
 { "op": "dashboard_calendar", "name": "Standup", "time": "13:30-14:30", "location": "Lab" }
 ```
 
@@ -212,8 +216,8 @@ The implementation was derived from the ignored research checkouts in
 `research/even-realities/`. The reviewed sources and resulting implementation
 choices are:
 
-See `docs/upstream-audit.md` for the full source-to-implementation audit with
-local file references and test coverage.
+See `docs/smartglasses-upstream-audit.md` for the full
+source-to-implementation audit with local file references and test coverage.
 
 | Source | Relevant findings applied here |
 | --- | --- |
@@ -228,11 +232,23 @@ local file references and test coverage.
 | `nickustinov/tesla-even-g2` | G2 bridge event normalization for nested `eventType`, `event_type`, `Event_Type`, click/double-click/scroll codes, and captured-event fallback to click. |
 | `galfaroth/awesome-even-realities-g1` | Cross-check index for the G1 ecosystem and the Python wrapper sources used above. |
 | `even-realities/EvenDemoApp` | Official demo evidence for mic on the right lens, `0xF1` LC3 mic packet shape, text streaming, notification flows, native function exit, serial request, app whitelist packetization, connection-ready same-init packets (`0x4D 0x01` to both lenses), and BMP data/end/CRC framing. |
+| `MentraOS/MentraOS` | Confirmed official-style dashboard height/depth position packets (`0x26 0x08 0x00 seq 0x02 0x01 height depth`) and G1 battery status requests/responses. |
 | `Mentra-Community/MentraOS` | Architecture context for smartglasses apps as BLE-to-phone/cloud pipelines, native bridge display APIs (`displayText`, `clearDisplay`), `setMicState`, `mic_pcm`/`mic_lc3` event streams, `local_transcription`/`transcription:*` events, G1 glyph-width display profile for pixel-aware wrapping, display bandwidth limits, and hardware-dependent verification requirements. |
 
 The implementation intentionally separates direct G1 BLE transports from the EvenHub/G2 bridge transport because the upstream projects expose those as different runtime surfaces.
 
 ## Verification
+
+For the full software proof from the repository root:
+
+```bash
+npm run verify:smartglasses-software
+```
+
+That command runs the Facewear plugin lint/typecheck/test/app-registration
+gates, then the example software gate, repairs Facewear lockfile churn, and
+reruns the consolidation, Even research self-test, Even research audit, and
+completion self-test guards.
 
 ```bash
 bun run --cwd plugins/plugin-facewear lint
@@ -253,6 +269,10 @@ bun run --cwd packages/examples/smartglasses hardware:status-latest
 The browser hardware smoke example exercises the direct G1 BLE path:
 
 ```bash
+npm run smartglasses:dev:hardware
+```
+
+```bash
 bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
@@ -265,7 +285,21 @@ head-up angle, and wear-detection commands, then logs a structured evidence
 checklist for single-tap mic enable, double-tap mic disable, LC3 audio
 notifications, serial responses, packet writes, and final service status.
 
+The View Manager page at `/apps/smartglasses` exposes the same setup and
+diagnostic intent inside Eliza. Its copied/downloaded report includes
+whole-headset `scanDiagnosis`, `physicalBlocker`, setup hint, next action,
+observed serial number, outbound G1 write evidence, and microphone audio
+metadata including sample rate, encoding, sequence when available, side, and
+byte count. The View Manager checklist treats serial request and observed
+serial response as separate evidence so a request packet alone does not satisfy
+the serial proof.
+
 The EvenHub simulator can exercise the G2 bridge surface without physical hardware:
+
+```bash
+npm run smartglasses:dev:simulator
+npm run smartglasses:simulator
+```
 
 ```bash
 bun run --cwd packages/examples/smartglasses dev:simulator
@@ -273,6 +307,10 @@ bun run --cwd packages/examples/smartglasses simulator
 ```
 
 An automated simulator smoke harness is also available:
+
+```bash
+npm run smartglasses:smoke:simulator
+```
 
 ```bash
 bun run --cwd packages/examples/smartglasses smoke:simulator
@@ -316,7 +354,15 @@ setup/status summary even when the smoke fails, and then run the strict
 validator:
 
 ```bash
+npm run smartglasses:hardware:prove
+```
+
+```bash
 bun run --cwd packages/examples/smartglasses hardware:prove:bleak
+```
+
+```bash
+npm run smartglasses:hardware:prove:noble
 ```
 
 ```bash
@@ -337,7 +383,15 @@ native Noble binding is not usable for this runtime; use the Bleak/CoreBluetooth
 proof or rebuild `@abandonware/noble` for the current Node/Bun ABI.
 
 ```bash
+npm run smartglasses:hardware:prove:watch
+```
+
+```bash
 bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
+```
+
+```bash
+npm run smartglasses:hardware:prove:noble:watch
 ```
 
 ```bash
@@ -348,6 +402,11 @@ Inspect and validate that latest artifact independently before treating
 physical hardware support as proven. The latest validator requires the `/tmp`
 report to be fresh within ten minutes; use `hardware:validate-report <path>`
 for historical artifacts:
+
+```bash
+npm run smartglasses:hardware:status
+npm run smartglasses:hardware:validate
+```
 
 ```bash
 bun run --cwd packages/examples/smartglasses hardware:status-latest

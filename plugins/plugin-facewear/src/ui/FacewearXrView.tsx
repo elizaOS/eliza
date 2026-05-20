@@ -1,5 +1,5 @@
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface ConnectedDevice {
   id: string;
@@ -24,7 +24,7 @@ export function FacewearXrView() {
   });
   const [loading, setLoading] = useState(true);
 
-  async function fetchStatus(): Promise<void> {
+  const fetchStatus = useCallback(async (): Promise<void> => {
     try {
       const res = await fetch("/api/facewear/status");
       if (res.ok) {
@@ -34,13 +34,13 @@ export function FacewearXrView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void fetchStatus();
     const interval = setInterval(() => void fetchStatus(), 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus]);
 
   return (
     <div
@@ -127,7 +127,9 @@ export function FacewearXrView() {
           >
             Connected Devices
           </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+          >
             {status.devices.map((device) => (
               <div
                 key={device.id}

@@ -1,12 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { SmartglassesService } from "./smartglasses-service.ts";
+import { SMARTGLASSES_SERVICE_NAME } from "./smartglasses-service.ts";
 import {
   XR_SERVICE_TYPE,
   type XRConnection,
-  XRSessionService,
+  type XRSessionService,
 } from "./xr-session-service.ts";
-import { SMARTGLASSES_SERVICE_NAME } from "./smartglasses-service.ts";
 
 export const FACEWEAR_SERVICE_TYPE = "facewear";
 
@@ -28,15 +28,27 @@ export class FacewearService extends Service {
   override async stop(): Promise<void> {}
 
   getXRService(): XRSessionService | undefined {
-    return this.runtime.getService<XRSessionService>(XR_SERVICE_TYPE) ?? undefined;
+    return (
+      this.runtime.getService<XRSessionService>(XR_SERVICE_TYPE) ?? undefined
+    );
   }
 
   getSmartglassesService(): SmartglassesService | undefined {
-    return (this.runtime.getService<SmartglassesService>(SMARTGLASSES_SERVICE_NAME) ?? undefined) as SmartglassesService | undefined;
+    return (this.runtime.getService<SmartglassesService>(
+      SMARTGLASSES_SERVICE_NAME,
+    ) ?? undefined) as SmartglassesService | undefined;
   }
 
-  getConnectedDevices(): Array<{ id: string; kind: "xr" | "smartglasses"; deviceType?: string }> {
-    const devices: Array<{ id: string; kind: "xr" | "smartglasses"; deviceType?: string }> = [];
+  getConnectedDevices(): Array<{
+    id: string;
+    kind: "xr" | "smartglasses";
+    deviceType?: string;
+  }> {
+    const devices: Array<{
+      id: string;
+      kind: "xr" | "smartglasses";
+      deviceType?: string;
+    }> = [];
     const xrSvc = this.getXRService();
     if (xrSvc) {
       for (const conn of xrSvc.getConnections()) {

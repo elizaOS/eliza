@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""One-shot vision-language bridge for Hermes/OpenClaw harness clients."""
+"""One-shot vision-language bridge for external vision harness clients."""
 
 from __future__ import annotations
 
@@ -52,7 +52,71 @@ def _client(harness: str, provider: str, model: str, timeout_s: float):
             direct_openai_compatible=True,
             timeout_s=timeout_s,
         )
+    if harness in {"elizaos", "opencode"}:
+        return _ElizaCodeAgentVisionClient(
+            adapter=harness,
+            provider=provider,
+            model=model,
+            timeout_s=timeout_s,
+        )
     raise ValueError(f"unsupported vision harness: {harness!r}")
+
+
+class _ElizaCodeAgentVisionClient:
+    def __init__(self, *, adapter: str, provider: str, model: str, timeout_s: float):
+        self.adapter = adapter
+        self.provider = provider
+        self.model = model
+        self.timeout_s = timeout_s
+        self._manager = None
+
+    def reset(self, *, task_id: str, benchmark: str) -> None:
+        self.task_id = task_id
+        self.benchmark = benchmark
+
+    def _start(self):
+        if self._manager is not None:
+            return self._manager
+        root = _repo_root()
+        for relative in (
+            "packages/benchmarks/eliza-adapter",
+            "packages/benchmarks/hermes-adapter",
+            "packages/benchmarks/openclaw-adapter",
+            "packages",
+        ):
+            path = str(root / relative)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+        import os
+
+        os.environ["BENCHMARK_TASK_AGENT"] = self.adapter
+        os.environ["BENCHMARK_MODEL_PROVIDER"] = self.provider
+        os.environ["BENCHMARK_MODEL_NAME"] = self.model
+        os.environ.setdefault("ELIZA_AGENT_ORCHESTRATOR", "1")
+        os.environ.setdefault("ELIZA_AGENT_SELECTION_STRATEGY", "fixed")
+        os.environ.setdefault("ELIZA_ACP_DEFAULT_AGENT", self.adapter)
+        os.environ.setdefault("ELIZA_DEFAULT_AGENT_TYPE", self.adapter)
+        os.environ.setdefault("ELIZA_BENCH_HTTP_TIMEOUT", str(int(self.timeout_s)))
+        os.environ.setdefault("ELIZA_BENCH_START_TIMEOUT", "300")
+
+        from eliza_adapter import ElizaServerManager  # type: ignore
+
+        self._manager = ElizaServerManager(timeout=300.0, repo_root=root)
+        self._manager.start()
+        self._manager.client.reset(task_id=self.task_id, benchmark=self.benchmark)
+        return self._manager
+
+    def send_message(self, question: str, context: dict[str, Any]):
+        manager = self._start()
+        return manager.client.send_message(question, context=context)
+
+
+def _repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "packages" / "benchmarks" / "eliza-adapter").exists():
+            return parent
+    raise FileNotFoundError("Could not locate repository root from vision harness runtime")
 
 
 def main() -> int:

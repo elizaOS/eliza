@@ -47,12 +47,16 @@ def validate_latest_readiness(
     tolerance: float = 0.08,
     latest_dir: Path | None = None,
     check_runtime_gates: bool = True,
+    include_benchmarks: set[str] | None = None,
+    exclude_benchmarks: set[str] | None = None,
 ) -> ReadinessReport:
     target_dir = latest_dir or workspace_root / "benchmarks" / "benchmark_results" / "latest"
     findings: list[ReadinessFinding] = []
     index = _load_index(target_dir)
     contract = index.get("matrix_contract") if isinstance(index, dict) else None
     summary = contract.get("summary") if isinstance(contract, dict) else None
+
+    filters_active = include_benchmarks is not None or exclude_benchmarks is not None
 
     if not isinstance(contract, dict):
         findings.append(
@@ -62,7 +66,7 @@ def validate_latest_readiness(
                 value="latest/index.json has no matrix_contract object",
             )
         )
-    elif contract.get("status") != "complete":
+    elif contract.get("status") != "complete" and not filters_active:
         findings.append(
             ReadinessFinding(
                 scope="matrix_contract",
@@ -71,7 +75,7 @@ def validate_latest_readiness(
             )
         )
 
-    if isinstance(summary, dict):
+    if isinstance(summary, dict) and not filters_active:
         for key in (
             "unsupported_real_cells",
             "missing_required_real_cells",
@@ -96,9 +100,17 @@ def validate_latest_readiness(
                 )
             )
 
+    selected_contract_benchmarks = 0
     benchmarks = contract.get("benchmarks") if isinstance(contract, dict) else {}
     if isinstance(benchmarks, dict):
         for benchmark_id, benchmark in sorted(benchmarks.items()):
+            if not _benchmark_selected(
+                str(benchmark_id),
+                include_benchmarks=include_benchmarks,
+                exclude_benchmarks=exclude_benchmarks,
+            ):
+                continue
+            selected_contract_benchmarks += 1
             if not isinstance(benchmark, dict):
                 continue
             cells = benchmark.get("cells")
@@ -117,8 +129,21 @@ def validate_latest_readiness(
                         value=str(cell.get("reason") or cell.get("status") or ""),
                     )
                 )
+    if filters_active and isinstance(contract, dict) and selected_contract_benchmarks == 0:
+        findings.append(
+            ReadinessFinding(
+                scope="matrix_contract.benchmarks",
+                reason="no_selected_benchmarks",
+                value="filters excluded every benchmark in latest/index.json",
+            )
+        )
 
-    publishability = validate_latest_publishability(workspace_root, latest_dir=target_dir)
+    publishability = validate_latest_publishability(
+        workspace_root,
+        latest_dir=target_dir,
+        include_benchmarks=include_benchmarks,
+        exclude_benchmarks=exclude_benchmarks,
+    )
     findings.extend(
         ReadinessFinding(
             scope=f"publishability:{finding.file}{finding.path}",
@@ -131,6 +156,8 @@ def validate_latest_readiness(
         workspace_root,
         tolerance=tolerance,
         latest_dir=target_dir,
+        include_benchmarks=include_benchmarks,
+        exclude_benchmarks=exclude_benchmarks,
     )
     findings.extend(
         ReadinessFinding(
@@ -177,3 +204,16 @@ def _load_index(latest_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _benchmark_selected(
+    benchmark_id: str,
+    *,
+    include_benchmarks: set[str] | None,
+    exclude_benchmarks: set[str] | None,
+) -> bool:
+    if include_benchmarks is not None and benchmark_id not in include_benchmarks:
+        return False
+    if exclude_benchmarks is not None and benchmark_id in exclude_benchmarks:
+        return False
+    return True

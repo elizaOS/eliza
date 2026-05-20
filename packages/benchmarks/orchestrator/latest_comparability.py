@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from .calibration_report import _comparison_signature_for_run
+from .code_agent_latest_contract import (
+    CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES,
+    CODE_AGENT_LATEST_AGENT,
+)
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 
@@ -49,11 +53,14 @@ def validate_latest_comparability(
     *,
     tolerance: float = 0.08,
     latest_dir: Path | None = None,
+    include_benchmarks: set[str] | None = None,
+    exclude_benchmarks: set[str] | None = None,
 ) -> ComparabilityReport:
     target_dir = latest_dir or workspace_root / "benchmarks" / "benchmark_results" / "latest"
     findings: list[ComparabilityFinding] = []
     rows_by_benchmark: dict[str, dict[str, dict[str, Any]]] = {}
     index = _load_index(target_dir)
+    filters_active = include_benchmarks is not None or exclude_benchmarks is not None
     contract_benchmarks = (
         ((index.get("matrix_contract") or {}).get("benchmarks") or {})
         if isinstance(index, dict)
@@ -71,10 +78,34 @@ def validate_latest_comparability(
             continue
         benchmark_id = str(payload.get("benchmark_id") or "").strip()
         agent = str(payload.get("agent") or "").strip().lower()
-        if benchmark_id and agent in REAL_HARNESSES:
+        if (
+            benchmark_id
+            and _row_agent_supported(agent)
+            and _benchmark_selected(
+                benchmark_id,
+                include_benchmarks=include_benchmarks,
+                exclude_benchmarks=exclude_benchmarks,
+            )
+        ):
             rows_by_benchmark.setdefault(benchmark_id, {})[agent] = payload
 
-    benchmark_ids = sorted(set(rows_by_benchmark) | set(contract_benchmarks))
+    benchmark_ids = sorted(
+        benchmark_id
+        for benchmark_id in set(rows_by_benchmark) | set(contract_benchmarks)
+        if _benchmark_selected(
+            benchmark_id,
+            include_benchmarks=include_benchmarks,
+            exclude_benchmarks=exclude_benchmarks,
+        )
+    )
+    if filters_active and not benchmark_ids:
+        findings.append(
+            ComparabilityFinding(
+                benchmark_id=".",
+                reason="no_selected_benchmarks",
+                value="filters excluded every benchmark",
+            )
+        )
     for benchmark_id in benchmark_ids:
         contract = contract_benchmarks.get(benchmark_id)
         required = _required_harnesses(contract)
@@ -116,6 +147,16 @@ def validate_latest_comparability(
                 )
             else:
                 scores[agent] = float(score)
+            if agent == CODE_AGENT_LATEST_AGENT:
+                comparison_status = str(row.get("comparison_status") or "").strip()
+                if comparison_status not in CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES:
+                    findings.append(
+                        ComparabilityFinding(
+                            benchmark_id=benchmark_id,
+                            reason="code_agent_not_comparable_or_better",
+                            value=str(row.get("comparison_status")),
+                        )
+                    )
             signature = _comparison_signature_for_run(row)
             if signature:
                 signatures[agent] = signature
@@ -184,9 +225,31 @@ def _required_harnesses(contract: Any) -> tuple[str, ...]:
     cells = contract.get("cells")
     if not isinstance(cells, dict):
         return REAL_HARNESSES
+    if (
+        isinstance(cells.get(CODE_AGENT_LATEST_AGENT), dict)
+        and cells[CODE_AGENT_LATEST_AGENT].get("required") is True
+    ):
+        return (CODE_AGENT_LATEST_AGENT,)
     required = [
         harness
         for harness in REAL_HARNESSES
         if isinstance(cells.get(harness), dict) and cells[harness].get("required") is True
     ]
     return tuple(required)
+
+
+def _row_agent_supported(agent: str) -> bool:
+    return agent in REAL_HARNESSES or agent == CODE_AGENT_LATEST_AGENT
+
+
+def _benchmark_selected(
+    benchmark_id: str,
+    *,
+    include_benchmarks: set[str] | None,
+    exclude_benchmarks: set[str] | None,
+) -> bool:
+    if include_benchmarks is not None and benchmark_id not in include_benchmarks:
+        return False
+    if exclude_benchmarks is not None and benchmark_id in exclude_benchmarks:
+        return False
+    return True

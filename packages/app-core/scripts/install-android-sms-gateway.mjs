@@ -8,6 +8,7 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
@@ -61,7 +62,7 @@ function usage() {
     "Usage: node packages/app-core/scripts/install-android-sms-gateway.mjs [options]",
     "",
     "Options:",
-    "  --apk <path>           APK to install. Defaults to generated APK, then .eliza-local artifact.",
+    "  --apk <path>           APK to install. Defaults to preserved .eliza-local artifact, then generated APK.",
     "  --serial <serial>      adb serial. Defaults to the only connected device.",
     "  --adb <path>           adb binary. Defaults to Android SDK lookup or PATH.",
     "  --skip-install         Only run diagnostics.",
@@ -137,7 +138,7 @@ function parseArgs(argv) {
 
 function resolveApk(explicit) {
   if (explicit) return path.resolve(explicit);
-  return firstExisting([generatedApk, preservedApk]) ?? generatedApk;
+  return firstExisting([preservedApk, generatedApk]) ?? preservedApk;
 }
 
 function assertNonNegativeInteger(value, name) {
@@ -200,14 +201,27 @@ function adb(adbPath, serial, args, options) {
 }
 
 function listDevices(adbPath) {
+  return listDeviceRows(adbPath)
+    .filter((device) => device.state === "device")
+    .map((device) => device.serial);
+}
+
+function listDeviceRows(adbPath) {
   const result = run(adbPath, ["devices", "-l"]);
   return result.stdout
     .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => /\bdevice\b/.test(line))
-    .map((line) => line.split(/\s+/)[0]);
+    .map((line) => {
+      const parts = line.split(/\s+/);
+      return {
+        serial: parts[0] ?? "",
+        state: parts[1] ?? "unknown",
+        detail: line,
+      };
+    })
+    .filter((device) => device.serial);
 }
 
 function listWirelessAdbServices(adbPath) {
@@ -262,12 +276,26 @@ function findWirelessAdbEndpoint(adbPath, serviceType) {
 
 async function waitForWirelessAdbEndpoint(adbPath, serviceType, timeoutSeconds) {
   const deadline = Date.now() + timeoutSeconds * 1000;
+  let nextStatusAt = 0;
   while (Date.now() <= deadline) {
     const wirelessAdb = listWirelessAdbServices(adbPath);
     const match = wirelessAdb.services.find((service) =>
       service.type.includes(serviceType),
     );
     if (match?.endpoint) return match.endpoint;
+    const now = Date.now();
+    if (now >= nextStatusAt) {
+      const remainingSeconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+      console.error(
+        `[android-sms-gateway] Waiting ${remainingSeconds}s for ${serviceType}; observed: ${wirelessAdb.detail}.`,
+      );
+      if (serviceType === "_adb-tls-pairing") {
+        console.error(
+          '[android-sms-gateway] Keep Android Wireless debugging > "Pair device with pairing code" open until the code prompt appears here.',
+        );
+      }
+      nextStatusAt = now + 15_000;
+    }
     await sleep(1000);
   }
   throw new Error(
@@ -335,6 +363,49 @@ function connectWirelessAdb({ adbPath, endpoint }) {
     throw new Error(`adb connect ${resolved} failed:\n${output || "no output"}`);
   }
   console.log(`[android-sms-gateway] Connected wireless adb endpoint ${resolved}.`);
+}
+
+function tryConnectWirelessAdb(adbPath, endpoint) {
+  const result = run(adbPath, ["connect", endpoint], { allowFailure: true });
+  const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  return {
+    ok: result.status === 0 && /connected to|already connected/i.test(output),
+    detail: output || "no output",
+  };
+}
+
+function parseHostPort(endpoint) {
+  const match = /^(.+):(\d+)$/.exec(endpoint);
+  if (!match) return null;
+  return {
+    host: match[1],
+    port: Number.parseInt(match[2], 10),
+  };
+}
+
+function probeTcpEndpoint(endpoint, timeoutMs = 3000) {
+  const target = parseHostPort(endpoint);
+  if (!target || !Number.isInteger(target.port)) {
+    return Promise.resolve({
+      ok: false,
+      detail: `invalid host:port endpoint ${endpoint}`,
+    });
+  }
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection(target);
+    let done = false;
+    const finish = (ok, detail) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve({ ok, detail });
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish(true, `tcp reachable ${endpoint}`));
+    socket.once("timeout", () => finish(false, `tcp timed out after ${timeoutMs}ms`));
+    socket.once("error", (error) => finish(false, error.message));
+  });
 }
 
 function sleep(ms) {
@@ -476,7 +547,9 @@ function diagnose({ adbPath, serial }) {
 
 function install({ adbPath, serial, apk }) {
   if (!fs.existsSync(apk)) {
-    throw new Error(`APK not found: ${apk}. Build it with: node packages/app-core/scripts/run-mobile-build.mjs android-sms-gateway`);
+    throw new Error(
+      `APK not found: ${apk}. Build it with: bun run --cwd packages/app-core sms-gateway:build:android`,
+    );
   }
   console.log(`[android-sms-gateway] Installing ${apk} on ${serial}`);
   adb(adbPath, serial, ["install", "-r", "-g", "-t", apk]);
@@ -817,7 +890,7 @@ function apkManifestSummary(apk) {
   };
 }
 
-function runDoctor({ apk, adbPath }) {
+async function runDoctor({ apk, adbPath }) {
   const checks = [];
   checks.push({
     name: "apk",
@@ -832,13 +905,34 @@ function runDoctor({ apk, adbPath }) {
   });
 
   let devices = [];
+  let deviceRows = [];
   let adbDetail = adbPath;
   let wirelessAdb = { ok: false, services: [], detail: "not checked" };
   try {
-    devices = listDevices(adbPath);
+    deviceRows = listDeviceRows(adbPath);
+    devices = deviceRows
+      .filter((device) => device.state === "device")
+      .map((device) => device.serial);
     wirelessAdb = listWirelessAdbServices(adbPath);
   } catch (error) {
     adbDetail = error instanceof Error ? error.message : String(error);
+  }
+  const wirelessPairingServices =
+    wirelessAdb.services?.filter((service) => service.type.includes("_adb-tls-pairing")) ?? [];
+  const wirelessConnectServices =
+    wirelessAdb.services?.filter((service) => service.type.includes("_adb-tls-connect")) ?? [];
+  let wirelessConnectProbe = null;
+  let wirelessTcpProbe = null;
+  if (devices.length === 0 && wirelessConnectServices.length > 0) {
+    wirelessTcpProbe = await probeTcpEndpoint(wirelessConnectServices[0].endpoint);
+    wirelessConnectProbe = tryConnectWirelessAdb(
+      adbPath,
+      wirelessConnectServices[0].endpoint,
+    );
+    deviceRows = listDeviceRows(adbPath);
+    devices = deviceRows
+      .filter((device) => device.state === "device")
+      .map((device) => device.serial);
   }
   checks.push({
     name: "adb",
@@ -848,12 +942,27 @@ function runDoctor({ apk, adbPath }) {
   checks.push({
     name: "adb-device",
     ok: devices.length > 0,
-    detail: devices.length > 0 ? devices.join(", ") : "no connected adb devices",
+    detail:
+      devices.length > 0
+        ? devices.join(", ")
+        : wirelessConnectProbe
+          ? `no connected adb devices; observed: ${deviceRows.map((device) => `${device.serial} ${device.state}`).join(", ") || "none"}; tcp probe: ${wirelessTcpProbe?.detail ?? "not attempted"}; connect probe: ${wirelessConnectProbe.detail}`
+          : deviceRows.length > 0
+            ? `no authorized adb devices; observed: ${deviceRows.map((device) => `${device.serial} ${device.state}`).join(", ")}`
+          : "no connected adb devices",
   });
+  const wirelessAdbReady =
+    devices.length > 0 || wirelessPairingServices.length > 0 || !wirelessAdb.ok
+      ? wirelessAdb.ok
+      : false;
+  const wirelessAdbDetail =
+    !wirelessAdb.ok || devices.length > 0 || wirelessPairingServices.length > 0
+      ? wirelessAdb.detail
+      : `${wirelessAdb.detail}; tcp probe: ${wirelessTcpProbe?.detail ?? "not attempted"}; connect probe: ${wirelessConnectProbe?.detail ?? "not attempted"}; connect endpoint is advertised but no adb device is connected. Open Android Wireless debugging > Pair device with pairing code.`;
   checks.push({
     name: "adb-wireless",
-    ok: wirelessAdb.ok,
-    detail: wirelessAdb.detail,
+    ok: wirelessAdbReady,
+    detail: wirelessAdbDetail,
   });
   const hostUsb = listHostUsbDevices();
   checks.push({
@@ -892,20 +1001,22 @@ function runDoctor({ apk, adbPath }) {
   }
 
   const deviceReady = checks.find((check) => check.name === "adb-device")?.ok;
+  if (
+    bridgeOutbound?.status === "blocked" &&
+    /Shortcut outbound validation missing/.test(bridgeOutbound.detail ?? "")
+  ) {
+    console.log(
+      "[android-sms-gateway] next: BlueBubbles Shortcut is installed but needs a real validation send. After explicit real-send approval, run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send.",
+    );
+  }
   if (!deviceReady) {
-    const pairing = wirelessAdb.services?.filter((service) =>
-      service.type.includes("_adb-tls-pairing"),
-    );
-    const connect = wirelessAdb.services?.filter((service) =>
-      service.type.includes("_adb-tls-connect"),
-    );
-    if (pairing?.length > 0) {
+    if (wirelessPairingServices.length > 0) {
       console.log(
-        `[android-sms-gateway] next: pair wireless debugging with: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[android-sms-gateway] next: pair wireless debugging with: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${wirelessPairingServices[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
-    } else if (connect?.length > 0) {
+    } else if (wirelessConnectServices.length > 0) {
       console.log(
-        `[android-sms-gateway] next: wireless adb is advertising ${connect[0].endpoint}, but no device is connected. If connect fails, run bun run --cwd packages/app-core sms-gateway:pair, then open Android Developer Options > Wireless debugging > Pair device with pairing code.`,
+        `[android-sms-gateway] next: wireless adb is advertising ${wirelessConnectServices[0].endpoint}, but no device is connected. Open Android Developer Options > Wireless debugging > Pair device with pairing code, then run: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
     }
     console.log(
@@ -929,7 +1040,7 @@ async function main() {
   }
   const adbPath = resolveAdb(args.adb);
   if (args.doctor) {
-    runDoctor({ apk, adbPath });
+    await runDoctor({ apk, adbPath });
     return;
   }
   if (args.pairEndpoint) {

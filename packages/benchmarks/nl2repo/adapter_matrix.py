@@ -154,86 +154,123 @@ def _number(value: Any) -> int:
     return 0
 
 
+def _first_present(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload:
+            return payload.get(key)
+    return None
+
+
+def _token_detail_value(usage: dict[str, Any], *keys: str) -> Any:
+    for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
+        details = usage.get(container_key)
+        if not isinstance(details, dict):
+            continue
+        value = _first_present(details, *keys)
+        if value is not None:
+            return value
+    return None
+
+
+def _single_usage_token_metrics(usage: dict[str, Any]) -> dict[str, int]:
+    tokens = usage.get("tokens")
+    token_payload = tokens if isinstance(tokens, dict) else usage
+    cache_payload = token_payload.get("cache") if isinstance(token_payload, dict) else None
+    cache_payload = cache_payload if isinstance(cache_payload, dict) else {}
+    input_tokens = _number(
+        _first_present(
+            token_payload,
+            "promptTokens",
+            "prompt_tokens",
+            "input_tokens",
+            "input",
+        )
+    )
+    output_tokens = _number(
+        _first_present(
+            token_payload,
+            "completionTokens",
+            "completion_tokens",
+            "output_tokens",
+            "output",
+        )
+    )
+    total_tokens = _number(
+        _first_present(token_payload, "totalTokens", "total_tokens", "total")
+    )
+    cached_raw = _first_present(
+        token_payload,
+        "cachedTokens",
+        "cached_tokens",
+        "cacheReadInputTokens",
+        "cache_read_input_tokens",
+    )
+    if cached_raw is None:
+        cached_raw = _token_detail_value(
+            usage,
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "prompt_cache_hit_tokens",
+        )
+    if cached_raw is None:
+        cached_raw = _first_present(cache_payload, "read", "cached", "hit")
+    cache_creation_raw = _first_present(
+        token_payload,
+        "cacheCreationInputTokens",
+        "cache_creation_input_tokens",
+    )
+    if cache_creation_raw is None:
+        cache_creation_raw = _token_detail_value(
+            usage,
+            "cache_creation_input_tokens",
+            "cache_write_tokens",
+            "prompt_cache_miss_tokens",
+        )
+    if cache_creation_raw is None:
+        cache_creation_raw = _first_present(cache_payload, "write", "created", "miss")
+    if not total_tokens and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cached_tokens": _number(cached_raw),
+        "cache_creation_tokens": _number(cache_creation_raw),
+    }
+
+
 def token_metrics_from_usage(usage: dict[str, Any]) -> dict[str, int | float | None]:
     calls = usage.get("calls")
     call_items = [call for call in calls if isinstance(call, dict)] if isinstance(calls, list) else []
-    input_tokens = _number(
-        usage.get("promptTokens")
-        or usage.get("prompt_tokens")
-        or usage.get("input_tokens")
-    )
-    if not input_tokens and call_items:
-        input_tokens = sum(
-            _number(
-                call.get("promptTokens")
-                or call.get("prompt_tokens")
-                or call.get("input_tokens")
-            )
-            for call in call_items
-        )
-    output_tokens = _number(
-        usage.get("completionTokens")
-        or usage.get("completion_tokens")
-        or usage.get("output_tokens")
-    )
-    if not output_tokens and call_items:
-        output_tokens = sum(
-            _number(
-                call.get("completionTokens")
-                or call.get("completion_tokens")
-                or call.get("output_tokens")
-            )
-            for call in call_items
-        )
-    total_tokens = _number(
-        usage.get("totalTokens")
-        or usage.get("total_tokens")
-        or (input_tokens + output_tokens if input_tokens or output_tokens else 0)
-    )
-    if not total_tokens and call_items:
-        total_tokens = sum(
-            _number(call.get("totalTokens") or call.get("total_tokens"))
-            for call in call_items
-        ) or (input_tokens + output_tokens if input_tokens or output_tokens else 0)
-    cached_raw = (
-        usage.get("cachedTokens")
-        if "cachedTokens" in usage
-        else usage.get("cached_tokens")
-        if "cached_tokens" in usage
-        else usage.get("cacheReadInputTokens")
-        if "cacheReadInputTokens" in usage
-        else usage.get("cache_read_input_tokens")
-    )
-    cached_tokens = _number(cached_raw)
-    if not cached_tokens and call_items:
-        cached_tokens = sum(
-            _number(
-                call.get("cachedTokens")
-                if "cachedTokens" in call
-                else call.get("cached_tokens")
-                if "cached_tokens" in call
-                else call.get("cacheReadInputTokens")
-                if "cacheReadInputTokens" in call
-                else call.get("cache_read_input_tokens")
-            )
-            for call in call_items
-        )
-    cache_creation_tokens = _number(
-        usage.get("cacheCreationInputTokens")
-        or usage.get("cache_creation_input_tokens")
-    )
-    if not cache_creation_tokens and call_items:
-        cache_creation_tokens = sum(
-            _number(
-                call.get("cacheCreationInputTokens")
-                or call.get("cache_creation_input_tokens")
-            )
-            for call in call_items
-        )
+    if call_items:
+        call_metrics = [_single_usage_token_metrics(call) for call in call_items]
+        input_tokens = sum(metric["input_tokens"] for metric in call_metrics)
+        output_tokens = sum(metric["output_tokens"] for metric in call_metrics)
+        total_tokens = sum(metric["total_tokens"] for metric in call_metrics)
+        cached_tokens = sum(metric["cached_tokens"] for metric in call_metrics)
+        cache_creation_tokens = sum(metric["cache_creation_tokens"] for metric in call_metrics)
+        if not total_tokens and (input_tokens or output_tokens):
+            total_tokens = input_tokens + output_tokens
+    else:
+        metrics = _single_usage_token_metrics(usage)
+        input_tokens = metrics["input_tokens"]
+        output_tokens = metrics["output_tokens"]
+        total_tokens = metrics["total_tokens"]
+        cached_tokens = metrics["cached_tokens"]
+        cache_creation_tokens = metrics["cache_creation_tokens"]
     cached_token_percent = (
         (cached_tokens / input_tokens) * 100.0 if input_tokens else None
     )
-    llm_call_count = len(call_items) if call_items else 1 if input_tokens or output_tokens else 0
+    explicit_calls = _number(_first_present(usage, "llm_call_count", "llmCallCount"))
+    llm_call_count = (
+        explicit_calls
+        if explicit_calls
+        else len(call_items)
+        if call_items
+        else 1
+        if input_tokens or output_tokens
+        else 0
+    )
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
