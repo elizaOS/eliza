@@ -8,8 +8,44 @@
 //     bunx playwright test --config tests/e2e -g "live:"
 
 import { expect, type Page, test } from "@playwright/test";
+import { readdirSync, statSync } from "node:fs";
+import pathModule from "node:path";
+import { fileURLToPath } from "node:url";
 
 const LIVE_URL = process.env.CLOUD_E2E_LIVE_URL;
+const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
+const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
+
+function discoverDocsRoutes(): string[] {
+  const routes: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const fullPath = pathModule.join(dir, entry);
+      const stats = statSync(fullPath);
+      if (stats.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.endsWith(".mdx")) continue;
+      const rel = pathModule
+        .relative(CONTENT_DIR, fullPath)
+        .replace(/\\/g, "/")
+        .replace(/\.mdx$/, "");
+      if (rel === "index") {
+        routes.push("/docs");
+      } else if (rel.endsWith("/index")) {
+        routes.push(`/docs/${rel.slice(0, -"/index".length)}`);
+      } else {
+        routes.push(`/docs/${rel}`);
+      }
+    }
+  };
+  walk(CONTENT_DIR);
+  return [...new Set(routes)].sort();
+}
+
+const docsRoutes = discoverDocsRoutes();
 
 test.describe("live: public routes against real backend", () => {
   test.skip(
@@ -19,19 +55,30 @@ test.describe("live: public routes against real backend", () => {
 
   test.use({ baseURL: LIVE_URL });
 
-  // Only public, idempotent routes. Auth + writes never belong in a live
-  // smoke — they would either need real credentials or hit production data.
+  // Only public, idempotent routes. Authenticated dashboards, payment IDs, and
+  // write flows are covered by dedicated live-auth/API specs.
   const publicRoutes = [
     "/",
+    "/os",
+    "/blog",
     "/login",
-    "/docs",
+    ...docsRoutes,
     "/bsc",
     "/privacy-policy",
     "/terms-of-service",
+    "/sandbox-proxy",
+    "/auth/success?platform=github",
+    "/auth/error?reason=auth_failed",
+    "/auth/callback/email",
+    "/invite/accept",
   ];
 
   const HOMEPAGE_TITLE_FALLBACK = /eliza cloud - Your Eliza, always online/i;
-  const ALLOWED_CONSOLE_NOISE: RegExp[] = [/favicon/i, /\/__telemetry__/i];
+  const ALLOWED_CONSOLE_NOISE: RegExp[] = [
+    /favicon/i,
+    /\/__telemetry__/i,
+    /^\[RenderTelemetry\]/,
+  ];
   const ALLOWED_NETWORK_NOISE: RegExp[] = [
     /\/__telemetry__/i,
     // GA / Posthog / Sentry beacons fail in headless without consent banners
@@ -75,6 +122,12 @@ test.describe("live: public routes against real backend", () => {
 
       // Settle SSR-hydrated content
       await page.waitForTimeout(1500);
+      await expect(page.locator("body")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: /^Page Not Found$/i }),
+      ).toHaveCount(0);
+      const screenshot = await page.screenshot({ fullPage: true });
+      expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
 
       const title = await page.title();
       if (route !== "/") {
