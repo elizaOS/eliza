@@ -71,7 +71,7 @@
     "recharts": "^3.5.1",
     "sonner": "^2.0.7",
     "streamdown": "^1.4.0",
-    "tailwind-merge": "^3.4.0",
+    "tailwind-merge": "3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^13.0.0",
     "viem": "^2.45.1",

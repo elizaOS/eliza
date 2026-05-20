@@ -448,7 +448,7 @@
     "node-edge-tts": "^1.2.9",
     "pg": "^8.20.0",
     "robot3": "^0.4.1",
-    "tailwind-merge": "^3.0.0",
+    "tailwind-merge": "3.4.0",
     "zod": "^4.4.3"
   }
 }

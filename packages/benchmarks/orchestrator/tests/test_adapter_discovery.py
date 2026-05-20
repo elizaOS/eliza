@@ -3188,7 +3188,6 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
         json.dumps(
             {
                 "id": "eliza-1-9b",
-                "runtime": {"dflash": {"enabled": True}},
                 "kernels": {"required": ["dflash"]},
                 "files": {"dflash": [{"path": "dflash/drafter-9b.gguf"}]},
             }
