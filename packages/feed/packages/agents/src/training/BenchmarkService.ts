@@ -28,7 +28,7 @@ import {
 } from '@feed/db';
 import { BenchmarkRunner } from '../benchmark/BenchmarkRunner';
 import { getAgentRuntimeManager } from '../dependencies';
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 
 export interface BenchmarkResults {
   modelId: string;

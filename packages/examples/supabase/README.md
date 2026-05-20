@@ -57,7 +57,7 @@ supabase secrets set OPENAI_API_KEY=your-openai-api-key
 supabase init
 
 # Copy edge functions to your project
-cp -r examples/supabase/functions/* supabase/functions/
+cp -r packages/examples/supabase/functions/* supabase/functions/
 ```
 
 ### 3. Test Locally First
@@ -99,7 +99,7 @@ curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/eliza-chat \
 ## Project Structure
 
 ```
-examples/supabase/
+packages/examples/supabase/
 ├── README.md                       # This file
 ├── functions/
 │   ├── eliza-chat/                 # TypeScript Edge Function
@@ -222,7 +222,7 @@ For performance-critical operations, you can use Rust compiled to WebAssembly:
 
 ```bash
 # Build WASM module
-cd examples/supabase/rust
+cd packages/examples/supabase/rust
 wasm-pack build --target web --out-dir ../functions/eliza-chat-wasm/wasm
 
 # Deploy
@@ -327,6 +327,5 @@ supabase secrets unset OPENAI_API_KEY
 - [Supabase Edge Functions Docs](https://supabase.com/docs/guides/functions)
 - [Deno Documentation](https://deno.land/manual)
 - [AWS Lambda Example](../aws/README.md) - Same pattern for AWS
-
 
 

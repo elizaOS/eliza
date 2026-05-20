@@ -19,7 +19,7 @@ import {
   trainedModels,
   trajectories,
 } from '@feed/db';
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 
 export interface ModelSelectionResult {
   modelId: string;

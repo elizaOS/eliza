@@ -5,7 +5,7 @@
  */
 
 import { db, desc, inArray, trainedModels } from '@feed/db';
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 
 export interface ModelArtifact {
   version: string;

@@ -15,7 +15,7 @@
  */
 
 import { db, eq, trainedModels } from '@feed/db';
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 
 export interface DeploymentOptions {
   modelVersion: string;

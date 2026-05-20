@@ -5,7 +5,7 @@
  */
 
 import type { BenchmarkConfig } from '../benchmark/BenchmarkDataGenerator';
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 
 export interface TrainingConfig {
   min_trajectories_per_batch: number;

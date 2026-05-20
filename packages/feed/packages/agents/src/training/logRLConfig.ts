@@ -5,7 +5,7 @@
  * Used for diagnostics and verification during deployment.
  */
 
-import { logger } from '../utils/logger';
+import { logger } from '/shared';
 import { isRLModelAvailable, logRLModelConfig } from './RLModelConfig';
 
 /**
