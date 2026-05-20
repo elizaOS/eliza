@@ -204,6 +204,15 @@ export async function initiateOAuth2(
     authUrl.searchParams.set("scope", scopes.join(" "));
   }
 
+  // Slack-style user/bot scope split: providers that distinguish user-level
+  // scopes from bot/app scopes (currently only Slack via the `user_scope`
+  // query parameter) declare them in `provider.userScopes`. Without this,
+  // the user token returned in `authed_user.access_token` has no granted
+  // user-level permissions and can't act on the user's behalf.
+  if (provider.userScopes && provider.userScopes.length > 0) {
+    authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
+  }
+
   authUrl.searchParams.set("state", state);
 
   // Add PKCE parameters
