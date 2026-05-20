@@ -18,7 +18,9 @@ import {
   type ConnectRemoteCapabilityEndpointProviderResult,
   connectRemoteCapabilityEndpointProvider,
   directRemoteCapabilityEndpointProvider,
+  normalizeEndpointTrustPolicyOptions,
   type RemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "../services/remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
@@ -28,7 +30,10 @@ import {
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
 } from "../services/remote-capability-url-endpoint-providers.ts";
-import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
+import type {
+  RemotePluginSyncResult,
+  RemotePluginTrustPolicy,
+} from "../services/remote-plugin-adapter.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -66,6 +71,7 @@ type ConnectBody = {
   persist?: unknown;
   requestTimeoutMs?: unknown;
   allowedModuleIds?: unknown;
+  trustPolicy?: unknown;
 };
 
 type DirectEndpointBody = {
@@ -84,6 +90,7 @@ type EndpointProviderMode =
 type DirectEndpointProviderOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
 
 type EndpointProviderOptions =
@@ -100,6 +107,7 @@ type CloudBody = {
   timeoutMs?: unknown;
   pollIntervalMs?: unknown;
   allowedModuleIds?: unknown;
+  trustPolicy?: unknown;
 };
 
 export async function handleRemoteCapabilityRoutes(
@@ -158,31 +166,35 @@ export async function handleRemoteCapabilityRoutes(
     return true;
   }
 
-  const unloadMissing =
-    typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
-  const persist = typeof body.persist === "boolean" ? body.persist : true;
-  const allowedModuleIds = parseOptionalStringArray(
-    body.allowedModuleIds,
-    "allowedModuleIds",
-  );
-  const requestTimeoutMs = optionalPositiveInteger(
-    body.requestTimeoutMs,
-    "requestTimeoutMs",
-  );
-  if (requestTimeoutMs instanceof Error) {
-    error(res, requestTimeoutMs.message, 400);
-    return true;
-  }
-  if (body.endpoint !== undefined && body.cloud !== undefined) {
-    error(
-      res,
-      "Request body must include only one of 'endpoint' or 'cloud'.",
-      400,
-    );
-    return true;
-  }
-
   try {
+    const unloadMissing =
+      typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
+    const persist = typeof body.persist === "boolean" ? body.persist : true;
+    const allowedModuleIds = parseOptionalStringArray(
+      body.allowedModuleIds,
+      "allowedModuleIds",
+    );
+    const trustPolicy = parseOptionalEndpointTrustPolicy(
+      body.trustPolicy,
+      "trustPolicy",
+    );
+    const requestTimeoutMs = optionalPositiveInteger(
+      body.requestTimeoutMs,
+      "requestTimeoutMs",
+    );
+    if (requestTimeoutMs instanceof Error) {
+      error(res, requestTimeoutMs.message, 400);
+      return true;
+    }
+    if (body.endpoint !== undefined && body.cloud !== undefined) {
+      error(
+        res,
+        "Request body must include only one of 'endpoint' or 'cloud'.",
+        400,
+      );
+      return true;
+    }
+
     if (body.endpoint !== undefined) {
       const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
@@ -199,10 +211,23 @@ export async function handleRemoteCapabilityRoutes(
         unloadMissing,
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
         ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+        ...(trustPolicy === undefined ? {} : { trustPolicy }),
       });
       const persistedEndpoint = result.endpoint ?? endpoint;
       if (persist) {
-        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds);
+        await persistEndpoint(
+          ctx,
+          persistedEndpoint,
+          allowedModuleIds,
+          trustPolicy,
+          {
+            mode: providerMode === "direct" ? "endpoint" : providerMode,
+            provider: result.providerId,
+            endpoint: persistedEndpoint,
+            allowedModuleIds,
+            sync: result.sync,
+          },
+        );
       }
       json(res, {
         success: true,
@@ -217,6 +242,14 @@ export async function handleRemoteCapabilityRoutes(
 
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
+      if (trustPolicy !== undefined && cloud.trustPolicy !== undefined) {
+        error(
+          res,
+          "Cloud requests must set trustPolicy either at the top level or inside 'cloud', not both.",
+          400,
+        );
+        return true;
+      }
       if (
         allowedModuleIds !== undefined &&
         cloud.allowedModuleIds !== undefined
@@ -229,6 +262,7 @@ export async function handleRemoteCapabilityRoutes(
         return true;
       }
       const cloudAllowedModuleIds = allowedModuleIds ?? cloud.allowedModuleIds;
+      const cloudTrustPolicy = trustPolicy ?? cloud.trustPolicy;
       const connectCloudSandbox =
         ctx.connectCloudSandbox ?? connectCloudCapabilitySandbox;
       const result = await connectCloudSandbox(runtime, {
@@ -237,10 +271,25 @@ export async function handleRemoteCapabilityRoutes(
         ...(cloudAllowedModuleIds === undefined
           ? {}
           : { allowedModuleIds: cloudAllowedModuleIds }),
+        ...(cloudTrustPolicy === undefined
+          ? {}
+          : { trustPolicy: cloudTrustPolicy }),
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
       });
       if (persist) {
-        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds);
+        await persistEndpoint(
+          ctx,
+          result.endpoint,
+          cloudAllowedModuleIds,
+          cloudTrustPolicy,
+          {
+            mode: "cloud",
+            provider: result.providerId,
+            endpoint: result.endpoint,
+            allowedModuleIds: cloudAllowedModuleIds,
+            sync: result.sync,
+          },
+        );
       }
       json(res, {
         success: true,
@@ -366,6 +415,8 @@ function persistEndpoint(
   >,
   endpoint: RemoteCapabilityEndpointConfig,
   allowedModuleIds?: string[],
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions,
+  audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
   const config = ctx.config;
   const saveConfig = ctx.saveConfig;
@@ -379,6 +430,8 @@ function persistEndpoint(
     { config, saveConfig, persistConfigEnv },
     endpoint,
     allowedModuleIds,
+    trustPolicy,
+    audit,
   );
 }
 
@@ -390,6 +443,8 @@ async function persistEndpointInner(
   },
   endpoint: RemoteCapabilityEndpointConfig,
   allowedModuleIds?: string[],
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions,
+  audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
@@ -408,6 +463,14 @@ async function persistEndpointInner(
     endpoint.id,
     allowedModuleIds,
   );
+  const persistedTrustPolicy = mergePersistedTrustPolicies(
+    readPersistedTrustPolicies(
+      process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY ??
+        vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY,
+    ),
+    endpoint.id,
+    trustPolicy,
+  );
   const sanitizedEndpoints = endpoints.map(
     ({ token: _token, ...item }) => item,
   );
@@ -424,11 +487,108 @@ async function persistEndpointInner(
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
   }
+  if (Object.keys(persistedTrustPolicy).length > 0) {
+    await ctx.persistConfigEnv(
+      "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+      JSON.stringify(persistedTrustPolicy),
+    );
+    vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY =
+      JSON.stringify(persistedTrustPolicy);
+  } else {
+    delete vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
+  }
+  if (audit !== undefined) {
+    vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = JSON.stringify(
+      appendTrustAuditRecord(
+        readTrustAuditRecords(
+          process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT ??
+            vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+        ),
+        audit,
+      ),
+    );
+  }
   ctx.config.env = {
     ...env,
     vars,
   };
   ctx.saveConfig(ctx.config);
+}
+
+type CapabilityRouterTrustAuditInput = {
+  mode: string;
+  provider: string;
+  endpoint: RemoteCapabilityEndpointConfig;
+  allowedModuleIds?: string[];
+  sync: RemotePluginSyncResult;
+};
+
+type CapabilityRouterTrustAuditRecord = {
+  recordedAt: string;
+  mode: string;
+  provider: string;
+  endpoint: JsonObject;
+  allowedModuleIds: string[];
+  registered: string[];
+  skipped: string[];
+  unloaded: string[];
+  trustDecisions: RemotePluginSyncResult["trustDecisions"];
+};
+
+function readTrustAuditRecords(
+  value: string | undefined,
+): CapabilityRouterTrustAuditRecord[] {
+  if (!value?.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isTrustAuditRecord);
+  } catch {
+    return [];
+  }
+}
+
+function appendTrustAuditRecord(
+  existing: CapabilityRouterTrustAuditRecord[],
+  audit: CapabilityRouterTrustAuditInput,
+): CapabilityRouterTrustAuditRecord[] {
+  return [
+    ...existing,
+    {
+      recordedAt: new Date().toISOString(),
+      mode: audit.mode,
+      provider: audit.provider,
+      endpoint: redactEndpoint(audit.endpoint),
+      allowedModuleIds: normalizeStringList(audit.allowedModuleIds ?? []),
+      registered: audit.sync.registered.map((plugin) => plugin.name),
+      skipped: [...audit.sync.skipped],
+      unloaded: [...audit.sync.unloaded],
+      trustDecisions: audit.sync.trustDecisions.map((decision) => ({
+        ...decision,
+      })),
+    },
+  ].slice(-50);
+}
+
+function isTrustAuditRecord(
+  value: unknown,
+): value is CapabilityRouterTrustAuditRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.recordedAt === "string" &&
+    typeof record.mode === "string" &&
+    typeof record.provider === "string" &&
+    !!record.endpoint &&
+    typeof record.endpoint === "object" &&
+    Array.isArray(record.allowedModuleIds) &&
+    Array.isArray(record.registered) &&
+    Array.isArray(record.skipped) &&
+    Array.isArray(record.unloaded) &&
+    Array.isArray(record.trustDecisions)
+  );
 }
 
 function readPersistedModuleAllowlists(
@@ -466,6 +626,48 @@ function mergePersistedModuleAllowlists(
   }
   const normalized = normalizeStringList(allowedModuleIds);
   if (normalized.length === 0) {
+    delete next[endpointId];
+  } else {
+    next[endpointId] = normalized;
+  }
+  return next;
+}
+
+function readPersistedTrustPolicies(
+  value: string | undefined,
+): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
+  if (!value?.trim()) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const result: Record<string, RemoteCapabilityEndpointTrustPolicyOptions> =
+      {};
+    for (const [endpointId, candidate] of Object.entries(parsed)) {
+      if (!endpointId.trim()) continue;
+      const trustPolicy = parseOptionalEndpointTrustPolicy(
+        candidate,
+        `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY.${endpointId}`,
+      );
+      if (trustPolicy && Object.keys(trustPolicy).length > 0) {
+        result[endpointId.trim()] = trustPolicy;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function mergePersistedTrustPolicies(
+  existing: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>,
+  endpointId: string,
+  trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined,
+): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
+  const next = { ...existing };
+  const normalized = normalizeEndpointTrustPolicyOptions(trustPolicy);
+  if (Object.keys(normalized).length === 0) {
     delete next[endpointId];
   } else {
     next[endpointId] = normalized;
@@ -603,6 +805,10 @@ function parseCloudOptions(
     body.allowedModuleIds,
     "cloud.allowedModuleIds",
   );
+  const trustPolicy = parseOptionalEndpointTrustPolicy(
+    body.trustPolicy,
+    "cloud.trustPolicy",
+  );
   const endpointId = optionalNonEmptyString(
     body.endpointId,
     "cloud.endpointId",
@@ -623,6 +829,7 @@ function parseCloudOptions(
     ...(endpointId === undefined ? {} : { endpointId }),
     ...optionalToken(body.token, "cloud.token"),
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    ...(trustPolicy === undefined ? {} : { trustPolicy }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
@@ -711,6 +918,80 @@ function parseOptionalStringArray(
     throw new Error(`${field} must be an array of strings.`);
   }
   return normalizeStringList(value);
+}
+
+function parseOptionalEndpointTrustPolicy(
+  value: unknown,
+  field: string,
+): RemoteCapabilityEndpointTrustPolicyOptions | undefined {
+  if (value === undefined) return undefined;
+  const body = requireObject(value, field);
+  const allowedProvenanceIssuers = parseOptionalStringArray(
+    body.allowedProvenanceIssuers,
+    `${field}.allowedProvenanceIssuers`,
+  );
+  const trustedProvenancePublicKeys = parseOptionalStringRecord(
+    body.trustedProvenancePublicKeys,
+    `${field}.trustedProvenancePublicKeys`,
+  );
+  const trustPolicy = normalizeEndpointTrustPolicyOptions({
+    ...(allowedProvenanceIssuers === undefined
+      ? {}
+      : { allowedProvenanceIssuers }),
+    ...(trustedProvenancePublicKeys === undefined
+      ? {}
+      : { trustedProvenancePublicKeys }),
+    ...optionalBooleanField(
+      body.requireSignedProvenance,
+      `${field}.requireSignedProvenance`,
+      "requireSignedProvenance",
+    ),
+    ...optionalBooleanField(
+      body.requireVerifiedProvenance,
+      `${field}.requireVerifiedProvenance`,
+      "requireVerifiedProvenance",
+    ),
+    ...optionalBooleanField(
+      body.requireProvenanceDigestMatch,
+      `${field}.requireProvenanceDigestMatch`,
+      "requireProvenanceDigestMatch",
+    ),
+  });
+  return Object.keys(trustPolicy).length === 0 ? undefined : trustPolicy;
+}
+
+function optionalBooleanField<TKey extends keyof RemotePluginTrustPolicy>(
+  value: unknown,
+  field: string,
+  key: TKey,
+): Partial<Pick<RemotePluginTrustPolicy, TKey>> {
+  if (value === undefined) return {};
+  if (typeof value !== "boolean") {
+    throw new Error(`${field} must be a boolean.`);
+  }
+  return value
+    ? ({ [key]: true } as Partial<Pick<RemotePluginTrustPolicy, TKey>>)
+    : {};
+}
+
+function parseOptionalStringRecord(
+  value: unknown,
+  field: string,
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  const body = requireObject(value, field);
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(body)) {
+    if (typeof entry !== "string") {
+      throw new Error(`${field}.${key} must be a string.`);
+    }
+    const normalizedKey = key.trim();
+    const normalizedValue = entry.trim();
+    if (normalizedKey && normalizedValue) {
+      result[normalizedKey] = normalizedValue;
+    }
+  }
+  return result;
 }
 
 function normalizeStringList(values: string[]): string[] {

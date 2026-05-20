@@ -22,6 +22,34 @@ interface CapturedHandler {
   fn?: (sessionId: string, event: string, data: unknown) => void;
 }
 
+const stubbedGlobals = new Map<PropertyKey, unknown>();
+
+function stubGlobalValue(key: keyof typeof globalThis, value: unknown): void {
+  if (!stubbedGlobals.has(key)) {
+    stubbedGlobals.set(key, globalThis[key]);
+  }
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+function restoreStubbedGlobals(): void {
+  for (const [key, value] of stubbedGlobals.entries()) {
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  }
+  stubbedGlobals.clear();
+}
+
+function stubFetch(fetchMock: typeof fetch): void {
+  stubGlobalValue("fetch", fetchMock);
+}
+
 function makeAcpService(session: SessionInfo): {
   service: {
     onSessionEvent: ReturnType<typeof vi.fn>;
@@ -558,7 +586,7 @@ describe("SubAgentRouter", () => {
       if (origSettle === undefined)
         delete process.env.ELIZA_URL_VERIFY_SETTLE_MS;
       else process.env.ELIZA_URL_VERIFY_SETTLE_MS = origSettle;
-      vi.unstubAllGlobals();
+      restoreStubbedGlobals();
     });
 
     // A localhost port that reliably refuses — fast, no external network.
@@ -646,10 +674,7 @@ describe("SubAgentRouter", () => {
       // GET. 405 means the server responded — the URL exists — so it must
       // not be flagged dead and must not trigger a retry of a build that
       // actually succeeded.
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => new Response(null, { status: 405 })),
-      );
+      stubFetch(vi.fn(async () => new Response(null, { status: 405 })));
       session = sessionWithTask("build it at https://example.test/apps/x/");
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -688,7 +713,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask("build a counter");
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -720,7 +745,7 @@ describe("SubAgentRouter", () => {
           headers: { "content-type": "text/html" },
         });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build and verify ${appBase}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -744,8 +769,7 @@ describe("SubAgentRouter", () => {
 
     it("uses verified URLs instead of raw tool-only completion transcripts", async () => {
       const appBase = "https://example.test/apps/tool-only/";
-      vi.stubGlobal(
-        "fetch",
+      stubFetch(
         vi.fn(async () => {
           return new Response("<html><body>ok</body></html>", {
             status: 200,
@@ -864,7 +888,7 @@ describe("SubAgentRouter", () => {
             headers: { "content-type": "text/html" },
           });
         });
-        vi.stubGlobal("fetch", fetchMock);
+        stubFetch(fetchMock);
         session = {
           ...sessionWithTask(`build and verify ${appUrl}`, 2, {
             workdirRoute: {
@@ -920,7 +944,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(
         "build and verify https://nubilio.org/apps/asset-check/",
       );
@@ -969,7 +993,7 @@ describe("SubAgentRouter", () => {
           }
           return new Response("not found", { status: 404 });
         });
-        vi.stubGlobal("fetch", fetchMock);
+        stubFetch(fetchMock);
         session = {
           ...sessionWithTask(`build and verify ${publicUrl}`, undefined, {
             workdirRoute: {
@@ -1041,7 +1065,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build and verify ${appBase}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1084,7 +1108,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${assetUrl}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1128,7 +1152,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${assetUrl}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1171,7 +1195,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${staleUrl}`, 1, {
         cachedStaleMissUrls: [staleUrl],
       });

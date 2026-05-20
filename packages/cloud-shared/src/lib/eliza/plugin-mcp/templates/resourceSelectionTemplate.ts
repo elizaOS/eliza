@@ -5,7 +5,7 @@ export const resourceSelectionTemplate = `
 
 # Prompt
 
-You are an intelligent assistant helping select the right resource to address a user's request.
+Select the right resource to address the user's request.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST specify both a valid serverName AND uri from the list above

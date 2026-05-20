@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@feed/contracts": ["./src/index.ts"],
+      "@feed/contracts/*": ["./*"]
+    }
+  },
+  "include": ["src/**/*", "deployments/**/*.ts", "deployments/**/*.json"],
+  "exclude": ["node_modules", "dist", "out", "cache"]
+}

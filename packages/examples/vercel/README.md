@@ -47,7 +47,7 @@ Before deploying, test locally to verify everything works.
 #### Start Local Development Server
 
 ```bash
-cd examples/vercel
+cd packages/examples/vercel
 bun install
 vercel dev
 ```
@@ -169,7 +169,7 @@ Health check endpoint.
 Handlers live under `api/` as Vercel Edge routes. Local workflow:
 
 ```bash
-cd examples/vercel
+cd packages/examples/vercel
 bun install
 vercel dev
 ```

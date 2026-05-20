@@ -185,7 +185,7 @@ export interface CurrentViewState {
   viewId: string;
   viewPath: string | null;
   viewLabel: string;
-  viewType: "gui" | "tui";
+  viewType: "gui" | "tui" | "xr";
   action?: string;
   updatedAt: string;
 }

@@ -182,6 +182,7 @@ let DatabaseSyncCached: SqliteDatabaseCtor | null | undefined;
 
 function loadDatabaseSync(): SqliteDatabaseCtor | null {
 	if (DatabaseSyncCached !== undefined) return DatabaseSyncCached;
+	// Try Node.js ≥22.5 built-in first.
 	try {
 		const mod = requireFromHere("node:sqlite") as {
 			DatabaseSync?: SqliteDatabaseCtor;
@@ -189,6 +190,17 @@ function loadDatabaseSync(): SqliteDatabaseCtor | null {
 		DatabaseSyncCached = mod.DatabaseSync ?? null;
 	} catch {
 		DatabaseSyncCached = null;
+	}
+	// Fall back to Bun's native sqlite (exports Database, not DatabaseSync).
+	if (!DatabaseSyncCached) {
+		try {
+			const mod = requireFromHere("bun:sqlite") as {
+				Database?: SqliteDatabaseCtor;
+			};
+			DatabaseSyncCached = mod.Database ?? null;
+		} catch {
+			/* unavailable */
+		}
 	}
 	return DatabaseSyncCached;
 }

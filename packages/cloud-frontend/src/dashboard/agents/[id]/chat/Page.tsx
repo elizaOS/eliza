@@ -6,6 +6,7 @@ import {
 import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { openWebUIWithPairing } from "../../../../hooks/open-web-ui";
 import { ApiError } from "../../../../lib/api-client";
 import { useRequireAuth } from "../../../../lib/auth-hooks";
@@ -30,6 +31,7 @@ import { useAgent } from "../../../../lib/data/eliza-agents";
  * pairing flow, and a back-link to admin.
  */
 export default function AgentChatPage() {
+  const t = useT();
   const session = useRequireAuth();
   const { id } = useParams<{ id: string }>();
   const enabled = session.ready && session.authenticated;
@@ -41,9 +43,18 @@ export default function AgentChatPage() {
     return (
       <>
         <Helmet>
-          <title>{`Chat ${titleId} — Agent`}</title>
+          <title>
+            {t("cloud.agents.chat.metaTitleLoading", {
+              defaultValue: "Chat {{id}} — Agent",
+              id: titleId,
+            })}
+          </title>
         </Helmet>
-        <DashboardLoadingState label="Loading agent" />
+        <DashboardLoadingState
+          label={t("cloud.agents.chat.loading", {
+            defaultValue: "Loading agent",
+          })}
+        />
       </>
     );
   }
@@ -55,7 +66,9 @@ export default function AgentChatPage() {
     const msg =
       query.error instanceof Error
         ? query.error.message
-        : "Failed to load agent";
+        : t("cloud.agents.chat.errorFailedLoad", {
+            defaultValue: "Failed to load agent",
+          });
     return <DashboardErrorState message={msg} />;
   }
 
@@ -68,7 +81,12 @@ export default function AgentChatPage() {
   return (
     <>
       <Helmet>
-        <title>{`Chat — ${agent.agentName ?? titleId}`}</title>
+        <title>
+          {t("cloud.agents.chat.metaTitle", {
+            defaultValue: "Chat — {{name}}",
+            name: agent.agentName ?? titleId,
+          })}
+        </title>
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>
       <div className="max-w-3xl mx-auto space-y-6">
@@ -79,7 +97,11 @@ export default function AgentChatPage() {
           <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[#FF5800]/40 transition-colors">
             <ArrowLeft className="h-3.5 w-3.5" />
           </div>
-          <span>Back to agent</span>
+          <span>
+            {t("cloud.agents.chat.backToAgent", {
+              defaultValue: "Back to agent",
+            })}
+          </span>
         </Link>
 
         <div className="space-y-4">
@@ -92,7 +114,14 @@ export default function AgentChatPage() {
                 className="text-xl font-semibold text-white truncate"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
               >
-                Chat — {agent.agentName ?? "Unnamed Agent"}
+                {t("cloud.agents.chat.titleWithName", {
+                  defaultValue: "Chat — {{name}}",
+                  name:
+                    agent.agentName ??
+                    t("cloud.agents.detail.unnamedAgent", {
+                      defaultValue: "Unnamed Agent",
+                    }),
+                })}
               </h1>
               <p className="text-xs text-white/40 font-mono">{agent.id}</p>
             </div>
@@ -102,22 +131,33 @@ export default function AgentChatPage() {
         <div className="border border-white/10 bg-black p-6 space-y-4">
           {!isRunning && (
             <div className="border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-200/80">
-              This agent is <span className="font-mono">{agent.status}</span>.
-              Start the agent before chatting.
+              {t("cloud.agents.chat.agentIsStatus", {
+                defaultValue: "This agent is",
+              })}{" "}
+              <span className="font-mono">{agent.status}</span>.{" "}
+              {t("cloud.agents.chat.startBeforeChat", {
+                defaultValue: "Start the agent before chatting.",
+              })}
             </div>
           )}
 
           <div className="space-y-2">
             <p className="text-sm text-white/80">
-              In-cloud chat for sandbox agents is not yet wired up. The
-              container exposes its own chat UI via a pairing token — open it
-              below.
+              {t("cloud.agents.chat.notWiredUp", {
+                defaultValue:
+                  "In-cloud chat for sandbox agents is not yet wired up. The container exposes its own chat UI via a pairing token — open it below.",
+              })}
             </p>
             <p className="text-xs text-white/40">
-              Cloud-streamed chat for containers is tracked under
-              <span className="font-mono"> eliza-cloud-chat-backend</span>: it
-              needs a container-side chat endpoint plus a container-scoped chat
-              store before this page can render an inline chat interface.
+              {t("cloud.agents.chat.trackingNote", {
+                defaultValue:
+                  "Cloud-streamed chat for containers is tracked under",
+              })}
+              <span className="font-mono"> eliza-cloud-chat-backend</span>
+              {t("cloud.agents.chat.trackingNote2", {
+                defaultValue:
+                  ": it needs a container-side chat endpoint plus a container-scoped chat store before this page can render an inline chat interface.",
+              })}
             </p>
           </div>
 
@@ -129,14 +169,18 @@ export default function AgentChatPage() {
                 onClick={() => openWebUIWithPairing(agent.id)}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                Open agent web UI
+                {t("cloud.agents.chat.openWebUi", {
+                  defaultValue: "Open agent web UI",
+                })}
               </BrandButton>
             )}
             <Link
               to={`/dashboard/agents/${agent.id}`}
               className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-white/15 bg-black text-white/80 hover:bg-white/5 transition-colors"
             >
-              View agent admin
+              {t("cloud.agents.chat.viewAdmin", {
+                defaultValue: "View agent admin",
+              })}
             </Link>
           </div>
         </div>

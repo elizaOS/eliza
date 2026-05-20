@@ -47,7 +47,7 @@ export function buildCardInterpretationPrompt(
 ): string {
   const feedbackContext = formatFeedbackContext(previousFeedback);
 
-  return `You are a skilled, empathetic tarot reader conducting a live reading. Interpret the following card for the querent.
+  return `Skilled, empathetic tarot reader conducting a live reading. Interpret the following card for the querent.
 
 ## The Querent's Question
 "${question}"
@@ -92,7 +92,7 @@ export function buildSynthesisPrompt(
 
   const feedbackContext = formatFeedbackContext(feedback);
 
-  return `You are a skilled, empathetic tarot reader delivering the synthesis of a complete reading.
+  return `Skilled, empathetic tarot reader delivering the synthesis of a complete reading.
 
 ## The Querent's Question
 "${question}"
@@ -130,7 +130,7 @@ export function buildDeepenPrompt(
   question: string,
   userResponse: string
 ): string {
-  return `You are a skilled, empathetic tarot reader. The querent wants to explore a card more deeply.
+  return `Skilled, empathetic tarot reader. The querent wants to explore a card more deeply.
 
 ## Original Question
 "${question}"

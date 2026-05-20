@@ -1681,6 +1681,114 @@ function currentMessageContentForContext(message: Memory): Memory["content"] {
 	};
 }
 
+function readMessageContentString(
+	message: Memory,
+	key: string,
+): string | undefined {
+	const content = message.content;
+	if (!content || typeof content !== "object") return undefined;
+	const value = (content as Record<string, unknown>)[key];
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+type PlatformReplyReference = {
+	text: string;
+	sender?: string;
+	externalId?: string;
+};
+
+const PLATFORM_REPLY_REFERENCE_START = "[platform_reply_reference]";
+const PLATFORM_REPLY_REFERENCE_END = "[/platform_reply_reference]";
+
+function valueAfterPrefix(line: string, prefix: string): string | undefined {
+	if (!line.startsWith(prefix)) return undefined;
+	const value = line.slice(prefix.length).trim();
+	return value.length > 0 ? value : undefined;
+}
+
+function parsePlatformReplyReferenceBlock(
+	text: string | undefined,
+): PlatformReplyReference | null {
+	if (!text) return null;
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	let start = -1;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (lines[index]?.trim() === PLATFORM_REPLY_REFERENCE_START) {
+			start = index;
+			break;
+		}
+	}
+	if (start === -1) return null;
+	const end = lines.findIndex(
+		(line, index) =>
+			index > start && line.trim() === PLATFORM_REPLY_REFERENCE_END,
+	);
+	if (end === -1) return null;
+
+	const body = lines.slice(start + 1, end);
+	const textIndex = body.findIndex((line) => line.trim() === "text:");
+	if (textIndex === -1) return null;
+
+	let sender: string | undefined;
+	let externalId: string | undefined;
+	for (const line of body.slice(0, textIndex)) {
+		const trimmed = line.trim();
+		sender ??= valueAfterPrefix(trimmed, "author:");
+		externalId ??= valueAfterPrefix(trimmed, "message_id:");
+	}
+
+	const referenceText = body
+		.slice(textIndex + 1)
+		.join("\n")
+		.trim();
+	return referenceText ? { text: referenceText, sender, externalId } : null;
+}
+
+function replyReferenceForContext(
+	message: Memory,
+): PlatformReplyReference | null {
+	const explicitText = readMessageContentString(message, "replyToMessageText");
+	if (explicitText) {
+		return {
+			text: explicitText,
+			sender: readMessageContentString(message, "replyToSenderName"),
+			externalId: readMessageContentString(message, "replyToExternalMessageId"),
+		};
+	}
+
+	const content = message.content;
+	return parsePlatformReplyReferenceBlock(
+		content && typeof content === "object" && typeof content.text === "string"
+			? content.text
+			: undefined,
+	);
+}
+
+function replyReferenceEventForContext(message: Memory): ContextEvent | null {
+	const reference = replyReferenceForContext(message);
+	if (!reference) return null;
+	const header = reference.sender
+		? `${reference.sender}: ${reference.text}`
+		: reference.text;
+	const externalId = reference.externalId;
+	const id = `reply-reference:${message.id ?? externalId ?? "current"}`;
+	return {
+		id,
+		type: "segment",
+		source: message.content.source ?? "platform",
+		segment: {
+			id,
+			label: "reply_reference",
+			content: externalId
+				? `${header}\n(platform message id: ${externalId})`
+				: header,
+			stable: false,
+		},
+	};
+}
+
 function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
@@ -2240,8 +2348,13 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
+			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
 	});
+
+	const replyReferenceEvent = replyReferenceEventForContext(args.message);
+	if (replyReferenceEvent) {
+		events.push(replyReferenceEvent);
+	}
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2422,13 +2535,21 @@ function availableAttachmentCount(message: Memory, state: State): number {
 	return ids.size;
 }
 
-function latestPriorUserText(state: State): string {
+function latestPriorUserText(
+	state: State,
+	runtimeAgentId: string | undefined,
+): string {
 	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
 	const recentMessages = Array.isArray(recentData?.recentMessages)
 		? (recentData.recentMessages as Memory[])
 		: [];
 	const latest = [...recentMessages]
-		.filter((memory) => memory.entityId !== memory.agentId)
+		.filter((memory) => {
+			if (runtimeAgentId && memory.entityId === runtimeAgentId) {
+				return false;
+			}
+			return memory.entityId !== memory.agentId;
+		})
 		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
 		.at(-1);
 	return typeof latest?.content?.text === "string" ? latest.content.text : "";
@@ -2445,6 +2566,7 @@ const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
 function looksLikeAttachmentInspectionRequest(
 	message: Memory,
 	state: State,
+	runtimeAgentId: string | undefined,
 ): boolean {
 	if (availableAttachmentCount(message, state) === 0) return false;
 	const text =
@@ -2456,7 +2578,7 @@ function looksLikeAttachmentInspectionRequest(
 	if (VISUAL_INSPECTION_RE.test(text)) {
 		return true;
 	}
-	const priorText = latestPriorUserText(state);
+	const priorText = latestPriorUserText(state, runtimeAgentId);
 	return (
 		ATTACHMENT_NOUN_RE.test(priorText) &&
 		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
@@ -2491,8 +2613,8 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			description:
 				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
 			priority: 10,
-			shouldRun: ({ message, state }) =>
-				looksLikeAttachmentInspectionRequest(message, state),
+			shouldRun: ({ runtime, message, state }) =>
+				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
 			evaluate: () => ({
 				requiresTool: true,
 				addContexts: ["media", "messaging"],
@@ -2727,27 +2849,23 @@ function formatRoleGateForPrompt(
 }
 
 /**
- * The Stage-1 `messageHandlerTemplate` covers three optimized-prompt tasks:
+ * The Stage-1 `messageHandlerTemplate` covers two optimized-prompt tasks:
  *
- *   - `context_routing` — when the role-filtered context catalog is non-empty
- *     the prompt asks the model to pick which contexts to consume. Optimizing
- *     this task tunes the routing instructions.
- *   - `should_respond` — when no contexts are available (direct messages, or
- *     callers that haven't registered any) the prompt collapses to a respond
- *     /ignore decision. Optimizing this task tunes that classifier.
+ *   - `should_respond` — the prompt asks the model to decide whether to
+ *     respond or ignore the message. Optimizing this task tunes the classifier.
  *   - `response` — Stage-1 also emits the assistant's draft reply when it
  *     decides to respond, so a separately-trained `response` artifact
  *     replaces the same baseline when present and the operator wants that
  *     variant active.
- *
- * The dispatch here is keyed on call-site state (whether contexts are
- * available), not on an `if (task === 'X')` branch — we ask the resolver for
- * one task name per call.
  */
 function selectMessageHandlerTask(
-	availableContexts: readonly ContextDefinition[],
+	_availableContexts: readonly ContextDefinition[],
 ): OptimizedPromptTask {
-	return availableContexts.length > 0 ? "context_routing" : "should_respond";
+	// context_routing was retired (inferContextRoutingFromText is pure regex,
+	// no LLM call to optimize); the message-handler template falls back to the
+	// should_respond task for both the contexts-available and contexts-empty
+	// callers.
+	return "should_respond";
 }
 
 function renderMessageHandlerInstructions(

@@ -40,10 +40,10 @@ _TAU_RETAIL_TOOL_NUDGE = (
     "item_ids yourself, then ask for explicit yes confirmation before calling "
     "exchange_delivered_order_items. If a price difference needs a payment "
     "method and the original payment method is available in the order, ask to "
-    "confirm using that original payment method. In the bundled smoke task, "
-    "if the customer repeats the requested exchange details or says to use the "
-    "details from the request after you present the exact exchange plan, treat "
-    "that as confirmation and submit the exchange."
+    "confirm using that original payment method. If the customer repeats the "
+    "requested exchange details or says to use the details from the request "
+    "after you present the exact exchange plan, treat that as confirmation and "
+    "submit the exchange."
 )
 
 

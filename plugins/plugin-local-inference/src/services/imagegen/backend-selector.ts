@@ -62,6 +62,19 @@ export interface ImageGenRuntimeProfile {
 		cudaCapable?: boolean;
 	};
 	/**
+	 * Explicit accelerator requirement for release verification and operator
+	 * smoke tests. When set, the selector returns only backends that can
+	 * satisfy that accelerator, so CUDA/Vulkan evidence cannot be produced by
+	 * silently falling through to CPU.
+	 */
+	requiredAccelerator?:
+		| "cpu"
+		| "cuda"
+		| "vulkan"
+		| "metal"
+		| "coreml"
+		| "tensorrt";
+	/**
 	 * True when running inside the iOS Capacitor shell. We can't infer
 	 * from `process.platform` alone because Capacitor reports `"ios"`
 	 * but Node's typings only know `darwin`/`linux`/etc.
@@ -97,6 +110,24 @@ export interface ImageGenBackendChoice {
 export function selectImageGenBackends(
 	profile: ImageGenRuntimeProfile,
 ): readonly ImageGenBackendChoice[] {
+	if (profile.requiredAccelerator) {
+		switch (profile.requiredAccelerator) {
+			case "coreml":
+				return [{ backendId: "coreml", accelerator: "coreml" }];
+			case "tensorrt":
+				return [{ backendId: "tensorrt", accelerator: "tensorrt" }];
+			case "metal":
+				return profile.platform === "darwin" && profile.arch === "arm64"
+					? [{ backendId: "mflux", accelerator: "metal" }]
+					: [{ backendId: "sd-cpp", accelerator: "metal" }];
+			case "cuda":
+				return [{ backendId: "sd-cpp", accelerator: "cuda" }];
+			case "vulkan":
+				return [{ backendId: "sd-cpp", accelerator: "vulkan" }];
+			case "cpu":
+				return [{ backendId: "sd-cpp", accelerator: "cpu" }];
+		}
+	}
 	if (profile.isIos) {
 		// iOS Capacitor: Core ML only. No fallback — sd-cpp is not
 		// shipped on iOS and falling back to nothing surfaces a clean

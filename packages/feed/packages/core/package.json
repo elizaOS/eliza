@@ -1,0 +1,68 @@
+{
+  "name": "@feed/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Feed core domain modules (markets, storage, etc.)",
+  "main": "./markets/index.ts",
+  "types": "./markets/index.ts",
+  "exports": {
+    ".": {
+      "types": "./markets/index.ts",
+      "import": "./markets/index.ts",
+      "require": "./markets/index.ts"
+    },
+    "./markets/perps": {
+      "types": "./markets/perps/index.ts",
+      "import": "./markets/perps/index.ts",
+      "require": "./markets/perps/index.ts"
+    },
+    "./markets/perps/client": {
+      "types": "./markets/perps/client.ts",
+      "import": "./markets/perps/client.ts",
+      "require": "./markets/perps/client.ts"
+    },
+    "./markets/perps/utils": {
+      "types": "./markets/perps/utils.ts",
+      "import": "./markets/perps/utils.ts",
+      "require": "./markets/perps/utils.ts"
+    },
+    "./markets/prediction": {
+      "types": "./markets/prediction/index.ts",
+      "import": "./markets/prediction/index.ts",
+      "require": "./markets/prediction/index.ts"
+    },
+    "./markets/prediction/client": {
+      "types": "./markets/prediction/client.ts",
+      "import": "./markets/prediction/client.ts",
+      "require": "./markets/prediction/client.ts"
+    },
+    "./markets/prediction/pricing": {
+      "types": "./markets/prediction/pricing.ts",
+      "import": "./markets/prediction/pricing.ts",
+      "require": "./markets/prediction/pricing.ts"
+    },
+    "./markets/shared": {
+      "types": "./markets/shared/index.ts",
+      "import": "./markets/shared/index.ts",
+      "require": "./markets/shared/index.ts"
+    },
+    "./storage": {
+      "types": "./storage/index.ts",
+      "import": "./storage/index.ts",
+      "require": "./storage/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "echo skip (feed) >&2",
+    "typecheck": "echo skip (feed) >&2"
+  },
+  "dependencies": {
+    "@feed/shared": "workspace:*",
+    "@feed/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "bun-types": "^1.3.2",
+    "typescript": "^5.9.3"
+  }
+}

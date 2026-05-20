@@ -1,11 +1,14 @@
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
+import { creditTransactionsRepository } from "../../../db/repositories/credit-transactions";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import { logger } from "../../utils/logger";
+import { creditsService } from "../credits";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { provisioningJobService } from "../provisioning-jobs";
 
 const DEFAULT_AGENT_NAME = "Eliza";
 const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";
+const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 export interface ElizaAppProvisioningStatus {
   status: string;
@@ -49,10 +52,36 @@ export async function getElizaAppProvisioningStatus(
   return toElizaAppProvisioningStatus(sandboxes[0]);
 }
 
+async function ensureElizaAppStarterCredits(params: {
+  organizationId: string;
+  userId: string;
+}): Promise<void> {
+  if (ELIZA_APP_INITIAL_CREDITS <= 0) return;
+
+  const hasStarterCredits = await creditTransactionsRepository.hasElizaAppInitialFreeCredits(
+    params.organizationId,
+  );
+  if (hasStarterCredits) return;
+
+  await creditsService.addCredits({
+    organizationId: params.organizationId,
+    amount: ELIZA_APP_INITIAL_CREDITS,
+    description: "Eliza App - Welcome bonus",
+    metadata: {
+      type: "initial_free_credits",
+      source: "eliza-app-onboarding",
+      userId: params.userId,
+    },
+    stripePaymentIntentId: `eliza-app-initial-free-credits:${params.organizationId}`,
+  });
+}
+
 export async function ensureElizaAppProvisioning(params: {
   organizationId: string;
   userId: string;
 }): Promise<ElizaAppProvisioningStatus> {
+  await ensureElizaAppStarterCredits(params);
+
   const existing = await getElizaAppProvisioningStatus(params.organizationId);
   if (existing.sandbox) {
     return existing;

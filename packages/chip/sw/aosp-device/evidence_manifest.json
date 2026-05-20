@@ -10,7 +10,9 @@
     "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
     "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
     "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
+    "docs/evidence/android/cuttlefish_riscv64_boot.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log"
   ],
@@ -20,12 +22,6 @@
     "artifact_manifest": "docs/android/bsp-artifact-manifest.json"
   },
   "backward_compatible_aliases": [
-    {
-      "alias_path": "docs/evidence/android/cuttlefish_riscv64_boot.log",
-      "current_gate_path": "docs/evidence/android/cuttlefish_riscv64_smoke.log",
-      "producer": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot",
-      "status": "legacy_alias_not_full_gate"
-    },
     {
       "alias_path": "docs/evidence/android/cts_virtual_device_subset.log",
       "current_gate_path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
@@ -61,7 +57,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-      "claim": "Eliza vendor image builds in an external AOSP checkout",
+      "claim": "OpenAgent vendor image builds in an external AOSP checkout",
       "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -72,7 +68,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-      "claim": "Eliza VINTF packaging validates in an external AOSP checkout",
+      "claim": "OpenAgent VINTF packaging validates in an external AOSP checkout",
       "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -82,7 +78,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-      "claim": "Eliza vendor SELinux policy builds in an external AOSP checkout",
+      "claim": "OpenAgent vendor SELinux policy builds in an external AOSP checkout",
       "capture_command": "m vendor_sepolicy.cil selinux_policy",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -91,7 +87,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-      "claim": "Eliza SELinux neverallow checks complete in an external AOSP checkout",
+      "claim": "OpenAgent SELinux neverallow checks complete in an external AOSP checkout",
       "capture_command": "m sepolicy_neverallows",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -122,6 +118,20 @@
       ]
     },
     {
+      "path": "docs/evidence/android/cuttlefish_riscv64_boot.log",
+      "claim": "Cuttlefish riscv64 launched, reached sys.boot_completed=1, and produced canonical boot markers; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full",
+      "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
+      "external_artifacts": [
+        "out/target/product/vsoc_riscv64/system.img",
+        "out/target/product/vsoc_riscv64/vendor.img",
+        "out/host/linux-x86/bin/launch_cvd",
+        "~/cuttlefish_runtime/kernel.log",
+        "~/cuttlefish_runtime/launcher.log"
+      ]
+    },
+    {
       "path": "docs/evidence/android/qemu_riscv64_smoke.log",
       "claim": "Reference-only QEMU riscv64 smoke ran with AOSP-built artifacts; this is not e1-chip/AP or Android compatibility evidence",
       "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
@@ -133,8 +143,19 @@
       ]
     },
     {
+      "path": "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
+      "claim": "Cuttlefish riscv64 booted, the e1_npu simulator HAL service registered, and lshal reported vendor.eliza.e1_npu@1.0::IE1Npu/default as available",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "Cuttlefish instance adb transport",
+        "/vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim"
+      ]
+    },
+    {
       "path": "docs/evidence/android/renode_e1_soc_smoke.log",
-      "claim": "Reference-only Renode smoke ran against the Eliza model; this is not Android compatibility evidence or a silicon boot claim",
+      "claim": "Reference-only Renode smoke ran against the OpenAgent model; this is not Android compatibility evidence or a silicon boot claim",
       "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
       "capture_command": "renode sim/renode/eliza_e1.resc with Android-capable firmware/kernel handoff when available",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
@@ -151,6 +172,7 @@
     "SELinux policy build transcript is archived",
     "SELinux neverallow transcript is archived",
     "CTS/VTS scope-intake transcript is archived without a compatibility claim",
-    "Cuttlefish, QEMU, and Renode virtual-device smoke transcripts are archived without Android boot or compatibility claims"
+    "Cuttlefish, QEMU, and Renode virtual-device smoke transcripts are archived without Android boot or compatibility claims",
+    "Cuttlefish HAL registration smoke transcript records vendor.eliza.e1_npu@1.0::IE1Npu/default as INTERFACE_AVAILABLE"
   ]
 }

@@ -19,6 +19,17 @@ import type { ComponentType } from "react";
 type EmptyComponent = ComponentType<Record<string, never>>;
 
 declare module "@elizaos/app-core" {
+  export const AppWindowRenderer: ComponentType<{ slug: string }>;
+  export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
+    id: string;
+    label: string;
+  }>;
+  export const DesktopSurfaceNavigationRuntime: ComponentType<
+    Record<string, never>
+  >;
+  export const DesktopTrayRuntime: ComponentType<Record<string, never>>;
+  export const DetachedShellRoot: ComponentType<{ route: unknown }>;
+
   export interface BuildOnboardingConnectionArgs {
     onboardingServerTarget?:
       | ""

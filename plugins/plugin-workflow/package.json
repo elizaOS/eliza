@@ -34,7 +34,7 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --noCheck -p tsconfig.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",

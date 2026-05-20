@@ -15,17 +15,36 @@ def logical_name(name: str) -> str:
     return match.group(1) if match else name
 
 
+_POWER_PIN_GUARDS = {"USE_POWER_PINS"}
+
+
 def parse_ports(path: Path) -> set[str]:
     text = path.read_text()
     module = re.search(r"module\s+e1_chip_top\s*\((.*?)\);", text, re.S)
     if not module:
         raise SystemExit("e1_chip_top module header not found")
     ports: set[str] = set()
+    skipping: list[str] = []
     for raw in module.group(1).splitlines():
-        raw = raw.split("//", 1)[0].strip().rstrip(",")
-        if not raw:
+        line = raw.split("//", 1)[0].strip().rstrip(",")
+        if not line:
             continue
-        ports.add(raw.split()[-1].split("[", 1)[0])
+        # Skip Verilog preprocessor directives and macros guarded by
+        # USE_POWER_PINS — VPWR/VGND belong to the PDN, not the functional
+        # board-side pinout.
+        if line.startswith("`"):
+            tokens = line.split()
+            directive = tokens[0]
+            if directive in {"`ifdef", "`ifndef"}:
+                macro = tokens[1] if len(tokens) > 1 else ""
+                skipping.append(macro)
+            elif directive == "`endif":
+                if skipping:
+                    skipping.pop()
+            continue
+        if any(guard in _POWER_PIN_GUARDS for guard in skipping):
+            continue
+        ports.add(line.split()[-1].split("[", 1)[0])
     return ports
 
 

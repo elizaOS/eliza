@@ -1,7 +1,7 @@
 /**
  * Per-task wiring tests for `OptimizedPromptService` + the runtime-aware
- * resolver. Each of the five core tasks (should_respond, context_routing,
- * action_planner, response, media_description) has a matrix entry covering:
+ * resolver. Each core task (should_respond, action_planner, response,
+ * media_description, action_descriptions, autonomy) has a matrix entry covering:
  *
  *   1. artifact present  → optimized prompt injected
  *   2. artifact absent   → baseline returned unchanged
@@ -101,12 +101,12 @@ describe("parseDisabledTasksEnv", () => {
 
 	test("parses comma-separated task names with whitespace tolerance", () => {
 		const parsed = parseDisabledTasksEnv(
-			"should_respond, response ,context_routing",
+			"should_respond, response ,action_planner",
 		);
 		expect(parsed.has("should_respond")).toBe(true);
 		expect(parsed.has("response")).toBe(true);
-		expect(parsed.has("context_routing")).toBe(true);
-		expect(parsed.has("action_planner")).toBe(false);
+		expect(parsed.has("action_planner")).toBe(true);
+		expect(parsed.has("media_description")).toBe(false);
 	});
 
 	test("silently drops unknown task names", () => {
@@ -163,7 +163,6 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		optimizedPrompt: string;
 	}> = [
 		{ task: "should_respond", optimizedPrompt: "OPT_SHOULD_RESPOND" },
-		{ task: "context_routing", optimizedPrompt: "OPT_CONTEXT_ROUTING" },
 		{ task: "action_planner", optimizedPrompt: "OPT_ACTION_PLANNER" },
 		{ task: "response", optimizedPrompt: "OPT_RESPONSE" },
 		{ task: "media_description", optimizedPrompt: "OPT_MEDIA_DESCRIPTION" },
@@ -171,6 +170,7 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 			task: "action_descriptions",
 			optimizedPrompt: "OPT_ACTION_DESCRIPTIONS",
 		},
+		{ task: "autonomy", optimizedPrompt: "OPT_AUTONOMY" },
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {

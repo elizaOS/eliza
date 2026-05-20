@@ -1,0 +1,130 @@
+# Eliza-1 RL Environment Configuration for Atropos
+# Continuous RL training over eliza-native trajectory rows.
+# Real model: elizaos/eliza-1-2b
+# Eval judge: cerebras/gpt-oss-120b
+# Testing harness: nebius
+
+env:
+  # Tokenizer for the training model
+  tokenizer_name: "elizaos/eliza-1-2b"
+
+  # Group size for GRPO (number of trajectories compared at once)
+  group_size: 4
+
+  # Experiment tracking (disabled by default)
+  use_wandb: false
+  wandb_name: "eliza-1-rl"
+
+  # Worker settings
+  max_num_workers: 64
+  max_num_workers_per_node: 8
+  max_eval_workers: 16
+
+  # Atropos API server
+  rollout_server_url: "http://localhost:8000"
+
+  # Training steps and batching
+  total_steps: 10000
+  batch_size: 16
+  steps_per_eval: 500
+  max_batches_offpolicy: 3
+
+  # Sequence length
+  max_token_length: 4096
+
+  # Evaluation handling
+  eval_handling: "LIMIT_TRAIN"
+  eval_limit_ratio: 0.1
+
+  # Data saving (for debugging)
+  data_path_to_save_groups: null
+
+  # Ensure score variance
+  ensure_scores_are_not_same: true
+
+  # Include messages in output
+  include_messages: true
+
+  # Continuous RL data source: on-disk JSONL exports from the
+  # eliza native trajectory writer. Override with $ELIZA_STATE_DIR.
+  trajectory_source: "jsonl"
+  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/trajectories"
+
+  # Trajectory loading settings
+  lookback_hours: 72
+  min_actions_per_trajectory: 3
+  max_steps_per_trajectory: 20
+
+  # LLM Judge for RLAIF — Cerebras gpt-oss-120b via OpenAI-compatible endpoint
+  judge_model: "cerebras/gpt-oss-120b"
+  judge_temperature: 0.3
+  judge_max_tokens: 2000
+
+  scoring_rubric: |
+    You are evaluating Eliza-1 agent performance on user-facing trajectories.
+
+    SCORING CRITERIA (0.0 to 1.0):
+    - Task completion: Did the agent accomplish what the user asked?
+    - Tool / action correctness: Were tool calls well-formed and apt?
+    - Reasoning quality: Did the model think before acting, without slop?
+    - Efficiency: Fewer turns is better when the task allows it.
+
+    SCORING GUIDELINES:
+    - 0.8-1.0: Excellent — task complete, clean tools, no slop
+    - 0.6-0.8: Good — task complete with minor issues
+    - 0.4-0.6: Mixed — partial completion or noisy tool use
+    - 0.2-0.4: Below average — significant errors
+    - 0.0-0.2: Failed task or malformed output
+
+    Compare trajectories RELATIVE to each other within this group.
+
+# ---------------------------------------------------------------------------
+# Optimizer: APOLLO (low-rank, memory-efficient — always use over AdamW)
+# ---------------------------------------------------------------------------
+optimizer: "apollo"
+apollo_rank: 128
+apollo_scale: 32.0
+apollo_update_proj_gap: 200
+
+# ---------------------------------------------------------------------------
+# Kondo Gate: selective backward passes (saves ~30-70% compute)
+# ---------------------------------------------------------------------------
+use_kondo: true
+kondo_gate_rate: 0.3
+kondo_temperature: 0.1
+kondo_hard: true
+kondo_deterministic: true
+kondo_warmup_steps: 500
+
+# ---------------------------------------------------------------------------
+# TurboQuant: quantized KV cache (saves ~60% KV memory during training)
+# ---------------------------------------------------------------------------
+use_turboquant: true
+turboquant_key_bits: 3.5
+turboquant_value_bits: 3.5
+turboquant_residual_length: 128
+
+# Inference endpoint for rollouts.
+# Production testing harness is Nebius (OpenAI-compatible).
+inference:
+  endpoint: "nebius"
+  base_url: "${NEBIUS_BASE_URL:-https://api.studio.nebius.ai/v1}"
+  api_key: "${NEBIUS_API_KEY}"
+  model_name: "elizaos/eliza-1-2b"
+  num_requests_for_eval: 64
+
+# Learning rate and gradient settings
+learning_rate: 5e-6
+warmup_steps: 100
+max_grad_norm: 0.5
+
+# Checkpointing
+save_every_steps: 500
+eval_on_save: true
+
+# Server manager settings
+slurm: false
+testing: false
+
+# Curriculum state — written to user state dir, NOT the repo.
+curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/training/curriculum_state.json"

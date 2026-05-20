@@ -489,6 +489,49 @@ describe("remote capability endpoint conformance", () => {
     );
   });
 
+  it("fails when remote route conformance does not return a body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 204,
+        headers: { "x-capability-fixture": "yes" },
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
+  it("fails when remote route conformance returns an empty body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 200,
+        headers: { "x-capability-fixture": "yes" },
+        body: {},
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
   it.each([
     [
       "plugin.action.invoke",
@@ -502,12 +545,7 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty provider result.',
     ],
-    [
-      "plugin.model.invoke",
-      "model",
-      {},
-      "result is required.",
-    ],
+    ["plugin.model.invoke", "model", {}, "result is required."],
     [
       "plugin.lifecycle.call",
       "lifecycle",
@@ -532,22 +570,19 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty app bridge result.',
     ],
-  ] as const)(
-    "fails when %s returns weak conformance evidence",
-    async (method, surface, result, message) => {
-      installMinimalFixtureFetch({ [method]: result });
+  ] as const)("fails when %s returns weak conformance evidence", async (method, surface, result, message) => {
+    installMinimalFixtureFetch({ [method]: result });
 
-      await expect(
-        assertRemoteCapabilityEndpointConformance({
-          endpoint: {
-            id: "remote-endpoint",
-            baseUrl: "https://remote.example.test",
-          },
-          requiredSurfaces: [surface],
-        }),
-      ).rejects.toThrow(message);
-    },
-  );
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: [surface],
+      }),
+    ).rejects.toThrow(message);
+  });
 
   it.each([
     [
@@ -574,22 +609,19 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty response-handler field evaluator handle result.',
     ],
-  ] as const)(
-    "fails when %s returns weak staged conformance evidence",
-    async (method, surface, result, message) => {
-      installMinimalFixtureFetch({ [method]: result });
+  ] as const)("fails when %s returns weak staged conformance evidence", async (method, surface, result, message) => {
+    installMinimalFixtureFetch({ [method]: result });
 
-      await expect(
-        assertRemoteCapabilityEndpointConformance({
-          endpoint: {
-            id: "remote-endpoint",
-            baseUrl: "https://remote.example.test",
-          },
-          requiredSurfaces: [surface],
-        }),
-      ).rejects.toThrow(message);
-    },
-  );
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: [surface],
+      }),
+    ).rejects.toThrow(message);
+  });
 
   it("fails when remote view conformance returns a non-JavaScript asset", async () => {
     installMinimalFixtureFetch({
@@ -812,7 +844,9 @@ function installMinimalFixtureFetch(
       return jsonResponse({
         ok: true,
         result: {
-          modules: options.modules ?? [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
+          modules: options.modules ?? [
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+          ],
         },
       });
     }

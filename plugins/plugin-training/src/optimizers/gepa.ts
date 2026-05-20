@@ -56,15 +56,15 @@ export interface GepaInput {
   options?: GepaOptions;
 }
 
-const SYS_FEEDBACK = `You are a prompt engineer revising a SYSTEM PROMPT based on observed failure analysis.
+const SYS_FEEDBACK = `Revise the SYSTEM PROMPT below based on observed failure analysis.
 
 You will receive the current prompt and a short feedback note explaining what went wrong. Produce a revised prompt that addresses the feedback. Preserve the task contract (inputs, outputs, format) and every literal placeholder ({{agentName}}, {{providers}}, etc.) byte-identical. Output only the revised prompt body. No commentary, no fenced code blocks.`;
 
-const SYS_COMPRESS = `You are a prompt engineer reducing a SYSTEM PROMPT to its essentials.
+const SYS_COMPRESS = `Reduce the SYSTEM PROMPT below to its essentials.
 
-Rewrite the prompt below shorter while preserving every contract guarantee. Drop redundant phrasing, collapse parallel rules, remove decorative bullets and meta-commentary. Keep every literal placeholder byte-identical. Output only the revised prompt body. No commentary, no fenced code blocks.`;
+Rewrite it shorter while preserving every contract guarantee. Drop redundant phrasing, collapse parallel rules, remove decorative bullets and meta-commentary. Keep every literal placeholder byte-identical. Output only the revised prompt body. No commentary, no fenced code blocks.`;
 
-const SYS_CROSSOVER = `You are a prompt engineer merging two candidate SYSTEM PROMPTS.
+const SYS_CROSSOVER = `Merge two candidate SYSTEM PROMPTS into one.
 
 You will receive PROMPT A and PROMPT B. Produce a single prompt that takes the strongest guidance from each. Preserve the task contract and every literal placeholder. Do not exceed 1.2x the longer parent's character count. Output only the merged prompt body. No commentary, no fenced code blocks.`;
 

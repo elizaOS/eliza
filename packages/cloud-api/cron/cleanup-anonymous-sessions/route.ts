@@ -34,7 +34,7 @@ app.get("/", async (c) => {
       .where(
         and(
           eq(userIdentities.is_anonymous, true),
-          lt(userIdentities.expires_at!, now),
+          lt(userIdentities.expires_at, now),
         ),
       );
 

@@ -28,13 +28,13 @@ Watch emergent behaviors like predator-prey dynamics, population cycles, and evo
 
 ```bash
 # Standard mode
-bun run examples/game-of-life/game.ts
+bun run packages/examples/game-of-life/game.ts
 
 # Fast mode (10x speed)
-bun run examples/game-of-life/game.ts --fast
+bun run packages/examples/game-of-life/game.ts --fast
 
 # With statistics
-bun run examples/game-of-life/game.ts --stats
+bun run packages/examples/game-of-life/game.ts --stats
 ```
 
 ## Architecture

@@ -1,0 +1,116 @@
+# Manual Vercel preview deployments for pull requests.
+#
+# Triggers:
+# 1. Actions → "Vercel preview (manual)" → Run workflow → enter PR number.
+# 2. Add the label `vercel-preview` to a PR (same-repo branches only).
+#
+# Setup:
+# - Repository secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID (same as the Vercel GitHub app).
+# - In Vercel: Project → Settings → Git → disable automatic Preview deployments for pull requests
+#   if you only want previews from this workflow (avoids duplicate builds).
+#
+# The PR must be mergeable (no conflicts) so refs/pull/N/merge exists.
+
+name: Vercel preview (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number (uses GitHub merge ref)
+        required: true
+        type: string
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # inputs are empty on pull_request; pull_request is absent on workflow_dispatch
+  group: vercel-manual-preview-${{ github.event.inputs.pr_number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'vercel-preview')
+    steps:
+      - name: Resolve PR number
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "pr=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate PR (open, same repository)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PR="${{ steps.meta.outputs.pr }}"
+          DATA=$(gh pr view "$PR" --repo "${{ github.repository }}" --json state,headRepository)
+          STATE=$(echo "$DATA" | jq -r .state)
+          REPO=$(echo "$DATA" | jq -r '.headRepository.nameWithOwner')
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR #$PR is not open (state=$STATE)"
+            exit 1
+          fi
+          if [ "$REPO" != "${{ github.repository }}" ]; then
+            echo "Refusing deploy: head repo is $REPO (fork or wrong repo)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ steps.meta.outputs.pr }}/merge
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Pull Vercel preview environment
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bunx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Build (Vercel)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bunx vercel@latest build --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt preview
+        id: deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          OUT=$(mktemp)
+          bunx vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN" --yes 2>&1 | tee "$OUT"
+          URL=$(grep -oE 'https://[^[:space:]]+\.vercel\.app' "$OUT" | tail -1 || true)
+          if [ -z "$URL" ]; then
+            echo "Could not parse a *.vercel.app URL from deploy output."
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ steps.meta.outputs.pr }}" --repo "${{ github.repository }}" --body \
+            "🔗 **Manual Vercel preview:** ${{ steps.deploy.outputs.url }}"

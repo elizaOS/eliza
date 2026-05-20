@@ -1,6 +1,45 @@
+import sys
+from pathlib import Path
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_helpers import CoverPointSet  # noqa: E402
+
+CHIP_MMIO_REGIONS = (
+    "bootrom",
+    "gpio",
+    "timer",
+    "clint",
+    "dma",
+    "npu",
+    "display",
+    "unmapped",
+)
+CHIP_IRQ_VECTORS = ("timer", "dma", "npu", "vsync")
+_CHIP_COVER = CoverPointSet("chip")
+_CHIP_COVER.declare("mmio_region", "addr_region", CHIP_MMIO_REGIONS)
+_CHIP_COVER.declare("irq_vector", "chip_irq", CHIP_IRQ_VECTORS)
+
+
+def _classify_mmio(addr: int) -> str:
+    if addr < 0x1000_0000:
+        if 0x0200_0000 <= addr < 0x0201_0000:
+            return "clint"
+        return "bootrom"
+    if 0x1000_0000 <= addr < 0x1001_0000:
+        if (addr & 0xFFFF) == 0x0010:
+            return "timer"
+        return "gpio"
+    if 0x1001_0000 <= addr < 0x1002_0000:
+        return "dma"
+    if 0x1002_0000 <= addr < 0x1003_0000:
+        return "npu"
+    if 0x1003_0000 <= addr < 0x1004_0000:
+        return "display"
+    return "unmapped"
 
 
 async def reset(dut):
@@ -46,12 +85,14 @@ async def load_wdata(dut, data):
 
 
 async def write32(dut, addr, data):
+    _CHIP_COVER.sample("mmio_region", "addr_region", _classify_mmio(addr))
     await load_addr(dut, addr)
     await load_wdata(dut, data)
     await dbg_pulse(dut, 0, 0, True, True)
 
 
 async def read32(dut, addr):
+    _CHIP_COVER.sample("mmio_region", "addr_region", _classify_mmio(addr))
     await load_addr(dut, addr)
     await dbg_pulse(dut, 0, 0, False, True)
     value = 0
@@ -87,6 +128,7 @@ async def chip_debug_bridge_bootrom_gpio_npu(dut):
     assert await poll_done(dut, 0x1002_000C) == 0x2
     assert await read32(dut, 0x1002_0008) == 42
     assert int(dut.IRQ_NPU.value) == 1
+    _CHIP_COVER.sample("irq_vector", "chip_irq", "npu")
 
     await write32(dut, 0x1002_000C, 2)
     await write32(dut, 0x1002_0000, 0x04FD_0201)
@@ -116,7 +158,8 @@ async def chip_debug_bridge_bootrom_gpio_npu(dut):
     await write32(dut, 0x1002_0010, 0xF)
     assert await read32(dut, 0x1002_0010) == 0xF
     await write32(dut, 0x1002_000C, 1)
-    assert await poll_done(dut, 0x1002_000C) == 0x6
+    assert await poll_done(dut, 0x1002_000C) == 0x2
+    assert await read32(dut, 0x1002_0008) == 128
     assert int(dut.IRQ_NPU.value) == 1
 
 
@@ -129,6 +172,7 @@ async def chip_interrupt_smoke(dut):
     for _ in range(10):
         await RisingEdge(dut.CLK_IN)
     assert int(dut.IRQ_TIMER.value) == 1
+    _CHIP_COVER.sample("irq_vector", "chip_irq", "timer")
 
     for idx in range(16):
         await write32(dut, 0x8000_0000 + idx * 4, 0xD000_0000 + idx)
@@ -138,6 +182,7 @@ async def chip_interrupt_smoke(dut):
     await write32(dut, 0x1001_000C, 1)
     assert await poll_done(dut, 0x1001_000C) == 0x2
     assert int(dut.IRQ_DMA.value) == 1
+    _CHIP_COVER.sample("irq_vector", "chip_irq", "dma")
     assert await read32(dut, 0x1001_0014) == 64
     assert await read32(dut, 0x1001_0018) == 16
     for idx in range(16):
@@ -180,6 +225,7 @@ async def chip_interrupt_smoke(dut):
         await RisingEdge(dut.CLK_IN)
         seen = seen or int(dut.IRQ_VSYNC.value) == 1
     assert seen
+    _CHIP_COVER.sample("irq_vector", "chip_irq", "vsync")
 
 
 @cocotb.test()
@@ -195,3 +241,4 @@ async def chip_rejects_unimplemented_alias_offsets(dut):
     await write32(dut, 0x1000_0014, 0x0000_0000)
     after = await read32(dut, 0x1000_000C)
     assert after >= before
+    _CHIP_COVER.write_json()

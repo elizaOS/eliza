@@ -529,6 +529,9 @@ export class LocalInferenceService {
 			platform: process.platform,
 			arch: process.arch,
 			gpu: undefined,
+			requiredAccelerator: parseImageGenRequiredAccelerator(
+				process.env.ELIZA_IMAGEGEN_ACCELERATOR,
+			),
 			isIos: process.env.ELIZA_PLATFORM === "ios",
 			isAndroid:
 				process.env.ELIZA_PLATFORM === "android" ||
@@ -652,6 +655,28 @@ export class LocalInferenceService {
 			await this.activeModel.unload(null);
 		}
 		return removeElizaModel(modelId);
+	}
+}
+
+function parseImageGenRequiredAccelerator(
+	value: string | undefined,
+): "cpu" | "cuda" | "vulkan" | "metal" | "coreml" | "tensorrt" | undefined {
+	switch (value?.toLowerCase()) {
+		case "cpu":
+		case "cuda":
+		case "vulkan":
+		case "metal":
+		case "coreml":
+		case "tensorrt":
+			return value.toLowerCase() as
+				| "cpu"
+				| "cuda"
+				| "vulkan"
+				| "metal"
+				| "coreml"
+				| "tensorrt";
+		default:
+			return undefined;
 	}
 }
 

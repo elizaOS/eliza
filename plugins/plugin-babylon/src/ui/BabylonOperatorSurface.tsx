@@ -1,11 +1,11 @@
 import {
   type AppOperatorSurfaceProps,
-  type BabylonActivityItem,
-  type BabylonAgentGoal,
-  type BabylonAgentStatus,
-  type BabylonChatMessage,
-  type BabylonPredictionMarket,
-  type BabylonWallet,
+  type FeedActivityItem,
+  type FeedAgentGoal,
+  type FeedAgentStatus,
+  type FeedChatMessage,
+  type FeedPredictionMarket,
+  type FeedWallet,
   client,
   formatDetailTimestamp,
   SurfaceBadge,
@@ -22,24 +22,24 @@ import {
 import { Button, Input, TerminalPluginView } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  type BabylonAgentSummaryEnvelope,
-  type BabylonTeamConversation,
-  type BabylonTeamDashboard,
+  type FeedAgentSummaryEnvelope,
+  type FeedTeamConversation,
+  type FeedTeamDashboard,
   extractAgentSummary,
   extractChatMessages,
   extractTeamConversations,
   extractTeamDashboard,
   extractTradingBalance,
-  summarizeBabylonActivity,
+  summarizeFeedActivity,
 } from "./babylon-data";
 
-function extractWallet(value: unknown): BabylonWallet | null {
+function extractWallet(value: unknown): FeedWallet | null {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
 
   const balance = asFiniteNumber(data.balance);
   const transactions = Array.isArray(data.transactions)
-    ? (data.transactions as BabylonWallet["transactions"])
+    ? (data.transactions as FeedWallet["transactions"])
     : [];
 
   if (balance == null && !Array.isArray(data.transactions)) {
@@ -73,7 +73,7 @@ function formatPnL(value: unknown): string {
   return `${sign}$${parsed.toFixed(2)}`;
 }
 
-function listPreview(items: BabylonPredictionMarket[]): string {
+function listPreview(items: FeedPredictionMarket[]): string {
   if (items.length === 0) return "Market data is not available yet.";
   return items
     .slice(0, 3)
@@ -99,27 +99,27 @@ export function BabylonOperatorSurface({
     [appName, appRuns],
   );
 
-  const [agentStatus, setAgentStatus] = useState<BabylonAgentStatus | null>(
+  const [agentStatus, setAgentStatus] = useState<FeedAgentStatus | null>(
     null,
   );
   const [agentSummary, setAgentSummary] =
-    useState<BabylonAgentSummaryEnvelope | null>(null);
-  const [agentGoals, setAgentGoals] = useState<BabylonAgentGoal[]>([]);
-  const [recentTrades, setRecentTrades] = useState<BabylonActivityItem[]>([]);
+    useState<FeedAgentSummaryEnvelope | null>(null);
+  const [agentGoals, setAgentGoals] = useState<FeedAgentGoal[]>([]);
+  const [recentTrades, setRecentTrades] = useState<FeedActivityItem[]>([]);
   const [predictionMarkets, setPredictionMarkets] = useState<
-    BabylonPredictionMarket[]
+    FeedPredictionMarket[]
   >([]);
-  const [teamDashboard, setTeamDashboard] = useState<BabylonTeamDashboard>({
+  const [teamDashboard, setTeamDashboard] = useState<FeedTeamDashboard>({
     agents: [],
     summary: null,
   });
   const [teamConversations, setTeamConversations] = useState<
-    BabylonTeamConversation[]
+    FeedTeamConversation[]
   >([]);
   const [agentChatMessages, setAgentChatMessages] = useState<
-    BabylonChatMessage[]
+    FeedChatMessage[]
   >([]);
-  const [wallet, setWallet] = useState<BabylonWallet | null>(null);
+  const [wallet, setWallet] = useState<FeedWallet | null>(null);
   const [tradingBalance, setTradingBalance] = useState(0);
   const [chatInput, setChatInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -167,16 +167,16 @@ export function BabylonOperatorSurface({
         walletResponse,
         tradingBalanceResponse,
       ] = await Promise.all([
-        client.getBabylonAgentStatus(),
-        client.getBabylonAgentSummary(),
-        client.getBabylonAgentGoals(),
-        client.getBabylonAgentRecentTrades(),
-        client.getBabylonPredictionMarkets({ pageSize: 3 }),
-        client.getBabylonTeamDashboard(),
-        client.getBabylonTeamConversations(),
-        client.getBabylonAgentChat(),
-        client.getBabylonAgentWallet(),
-        client.getBabylonAgentTradingBalance(),
+        client.getFeedAgentStatus(),
+        client.getFeedAgentSummary(),
+        client.getFeedAgentGoals(),
+        client.getFeedAgentRecentTrades(),
+        client.getFeedPredictionMarkets({ pageSize: 3 }),
+        client.getFeedTeamDashboard(),
+        client.getFeedTeamConversations(),
+        client.getFeedAgentChat(),
+        client.getFeedAgentWallet(),
+        client.getFeedAgentTradingBalance(),
       ]);
 
       setAgentStatus(status);
@@ -396,7 +396,7 @@ export function BabylonOperatorSurface({
             {recentTrades.slice(0, 3).map((trade) => (
               <SurfaceCard
                 key={trade.id}
-                label={summarizeBabylonActivity(trade)}
+                label={summarizeFeedActivity(trade)}
                 value={formatDetailTimestamp(trade.timestamp)}
                 subtitle={
                   trade.pnl != null ? `PnL ${formatPnL(trade.pnl)}` : undefined
@@ -585,7 +585,7 @@ export function BabylonTuiView() {
   );
 }
 
-async function readBabylonJson(response: Response): Promise<unknown> {
+async function readFeedJson(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!response.ok) {
     throw new Error(
@@ -603,13 +603,13 @@ export async function interact(
     const [status, dashboard, markets] = await Promise.all([
       fetch("/api/apps/babylon/agent/status", {
         headers: { Accept: "application/json" },
-      }).then(readBabylonJson),
+      }).then(readFeedJson),
       fetch("/api/apps/babylon/team/dashboard", {
         headers: { Accept: "application/json" },
-      }).then(readBabylonJson),
+      }).then(readFeedJson),
       fetch("/api/apps/babylon/markets?pageSize=5", {
         headers: { Accept: "application/json" },
-      }).then(readBabylonJson),
+      }).then(readFeedJson),
     ]);
     return { status, dashboard, markets };
   }
@@ -635,7 +635,7 @@ export async function interact(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     });
-    return readBabylonJson(response);
+    return readFeedJson(response);
   }
 
   throw new Error(`Babylon TUI does not support "${capability}".`);

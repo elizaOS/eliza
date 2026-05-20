@@ -1403,6 +1403,11 @@ export async function handleLifeOpsRoutes(
         gmailAccountIdRaw !== null && gmailAccountIdRaw.trim().length > 0
           ? gmailAccountIdRaw.trim()
           : undefined;
+      const phoneAccountIds = url.searchParams
+        .get("phoneAccountIds")
+        ?.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
       const missedOnly = url.searchParams.get("missedOnly") === "true";
       const sortByPriority = url.searchParams.get("sortByPriority") === "true";
       const rawCacheMode = url.searchParams.get("cacheMode");
@@ -1429,6 +1434,10 @@ export async function handleLifeOpsRoutes(
         chatTypeFilter,
         maxParticipants,
         gmailAccountId,
+        phoneAccountIds:
+          phoneAccountIds && phoneAccountIds.length > 0
+            ? phoneAccountIds
+            : undefined,
         missedOnly: missedOnly || undefined,
         sortByPriority: sortByPriority || undefined,
         cacheMode,

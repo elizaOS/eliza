@@ -69,7 +69,6 @@ describe("cloud capability sandbox provisioner", () => {
   });
 
   it("polls a job until the cloud capability endpoint is ready", async () => {
-    vi.useFakeTimers();
     const progress: Array<{ status: string; detail?: string }> = [];
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);
@@ -101,14 +100,12 @@ describe("cloud capability sandbox provisioner", () => {
       cloudApiBase: "https://api.elizacloud.ai",
       authToken: "cloud-token",
       name: "Capability Sandbox",
-      pollIntervalMs: 1000,
+      pollIntervalMs: 1,
       timeoutMs: 10_000,
       fetch: fetchMock as unknown as typeof fetch,
       onProgress: (status, detail) => progress.push({ status, detail }),
     });
 
-    await vi.advanceTimersByTimeAsync(1000);
-    await vi.advanceTimersByTimeAsync(1000);
     await expect(resultPromise).resolves.toEqual({
       agentId: "agent-2",
       jobId: "job-2",
@@ -155,7 +152,6 @@ describe("cloud capability sandbox provisioner", () => {
   });
 
   it("fails when provisioning completes without an endpoint", async () => {
-    vi.useFakeTimers();
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);
       if (href.endsWith("/api/v1/eliza/agents")) {
@@ -171,16 +167,14 @@ describe("cloud capability sandbox provisioner", () => {
       cloudApiBase: "https://api.elizacloud.ai",
       authToken: "cloud-token",
       name: "Broken Sandbox",
-      pollIntervalMs: 1000,
-      timeoutMs: 1500,
+      pollIntervalMs: 1,
+      timeoutMs: 2,
       fetch: fetchMock as unknown as typeof fetch,
     });
 
-    const expectation = expect(resultPromise).rejects.toThrow(
+    await expect(resultPromise).rejects.toThrow(
       "Cloud capability sandbox provisioning timed out.",
     );
-    await vi.advanceTimersByTimeAsync(2000);
-    await expectation;
   });
 
   it("connects a provisioned cloud endpoint and syncs remote plugins", async () => {
@@ -427,6 +421,7 @@ describe("cloud capability sandbox provisioner", () => {
 
     expect(result).toMatchObject({
       agentId: "agent-5",
+      providerId: "cloud",
       endpoint: {
         id: "cloud-capability",
         baseUrl: "https://capability-cloud.example.test",

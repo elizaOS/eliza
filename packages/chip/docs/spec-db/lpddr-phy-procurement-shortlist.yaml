@@ -1,0 +1,168 @@
+schema: eliza.lpddr_phy_procurement_shortlist.v1
+status: procurement_required_not_non_goal
+
+context: >
+  Supersedes the explicit non-goal "custom LPDDR5X/LPDDR6 PHY" listed in
+  docs/spec-db/mobile-sota-2026.yaml::eliza_v0_targets::explicit_non_goals.
+  The 2028 phone-class SoC depends on vendor LPDDR5X-10667 (baseline) and
+  LPDDR6-14400 (AI SKU) PHY IP. No open LPDDR5X/6 PHY exists at these
+  data rates. Procurement is mandatory.
+
+promote_from:
+  source: docs/spec-db/mobile-sota-2026.yaml
+  path: eliza_v0_targets.explicit_non_goals[item="custom LPDDR5X/LPDDR6 PHY"]
+  new_status: procurement_required
+
+phys_required_by_sku:
+  baseline:
+    standard: LPDDR5X-10667
+    bus_width_bits: 64
+    peak_bandwidth_gbps: 85.3
+    sustained_target_gbps: 70
+  ai:
+    standard: LPDDR6-14400
+    bus_width_bits: 96
+    peak_bandwidth_gbps: 172.8
+    sustained_target_gbps: 140
+
+vendor_shortlist:
+  - vendor: Synopsys
+    product: DesignWare DDR LPDDR6/5X/5 PHY IP
+    data_rate_gbps_max: 14.4
+    dfi_revision: '5.0'
+    process_targets: [TSMC N3, TSMC N3P, TSMC N2, Samsung 3 nm GAA, Intel 18A]
+    license_class: per_project_with_royalty
+    license_cost_estimate_usd: [4000000, 8000000]
+    royalty_per_die_estimate_usd: [0.40, 1.20]
+    integration_quarters: 4
+    references:
+      - https://www.synopsys.com/designware-ip/interface-ip/ddr/lpddr65x5-phy.html
+      - https://www.synopsys.com/designware-ip/interface-ip/ddr/lpddr5x54x-phy.html
+    procurement_preconditions:
+      license_cost_band_usd: medium_high  # 4-8M USD
+      nre_estimate_usd: [3500000, 6000000]
+      royalty_band_per_die_usd: medium
+      expected_lead_time_weeks: [20, 28]
+      foundry_pdk_dependency: required_per_node_kit
+      tapeout_collateral:
+        - DFI 5.0 timing closure deck
+        - PHY netlist + GDS hardmacro
+        - PHY-specific PDK addendum
+        - Training firmware + bringup BSP
+      contract_terms:
+        nda_signed_before_collateral_release: true
+        per_die_royalty_audited_per_quarter: true
+      foundry_bundled_alternative:
+        path: docs/spec-db/lpddr-phy-procurement-shortlist.yaml#vendor=Foundry-bundled
+        rationale: TSMC N3/N2 PDK already bundles a foundry-qualified PHY at the same data rates.
+    blockers:
+      - vendor_contract_unsigned
+      - process_node_unsettled
+  - vendor: Cadence
+    product: LPDDR6/5X Combo Memory IP
+    data_rate_gbps_max: 14.4
+    dfi_revision: '5.0'
+    process_targets: [TSMC N3, TSMC N3P, TSMC N2]
+    license_class: per_project_with_royalty
+    license_cost_estimate_usd: [4500000, 9000000]
+    royalty_per_die_estimate_usd: [0.50, 1.30]
+    integration_quarters: 4
+    references:
+      - https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2025/cadence-introduces-industry-first-lpddr65x-144gbps-memory-ip-to.html
+    procurement_preconditions:
+      license_cost_band_usd: high  # 4.5-9M USD
+      nre_estimate_usd: [4000000, 6500000]
+      royalty_band_per_die_usd: medium_high
+      expected_lead_time_weeks: [20, 30]
+      foundry_pdk_dependency: required_per_node_kit
+      tapeout_collateral:
+        - DFI 5.0 + Memory Controller co-design view
+        - PHY hardmacro + memory-controller RTL
+        - Training firmware
+      contract_terms:
+        nda_signed_before_collateral_release: true
+        bundled_with_cadence_ddr_controller: optional_higher_efficiency
+      foundry_bundled_alternative:
+        path: docs/spec-db/lpddr-phy-procurement-shortlist.yaml#vendor=Foundry-bundled
+        rationale: Combo IP value is integration with Cadence DDR controller; alternative is foundry PHY + repo's e1_dram_ctrl.
+    blockers:
+      - vendor_contract_unsigned
+      - process_node_unsettled
+  - vendor: Rambus
+    product: LPDDR5X PHY 10.67 Gbps
+    data_rate_gbps_max: 10.67
+    dfi_revision: '5.0'
+    process_targets: [TSMC N5, TSMC N3, Samsung 4 nm]
+    license_class: per_project_with_royalty
+    license_cost_estimate_usd: [3000000, 6500000]
+    royalty_per_die_estimate_usd: [0.30, 0.90]
+    integration_quarters: 5
+    references:
+      - https://www.rambus.com/interfaces/lpddr5x/
+    procurement_preconditions:
+      license_cost_band_usd: medium  # 3-6.5M USD
+      nre_estimate_usd: [2500000, 4500000]
+      royalty_band_per_die_usd: low_medium
+      expected_lead_time_weeks: [26, 34]
+      foundry_pdk_dependency: required_per_node_kit
+      data_rate_cap_blocking_ai_sku: true  # 10.67 Gbps cannot satisfy LPDDR6-14400
+      tapeout_collateral:
+        - DFI 5.0 timing closure deck
+        - PHY netlist + GDS hardmacro
+        - DFI compliance test vectors
+      contract_terms:
+        nda_signed_before_collateral_release: true
+        per_die_royalty_audited_per_quarter: true
+      foundry_bundled_alternative:
+        path: docs/spec-db/lpddr-phy-procurement-shortlist.yaml#vendor=Foundry-bundled
+        rationale: Cheaper than Synopsys/Cadence for baseline-only SKU, but does NOT cover the AI SKU's LPDDR6-14400 target; the AI SKU still needs Synopsys/Cadence or a foundry-bundled LPDDR6 PHY.
+    blockers:
+      - vendor_contract_unsigned
+      - lpddr6_roadmap_not_public
+  - vendor: Foundry-bundled
+    product: TSMC PDK-aligned LPDDR5X/6 PHY
+    data_rate_gbps_max: 14.4
+    dfi_revision: '5.0'
+    process_targets: [TSMC N3, TSMC N3P, TSMC N2]
+    license_class: bundled_with_pdk
+    license_cost_estimate_usd: bundled
+    royalty_per_die_estimate_usd: bundled
+    integration_quarters: 3
+    references:
+      - https://www.tsmc.com/english/dedicatedFoundry/technology/3nm
+    procurement_preconditions:
+      license_cost_band_usd: bundled_with_pdk_no_separate_fee
+      nre_estimate_usd: [0, 0]  # bundled with foundry NRE
+      royalty_band_per_die_usd: bundled_in_wafer_price
+      expected_lead_time_weeks: [12, 18]
+      foundry_pdk_dependency: native
+      tapeout_collateral:
+        - PDK-included PHY hardmacro
+        - Foundry-supplied training firmware
+        - Foundry-signed timing decks
+      contract_terms:
+        bundled_with_foundry_master_agreement: true
+        no_separate_phy_nda_required: true
+      foundry_bundled_alternative:
+        path: self  # this entry IS the foundry-bundled alternative
+        rationale: When the foundry is committed, this is the lowest-friction option for both SKUs.
+    blockers:
+      - foundry_selection_unsettled
+
+procurement_decision:
+  status: not_yet_made
+  next_steps:
+    - Lock the process node (decision is currently spread between 14A, N2, N3P).
+    - Issue an RFI to all four shortlisted vendors and align PHY licensing with the foundry choice.
+    - Bound the per-die royalty against the bill-of-materials target.
+    - Sign at least a memorandum of understanding before any tapeout milestone is committed.
+
+linked_evidence:
+  gate: docs/evidence/memory/lpddr-phy-procurement.yaml
+  schema: eliza.lpddr_phy_procurement_gate.v1
+  status: BLOCKED_closed_ip_required
+
+claim_rules:
+  - This file replaces the legacy "explicit non-goal" entry; the chip cannot ship without licensing a PHY from the shortlist.
+  - Every PHY claim must reference the corresponding evidence artifact under docs/evidence/memory/.
+  - Cost estimates listed here are reference ranges only; signed contracts override them.

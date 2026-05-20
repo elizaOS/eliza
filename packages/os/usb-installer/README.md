@@ -1,10 +1,17 @@
 # elizaOS USB Installer
 
-Electrobun-targeted microapp scaffold for preparing bootable elizaOS USB
-installers.
+Electrobun-targeted microapp for preparing bootable elizaOS USB installers.
 
-The current package is intentionally dry-run only. It models the destructive
-workflow and safety gates without writing to disks.
+This package has two modes:
+
+- Default mode is safe review/demo mode. Raw USB writes are disabled unless the
+  backend process is started with `ELIZAOS_USB_ENABLE_RAW_WRITE=1`.
+- Live-write mode uses platform backends for Linux, macOS, and Windows. Treat
+  this as destructive and hardware-dependent. It must be tested on the target
+  platform and real removable media before release.
+
+The renderer never opens raw disks. It talks to the local backend contract; disk
+enumeration, privileged writes, and platform subprocesses stay server-side.
 
 ## Scope
 
@@ -12,23 +19,28 @@ workflow and safety gates without writing to disks.
 - Presents selectable elizaOS image metadata with channel, architecture, build
   id, published date, URL, SHA-256 checksum, expected size, minimum USB size,
   and optional release/signature links.
-- Validates the image manifest before exposing releases to the renderer.
-- Builds a write/verify plan that is safe by default and marks privileged disk
-  writing as unimplemented.
-- Rejects every non-dry-run write request. This package must not implement raw
-  device writes.
-- Keeps platform-specific disk enumeration and privilege notes close to the
-  installer package.
+- Builds a server-side write plan and returns an opaque `planId`.
+- Rebuilds and revalidates the plan server-side immediately before executing a
+  write.
+- Requires explicit data-loss acknowledgement and target-drive identity
+  confirmation in the UI.
+- Blocks live writes unless the selected image has a non-placeholder SHA-256
+  checksum.
+- Binds the local backend to `127.0.0.1` and only allows localhost browser
+  origins from the known app/dev ports or `ELIZAOS_USB_ALLOWED_ORIGINS`.
 
-## Walkthrough
+## Current Live-Write Guardrails
 
-1. Pick a trusted elizaOS release and review its manifest fields.
-2. Select removable media that meets or exceeds the release minimum USB size.
-3. Acknowledge that a real installer would erase the selected drive.
-4. Prepare the dry-run plan and inspect each resolve, checksum, write, verify,
-   and complete step.
-5. Treat any blocked step as a release gate failure. The current backend never
-   writes bytes, even when all gates pass.
+- `ELIZAOS_USB_ENABLE_RAW_WRITE=1` is required for non-dry-run planning and
+  execution.
+- `/execute` accepts only a server-generated `planId`; renderer-supplied disk
+  paths, image URLs, or full write plans are ignored.
+- The backend re-enumerates the selected drive before execution and rejects the
+  write if the device path or size changed since planning.
+- Stored live-write plans expire after five minutes by default
+  (`ELIZAOS_USB_PLAN_TTL_MS`) and must be regenerated before execution.
+- Shared write safety blocks dry-run execution, missing acknowledgement,
+  non-`safe-removable` drives, undersized drives, and placeholder checksums.
 
 ## Commands
 
@@ -37,12 +49,39 @@ bun run --cwd packages/os/usb-installer dev
 bun run --cwd packages/os/usb-installer build
 bun run --cwd packages/os/usb-installer test
 bun run --cwd packages/os/usb-installer typecheck
+bun run --cwd packages/os/usb-installer lint
+bun run --cwd packages/os/usb-installer test:e2e
 ```
 
-## Backend contract
+Run the guarded Linux virtual block-device write proof:
 
-`src/backend/types.ts` is the load-bearing boundary between the renderer and the
-future privileged helper:
+```bash
+bun run --cwd packages/os/usb-installer test:linux-virtual-usb
+```
+
+That test requires Linux, passwordless `sudo -n`, and the kernel
+`scsi_debug` module. It creates a disposable 64 MiB removable block device with
+model `ELIZAUSBTEST`, writes a trusted 4 MiB image through the same local
+server/Linux backend flow, reads the first 4 MiB back, verifies SHA-256, and
+unloads the module. It refuses to run if `scsi_debug` is already loaded.
+CI runs this proof only on Linux runners that provide the `scsi_debug` module.
+
+Run the local app:
+
+```bash
+bun run --cwd packages/os/usb-installer start
+```
+
+Enable live writes only when deliberately testing removable media:
+
+```bash
+ELIZAOS_USB_ENABLE_RAW_WRITE=1 bun run --cwd packages/os/usb-installer start
+```
+
+## Backend Contract
+
+`src/backend/types.ts` is the load-bearing boundary between the renderer and
+privileged platform operations:
 
 - `listRemovableDrives()` returns drive candidates with `safe-removable`,
   `blocked-system`, or `unknown` safety classifications.
@@ -50,36 +89,51 @@ future privileged helper:
   validation. Invalid URLs, checksums, unsupported channels/architectures,
   missing build metadata, and impossible minimum USB sizes are rejected.
 - `createWritePlan()` returns the resolve, checksum, write, verify, and complete
-  steps. The dry-run backend never writes bytes and always reports
-  `privilegedWriteImplemented: false`.
+  steps. HTTP-backed plans include a server-generated `planId`.
+- `executeWritePlan()` is destructive. The HTTP backend sends only `planId`;
+  direct platform backends require callers to pass a plan that satisfies the
+  shared `write-safety.ts` guards.
 
-## Platform notes
+## Platform Notes
 
 macOS:
 
-- Enumerate disks with `diskutil list -plist` and `diskutil info -plist`.
-- Unmount the selected disk before raw writes.
-- Route writes through a signed helper; renderer code must never open raw
-  devices.
+- Enumerates disks with `diskutil list -plist` and `diskutil info -plist`.
+- Derives whole raw disks as `/dev/rdiskN` and rejects partition paths.
+- Uses `osascript ... with administrator privileges` for the current prototype
+  write path. A signed helper is still the preferred production boundary.
 
 Linux:
 
-- Enumerate block devices with `lsblk --json --bytes --paths`.
-- Reject mounted devices unless the user explicitly unmounts them.
-- Use `pkexec`, `udisks2`, or a small audited helper for privileged writes.
+- Enumerates block devices with `lsblk --json --bytes`.
+- Blocks removable disks that are mounted as the current root/live-boot media,
+  so an elizaOS/Tails live USB cannot overwrite itself.
+- Unmounts mounted child partitions before writing.
+- Writes through `pkexec`, cached/allowed `sudo`, `kdesu`, or `doas` plus `dd`.
 
 Windows:
 
-- Enumerate removable disks through PowerShell `Get-Disk`/`Get-Volume` or
-  SetupAPI.
-- Require physical-drive identity confirmation before write access.
-- Run raw writes in a signed elevated helper process.
+- Enumerates disks through PowerShell `Get-Disk`/`Get-Partition`.
+- Blocks boot/system/internal-looking disks.
+- Uses UAC-elevated `diskpart` and `dd.exe` or a native PowerShell streaming
+  fallback. A signed elevated helper is still required before calling Windows
+  production-grade.
 
-## Electrobun integration notes
+## Release Gaps
 
-This package is structured so Electrobun can host the Vite renderer while the
-renderer only talks to a local `UsbInstallerBackend` HTTP/IPC contract. Platform
-enumeration and any future raw writes stay in `server.ts` or a signed privileged
-helper, never in browser-rendered code. The first real write helper should keep
-the same interface and replace only the dry-run execution path, with a narrow
-audited helper responsible for raw device writes and verify reads.
+This package is code-ready only after tests/build pass. It is USB-proven only
+after a final ISO is written to a real removable drive and boot-tested.
+
+The Linux virtual block-device E2E is stronger than a unit test because it uses
+real `lsblk`, `sudo`, `dd`, `sync`, and a kernel block device. It still is not a
+substitute for physical USB flash and boot validation.
+
+Remaining production hardening:
+
+- Replace GitHub release scraping/placeholder checksums with a signed official
+  elizaOS image manifest.
+- Add cancel/abort support for downloads and active writes.
+- Add signed privileged helpers for macOS/Windows and stronger Linux helper
+  policy.
+- Add readback verification beyond `sync`/eject/status completion.
+- Add packaged-app launch smoke tests and platform hardware/VM write evidence.

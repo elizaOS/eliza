@@ -1,0 +1,126 @@
+import { describe, expect, it } from "bun:test";
+import {
+  outboundReadiness,
+  recipientFromChatGuid,
+  senderOptions,
+  type BlueBubblesServerInfoForReadiness,
+} from "./bluebubbles-local-bridge-readiness";
+
+const readyServerInfo: BlueBubblesServerInfoForReadiness = {
+  data: {
+    private_api: true,
+    helper_connected: true,
+  },
+};
+
+const readyAppleEvents = [
+  { target: "Finder" as const, ok: true },
+  { target: "System Events" as const, ok: true },
+  { target: "Messages" as const, ok: true },
+];
+
+const readyShortcuts = {
+  available: true,
+  shortcuts: ["Eliza Cloud Send Message Ready"],
+};
+
+const base = {
+  hasBlueBubblesPassword: true,
+  serverInfo: readyServerInfo,
+  sipStatus: "System Integrity Protection status: disabled.",
+  pendingReplies: [],
+  appleEvents: readyAppleEvents,
+  shortcuts: readyShortcuts,
+  shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
+};
+
+describe("BlueBubbles local bridge readiness", () => {
+  it("extracts a Shortcut recipient from a BlueBubbles chat guid", () => {
+    expect(recipientFromChatGuid("SMS;-;+14155550123")).toBe("+14155550123");
+    expect(recipientFromChatGuid("iMessage;-;person@example.com")).toBe(
+      "person@example.com",
+    );
+    expect(recipientFromChatGuid("not-a-guid")).toBeNull();
+  });
+
+  it("reports every sender mode when every prerequisite is ready", () => {
+    expect(senderOptions(base)).toEqual([
+      { method: "apple-script", ready: true, reasons: [] },
+      { method: "private-api", ready: true, reasons: [] },
+      { method: "shortcuts", ready: true, reasons: [] },
+    ]);
+  });
+
+  it("keeps alternate sender modes visible when AppleScript is blocked", () => {
+    const options = senderOptions({
+      ...base,
+      pendingReplies: [
+        { lastError: "BlueBubbles send timed out after 45000ms using apple-script" },
+      ],
+      appleEvents: [
+        ...readyAppleEvents.slice(0, 2),
+        {
+          target: "Messages" as const,
+          ok: false,
+          error: "Command failed: osascript Messages",
+        },
+      ],
+    });
+
+    expect(options.find((option) => option.method === "apple-script")).toMatchObject({
+      ready: false,
+    });
+    expect(options.find((option) => option.method === "private-api")).toMatchObject({
+      ready: true,
+    });
+    expect(options.find((option) => option.method === "shortcuts")).toMatchObject({
+      ready: true,
+    });
+  });
+
+  it("does not treat queued replies as a Shortcuts readiness failure", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        pendingReplies: [
+          { lastError: "BlueBubbles send timed out after 45000ms using apple-script" },
+        ],
+      }),
+    ).toEqual({ method: "shortcuts", ready: true, reasons: [] });
+  });
+
+  it("explains missing ready Shortcuts setup", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        shortcuts: { available: true, shortcuts: [] },
+      }),
+    ).toEqual({
+      method: "shortcuts",
+      ready: false,
+      reasons: ['Shortcut "Eliza Cloud Send Message Ready" is not installed'],
+    });
+  });
+
+  it("lists installed Shortcuts when the ready Shortcut name is missing", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        shortcuts: {
+          available: true,
+          shortcuts: ["Eliza Cloud Send Message"],
+        },
+        shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
+      }),
+    ).toEqual({
+      method: "shortcuts",
+      ready: false,
+      reasons: [
+        'Shortcut "Eliza Cloud Send Message Ready" is not installed; installed shortcuts: Eliza Cloud Send Message',
+      ],
+    });
+  });
+});

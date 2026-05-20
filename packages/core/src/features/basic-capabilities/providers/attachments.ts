@@ -12,6 +12,10 @@ import { addHeader } from "../../../utils.ts";
 const spec = requireProviderSpec("ATTACHMENTS");
 const MAX_VISIBLE_ATTACHMENTS = 3;
 const MAX_ATTACHMENT_MEMORY_LOOKBACK = 50;
+const ATTACHMENT_REFERENCE_RE =
+	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
+const ATTACHMENT_INSPECTION_RE =
+	/\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|find|found|anything|result|results|thoughts?|think|opinion|take)\b/iu;
 
 type AttachmentWithCreatedAt = Media & {
 	_createdAt?: number;
@@ -46,6 +50,33 @@ function mergeConversationAttachments(
 
 	return Array.from(attachmentsById.values()).sort(
 		(left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
+	);
+}
+
+function contentString(message: Memory, key: string): string {
+	const value = (message.content as Record<string, unknown> | undefined)?.[key];
+	return typeof value === "string" ? value : "";
+}
+
+function messageTextForAttachmentRelevance(message: Memory): string {
+	return [
+		contentString(message, "currentMessageText"),
+		typeof message.content.text === "string" ? message.content.text : "",
+		contentString(message, "replyToMessageText"),
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+function shouldRenderAttachmentPromptText(
+	message: Memory,
+	allAttachments: readonly AttachmentWithCreatedAt[],
+): boolean {
+	if (allAttachments.length === 0) return false;
+	if ((message.content.attachments ?? []).length > 0) return true;
+	const text = messageTextForAttachmentRelevance(message);
+	return (
+		ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)
 	);
 }
 
@@ -106,12 +137,17 @@ export const attachmentsProvider: Provider = {
 				0,
 				allAttachments.length - visibleAttachments.length,
 			);
+			const shouldRenderText = shouldRenderAttachmentPromptText(
+				message,
+				allAttachments,
+			);
 
 			// Format attachments for display
-			const formattedAttachments = visibleAttachments
-				.map(
-					(attachment) =>
-						`ID: ${attachment.id}
+			const formattedAttachments = shouldRenderText
+				? visibleAttachments
+						.map(
+							(attachment) =>
+								`ID: ${attachment.id}
     Name: ${attachment.title}
     URL: ${attachment.url}
     Type: ${attachment.source}
@@ -122,10 +158,11 @@ export const attachmentsProvider: Provider = {
 				: "none"
 		}
     `,
-				)
-				.join("\n");
+						)
+						.join("\n")
+				: "";
 			const omissionNotice =
-				omittedCount > 0
+				shouldRenderText && omittedCount > 0
 					? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use ATTACHMENT action=read to inspect one.`
 					: "";
 

@@ -167,10 +167,10 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--network-mode",
         type=str,
-        default=os.environ.get("TERMINAL_BENCH_NETWORK_MODE", "none"),
+        default=os.environ.get("TERMINAL_BENCH_NETWORK_MODE", "bridge"),
         help=(
             "Docker network mode for tasks that do not explicitly request "
-            "network access (default: TERMINAL_BENCH_NETWORK_MODE or none)."
+            "network access (default: TERMINAL_BENCH_NETWORK_MODE or bridge)."
         ),
     )
 
@@ -356,24 +356,9 @@ async def run_cli(args: argparse.Namespace) -> int:
     os.environ.setdefault("CEREBRAS_LARGE_MODEL", model_name)
     os.environ.setdefault("CEREBRAS_SMALL_MODEL", model_name)
 
-    # Spin up the elizaOS TS benchmark bridge server only when the selected
-    # agent harness actually needs it. ``hermes`` and ``openclaw`` run their
-    # own loops (subprocess / in-process) and do not require the TS bridge.
-    server_mgr = None
-    harness = (getattr(args, "agent_harness", None) or "eliza").lower()
-    if (
-        not args.dry_run
-        and harness == "eliza"
-        and (not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN"))
-    ):
-        from eliza_adapter.server_manager import ElizaServerManager
-
-        server_mgr = ElizaServerManager()
-        server_mgr.start()
-        os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
-        os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
-
-    # Resolve execution backend from flags.
+    # Resolve execution backend from flags before deciding whether an agent
+    # bridge is needed. Mock runs are local smoke checks and must not require
+    # provider credentials.
     if getattr(args, "mock", False):
         os.environ["TERMINAL_BENCH_ALLOW_MOCK"] = "1"
         backend = "mock"
@@ -383,6 +368,30 @@ async def run_cli(args: argparse.Namespace) -> int:
         backend = "one_shot"
     else:
         backend = "tmux"
+
+    # Spin up the elizaOS TS benchmark bridge server only when the selected
+    # agent harness actually needs it. ``hermes`` and ``openclaw`` run their
+    # own loops (subprocess / in-process) and do not require the TS bridge.
+    server_mgr = None
+    harness = (getattr(args, "agent_harness", None) or "eliza").lower()
+    if (
+        not args.dry_run
+        and backend != "mock"
+        and harness == "eliza"
+        and (not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN"))
+    ):
+        # Terminal-Bench drives the task through BENCHMARK_ACTION and Docker.
+        # Loading unrelated desktop/connectivity plugins can block bridge
+        # readiness on local credentials, so keep this benchmark server scoped
+        # to the core SQL/runtime + benchmark plugins unless a caller opts out.
+        os.environ.setdefault("ELIZA_BENCH_SKIP_CORE_PLUGINS", "true")
+
+        from eliza_adapter.server_manager import ElizaServerManager
+
+        server_mgr = ElizaServerManager()
+        server_mgr.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+        os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
 
     # ``data_path=None`` makes the loader use the vendored task corpus.
     data_path = args.data_path

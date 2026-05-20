@@ -188,21 +188,21 @@ const VOICE_CONTEXTS_50: VoiceCtx[] = PROVIDERS_LIST.flatMap((provider) =>
 // Zipf-like weighted sampling.
 function samplePhrase(rng: () => number): string {
   const r = rng();
-  if (r < 0.12) return CORPUS[0]!;
-  if (r < 0.22) return CORPUS[1]!;
-  if (r < 0.31) return CORPUS[2]!;
-  if (r < 0.39) return CORPUS[3]!;
-  if (r < 0.46) return CORPUS[4]!;
+  if (r < 0.12) return CORPUS[0];
+  if (r < 0.22) return CORPUS[1];
+  if (r < 0.31) return CORPUS[2];
+  if (r < 0.39) return CORPUS[3];
+  if (r < 0.46) return CORPUS[4];
   const idx = 5 + Math.floor(rng() * (CORPUS.length - 5));
-  return CORPUS[Math.min(idx, CORPUS.length - 1)]!;
+  return CORPUS[Math.min(idx, CORPUS.length - 1)];
 }
 
 function sampleVoice(rng: () => number): VoiceCtx {
   // 80% of traffic → top 10 voices.
   if (rng() < 0.8) {
-    return VOICE_CONTEXTS_50[Math.floor(rng() * 10)]!;
+    return VOICE_CONTEXTS_50[Math.floor(rng() * 10)];
   }
-  return VOICE_CONTEXTS_50[Math.floor(rng() * VOICE_CONTEXTS_50.length)]!;
+  return VOICE_CONTEXTS_50[Math.floor(rng() * VOICE_CONTEXTS_50.length)];
 }
 
 // Seeded LCG for reproducibility.
@@ -365,7 +365,7 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
 
     // Store one entry per voice context.
     for (let i = 0; i < VOICE_CONTEXTS_50.length; i++) {
-      const ctx = VOICE_CONTEXTS_50[i]!;
+      const ctx = VOICE_CONTEXTS_50[i];
       const b = new Uint8Array(4).fill(i);
       await cache.put({
         algoVersion: "1",
@@ -387,7 +387,7 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
 
     // Each voice context retrieves its OWN entry.
     for (let i = 0; i < VOICE_CONTEXTS_50.length; i++) {
-      const ctx = VOICE_CONTEXTS_50[i]!;
+      const ctx = VOICE_CONTEXTS_50[i];
       const hit = await cache.get({
         algoVersion: "1",
         provider: ctx.provider,

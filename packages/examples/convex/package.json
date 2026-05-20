@@ -16,9 +16,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-xai": "workspace:*",
     "@elizaos/plugin-google-genai": "workspace:*",
-    "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "convex": "^1.25.2",
     "dotenv": "^17.0.0"

@@ -1,0 +1,41 @@
+schema: eliza.pd_corner_manifest.v1
+pdk: Samsung_SF2P
+node_class: samsung_sf2p_3rd_gen_mbcfet_gaa
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_corner_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - Any Samsung SF2P corner-set claim is BLOCKED.
+    - SF2Z (BSPDN variant) arrives 2027 and is a separate corner-set if selected.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed Samsung Foundry SAFE program / NDA agreement.
+    - Hard-IP licenses available at SF2P.
+    - Commercial EDA flow qualified at SF2P by Samsung.
+    - Mature yield history at SF2P (Exynos 2600 ramp gives some signal but not foundry-customer evidence).
+
+required_after_unblock:
+  total_effective_corners_min: 32
+  total_full_corners_min: 128
+  pvt_axes:
+    process: [SS, TT, FF, local_NFET, local_PFET]
+    voltage_v: [vmin_low, vnom, vmax_high]
+    temperature_c: [-40, 0, 25, 85, 110, 125]
+    aging: [t0, mid_life, EOL]
+    rc: [cworst, cbest, rcworst, rcbest, typical]
+  multi_vt_required:
+    - SLVT
+    - LVT
+    - RVT
+    - HVT
+  ocv_model: LVF_or_SOCV
+  bspdn_corners: not_applicable_for_SF2P_frontside
+
+forbidden_claims_until_unblocked:
+  - sf2p_corner_clean
+  - sf2p_release_evidence
+  - sf2z_bspdn_signoff

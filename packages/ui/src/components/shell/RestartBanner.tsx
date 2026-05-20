@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
-import { Z_SYSTEM_BANNER } from "../../lib/floating-layers";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
+
+// z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
+// Kept as a literal so Tailwind v4's source scanner emits the utility.
 
 export function RestartBanner() {
   const {
@@ -38,7 +40,7 @@ export function RestartBanner() {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-[${Z_SYSTEM_BANNER}] flex flex-col gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-sm`}
+      className="fixed bottom-4 right-4 z-[9998] flex flex-col gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-sm"
       style={{
         background: "color-mix(in srgb, var(--bg) 95%, var(--accent) 5%)",
         border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",

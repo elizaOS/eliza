@@ -1,0 +1,34 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"],
+      "@feed/engine": ["../engine/src/index.ts"],
+      "@feed/engine/*": ["../engine/src/*"],
+      "@feed/core": ["../core/markets/index.ts"],
+      "@feed/core/*": ["../core/*"],
+      "@feed/api": ["../api/src/index.ts"],
+      "@feed/api/*": ["../api/src/*"],
+      "@feed/a2a": ["../a2a/src/index.ts"],
+      "@feed/a2a/*": ["../a2a/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../db" },
+    { "path": "../engine" },
+    { "path": "../core" },
+    { "path": "../api" },
+    { "path": "../a2a" }
+  ]
+}

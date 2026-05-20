@@ -22,7 +22,23 @@ REPORT = ROOT / "build/chipyard/eliza_rocket/verilator-preflight.json"
 CONFIG = "ElizaRocketConfig"
 CONFIG_PACKAGE = "eliza"
 SIM_DIR = CHECKOUT / "sims/verilator"
+MIN_FREE_GIB = int(os.environ.get("CHIPYARD_VERILATOR_MIN_FREE_GIB", "20"))
 REQUIRED_RECURSIVE_SUBMODULE_ROOTS = ("generators/rocket-chip",)
+REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS = (
+    "generators/ara",
+    "generators/cva6",
+    "generators/ibex",
+    "generators/nvdla",
+    "sims/firesim",
+    "toolchains/riscv-tools/riscv-isa-sim",
+    "tools/DRAMSim2",
+    "tools/cde",
+    "tools/dsptools",
+    "tools/fixedpoint",
+    "tools/firrtl2",
+    "tools/rocket-dsp-utils",
+    "tools/torture",
+)
 
 BUILD_COMMAND = [
     f"cd {CHECKOUT.relative_to(ROOT) if CHECKOUT.is_relative_to(ROOT) else CHECKOUT}/sims/verilator",
@@ -87,15 +103,64 @@ def submodule_problems() -> dict[str, list[str]]:
     return problems
 
 
+def top_level_submodule_problems() -> dict[str, list[str]]:
+    status = run(
+        ["git", "submodule", "status", *REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS],
+        cwd=CHECKOUT,
+    )
+    problems: dict[str, list[str]] = {"missing": [], "drifted": [], "conflicts": []}
+    if status.returncode != 0:
+        problems["conflicts"].append("could not read top-level submodule status")
+        return problems
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        fields = line[1:].strip().split()
+        path = fields[1] if len(fields) >= 2 else line
+        if line.startswith("-"):
+            problems["missing"].append(path)
+        elif line.startswith("+"):
+            problems["drifted"].append(path)
+        elif line.startswith("U"):
+            problems["conflicts"].append(path)
+    return problems
+
+
+def direct_generator_submodule_problems() -> dict[str, list[str]]:
+    status = run(["git", "submodule", "status", "generators"], cwd=CHECKOUT)
+    problems: dict[str, list[str]] = {"missing": [], "drifted": [], "conflicts": []}
+    if status.returncode != 0:
+        problems["conflicts"].append("could not read direct generator submodule status")
+        return problems
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        fields = line[1:].strip().split()
+        path = fields[1] if len(fields) >= 2 else line
+        if line.startswith("-"):
+            problems["missing"].append(path)
+        elif line.startswith("+"):
+            problems["drifted"].append(path)
+        elif line.startswith("U"):
+            problems["conflicts"].append(path)
+    return problems
+
+
 def tool_path(name: str) -> str | None:
+    repo_tool_candidates = [
+        ROOT / "tools/bin" / name,
+        ROOT / "external/oss-cad-suite/bin" / name,
+        ROOT / ".venv/bin" / name,
+    ]
     if name == "firtool":
-        local_firtool = ROOT / "external/circt/bin/firtool"
-        if local_firtool.is_file():
-            return str(local_firtool)
+        repo_tool_candidates.append(ROOT / "external/circt/bin/firtool")
     if name == "java":
         jdk17_java = Path("/opt/homebrew/opt/openjdk@17/bin/java")
         if jdk17_java.is_file():
             return str(jdk17_java)
+    for candidate in repo_tool_candidates:
+        if candidate.is_file():
+            return str(candidate)
     return shutil.which(name)
 
 
@@ -105,6 +170,20 @@ def first_line(text: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def gibibytes(byte_count: int) -> float:
+    return byte_count / (1024**3)
+
+
+def disk_space_blocker(free_bytes: int, min_free_gib: int = MIN_FREE_GIB) -> str | None:
+    if free_bytes >= min_free_gib * 1024**3:
+        return None
+    return (
+        "insufficient free disk for Chipyard setup/generation: "
+        f"{gibibytes(free_bytes):.2f} GiB free, "
+        f"{min_free_gib} GiB required by this preflight"
+    )
 
 
 def main() -> int:
@@ -122,7 +201,13 @@ def main() -> int:
         "verilator_simulator": " && ".join(BUILD_COMMAND),
         "verilog_only": " && ".join(VERILOG_COMMAND),
     }
+    disk_usage = shutil.disk_usage(ROOT)
+    checks["disk_free_gib"] = round(gibibytes(disk_usage.free), 2)
+    checks["disk_required_free_gib"] = MIN_FREE_GIB
+    if blocker := disk_space_blocker(disk_usage.free):
+        blockers.append(blocker)
     checks["required_recursive_submodule_roots"] = list(REQUIRED_RECURSIVE_SUBMODULE_ROOTS)
+    checks["required_top_level_submodule_roots"] = list(REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS)
 
     if selected.get("config_name") != CONFIG:
         errors.append(f"selected config must be {CONFIG}")
@@ -150,12 +235,42 @@ def main() -> int:
         for path in problems["conflicts"]:
             errors.append(f"Chipyard recursive submodule has conflict or status error: {path}")
 
+        top_level_problems = top_level_submodule_problems()
+        checks["top_level_submodule_problems"] = top_level_problems
+        for path in top_level_problems["missing"]:
+            errors.append(f"Chipyard top-level submodule is not initialized: {path}")
+        for path in top_level_problems["drifted"]:
+            errors.append(f"Chipyard top-level submodule is not at recorded SHA: {path}")
+        for path in top_level_problems["conflicts"]:
+            errors.append(f"Chipyard top-level submodule has conflict or status error: {path}")
+
+        generator_problems = direct_generator_submodule_problems()
+        checks["direct_generator_submodule_problems"] = generator_problems
+        for path in generator_problems["missing"]:
+            errors.append(f"Chipyard generator submodule is not initialized: {path}")
+        for path in generator_problems["drifted"]:
+            errors.append(f"Chipyard generator submodule is not at recorded SHA: {path}")
+        for path in generator_problems["conflicts"]:
+            errors.append(f"Chipyard generator submodule has conflict or status error: {path}")
+
     for relative in (
         "sims/verilator/Makefile",
         "common.mk",
         "variables.mk",
+        "generators/ara/ara.mk",
+        "generators/cva6/cva6.mk",
+        "generators/ibex/ibex.mk",
+        "generators/nvdla/nvdla.mk",
+        "generators/tracegen/tracegen.mk",
         "generators/chipyard/src/main/scala",
         "generators/rocket-chip/src/main/resources/vsrc/TestDriver.v",
+        "sims/firesim/sim/midas/targetutils/src/main/scala",
+        "tools/DRAMSim2/Makefile",
+        "tools/cde/cde/src/chipsalliance/rocketchip/config.scala",
+        "tools/dsptools/src/main/scala",
+        "tools/fixedpoint/src/main/scala",
+        "tools/rocket-dsp-utils/src/main/scala",
+        "tools/torture.mk",
     ):
         checkout_path = CHECKOUT / relative
         checks[f"exists:{relative}"] = checkout_path.exists()
@@ -192,7 +307,7 @@ def main() -> int:
                     )
             config_source_checks.append(record)
 
-    for tool in ("make", "java", "verilator", "firtool"):
+    for tool in ("ar", "make", "java", "verilator", "firtool"):
         resolved_tool = tool_path(tool)
         checks[f"tool:{tool}"] = resolved_tool
         if resolved_tool is None:
@@ -224,6 +339,17 @@ def main() -> int:
             )
         ):
             riscv = str(default_riscv)
+        elif any(
+            (ROOT / f"tools/bin/{name}").is_file()
+            for name in (
+                "riscv64-unknown-elf-gcc",
+                "riscv64-elf-gcc",
+                "riscv64-linux-gnu-gcc",
+            )
+        ):
+            riscv = str(ROOT / "tools")
+        elif (ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc").is_file():
+            riscv = str(ROOT / "external/riscv64-linux-gnu/usr")
     checks["env:RISCV"] = riscv
     if not riscv:
         blockers.append(
@@ -248,6 +374,64 @@ def main() -> int:
                 "missing RISC-V toolchain under RISCV; expected one of: "
                 + ", ".join(str(candidate) for candidate in toolchain_candidates)
             )
+        fesvr_header = Path(riscv) / "include/fesvr/memif.h"
+        spike_cfg_header = Path(riscv) / "include/riscv/cfg.h"
+        fesvr_library = Path(riscv) / "lib/libfesvr.a"
+        spike_library = Path(riscv) / "lib/libriscv.a"
+        checks["exists:RISCV/include/fesvr/memif.h"] = fesvr_header.is_file()
+        checks["exists:RISCV/include/riscv/cfg.h"] = spike_cfg_header.is_file()
+        checks["exists:RISCV/lib/libfesvr.a"] = fesvr_library.is_file()
+        checks["exists:RISCV/lib/libriscv.a"] = spike_library.is_file()
+        if not fesvr_header.is_file():
+            blockers.append(
+                "missing FESVR header under RISCV: "
+                f"{fesvr_header}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not spike_cfg_header.is_file():
+            blockers.append(
+                "missing Spike transitive header under RISCV: "
+                f"{spike_cfg_header}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not fesvr_library.is_file():
+            blockers.append(
+                "missing FESVR static library under RISCV: "
+                f"{fesvr_library}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not spike_library.is_file():
+            blockers.append(
+                "missing Spike static library under RISCV: "
+                f"{spike_library}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        elif ar_path := checks.get("tool:ar"):
+            spike_archive = run([str(ar_path), "t", str(spike_library)])
+            if spike_archive.returncode != 0:
+                blockers.append(f"cannot inspect Spike static library: {spike_library}")
+            else:
+                members = set(spike_archive.stdout.splitlines())
+                excluded_members = {"remote_bitbang.o", "sim.o", "interactive.o"}
+                required_members = {
+                    "disasm.o",
+                    "isa_parser.o",
+                    "fdt.o",
+                    "f32_add.o",
+                    "softfloat_state.o",
+                }
+                present_excluded = sorted(excluded_members & members)
+                missing_required = sorted(required_members - members)
+                checks["archive:RISCV/lib/libriscv.a/excluded_members_present"] = present_excluded
+                checks["archive:RISCV/lib/libriscv.a/missing_required_members"] = missing_required
+                if present_excluded:
+                    blockers.append(
+                        "Spike static library contains standalone simulator objects "
+                        f"that conflict with Chipyard Verilator collateral: {present_excluded}; "
+                        "run scripts/prepare_chipyard_spike_libraries.py"
+                    )
+                if missing_required:
+                    blockers.append(
+                        "Spike static library is missing companion archive objects "
+                        f"needed by the generated Verilator link: {missing_required}; "
+                        "run scripts/prepare_chipyard_spike_libraries.py"
+                    )
 
     env_sh = CHECKOUT / "env.sh"
     checks["exists:env.sh"] = env_sh.is_file()

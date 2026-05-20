@@ -1,0 +1,33 @@
+# act configuration for local GitHub Actions execution
+# https://github.com/nektos/act
+
+# Container architecture for Apple Silicon Macs
+--container-architecture linux/amd64
+
+# Use medium-sized Docker images (good balance of speed and compatibility)
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-24.04=catthehacker/ubuntu:act-latest
+
+# Map Blacksmith runners to standard Ubuntu images
+-P blacksmith-2vcpu-ubuntu-2404=catthehacker/ubuntu:act-latest
+-P blacksmith-8vcpu-ubuntu-2404=catthehacker/ubuntu:act-latest
+
+# Load secrets from local file (create from .secrets.local.template)
+--secret-file .secrets.local
+
+# Enable verbose output for debugging
+# --verbose
+
+# Use host Docker socket
+--container-daemon-socket /var/run/docker.sock
+
+# Artifact server (enable artifact upload/download between jobs)
+--artifact-server-path /tmp/act-artifacts
+
+# Reuse containers between runs for faster iteration
+--reuse
+
+# Apple Silicon (M-series) compatibility - use x86_64 emulation via Rosetta
+--container-architecture linux/amd64
+

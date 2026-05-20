@@ -71,7 +71,8 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 
 		// Service becomes available later; advance the retry timer.
 		setService("SWARM_COORDINATOR", coordinator);
-		await vi.advanceTimersByTimeAsync(500);
+		vi.advanceTimersByTime(500);
+		await Promise.resolve();
 
 		expect(coordinator.__listenerCount()).toBe(1);
 		await service.stop();
@@ -85,12 +86,14 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		const service = await VerificationRoomBridgeService.start(runtime);
 
 		// Drain the entire retry budget: 60 retries × 500ms = 30s.
-		await vi.advanceTimersByTimeAsync(31_000);
+		vi.advanceTimersByTime(31_000);
+		await Promise.resolve();
 
 		// Service eventually shows up AFTER giving up. Bridge must NOT
 		// subscribe — the retry loop already terminated.
 		setService("SWARM_COORDINATOR", coordinator);
-		await vi.advanceTimersByTimeAsync(5_000);
+		vi.advanceTimersByTime(5_000);
+		await Promise.resolve();
 		expect(coordinator.__listenerCount()).toBe(0);
 
 		await service.stop();
@@ -109,7 +112,8 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		// would re-attach and increment the listener count; a proper
 		// cancel keeps it at zero.
 		setService("SWARM_COORDINATOR", coordinator);
-		await vi.advanceTimersByTimeAsync(60_000);
+		vi.advanceTimersByTime(60_000);
+		await Promise.resolve();
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 });

@@ -15,6 +15,7 @@ picture-uri='file:///usr/share/tails/desktop_wallpaper.png'
 [org/gnome/desktop/interface]
 clock-format='24h'
 clock-show-date=true
+color-scheme='prefer-light'
 document-font-name='Poppins 10'
 font-name='Poppins 10'
 menus-have-icons=true

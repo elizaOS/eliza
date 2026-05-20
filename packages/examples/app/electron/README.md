@@ -24,7 +24,7 @@ bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-*
 Terminal A (renderer):
 
 ```bash
-cd examples/app/electron/frontend
+cd packages/examples/app/electron/frontend
 bun install
 bun run dev
 ```
@@ -32,7 +32,7 @@ bun run dev
 Terminal B (Electron main):
 
 ```bash
-cd examples/app/electron/backend
+cd packages/examples/app/electron/backend
 bun install
 bun run dev
 ```
@@ -40,7 +40,7 @@ bun run dev
 ## Run (no dev server)
 
 ```bash
-cd examples/app/electron/frontend
+cd packages/examples/app/electron/frontend
 bun install
 bun run build
 

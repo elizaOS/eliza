@@ -16,10 +16,15 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl git make cmake ninja-build \
+        bc bison flex file pkg-config rsync unzip \
         python3 python3-dev python3-pip python3-venv \
         shellcheck jq device-tree-compiler \
         verilator yosys iverilog gtkwave qemu-system-misc \
-        gcc-riscv64-unknown-elf z3; \
+        gcc-riscv64-unknown-elf gcc-riscv64-linux-gnu z3 \
+        openjdk-17-jdk-headless repo adb \
+        fio openocd sigrok-cli \
+        klayout magic netgen \
+        nextpnr-ecp5 fpga-icestorm kicad; \
     dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
         > /var/log/apt-manifest/installed-packages.tsv; \
     apt-cache policy > /var/log/apt-manifest/apt-policy.txt 2>&1 || true; \

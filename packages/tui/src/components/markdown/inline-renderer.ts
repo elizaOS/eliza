@@ -13,6 +13,13 @@ export interface InlineRenderContext {
   getDefaultInlineStyleContext: () => InlineStyleContext;
 }
 
+function hasNestedTokens(token: Token): token is Token & { tokens: Token[] } {
+  return (
+    "tokens" in token &&
+    Array.isArray((token as { tokens?: unknown }).tokens)
+  );
+}
+
 /**
  * Render inline tokens to styled text.
  *
@@ -39,13 +46,13 @@ export function renderInlineTokens(
     switch (token.type) {
       case "text":
         // Text tokens in list items can have nested tokens for inline formatting
-        if (token.tokens && token.tokens.length > 0) {
+        if (hasNestedTokens(token) && token.tokens.length > 0) {
           result += renderInlineTokens(
             token.tokens,
             context,
             resolvedStyleContext,
           );
-        } else {
+        } else if ("text" in token && typeof token.text === "string") {
           result += applyTextWithNewlines(token.text);
         }
         break;

@@ -74,8 +74,8 @@ active_openlane_containers() {
         return 0
     fi
     docker ps \
-        --filter "label=openagent.openlane=1" \
-        --filter "label=openagent.repo=$REPO_DIR" \
+        --filter "label=eliza.openlane=1" \
+        --filter "label=eliza.repo=$REPO_DIR" \
         --format '{{.ID}} {{.Status}} {{.Names}}' 2>/dev/null || true
 }
 
@@ -142,6 +142,10 @@ copy_docker_runs() {
     if [ ! -s "$cid_file" ] || ! command -v docker >/dev/null 2>&1; then
         return 0
     fi
+    if find "$REPO_DIR/pd/openlane/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep . >/dev/null 2>&1; then
+        echo "OpenLane run artifacts are already visible through the bind mount."
+        return 0
+    fi
     cid="$(cat "$cid_file")"
     if ! docker container inspect "$cid" >/dev/null 2>&1; then
         return 0
@@ -158,16 +162,7 @@ copy_docker_runs() {
 }
 
 normalize_docker_outputs() {
-    if ! command -v docker >/dev/null 2>&1; then
-        return 0
-    fi
-    uid="$(id -u)"
-    gid="$(id -g)"
-    docker run --rm \
-        -v "$REPO_DIR:/work" \
-        -w /work \
-        "$IMAGE" sh -lc "chown -R '$uid:$gid' /work/pd/openlane/runs 2>/dev/null || true; chown -R '$uid:$gid' /work/.openlane-run.lock 2>/dev/null || true" \
-        >/dev/null 2>&1 || true
+    return 0
 }
 
 run_and_diagnose() {
@@ -187,8 +182,8 @@ run_docker_and_diagnose() {
     set +e
     run_maybe_timeout docker run \
         --cidfile "$DOCKER_CID_FILE" \
-        --label "openagent.openlane=1" \
-        --label "openagent.repo=$REPO_DIR" \
+        --label "eliza.openlane=1" \
+        --label "eliza.repo=$REPO_DIR" \
         -v "$REPO_DIR:/work" \
         -w /work \
         -e "PDK_ROOT=$pdk_root_container" \

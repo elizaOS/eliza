@@ -1,0 +1,925 @@
+schema: eliza.compiler_runtime_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - MLIR upstream dialects and CIRCT hardware-MLIR
+  - StableHLO / OpenXLA / PJRT and JAX-PyTorch export
+  - IREE compiler + HAL multi-target runtime
+  - Apache TVM Unity, Relax, MetaSchedule, MLC-LLM
+  - PyTorch 2.x compile stack (TorchInductor, AOTInductor, ExecuTorch, dynamo)
+  - TFLite / LiteRT, NNAPI deprecation, Android AICore / AI Edge
+  - ONNX Runtime Mobile / Web with EP architecture
+  - Triton, CUTLASS / CuTe-DSL, Mojo, Hidet, ThunderKittens
+  - Quantization toolchains (AIMET, Brevitas, GPTQ, AWQ, SpinQuant, OmniQuant,
+    SmoothQuant, QuaRot, HQQ, Atom, RPTQ)
+  - Throughput / latency runtimes (vLLM, SGLang, MAX, llama.cpp, MLX, MediaPipe)
+  - Attention compilation (FlashAttention-3, paged attention, RoPE fusion)
+  - Mobile NN abstractions (Core ML, QNN, NeuroPilot, ExecuTorch backends)
+  - Compiler / scheduling papers (RAMMER, Welder, Tessel, AKG, MAGE, Mind Mappings, Glow)
+  - Tensor/graph IRs and DSLs (LinAlg, Transform, Stream, Halide, BUDA, TT-NN)
+claim_boundary: >
+  All entries below are public papers, vendor pages, RFCs, or open-source
+  repositories. They do not establish that the E1 NPU's compiler/runtime
+  implements any of these techniques. E1 implementation evidence lives in
+  packages/chip/docs/, packages/chip/compiler/runtime/, and packages/chip/rtl/.
+
+mlir_and_circt:
+  - id: repo_llvm_mlir
+    title: "MLIR — Multi-Level Intermediate Representation (LLVM monorepo)"
+    url: "https://github.com/llvm/llvm-project/tree/main/mlir"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - upstream MLIR core, dialects, transform infra
+      - linalg, tensor, vector, gpu, async, transform, mesh dialects live here
+      - canonical lowering pipelines for tensor compute
+  - id: vendor_mlir_dialects
+    title: "MLIR Dialects (mlir.llvm.org)"
+    url: "https://mlir.llvm.org/docs/Dialects/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - authoritative dialect reference for linalg, tensor, vector, gpu, async
+      - transform dialect schedule-driven lowering documentation
+      - mesh and sparse_tensor dialects for distribution and structured sparsity
+  - id: paper_mlir_compiler_2021
+    title: "MLIR: Scaling Compiler Infrastructure for Domain Specific Computation"
+    url: "https://arxiv.org/abs/2002.11054"
+    source_type: "paper"
+    venue: "CGO 2021"
+    year: 2021
+    authors: ["Lattner", "Amini", "Bondhugula", "Cohen", "Davis", "Pienaar", "Riddle", "Shpeisman", "Vasilache", "Zinenko"]
+    relevance:
+      - original MLIR design rationale
+      - dialect, region, attribute, type design primitives
+      - basis for every downstream MLIR-based compiler in this packet
+  - id: paper_linalg_transform_2023
+    title: "Composable and Modular Code Generation in MLIR"
+    url: "https://arxiv.org/abs/2202.03293"
+    source_type: "paper"
+    venue: "arXiv preprint, used at CGO/PLDI tutorials"
+    year: 2022
+    authors: ["Vasilache", "Zinenko", "Bik", "Ravishankar", "et al."]
+    relevance:
+      - linalg + transform dialect schedule composition
+      - tiling, fusion, vectorization, bufferization rationale
+      - foundational reading for an NPU tile-and-dispatch backend
+  - id: repo_circt
+    title: "CIRCT: Circuit IR Compilers and Tools"
+    url: "https://github.com/llvm/circt"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - MLIR for hardware: FIRRTL, HW, Comb, SystemC, Calyx, Pipeline
+      - relevant if E1 ever wants RTL co-generation from compiler IR
+      - useful for descriptor-ring / control-plane microcode generation
+  - id: repo_hugr
+    title: "Hugr: Hierarchical Unified Graph Representation"
+    url: "https://github.com/CQCL/hugr"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - alternative graph IR (originated for quantum, now used for hybrid)
+      - hierarchical region-based design parallel to MLIR
+      - useful as a comparison point for tensor-IR ergonomics
+
+stablehlo_openxla:
+  - id: repo_stablehlo
+    title: "StableHLO Operation Set"
+    url: "https://github.com/openxla/stablehlo"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - portable HLO op set with versioned compatibility window
+      - target IR for JAX, PyTorch (torch-xla), TFLite converter
+      - canonical entry IR for an NPU backend that wants framework agnosticism
+  - id: spec_stablehlo_spec
+    title: "StableHLO Specification"
+    url: "https://github.com/openxla/stablehlo/blob/main/docs/spec.md"
+    source_type: "spec"
+    year: 2026
+    relevance:
+      - normative semantics for every StableHLO op
+      - quantized types, dynamic shapes, dot_general contraction model
+      - required reading before claiming StableHLO operator coverage
+  - id: repo_openxla_xla
+    title: "OpenXLA XLA Compiler"
+    url: "https://github.com/openxla/xla"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - production XLA pipeline (HLO → LLVM/PTX/TPU)
+      - GPU backend, CPU backend, MLIR-based emitters
+      - useful pattern source for systolic and tile dispatch
+  - id: repo_pjrt
+    title: "PJRT Plugin C API"
+    url: "https://github.com/openxla/xla/tree/main/xla/pjrt"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - device-agnostic runtime plugin interface used by JAX and PyTorch/XLA
+      - candidate runtime ABI for binding a custom NPU device to JAX
+      - decouples framework from device backend
+  - id: vendor_jax_export
+    title: "JAX export and StableHLO"
+    url: "https://jax.readthedocs.io/en/latest/export/export.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - canonical way to capture JAX programs as StableHLO bytecode
+      - versioned compatibility window for downstream compilers
+      - input pathway for an E1 StableHLO backend
+
+iree:
+  - id: repo_iree
+    title: "IREE: Intermediate Representation Execution Environment"
+    url: "https://github.com/iree-org/iree"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - end-to-end MLIR compiler + HAL multi-target runtime
+      - dispatch region formation, executable formats (VMFB, embedded ELF)
+      - HAL drivers for CPU/CUDA/Vulkan/Metal/ROCm/WebGPU and custom devices
+  - id: vendor_iree_docs
+    title: "IREE Documentation"
+    url: "https://iree.dev/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - compilation pipeline overview (Flow, Stream, HAL dialects)
+      - guide to adding a new HAL driver and executable format
+      - reference for an NPU-friendly bring-up path
+  - id: paper_iree_dispatch
+    title: "IREE: MLIR-based End-to-End ML Compiler and Runtime"
+    url: "https://www.usenix.org/conference/atc24/presentation/lim"
+    source_type: "paper"
+    venue: "USENIX ATC 2024 (related talks/poster)"
+    year: 2024
+    relevance:
+      - dispatch region formation and bufferization
+      - stream scheduling and command buffer emission
+      - target-independent IR pipeline rationale
+  - id: repo_iree_turbine
+    title: "IREE Turbine (PyTorch frontend)"
+    url: "https://github.com/iree-org/iree-turbine"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PyTorch-to-IREE bridging through Torch-MLIR / dynamo
+      - AOT export path used by Shark / AMD ML stack
+      - shows a real PyTorch → MLIR → device pipeline
+
+tvm_unity:
+  - id: repo_tvm
+    title: "Apache TVM"
+    url: "https://github.com/apache/tvm"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - Relax IR (Relay v2), TIR, MetaSchedule, BYOC interface
+      - mature path for NPU vendors to plug in via Bring-Your-Own-Codegen
+      - prior art for tile-level autoscheduling on accelerators
+  - id: paper_metaschedule_2022
+    title: "Tensor Program Optimization with Probabilistic Programs"
+    url: "https://arxiv.org/abs/2205.13603"
+    source_type: "paper"
+    venue: "NeurIPS 2022"
+    year: 2022
+    authors: ["Shao", "Zheng", "Wang", "Chen", "et al."]
+    relevance:
+      - MetaSchedule autoscheduler design
+      - probabilistic schedule space for tiling and dispatch
+      - reference for E1 tile-shape search if the compiler ever needs autotune
+  - id: repo_mlc_llm
+    title: "MLC-LLM: Universal LLM Compilation"
+    url: "https://github.com/mlc-ai/mlc-llm"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - TVM Unity + Relax + MetaSchedule for LLM deployment
+      - quantized weight layouts and KV cache management
+      - cross-target (mobile GPU, NPU, WebGPU) deployment patterns
+  - id: paper_relax_unity
+    title: "Relax: Composable Abstractions for End-to-End Dynamic Machine Learning"
+    url: "https://arxiv.org/abs/2311.02103"
+    source_type: "paper"
+    venue: "MLSys 2024"
+    year: 2024
+    authors: ["Lai", "Shao", "Feng", "Tan", "Chen", "et al."]
+    relevance:
+      - design of Relax IR with dynamic shapes
+      - tensor-program composition with MetaSchedule
+      - direct comparison point for StableHLO with dynamic shapes
+
+pytorch_compile_stack:
+  - id: vendor_torch_compile
+    title: "torch.compile (PyTorch 2.x)"
+    url: "https://pytorch.org/docs/stable/torch.compiler.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - dynamo capture, AOTAutograd, TorchInductor pipeline
+      - canonical PyTorch graph capture surface for backends
+      - custom backend registration via torch._dynamo.register_backend
+  - id: repo_executorch
+    title: "ExecuTorch: PyTorch on-device runtime"
+    url: "https://github.com/pytorch/executorch"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PyTorch's official mobile/embedded runtime
+      - delegate interface for NPU vendors (XNNPACK, CoreML, QNN, MediaTek, Vulkan, KleidiAI)
+      - .pte file format and runtime ABI for on-device inference
+  - id: vendor_executorch_delegates
+    title: "ExecuTorch Backend Delegates"
+    url: "https://pytorch.org/executorch/stable/compiler-delegate-and-partitioner.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - partitioner API and delegate compilation contract
+      - lowered_module / delegate_spec / preprocess semantics
+      - the exact path an E1 ExecuTorch delegate would follow
+  - id: paper_aot_inductor
+    title: "AOTInductor: Ahead-of-Time Compilation for PyTorch 2"
+    url: "https://pytorch.org/blog/aotinductor-introducing/"
+    source_type: "vendor_technical_blog"
+    year: 2024
+    relevance:
+      - AOT export from PyTorch 2 to shared libraries
+      - alternative to TorchScript for serving and edge deployment
+      - useful for offline compile-once flows
+  - id: repo_torch_mlir
+    title: "Torch-MLIR"
+    url: "https://github.com/llvm/torch-mlir"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PyTorch to MLIR / StableHLO / linalg-on-tensors converter
+      - default ingestion path into IREE Turbine and similar stacks
+      - removes need to write a custom PyTorch frontend per device
+
+tflite_litert_aicore:
+  - id: vendor_litert
+    title: "LiteRT (Google AI Edge, the LiteRT-branded TFLite successor)"
+    url: "https://ai.google.dev/edge/litert"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - rebrand of TFLite as LiteRT under Google AI Edge
+      - delegate model still applies (GPU, NNAPI, ExecuTorch interop)
+      - INT8 / INT4 quantization and stablehlo conversion paths
+  - id: vendor_ai_edge
+    title: "Google AI Edge"
+    url: "https://ai.google.dev/edge"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - umbrella site for LiteRT, MediaPipe, AI Edge Torch
+      - on-device LLM (Gemma, Gemini Nano) deployment recipes
+      - canonical Google mobile inference surface for 2026
+  - id: vendor_ai_edge_torch
+    title: "AI Edge Torch (PyTorch → LiteRT)"
+    url: "https://github.com/google-ai-edge/ai-edge-torch"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PyTorch model conversion to LiteRT via StableHLO + odml-torch
+      - generative-AI specific quantization recipes (INT4 weight-only)
+      - explicit replacement for older TF-Lite converter
+  - id: vendor_aicore
+    title: "Android AICore"
+    url: "https://developer.android.com/ai/aicore"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - Android system service for on-device foundation models
+      - Gemini Nano host for first-party Android features
+      - replacement umbrella for portions of NNAPI usage
+  - id: vendor_nnapi_deprecation
+    title: "Android NNAPI deprecation notice"
+    url: "https://developer.android.com/ndk/guides/neuralnetworks/migration-guide"
+    source_type: "vendor_docs"
+    year: 2025
+    relevance:
+      - NNAPI is deprecated; vendors moved to per-SoC delegates
+      - migration guidance toward TFLite GPU/NPU delegates and ExecuTorch
+      - critical context for any E1 Android integration claim
+
+onnx_runtime:
+  - id: repo_onnxruntime
+    title: "ONNX Runtime"
+    url: "https://github.com/microsoft/onnxruntime"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - Execution Provider (EP) architecture, mobile / web build
+      - QNN EP, CoreML EP, NNAPI EP, DirectML EP, OpenVINO EP, TensorRT EP
+      - canonical place to add a custom EP for a new accelerator
+  - id: vendor_ort_execution_providers
+    title: "ONNX Runtime Execution Providers"
+    url: "https://onnxruntime.ai/docs/execution-providers/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - documentation of EP contract, kernel registration, partitioning
+      - quantization-aware EP examples (QNN, TensorRT, OpenVINO)
+      - reference for writing an E1 EP if ONNX is the chosen frontend
+  - id: vendor_onnxruntime_quantization
+    title: "ONNX Runtime quantization toolkit"
+    url: "https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - static / dynamic INT8 quantization recipes
+      - QDQ and quant-operator graphs feeding hardware EPs
+      - shows what op set an EP must support for int8 networks
+
+triton_gpu_jit:
+  - id: repo_triton
+    title: "OpenAI Triton"
+    url: "https://github.com/triton-lang/triton"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - block-level GPU kernel DSL with MLIR backend
+      - canonical example of a python-embedded compiler DSL
+      - reference for tile/program-id abstractions that an NPU DSL may mirror
+  - id: paper_triton_2019
+    title: "Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations"
+    url: "https://dl.acm.org/doi/10.1145/3315508.3329973"
+    source_type: "paper"
+    venue: "MAPL 2019"
+    year: 2019
+    authors: ["Tillet", "Kung", "Cox"]
+    relevance:
+      - original Triton tile-IR design rationale
+      - influenced Hidet, Mojo, and many newer tile DSLs
+      - useful baseline when designing a tile DSL for E1
+  - id: repo_cutlass
+    title: "NVIDIA CUTLASS / CuTe-DSL"
+    url: "https://github.com/NVIDIA/cutlass"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - canonical GEMM template library for NVIDIA tensor cores
+      - CuTe layout algebra (used by FlashAttention-3, etc.)
+      - layout / tile / pipeline patterns that map well to systolic NPUs
+  - id: repo_mojo
+    title: "Modular Mojo"
+    url: "https://github.com/modular/mojo"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - MLIR-based AI systems language
+      - tile-level kernel programming with python-like syntax
+      - paired with MAX serving runtime
+  - id: repo_hidet
+    title: "Hidet: Task-Mapping Programming Paradigm"
+    url: "https://github.com/hidet-org/hidet"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - task-mapping IR distinct from Triton's tile IR
+      - autoscheduling and operator fusion for GPU
+      - alternative compiler design pattern for accelerator kernels
+  - id: repo_thunderkittens
+    title: "ThunderKittens"
+    url: "https://github.com/HazyResearch/ThunderKittens"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2025
+    relevance:
+      - simple tile-level CUDA DSL targeting H100/Blackwell
+      - shows minimalist tile abstractions for fused attention
+      - influences how 2026 attention kernels are written by hand
+
+quantization_toolchains:
+  - id: repo_aimet
+    title: "Qualcomm AIMET (AI Model Efficiency Toolkit)"
+    url: "https://github.com/quic/aimet"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - production-grade PTQ/QAT, channel pruning, mixed precision
+      - INT8/INT4 weight + activation quantization with AdaRound, BC, CLE
+      - same toolkit Qualcomm targets at its own NPUs (mirror for E1)
+  - id: repo_brevitas
+    title: "Xilinx Brevitas"
+    url: "https://github.com/Xilinx/brevitas"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PyTorch quantization-aware training library
+      - flexible bit-width (INT8/INT4/INT2/binary/ternary) and FP8 paths
+      - useful reference for INT2 BitNet-style training
+  - id: paper_gptq
+    title: "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"
+    url: "https://arxiv.org/abs/2210.17323"
+    source_type: "paper"
+    venue: "ICLR 2023"
+    year: 2022
+    authors: ["Frantar", "Ashkboos", "Hoefler", "Alistarh"]
+    relevance:
+      - second-order Hessian-based INT4 PTQ
+      - reference algorithm for weight-only INT4 in llama.cpp / mlc-llm
+      - baseline against AWQ / SpinQuant for E1 INT4 path
+  - id: paper_awq
+    title: "AWQ: Activation-aware Weight Quantization for LLM Compression"
+    url: "https://arxiv.org/abs/2306.00978"
+    source_type: "paper"
+    venue: "MLSys 2024"
+    year: 2023
+    authors: ["Lin", "Tang", "Tang", "Yang", "Xu", "Han"]
+    relevance:
+      - activation-statistics-driven scaling for INT4 weight-only quant
+      - widely deployed in vLLM, mlc-llm, llama.cpp ecosystems
+      - critical for any LLM INT4 deployment target on E1
+  - id: paper_smoothquant
+    title: "SmoothQuant: Accurate and Efficient Post-Training Quantization for LLMs"
+    url: "https://arxiv.org/abs/2211.10438"
+    source_type: "paper"
+    venue: "ICML 2023"
+    year: 2022
+    authors: ["Xiao", "Lin", "Seznec", "Wu", "Demouth", "Han"]
+    relevance:
+      - migrates activation outliers into weight scales for INT8 W8A8
+      - enables INT8 inference for transformer activations
+      - precondition for E1 sustained INT8 attention path
+  - id: paper_spinquant
+    title: "SpinQuant: LLM Quantization with Learned Rotations"
+    url: "https://arxiv.org/abs/2405.16406"
+    source_type: "paper"
+    venue: "ICLR 2025"
+    year: 2024
+    authors: ["Liu", "Heinecke", "Khirirat", "Xie", "et al."]
+    relevance:
+      - rotation-based outlier suppression for W4A4 and W4A8
+      - low-bit activation quantization with minimal accuracy loss
+      - directly relevant to E1 INT4 sustained-TOPS targets
+  - id: paper_quarot
+    title: "QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs"
+    url: "https://arxiv.org/abs/2404.00456"
+    source_type: "paper"
+    venue: "NeurIPS 2024"
+    year: 2024
+    authors: ["Ashkboos", "Mohtashami", "Croci", "Li", "Cameron", "Jaggi", "Alistarh", "Hoefler"]
+    relevance:
+      - random-rotation preprocessing for fully W4A4 KV4 quantization
+      - companion theory to SpinQuant for end-to-end INT4 attention
+      - reference for E1 INT4 attention KV cache layout
+  - id: paper_omniquant
+    title: "OmniQuant: Omnidirectionally Calibrated Quantization for LLMs"
+    url: "https://arxiv.org/abs/2308.13137"
+    source_type: "paper"
+    venue: "ICLR 2024"
+    year: 2023
+    authors: ["Shao", "Chen", "Zhang", "Zhao", "Han", "et al."]
+    relevance:
+      - learnable clipping + smoothing for low-bit PTQ
+      - between GPTQ and SpinQuant in design space
+      - reference for hybrid INT4 PTQ workflows
+  - id: paper_hqq
+    title: "Half-Quadratic Quantization (HQQ)"
+    url: "https://mobiusml.github.io/hqq_blog/"
+    source_type: "vendor_technical_blog"
+    year: 2024
+    relevance:
+      - calibration-free INT2/INT3/INT4 weight quantization
+      - useful for fast deployment when calibration data is unavailable
+      - relevant for INT2 BitNet-class workloads on E1
+  - id: paper_bitnet
+    title: "BitNet b1.58: 1-bit LLMs"
+    url: "https://arxiv.org/abs/2402.17764"
+    source_type: "paper"
+    venue: "arXiv preprint, broadly cited"
+    year: 2024
+    authors: ["Ma", "Wang", "Ma", "et al."]
+    relevance:
+      - ternary {-1, 0, 1} weights with INT8 activations
+      - direct match for E1 DOT16_S2 INT2 packed primitive
+      - establishes accuracy bar for INT2-class deployment
+  - id: paper_atom
+    title: "Atom: Low-Bit Quantization for Efficient and Accurate LLM Serving"
+    url: "https://arxiv.org/abs/2310.19102"
+    source_type: "paper"
+    venue: "MLSys 2024"
+    year: 2023
+    authors: ["Zhao", "Lin", "Zhu", "Ye", "Chen"]
+    relevance:
+      - W4A4 with mixed-precision outlier handling
+      - reorder-based KV-cache quantization
+      - reference for INT4 with selective FP fallbacks
+  - id: paper_llmint8
+    title: "LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale"
+    url: "https://arxiv.org/abs/2208.07339"
+    source_type: "paper"
+    venue: "NeurIPS 2022"
+    year: 2022
+    authors: ["Dettmers", "Lewis", "Belkada", "Zettlemoyer"]
+    relevance:
+      - first widely used INT8 LLM inference recipe
+      - outlier feature decomposition that motivates SmoothQuant/SpinQuant
+      - baseline INT8 path on any LLM benchmark
+  - id: paper_fp8_formats
+    title: "FP8 Formats for Deep Learning"
+    url: "https://arxiv.org/abs/2209.05433"
+    source_type: "paper"
+    venue: "NVIDIA/Arm/Intel joint preprint"
+    year: 2022
+    authors: ["Micikevicius", "Stosic", "Burgess", "et al."]
+    relevance:
+      - E4M3 and E5M2 FP8 binary formats
+      - mixed-precision training/inference recipes
+      - matches E1 DOT4_FP8_E4M3 datapath assumption
+  - id: paper_microscaling
+    title: "OCP Microscaling Formats Specification"
+    url: "https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf"
+    source_type: "spec"
+    year: 2023
+    relevance:
+      - MX FP6/FP4/INT8 microscaling spec adopted by NVIDIA, AMD, Intel, Qualcomm
+      - block scaling format compatible with low-bit NPU MXU
+      - future-facing precision target for E1 INT4/FP4
+  - id: paper_kv_quant
+    title: "KIVI: A Tuning-Free Asymmetric 2bit KV Cache Quantization"
+    url: "https://arxiv.org/abs/2402.02750"
+    source_type: "paper"
+    venue: "ICML 2024"
+    year: 2024
+    authors: ["Liu", "Yuan", "Lu", "Ng", "Chen", "et al."]
+    relevance:
+      - per-channel keys + per-token values 2-bit KV cache
+      - critical to fitting long-context LLM in mobile DRAM
+      - reference for E1 KV cache layout work
+
+attention_lowering:
+  - id: paper_flashattn3
+    title: "FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-Precision"
+    url: "https://arxiv.org/abs/2407.08608"
+    source_type: "paper"
+    venue: "NeurIPS 2024"
+    year: 2024
+    authors: ["Shah", "Bikshandi", "Zhang", "Thakkar", "Ramani", "Dao"]
+    relevance:
+      - producer-consumer pipelining and WGMMA orchestration
+      - FP8 attention on Hopper
+      - canonical 2024-2026 attention kernel template
+  - id: paper_flashattn2
+    title: "FlashAttention-2: Faster Attention with Better Parallelism"
+    url: "https://arxiv.org/abs/2307.08691"
+    source_type: "paper"
+    venue: "ICLR 2024"
+    year: 2023
+    authors: ["Dao"]
+    relevance:
+      - tile and pipeline design for online softmax
+      - inner-loop work partitioning across warps
+      - simpler reference than FA3 for first NPU implementation
+  - id: paper_paged_attention
+    title: "Efficient Memory Management for LLM Serving with PagedAttention (vLLM)"
+    url: "https://arxiv.org/abs/2309.06180"
+    source_type: "paper"
+    venue: "SOSP 2023"
+    year: 2023
+    authors: ["Kwon", "Li", "Zhuang", "Sheng", "Zheng", "Yu", "Gonzalez", "Zhang", "Stoica"]
+    relevance:
+      - block-paged KV cache layout used by every modern LLM server
+      - explains memory layout the E1 attention kernel must accept
+      - reference for batched decode scheduling
+  - id: paper_rope
+    title: "RoFormer: Enhanced Transformer with Rotary Position Embedding"
+    url: "https://arxiv.org/abs/2104.09864"
+    source_type: "paper"
+    venue: "Neurocomputing 2024 (camera-ready), arXiv 2021"
+    year: 2021
+    authors: ["Su", "Lu", "Pan", "Murtadha", "Wen", "Liu"]
+    relevance:
+      - canonical rotary positional embedding
+      - fused-into-QK pattern every modern decoder needs
+      - small but mandatory op for an LLM-capable E1 kernel
+  - id: paper_gqa
+    title: "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"
+    url: "https://arxiv.org/abs/2305.13245"
+    source_type: "paper"
+    venue: "EMNLP 2023"
+    year: 2023
+    authors: ["Ainslie", "Lee-Thorp", "de Jong", "Zemlyanskiy", "Lebron", "Sanghai"]
+    relevance:
+      - grouped query attention used by Llama/Gemma/Mistral
+      - changes the K/V broadcast pattern in attention lowering
+      - required attention shape for 2025-2026 LLM workloads
+  - id: paper_flashdecoding
+    title: "Flash-Decoding for Long-Context Inference"
+    url: "https://crfm.stanford.edu/2023/10/12/flashdecoding.html"
+    source_type: "vendor_technical_blog"
+    year: 2023
+    relevance:
+      - decode-phase GEMV attention with split-K reduction
+      - dominant attention shape for on-device LLM (M=1)
+      - relevant to E1's decode-phase lowering plan
+
+throughput_runtimes:
+  - id: repo_vllm
+    title: "vLLM"
+    url: "https://github.com/vllm-project/vllm"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - PagedAttention + continuous batching reference implementation
+      - source of widely used GPU attention kernels
+      - reference for KV-cache layout conventions
+  - id: repo_sglang
+    title: "SGLang"
+    url: "https://github.com/sgl-project/sglang"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - structured generation runtime with RadixAttention
+      - prefix sharing and KV cache reuse patterns
+      - useful for understanding cache hit semantics in serving
+  - id: repo_max
+    title: "Modular MAX"
+    url: "https://github.com/modularml/max"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - Mojo-backed serving runtime
+      - graph compilation + runtime + serving in one stack
+      - alternative architecture pattern to vLLM/SGLang
+  - id: repo_llama_cpp
+    title: "llama.cpp / GGML / GGUF"
+    url: "https://github.com/ggml-org/llama.cpp"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - de facto on-device LLM runtime with INT4/INT5/INT8 weights
+      - GGUF file format adopted by many quantization toolkits
+      - reference for mobile/desktop CPU and Metal/CUDA back-ends
+  - id: repo_mlx
+    title: "Apple MLX"
+    url: "https://github.com/ml-explore/mlx"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - Apple Silicon array framework with lazy graph compilation
+      - unified memory model for CPU/GPU/ANE
+      - reference for unified-memory NPU integration patterns
+  - id: repo_mediapipe
+    title: "Google MediaPipe"
+    url: "https://github.com/google-ai-edge/mediapipe"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - cross-platform graph runtime for vision/audio/genai pipelines
+      - LLM Inference API used by Android Gemma deployments
+      - reference for graph-of-tasks runtime above LiteRT
+  - id: repo_executorch_kleidiai
+    title: "KleidiAI (Arm) integrated into ExecuTorch"
+    url: "https://gitlab.arm.com/kleidi/kleidiai"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - Arm hand-tuned INT8/INT4 micro-kernels
+      - shows the CPU fallback level ExecuTorch already provides
+      - useful baseline against which the E1 NPU must show speedup
+
+compiler_papers:
+  - id: paper_rammer
+    title: "RAMMER: Enabling Holistic Deep Learning Compiler Optimizations with rTasks"
+    url: "https://www.usenix.org/conference/osdi20/presentation/ma"
+    source_type: "paper"
+    venue: "OSDI 2020"
+    year: 2020
+    authors: ["Ma", "Xie", "Yang", "Xue", "Zhou"]
+    relevance:
+      - rTask abstraction for holistic kernel + scheduling co-design
+      - inspired Welder and many later wave-style schedulers
+      - relevant when E1 wants more than one descriptor at a time
+  - id: paper_welder
+    title: "Welder: Scheduling Deep Learning Memory Access via Tile-graph"
+    url: "https://www.usenix.org/conference/osdi23/presentation/shi"
+    source_type: "paper"
+    venue: "OSDI 2023"
+    year: 2023
+    authors: ["Shi", "Yang", "Xue", "Zhou"]
+    relevance:
+      - tile-graph scheduling for memory-aware kernel fusion
+      - directly applicable to scratchpad-bound systolic NPUs
+      - reference for designing E1 tile-level fusion
+  - id: paper_tessel
+    title: "Tessel: Boosting Distributed Execution of Large DNN Models via Dataflow Synthesis"
+    url: "https://arxiv.org/abs/2311.15269"
+    source_type: "paper"
+    venue: "HPCA 2024"
+    year: 2023
+    relevance:
+      - dataflow-synthesis-driven distributed execution
+      - reference for compiler-driven parallel schedule search
+      - relevant to multi-NPU or multi-tile expansion later
+  - id: paper_akg
+    title: "AKG: Automatic Kernel Generation for Neural Processing Units using Polyhedral Transformations"
+    url: "https://dl.acm.org/doi/10.1145/3453483.3454106"
+    source_type: "paper"
+    venue: "PLDI 2021"
+    year: 2021
+    authors: ["Zhao", "Liao", "Zhang", "Wang", "Cui", "Yang"]
+    relevance:
+      - polyhedral kernel generation for Huawei Ascend NPU
+      - prior art for systolic-array kernel synthesis
+      - directly applicable design pattern for E1 tile scheduling
+  - id: paper_taso
+    title: "TASO: Optimizing Deep Learning Computation with Automatic Generation of Graph Substitutions"
+    url: "https://cs.stanford.edu/~zhihao/papers/sosp19.pdf"
+    source_type: "paper"
+    venue: "SOSP 2019"
+    year: 2019
+    authors: ["Jia", "Padon", "Thomas", "Warszawski", "Zaharia", "Aiken"]
+    relevance:
+      - automated graph-rewrite search via substitution generation
+      - influences modern graph-level passes (e.g. PET, MAGE)
+      - reference for E1 graph-rewrite passes above the descriptor ring
+  - id: paper_mage
+    title: "MAGE: Memory-Aware Graph-Level Equivalent Transformations"
+    url: "https://www.usenix.org/conference/osdi22/presentation/jia"
+    source_type: "paper"
+    venue: "OSDI 2022 / equivalent ASPLOS"
+    year: 2022
+    relevance:
+      - memory-cost-aware graph rewriting
+      - extends TASO with on-device memory metrics
+      - useful for scratchpad-bound NPU planning
+  - id: paper_mind_mappings
+    title: "Mind Mappings: Enabling Efficient Algorithm-Accelerator Mapping Space Search"
+    url: "https://dl.acm.org/doi/10.1145/3445814.3446762"
+    source_type: "paper"
+    venue: "ASPLOS 2021"
+    year: 2021
+    authors: ["Hegde", "Tsai", "Huang", "Chandra", "Parashar", "Fletcher"]
+    relevance:
+      - differentiable mapping search for accelerators
+      - companion to Timeloop / Accelergy used in NPU studies
+      - relevant for compiler-driven tile-shape selection
+  - id: paper_glow
+    title: "Glow: Graph Lowering Compiler Techniques for Neural Networks"
+    url: "https://arxiv.org/abs/1805.00907"
+    source_type: "paper"
+    venue: "arXiv 2018 (Meta production paper)"
+    year: 2018
+    authors: ["Rotem", "Fix", "Abdulrasool", "Catron", "et al."]
+    relevance:
+      - early ahead-of-time NN compiler with quantization
+      - influenced ONNX Runtime, ExecuTorch design choices
+      - useful for grounding contemporary compilers historically
+  - id: paper_scale_sim2
+    title: "SCALE-Sim v2: A Modular Systolic Accelerator Simulator"
+    url: "https://arxiv.org/abs/2009.06517"
+    source_type: "paper"
+    venue: "ASPLOS WoSC 2020 / ongoing"
+    year: 2020
+    relevance:
+      - cycle-accurate systolic-array simulator
+      - useful for E1 compiler-output verification at the tile level
+      - feeds tile-shape / dataflow choice analysis
+  - id: paper_gamma
+    title: "GAMMA: Automating the HW Mapping of DNN Models on Accelerators via Genetic Algorithm"
+    url: "https://dl.acm.org/doi/10.1145/3400302.3415639"
+    source_type: "paper"
+    venue: "ICCAD 2020"
+    year: 2020
+    authors: ["Kao", "Krishna"]
+    relevance:
+      - GA-driven mapping search for accelerator DNN deployment
+      - alternative to MetaSchedule / Mind Mappings for E1 tile search
+      - reference for offline schedule selection
+  - id: paper_astra_sim2
+    title: "ASTRA-sim2: Modeling Hierarchical Networks and Disaggregated Systems"
+    url: "https://github.com/astra-sim/astra-sim"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - distributed/disaggregated simulation framework
+      - useful for system-level claims when E1 scales beyond single tile
+      - companion to SCALE-Sim for cluster-scale studies
+
+tensor_ir_extras:
+  - id: vendor_linalg_dialect
+    title: "MLIR Linalg Dialect"
+    url: "https://mlir.llvm.org/docs/Dialects/Linalg/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - structured op model for tile-and-fuse on tensors
+      - canonical lowering target between StableHLO and hardware dialects
+      - reference for an E1 linalg-on-tensors backend
+  - id: vendor_transform_dialect
+    title: "MLIR Transform Dialect"
+    url: "https://mlir.llvm.org/docs/Dialects/Transform/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - schedule-driven IR-rewriting language
+      - lets compilers express tiling/fusion/vectorization as code
+      - critical infrastructure if E1 wants explicit schedule control
+  - id: vendor_iree_stream
+    title: "IREE Stream Dialect"
+    url: "https://iree.dev/developers/general/developer-overview/#stream-dialect"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - command-buffer / timeline scheduling abstraction
+      - candidate level at which to attach an E1 HAL driver
+      - shows how dispatch regions become device commands
+  - id: repo_halide
+    title: "Halide"
+    url: "https://github.com/halide/Halide"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - original schedule-as-program DSL
+      - inspired MLIR transform dialect and TVM scheduling
+      - still relevant for kernel autoscheduling baselines
+  - id: repo_tt_metal
+    title: "Tenstorrent TT-Metal / TT-NN / BUDA"
+    url: "https://github.com/tenstorrent/tt-metal"
+    source_type: "open_source_project"
+    year: 2026
+    last_release_or_commit_year: 2026
+    relevance:
+      - open NPU software stack with tile/kernel programming
+      - useful as a sibling NPU-class compiler example
+      - reference for how a vendor exposes tile primitives to compilers
+
+mobile_nn_abstractions:
+  - id: vendor_qnn
+    title: "Qualcomm Neural Network SDK (QNN / AI Engine Direct)"
+    url: "https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/introduction.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - Qualcomm's direct Hexagon NPU SDK and TFLite/ExecuTorch/ORT delegates
+      - reference for the contract a mobile NPU SDK must satisfy
+      - sets the operator coverage bar an Android-class NPU must hit
+  - id: vendor_coreml
+    title: "Apple Core ML"
+    url: "https://developer.apple.com/documentation/coreml"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - Apple's on-device NN runtime with ANE/GPU/CPU backends
+      - .mlpackage format, MIL IR, and program-level execution
+      - reference for an end-to-end vertical NN stack
+  - id: vendor_neuropilot
+    title: "MediaTek NeuroPilot / Genio NPU SDK"
+    url: "https://neuropilot.mediatek.com/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - MediaTek's NPU SDK for Dimensity / Genio chips
+      - LiteRT and ExecuTorch delegate examples
+      - additional reference for mobile-NPU operator coverage
+  - id: vendor_executorch_backend_list
+    title: "ExecuTorch Backends List"
+    url: "https://pytorch.org/executorch/stable/backends-overview.html"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - canonical list of ExecuTorch backends (XNNPACK, CoreML, MPS, QNN, MediaTek, Vulkan, KleidiAI)
+      - shows what the bar for an "E1 ExecuTorch delegate" looks like
+      - directly relevant to the E1 mobile integration story
+  - id: vendor_mlperf_mobile
+    title: "MLCommons MLPerf Inference: Mobile"
+    url: "https://mlcommons.org/benchmarks/inference-mobile/"
+    source_type: "vendor_docs"
+    year: 2026
+    relevance:
+      - mobile inference benchmark suite (vision, NLP, LLM)
+      - target benchmark for E1's npu-2028 software gates
+      - reference for the operator coverage every mobile NPU must support

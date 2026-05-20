@@ -48,8 +48,8 @@ describe("readBackendOverride", () => {
 	});
 
 	it("respects explicit overrides", () => {
-		process.env.ELIZA_LOCAL_BACKEND = "node-llama-cpp";
-		expect(readBackendOverride()).toBe("node-llama-cpp");
+		process.env.ELIZA_LOCAL_BACKEND = "capacitor-llama";
+		expect(readBackendOverride()).toBe("capacitor-llama");
 		process.env.ELIZA_LOCAL_BACKEND = "llama-server";
 		expect(readBackendOverride()).toBe("llama-server");
 	});
@@ -107,7 +107,7 @@ describe("decideBackend", () => {
 			optimizations: { requiresKernel: ["turbo3"] },
 		});
 		const decision = decideBackend({
-			override: "node-llama-cpp",
+			override: "capacitor-llama",
 			catalog,
 			llamaServerAvailable: true,
 			dflashRequired: false,
@@ -131,7 +131,7 @@ describe("decideBackend", () => {
 		expect(decision.reason).toBe("preferred-backend");
 	});
 
-	it("falls back to node-llama-cpp when preferredBackend=llama-server but binary missing and DFlash not required", () => {
+	it("falls back to capacitor-llama when preferredBackend=llama-server but binary missing and DFlash not required", () => {
 		const catalog = withRuntime(BASE_CATALOG, {
 			preferredBackend: "llama-server",
 		});
@@ -141,7 +141,7 @@ describe("decideBackend", () => {
 			llamaServerAvailable: false,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("node-llama-cpp");
+		expect(decision.backend).toBe("capacitor-llama");
 		expect(decision.reason).toBe("default");
 	});
 
@@ -188,7 +188,7 @@ class FakeBackend implements LocalInferenceBackend {
 	loadCalls: string[] = [];
 	plans: Array<{ modelPath: string; overrides?: unknown }> = [];
 
-	constructor(public readonly id: "node-llama-cpp" | "llama-server") {}
+	constructor(public readonly id: "capacitor-llama" | "llama-server") {}
 
 	async available(): Promise<boolean> {
 		return true;
@@ -220,7 +220,7 @@ class FakeBackend implements LocalInferenceBackend {
 
 describe("BackendDispatcher", () => {
 	it("loads custom llama-server by default", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,
@@ -236,7 +236,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("switches backends when the decision differs and unloads the previous", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,
@@ -257,7 +257,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("passes multimodal projector overrides through to the selected backend", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,
@@ -282,7 +282,7 @@ describe("BackendDispatcher", () => {
 
 	it("throws on generate before load", async () => {
 		const d = new BackendDispatcher(
-			new FakeBackend("node-llama-cpp"),
+			new FakeBackend("capacitor-llama"),
 			new FakeBackend("llama-server"),
 			() => true,
 			() => false,
@@ -293,7 +293,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("ignores ffiStreaming when probeFfiActive is omitted", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const ffi = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
@@ -311,7 +311,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("routes the llama-server decision to ffi backend when probe is true", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const ffi = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
@@ -330,7 +330,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("keeps subprocess when probe is false even with ffi backend supplied", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const ffi = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
@@ -347,14 +347,14 @@ describe("BackendDispatcher", () => {
 		expect(ffi.loaded).toBe(false);
 	});
 
-	it("does not route to ffi when decision is node-llama-cpp", async () => {
-		// Force node-llama-cpp via env override; ffi probe MUST not override
+	it("does not route to ffi when decision is capacitor-llama", async () => {
+		// Force capacitor-llama via env override; ffi probe MUST not override
 		// (selectBackend is a TRANSPORT decision for the llama-server branch
-		// only — it does not apply to the node-llama-cpp branch).
+		// only — it does not apply to the capacitor-llama branch).
 		const prev = process.env.ELIZA_LOCAL_BACKEND;
-		process.env.ELIZA_LOCAL_BACKEND = "node-llama-cpp";
+		process.env.ELIZA_LOCAL_BACKEND = "capacitor-llama";
 		try {
-			const node = new FakeBackend("node-llama-cpp");
+			const node = new FakeBackend("capacitor-llama");
 			const server = new FakeBackend("llama-server");
 			const ffi = new FakeBackend("llama-server");
 			const d = new BackendDispatcher(
@@ -380,7 +380,7 @@ describe("BackendDispatcher", () => {
 		// omitted (e.g. mobile bootstrap that only passes the 4-arg form):
 		// every `decideBackend() === "llama-server"` load goes to the
 		// subprocess. No throw, no env-var opt-in required.
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,
@@ -393,7 +393,7 @@ describe("BackendDispatcher", () => {
 	});
 
 	it("unloads ffi backend when switching to subprocess on a later load", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const ffi = new FakeBackend("llama-server");
 		let ffiActive = true;
@@ -517,7 +517,7 @@ describe("decideBackend kernel-availability probe", () => {
 	});
 
 	it("rejects load when required kernels are unsatisfied", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,
@@ -537,7 +537,7 @@ describe("decideBackend kernel-availability probe", () => {
 	});
 
 	it("loads cleanly when probed kernels match the requirement", async () => {
-		const node = new FakeBackend("node-llama-cpp");
+		const node = new FakeBackend("capacitor-llama");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
 			node,

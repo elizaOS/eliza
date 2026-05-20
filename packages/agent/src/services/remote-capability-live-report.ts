@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 
@@ -47,11 +47,40 @@ function validateRemoteCapabilityLiveReportName(
     );
   }
   if (report.kind === "cloud" && name !== "cloud") {
-    throw new Error('Remote capability cloud live report name must be "cloud".');
+    throw new Error(
+      'Remote capability cloud live report name must be "cloud".',
+    );
+  }
+  if (report.kind === "cloud") {
+    rejectRemoteCapabilityLiveReportFields(report, [
+      "provider",
+      "providerId",
+      "endpointUrlSha256",
+    ]);
   }
   if (report.kind === "provider" && report.provider !== name) {
     throw new Error(
       "Remote capability provider live report name must match provider.",
+    );
+  }
+  if (report.kind === "provider" && report.providerId !== report.provider) {
+    throw new Error(
+      "Remote capability provider live report providerId must match provider.",
+    );
+  }
+  if (report.kind === "provider") {
+    rejectRemoteCapabilityLiveReportFields(report, ["agentId", "cloudApiBase"]);
+  }
+}
+
+function rejectRemoteCapabilityLiveReportFields(
+  report: Record<string, unknown>,
+  fields: string[],
+): void {
+  const field = fields.find((candidate) => Object.hasOwn(report, candidate));
+  if (field) {
+    throw new Error(
+      `Remote capability live report field "${field}" is not valid for ${report.kind} reports.`,
     );
   }
 }
@@ -113,6 +142,7 @@ export function summarizeRemoteCapabilityLiveRuntime(
         pluginName: plugin.name,
         moduleId: plugin.config?.remoteCapabilityModuleId,
         endpointId: plugin.config?.remoteCapabilityEndpointId,
+        ...summarizeRemoteCapabilityPluginSurfaces(plugin),
       })),
     actionCount: runtime.actions.length,
     providerCount: runtime.providers.length,

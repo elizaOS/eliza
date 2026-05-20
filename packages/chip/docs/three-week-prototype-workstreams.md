@@ -8,10 +8,10 @@ boot, and benchmark workstreams now have stricter evidence intake. Renode
 remains blocked by a missing host executable and missing real transcript.
 Software BSP evidence remains blocked by missing external Buildroot, Linux,
 OpenSBI, U-Boot, AOSP, CTS, and VTS logs. Benchmarks now reject repo-local
-smoke shims as real tools; fio host runs pass, while CoreMark, STREAM,
-lmbench, TensorFlow Lite `benchmark_model`, and e1-NPU NNAPI remain blocked
-until real target executables and `benchmarks/capabilities/e1_npu_nnapi.proof.json`
-capability evidence exist.
+smoke shims as real tools; fio host runs pass, and local CoreMark, STREAM,
+lmbench, and TensorFlow Lite `benchmark_model` binaries are available for
+strict dry-run planning. e1-NPU NNAPI remains blocked until
+`benchmarks/capabilities/e1_npu_nnapi.proof.json` capability evidence exists.
 
 Heartbeat update 2026-05-17 04:33 PDT: CPU/AP is now an explicit MVP blocker,
 not an implied Linux boot claim. The in-repo tiny CPU remains local contract
@@ -162,7 +162,7 @@ Primary gaps:
 - Docker apt packages and Nix `nixos-unstable` float; no `flake.lock` exists.
 - Bootstrap scripts clone moving OpenLane2/Chipyard branches.
 - OpenLane/OpenROAD/Magic/Netgen/Renode/KiCad are missing locally.
-- Boolector is end-of-maintenance; Bitwuzla should be evaluated for future formal work.
+- Boolector is end-of-maintenance; Bitwuzla is now wired as a second engine alongside z3 in every `verify/formal/*.sby` and `verify/formal/bpu/*.sby` plus the BPU config.sby pair. SBY skips Bitwuzla when the binary is missing on the host; the z3 gate stays authoritative until a Bitwuzla install lands in CI.
 - Repo-local `.venv` is the current cocotb path. Release-grade reproducibility still needs clean-checkout regeneration and archived package/tool checksums.
 
 Upstream review targets:

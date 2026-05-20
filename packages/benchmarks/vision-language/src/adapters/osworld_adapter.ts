@@ -177,7 +177,7 @@ async function predictWithVm(
 
 export function actionListPrompt(instruction: string): string {
   return [
-    "You are a desktop control agent. Output the action sequence to perform the task.",
+    "Desktop control agent. Output the action sequence to perform the task.",
     `Task: ${instruction}`,
     'Use JSON array format: [{ "type": "CLICK", "x": 100, "y": 200 }, { "type": "TYPING", "text": "..." }, { "type": "DONE" }].',
     "Allowed types: CLICK, TYPING, HOTKEY (with `keys`), SCROLL, WAIT, DONE, FAIL.",

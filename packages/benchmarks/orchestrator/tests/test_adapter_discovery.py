@@ -15,6 +15,7 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     _score_from_app_eval,
     _score_from_compactbench,
     _score_from_eliza_1,
@@ -46,6 +47,7 @@ from benchmarks.registry import (
     _score_from_contextbench_json,
     _score_from_gauntlet_json,
     _score_from_gsm8k_json,
+    _score_from_hyperliquid_bench_json,
     _score_from_mind2web_json,
     _score_from_mmau_json,
     _score_from_mint_json,
@@ -125,6 +127,11 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
     )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
+    )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
     assert _is_harness_compatible(adapter, "eliza") is False
@@ -162,6 +169,11 @@ def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
 def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.syspath_prepend(str(_workspace_root() / "benchmarks" / "gauntlet" / "src"))
+    for module_name in list(sys.modules):
+        if module_name == "gauntlet" or module_name.startswith("gauntlet."):
+            del sys.modules[module_name]
+
     from gauntlet.harness.surfpool import SurfpoolConfig, SurfpoolManager
 
     manager = SurfpoolManager(
@@ -231,6 +243,27 @@ def test_gauntlet_rejects_mock_or_offline_execution_artifacts() -> None:
 
     payload["metadata"]["execution"]["offline_mode"] = False  # type: ignore[index]
     assert _score_from_gauntlet_json(payload).score == 0.75
+
+
+def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
+    payload = {
+        "final_score": 3.5,
+        "total_score": 3.5,
+        "base": 3.0,
+        "bonus": 0.5,
+        "penalty": 0.0,
+        "total_scenarios": 1,
+        "passed_scenarios": 1,
+        "mode": "eliza",
+        "model": "gpt-oss-120b",
+        "network": "testnet",
+        "demo_mode": True,
+    }
+    with pytest.raises(ValueError, match="demo-mode result"):
+        _score_from_hyperliquid_bench_json(payload)
+
+    payload["demo_mode"] = False
+    assert _score_from_hyperliquid_bench_json(payload).score == 3.5
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -563,6 +596,11 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -573,6 +611,8 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     assert report.compatible_cell_count > 0
     assert report.incompatible_cell_count == 0
     assert report.error_count == 0
+    incompatible = [cell for cell in report.cells if not cell.compatible]
+    assert incompatible == []
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -614,7 +654,53 @@ def test_gaia_matrix_rows_require_official_dataset_access(
 
     assert len(gaia_cells) == 6
     assert all(cell.compatible is False for cell in gaia_cells)
-    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
+    assert all(
+        cell.reason == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+        for cell in gaia_cells
+    )
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"],
+)
+def test_gaia_official_dataset_gate_accepts_hf_token_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    for name in orchestrator_adapters.HUGGINGFACE_TOKEN_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(env_name, "token-value")
+    orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
+    try:
+        assert orchestrator_adapters._has_gaia_official_dataset() is True
+    finally:
+        orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
+
+
+def test_hyperliquid_matrix_rows_require_live_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hyperliquid_bench"
+    ]
+
+    assert len(cells) == 3
+    assert all(cell.compatible is False for cell in cells)
+    assert all(
+        cell.reason == orchestrator_adapters.HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+        for cell in cells
+    )
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
@@ -648,8 +734,23 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     )
     monkeypatch.setattr(
         orchestrator_adapters,
+        "_has_swe_bench_docker_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_vision_language_compatible_harnesses",
+        lambda: ("eliza",),
     )
 
     report = build_cross_matrix_report(
@@ -752,9 +853,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("vision_language", harness)]
-        assert cell.compatible is True
-        assert cell.command
-        assert "src/runner.ts" in cell.command_display
+        if harness == "eliza":
+            assert cell.compatible is True
+            assert cell.command
+            assert "src/runner.ts" in cell.command_display
+        else:
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
@@ -1067,6 +1173,30 @@ def test_hermes_native_envs_require_sandbox_backend(
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_hermes_native_env_matrix_reports_sandbox_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hermes_sandbox_backend",
+        lambda: False,
+    )
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cell = next(
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hermes_tblite" and cell.harness == "hermes"
+    )
+
+    assert cell.compatible is False
+    assert cell.reason == orchestrator_adapters.HERMES_SANDBOX_UNAVAILABLE_REASON
 
 
 def test_openclaw_bench_publishes_real_harness_rows() -> None:
@@ -1394,11 +1524,18 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
     command = entry.build_command(
         tmp_path,
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "eliza", "max_tasks": 1, "max_steps": 3, "timeout": 60000},
+        {
+            "agent": "eliza",
+            "categories": ["P11"],
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
     )
 
-    assert "--categories" not in command
-    assert "--use-sample-tasks" in command
+    assert "--categories" in command
+    assert command[command.index("--categories") + 1] == "P11"
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--max-tasks") + 1] == "1"
     assert command[command.index("--max-steps") + 1] == "3"
     assert command[command.index("--timeout") + 1] == "60000"
@@ -1409,6 +1546,13 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
         {"agent": "openclaw", "max_tasks": 1},
     )
     assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
+
+    sample_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "max_tasks": 1, "use_sample_tasks": True},
+    )
+    assert "--use-sample-tasks" in sample_command
 
 
 def test_registry_adapter_forwards_selected_harness_to_build_command(tmp_path: Path) -> None:
@@ -1515,7 +1659,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-provider") + 1] == "cerebras"
     assert mt_command[mt_command.index("--judge-model") + 1] == "gpt-oss-120b"
     assert mt_command[mt_command.index("--judge-api-key-env") + 1] == "CEREBRAS_API_KEY"
-    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
+    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "512"
 
 
 def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
@@ -1557,7 +1701,11 @@ def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     assert command.count("--agent-max-turns") == 1
 
 
-def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
+def test_remaining_smoke_defaults_bound_expensive_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     adapters = discover_adapters(_workspace_root()).adapters
     expected_flags = {
         "configbench": ("--limit", "1"),
@@ -1676,6 +1824,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
     )
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+    assert "--no-demo" in command
     assert command[command.index("--max-steps") + 1] == "1"
     assert command[command.index("--max-iterations") + 1] == "2"
     assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"
@@ -1832,6 +1981,23 @@ def test_realm_and_mint_scores_reject_zero_task_results() -> None:
                 }
             }
         )
+
+
+def test_realm_score_rejects_sample_task_runs() -> None:
+    with pytest.raises(ValueError, match="sample-task run"):
+        _score_from_realm_json(
+            {
+                "metrics": {"overall_success_rate": 1.0, "total_tasks": 2},
+                "metadata": {"config": {"use_sample_tasks": True}},
+            }
+        )
+
+    assert _score_from_realm_json(
+        {
+            "metrics": {"overall_success_rate": 0.5, "total_tasks": 2},
+            "metadata": {"config": {"use_sample_tasks": False}},
+        }
+    ).score == 0.5
 
 
 def test_mint_score_uses_best_non_empty_configuration() -> None:
@@ -2743,6 +2909,36 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
 
 
+def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    request = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=["terminal_bench"],
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        request.extra_config,
+    )
+
+    assert request.extra_config["network_mode"] == "bridge"
+    assert request.extra_config["max_tasks"] == 2
+    assert request.extra_config["task_ids"] == ["hello-world", "classifier-debug"]
+    assert command[command.index("--network-mode") + 1] == "bridge"
+    assert command[command.index("--task-ids") + 1] == "hello-world"
+    assert command[command.index("--task-ids") + 2] == "classifier-debug"
+
+
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "terminal_bench"
@@ -2763,6 +2959,52 @@ def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
         "jsonl-aggregator",
     ]
     assert command[command.index("--single") + 1] == "assign-seats"
+
+
+def test_terminalbench_requires_reachable_docker_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_terminal_bench_docker_backend",
+        lambda: False,
+    )
+
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    assert adapter.agent_compatibility == ()
+    for harness in ("eliza", "hermes", "openclaw"):
+        assert _is_harness_compatible(adapter, harness) is False
+
+
+def test_terminalbench_score_rejects_docker_unavailable_results() -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+
+    with pytest.raises(ValueError, match="Docker-unavailable"):
+        entry.extract_score(
+            {
+                "summary": {
+                    "accuracy": 0.0,
+                    "total_tasks": 2,
+                    "passed_tasks": 0,
+                    "failed_tasks": 2,
+                },
+                "results": [
+                    {
+                        "task_id": "hello-world",
+                        "success": False,
+                        "error_message": "Docker daemon is not reachable.",
+                    },
+                    {
+                        "task_id": "classifier-debug",
+                        "success": False,
+                        "error_message": "Docker daemon is not reachable.",
+                    },
+                ],
+            }
+        )
 
 
 def test_evm_primary_score_is_normalized_ratio(tmp_path: Path) -> None:
@@ -2864,6 +3106,9 @@ def test_vision_language_registry_uses_real_runtime_unless_smoke_stub_is_explici
     assert command[command.index("--tier") + 1] == "eliza-1-9b"
     assert command[command.index("--benchmark") + 1] == "screenspot"
     assert command[command.index("--samples") + 1] == "3"
+    assert command[command.index("--harness") + 1] == "eliza"
+    assert command[command.index("--model-provider") + 1] == "cerebras"
+    assert command[command.index("--model") + 1] == "gpt-oss-120b"
     assert command[command.index("--output") + 1] == str(
         tmp_path / "vision-language-results.json"
     )
@@ -2903,6 +3148,23 @@ def test_vision_language_score_rejects_smoke_and_stub_reports() -> None:
     stub_payload["runtime_id"] = "eliza-1-9b-stub"
     with pytest.raises(ValueError, match="stub runtime"):
         _score_from_vision_language_json(stub_payload)
+
+
+def test_vision_language_harness_runtime_requires_multimodal_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "cerebras")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "gpt-oss-120b")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
+    monkeypatch.delenv("VISION_LANGUAGE_MULTIMODAL", raising=False)
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is False
+
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "openai")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is True
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

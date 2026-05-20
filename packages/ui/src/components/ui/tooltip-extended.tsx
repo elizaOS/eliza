@@ -1,5 +1,8 @@
-import { Z_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+
+// z-[200] mirrors Z_OVERLAY in ../../lib/floating-layers.ts. Tailwind v4
+// cannot detect classes built from runtime template literals, so the value
+// is kept inline so the scanner emits the utility.
 
 /**
  * Hover-only tooltip with optional shortcut hint. Used as the icon-button
@@ -27,7 +30,7 @@ export function IconTooltip({
       {children}
       <div
         className={cn(
-          `absolute px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity duration-200 z-[${Z_OVERLAY}] shadow-sm pointer-events-none`,
+          "absolute px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity duration-200 z-[200] shadow-sm pointer-events-none",
           position === "top"
             ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
             : "top-full left-1/2 -translate-x-1/2 mt-2",

@@ -270,6 +270,9 @@ export class AppWorkerHostService extends Service {
 		}
 
 		const worker = new Worker(WORKER_ENTRY, {
+			execArgv: WORKER_ENTRY.endsWith(".ts")
+				? ["--experimental-strip-types"]
+				: [],
 			workerData: {
 				slug: options.slug,
 				isolation: options.isolation,

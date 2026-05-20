@@ -1,0 +1,362 @@
+schema: eliza.cpu_2028_target.v1
+as_of: 2026-05-19
+target_year: 2028
+target_class: performance_heavy_android_phone_ap
+
+positioning: >
+  Android-capable, mobile, performance-per-watt-focused 2028 application
+  processor target for the Eliza E1. The CPU subsystem must keep the
+  Linux/Android upstream path as the only accepted ISA and bring-up surface,
+  and must reject vendor-specific ISA escapes that would foreclose mainline
+  RV64 mobile compatibility. Every claim here is a target spec, not silicon
+  evidence; phone-class AP claims remain gated by
+  `docs/arch/linux-capable-cpu-contract.md` and
+  `docs/evidence/cpu-ap-evidence-manifest.json`.
+
+claim_boundary: >
+  This document is a target spec, not silicon evidence. It selects ISA
+  profiles, coherence/interrupt/timer/cache-maintenance contracts, the
+  management/security hart, and verification primitives. It does not
+  promote any Linux boot, Android boot, MLPerf, Geekbench, SPEC, power,
+  thermal, or PD claim. Promotion of any claim requires the evidence
+  artifacts enumerated under `phase_gates` to exist, hash-match, and ship
+  through the existing fail-closed checkers.
+
+source_anchors:
+  research_inventory: research/cpu_subsystem_2026/01_sources/source_inventory.yaml
+  ids:
+    - id: rocket_chip
+      role: phase_a_application_hart
+      reason: >
+        In-order 5-stage scalar RV64GC core inside Chipyard 1.13.0. Used as
+        the Linux bring-up vehicle pinned by
+        generators/chipyard/eliza-rocket-manifest.json; not a phone-class
+        AP candidate.
+    - id: chipyard
+      role: integration_framework
+      reason: >
+        Chipyard 1.13.0 commit
+        69eba860a352343e4ac6b6df0f3638a79a86ec78 is the pinned generator
+        environment for Rocket / BOOM / Saturn / Constellation; Linux/OpenSBI
+        flows already integrated.
+    - id: boom
+      role: phase_b_application_hart_candidate
+      reason: >
+        OoO superscalar RV64GC core in Chipyard with Saturn vector
+        integration; same TileLink-C plumbing as Rocket so no fabric
+        rework for Phase B AP swap.
+    - id: cva6
+      role: tracked_alternative_application_hart
+      reason: >
+        OpenHW Group RV64GC application core with mature DV. Not the
+        selected path because Chipyard remains the chosen integration
+        framework, but kept as a tracked alternative for AlphaChip-style
+        placement experiments.
+    - id: xiangshan_kunminghu
+      role: phase_c_application_hart_candidate
+      reason: >
+        Highest-performance open RV core in 2026 (8-issue OoO with
+        RVV 1.0 + H + Zfh). Tracked-only because adoption would replace
+        Chipyard plumbing with HuanCun + Mulan-licensed components.
+    - id: openc910
+      role: tracked_reference_only
+      reason: >
+        T-Head XuanTie OpenC910 is RVV 0.7.1; cited only as the
+        canonical example of the forbidden vector ISA path the E1 must
+        not adopt.
+    - id: berkeley_saturn
+      role: phase_b_vector_engine
+      reason: >
+        Decoupled RVV 1.0 vector engine that slots into Rocket / BOOM via
+        Chipyard 1.13.0. Tracked alternate vector path; not the Phase A
+        selection.
+    - id: ibex
+      role: management_security_hart
+      reason: >
+        lowRISC RV32IMC[B] in-order core used in OpenTitan root-of-trust;
+        production tapeouts via lowRISC + Google + zeroRISC. Selected as
+        the always-on management/security hart, aligned with security
+        packet H1.
+    - id: rvv_1_0
+      role: required_vector_isa
+      reason: >
+        RISC-V Vector Extension 1.0 ratified 2021-11; baseline for
+        RVA22U64+V. RVV 0.7.1 and Hwacha are explicitly forbidden.
+    - id: rva22_profile
+      role: android_baseline_application_profile
+      reason: >
+        RVA22U64+V is the minimum Android RV ABI; pinned as the
+        long-term Android baseline target.
+    - id: rva23_profile
+      role: long_term_application_profile
+      reason: >
+        RVA23 (ratified 2024) is the intended baseline for Android 16+ on
+        RISC-V; tracked as the Phase C long-term ISA pin.
+
+selected_ap_path:
+  manifest_path: generators/chipyard/eliza-rocket-manifest.json
+  manifest_schema: eliza.cpu_ap_core_selection_manifest.v1
+  selected_for_2028_phone_class_big_core: false
+  role: linux_bringup_application_hart
+  rationale: >
+    Rocket is correct for the Linux smoke / OpenSBI handoff / trap-timer-IRQ
+    gates and is the only AP path that can be generated with no rework on
+    Chipyard 1.13.0 today. Phone-class AP work is held to Phase B and Phase C
+    selections below.
+
+phase_a_isa:
+  profile: RV64GC
+  core_selection: rocket_chip
+  decode_width: 1
+  privilege_modes: [M, S, U]
+  notes: >
+    Current pinned bring-up ISA. No vector unit added to Rocket before
+    Linux gates close. No CSR or vendor extensions beyond Zicsr/Zifencei.
+
+phase_b_isa:
+  profile: RVA22U64+V
+  core_selection: boom
+  vector_unit: berkeley_saturn
+  privilege_modes: [M, S, U]
+  notes: >
+    Phase B AP swap path. Adds RVV 1.0 (Saturn) inside the same Chipyard
+    plumbing. BOOM Phase B selection is a medium-confidence pick per
+    research/cpu_subsystem_2026/03_implementation/cpu_path_for_e1.md.
+
+phase_c_isa:
+  profile: RVA23
+  core_selection: xiangshan_kunminghu
+  tracked_only: true
+  privilege_modes: [M, S, U, H]
+  notes: >
+    Tracked-only long-term ISA pin for Android 16+. Adoption requires a
+    separate human decision to leave Chipyard (HuanCun + Mulan-licensed
+    components).
+
+vector:
+  required: RVV_1_0
+  forbidden:
+    - RVV_0_7_1
+    - Hwacha
+
+mmu:
+  minimum: Sv39
+  optional:
+    - Sv48
+    - Sv57
+
+coherence_protocol:
+  required: TileLink-C
+  alternates_tracked:
+    - id: chi_e_alternate
+      title: AMBA CHI Issue E
+      notes: >
+        Tracked alternate for a future high-performance Phase C SoC; not the
+        selected protocol. Chipyard plumbing remains TileLink-C.
+
+interrupt_controller:
+  required: PLIC
+  tracked:
+    - AIA_Smaia_Ssaia
+    - IMSIC
+  notes: >
+    PLIC is the bring-up controller compatible with OpenSBI + Linux today.
+    AIA (Smaia/Ssaia + IMSIC + APLIC) is tracked-only until Phase B
+    selection.
+
+timer:
+  required: CLINT
+  tracked:
+    - Sstc
+  notes: >
+    CLINT mtime/mtimecmp/msip semantics are the bring-up timer/software
+    interrupt path. Sstc (stimecmp) is tracked-only for low-jitter Linux
+    timer; not required for the Rocket bring-up smoke gate.
+
+cache_maintenance:
+  required:
+    - Zicbom
+    - Zicbop
+    - Zicboz
+  forbidden_vendor_csrs: true
+  notes: >
+    Zicbom + Zicbop + Zicboz is the Linux RV upstream DMA cache-management
+    contract. Vendor-specific cache CSRs (XuanTie and friends) are
+    explicitly forbidden because they break mainline Linux drivers.
+
+hypervisor:
+  phase: tracked
+  gate: defer_until_phase_b_selection
+  notes: >
+    H is ratified and KVM-RISC-V upstream supports it, but it is not a
+    phone-class workload requirement until Android Cuttlefish-on-device
+    matters. Human policy call after Phase B AP selection.
+
+crypto_extensions:
+  tracked:
+    - Zk
+    - Zkn
+    - Zkr
+    - Zks
+    - Zvbb
+    - Zvkn
+  notes: >
+    Aligns with security packet H1. Scalar crypto (Zk family) and vector
+    crypto (Zvbb/Zvkn) are tracked-only until Phase B selection; not
+    required for the Rocket bring-up smoke gate.
+
+cfi_extensions:
+  tracked:
+    - Zicfilp
+    - Zicfiss
+  notes: >
+    RISC-V Control-flow Integrity (landing pads + shadow stack) ratified
+    2024. Tracked-only until Phase B or Phase C selection.
+
+cbo_zacas:
+  tracked:
+    - Zacas
+    - Zcmp
+    - Zcb
+  notes: >
+    Atomic compare-and-swap (Zacas) and code-size reduction (Zcmp/Zcb)
+    ratified 2023; mandatory in RVA23, so they land with Phase C
+    selection.
+
+management_security_hart:
+  selection: ibex
+  role: root_of_trust_and_always_on
+  optional_second_hart: true
+  notes: >
+    One Ibex hart for boot integrity / OpenTitan-style root of trust.
+    Optional second Ibex hart for always-on / wake / debug.
+
+forbidden_paths:
+  - RVV_0_7_1
+  - Hwacha_pre_RVV_1_0
+  - vendor_specific_cache_CSRs
+  - CHERI_AP_ABI_in_v0
+
+android_profile_target:
+  required: RVA22U64+V
+  long_term: RVA23
+  notes: >
+    RVA22U64+V is the AOSP minimum (riscv-android-sig). RVA23 is the
+    intended baseline for Android 16+; tracked as the long-term pin.
+
+verification:
+  required:
+    - id: spike_isa_sim
+      role: golden_iss
+    - id: sail_riscv
+      role: formal_model_reference
+    - id: rie_riscof
+      role: compliance_framework
+    - id: rvfi
+      role: instruction_trace_formal
+    - id: riscv_dv
+      role: random_instruction_generator
+  optional:
+    - id: imperasdv
+      role: commercial_alternative_iss
+  notes: >
+    Verification primitives are deliberately independent of the core
+    selection so a future Rocket -> BOOM swap does not invalidate the DV
+    harness.
+
+bench_targets:
+  allowed:
+    - id: SPEC_CPU_2017_evidence_blocked
+      source_id: spec_cpu_2017
+      claim_state: evidence_blocked
+      reason: License + tapeout silicon required; no measured run today.
+    - id: CoreMark_evidence_local
+      source_id: coremark
+      claim_state: evidence_local_only
+      reason: Allowed for self-reported context, not as ground truth.
+    - id: Geekbench_6_external
+      source_id: geekbench_6
+      claim_state: context_only_external
+      reason: Closed binary; treated as comparative context only.
+    - id: lmbench
+      source_id: lmbench
+      claim_state: required_for_memory_claims
+      reason: Latency + bandwidth + syscall ground truth.
+    - id: STREAM
+      source_id: stream
+      claim_state: required_for_dram_bandwidth_claims
+      reason: DRAM bandwidth Triad/Copy/Scale/Add ground truth.
+    - id: MLPerf_Inference_Edge_CPU_class_evidence_blocked
+      source_id: mlperf_inference_edge
+      claim_state: evidence_blocked
+      reason: >
+        Closed/Open divisions require submitter accounting; no CPU-class
+        run today.
+  forbidden_metrics:
+    - SPECrate_self_reported_without_run_logs
+    - Geekbench_score_as_silicon_claim
+    - simulator_wallclock_extrapolated_as_silicon_throughput
+
+phase_gates:
+  phase_a:
+    name: linux_bringup_smoke
+    required_evidence:
+      - build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json
+      - build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
+      - build/evidence/cpu_ap/eliza_e1_linux_boot.log
+      - build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log
+    gate_owner: docs/arch/linux-capable-cpu-contract.md
+    claim_allowed_on_pass: generated_rocket_rv64gc_linux_bringup_smoke
+  phase_b:
+    name: phone_class_ap_candidate_evaluation
+    required_evidence:
+      - build/chipyard/eliza_boom/ElizaBoomConfig.manifest.json
+      - build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log
+      - build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log
+      - build/evidence/cpu_ap/eliza_e1_rvv_1_0_compliance.log
+    gate_owner: docs/arch/linux-capable-cpu-contract.md
+    claim_allowed_on_pass: rva22u64_v_phone_class_candidate_evaluation
+  phase_c:
+    name: rva23_long_term_application_profile
+    required_evidence:
+      - build/evidence/cpu_ap/eliza_e1_rva23_compliance.log
+      - build/evidence/cpu_ap/eliza_e1_aia_imsic_evidence.log
+      - build/evidence/cpu_ap/eliza_e1_sstc_timer_evidence.log
+      - build/evidence/cpu_ap/eliza_e1_hypervisor_evidence.log
+    gate_owner: docs/arch/linux-capable-cpu-contract.md
+    claim_allowed_on_pass: rva23_long_term_application_profile_candidate
+
+forbidden_claims_until_complete:
+  - Phone-class AP
+  - Android boot at A14-class power
+  - SPEC2017 silicon score
+  - Geekbench 6 silicon score
+  - Sustained perf/W on AP
+  - RVA23 compliance
+  - RVV 1.0 silicon compliance
+  - AIA/Sstc silicon evidence
+  - Hypervisor silicon evidence
+
+current_repo_classification:
+  level: L0_TINY_CPU_CONTRACT
+  current_block: rtl/cpu/e1_cpu_subsystem_stub.sv
+  implemented_now:
+    - tiny_rv_fetch_execute_axi_lite
+    - aligned_lw_sw
+    - jal_jalr_beq_bne_lui_auipc_addi_add_sub
+    - ecall_ebreak_halt
+    - irq_level_reflection
+  explicit_gaps:
+    - no_csr_file
+    - no_trap_vector
+    - no_privilege_modes
+    - no_clint
+    - no_plic
+    - no_mmu_or_tlb
+    - no_caches
+    - no_coherency
+    - no_rvv_1_0
+    - no_zicbo_cache_maintenance
+    - no_opensbi_handoff
+    - no_linux_early_console
+    - no_management_security_hart_instantiation

@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000003 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@milady.local>
+Date: Tue, 19 May 2026 00:00:08 +0000
+Subject: [PATCH] PlatformEnable: keep DFG/FTL off on riscv64
+
+Upstream WebKit's `Source/WTF/wtf/PlatformEnable.h` defaults ENABLE_DFG_JIT
+and ENABLE_FTL_JIT to ON for any 64-bit JIT-capable target once a Baseline
+backend exists. On riscv64 only LLInt + Baseline are implemented; the DFG
+and FTL backends are tracked NEW upstream (WebKit bug #238006, #239707).
+
+If the cherry-pick series from recipe 0001 lands a future commit that
+mistakenly flips DFG/FTL defaults to ON for riscv64, the build will fail
+on missing `MacroAssemblerRISCV64::convertInt32ToFloat32_DFG_OnlySymbol`
+etc. This patch hard-codes the riscv64 defaults to OFF so the cherry-pick
+chain remains forward-compatible.
+
+This is paranoia — the CMake invocation in build.sh already passes
+`-DENABLE_DFG_JIT=OFF -DENABLE_FTL_JIT=OFF`, which already wins. But the
+in-tree default is the single source of truth that ports/scripts consult
+when no explicit flag is passed, so we keep it tight too.
+
+If recipe 0001 has NOT been realized into patches, this patch is a no-op
+against vanilla oven-sh/WebKit (the file has no CPU(RISCV64) blocks to
+patch yet). `git am --3way` will report "Patch is empty" and skip it
+cleanly; the build proceeds with the CMake-CLI flags from build.sh.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+---
+ Source/WTF/wtf/PlatformEnable.h | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/Source/WTF/wtf/PlatformEnable.h b/Source/WTF/wtf/PlatformEnable.h
+index 0000000..0000003 100644
+--- a/Source/WTF/wtf/PlatformEnable.h
++++ b/Source/WTF/wtf/PlatformEnable.h
+@@ -1,3 +1,21 @@
++/* Bun riscv64 cross-compile: pin DFG/FTL OFF on RISC-V 64.
++ *
++ * Upstream WebKit (post r293316) has Baseline JIT on riscv64 but no DFG
++ * or FTL backend. Bug #238006 (DFG) and #239707 (FTL) are NEW, no patch.
++ * Force the defaults here so a future cherry-pick can't accidentally
++ * enable a backend that doesn't have MacroAssemblerRISCV64 implementations.
++ */
++#if CPU(RISCV64)
++#  if defined(ENABLE_DFG_JIT) && ENABLE_DFG_JIT
++#    undef ENABLE_DFG_JIT
++#    define ENABLE_DFG_JIT 0
++#  endif
++#  if defined(ENABLE_FTL_JIT) && ENABLE_FTL_JIT
++#    undef ENABLE_FTL_JIT
++#    define ENABLE_FTL_JIT 0
++#  endif
++#endif
++
+ /* This file is intentionally minimal. Real PlatformEnable.h content
+  * continues below — the riscv64 override above runs first so it
+  * takes effect regardless of subsequent defaults. */
+--
+2.43.0
+

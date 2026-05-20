@@ -83,7 +83,7 @@ async function resolveSafeVenvPath(
     }
   } catch (err) {
     const maybeErr = err as NodeJS.ErrnoException;
-    if (maybeErr?.code !== "ENOENT") throw err;
+    if (maybeErr.code !== "ENOENT") throw err;
     const parentReal = await realpath(path.dirname(resolved));
     if (!isPathInside(workdirReal, parentReal)) {
       throw new Error(

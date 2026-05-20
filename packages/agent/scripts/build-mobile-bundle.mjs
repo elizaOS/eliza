@@ -11,8 +11,6 @@
 //     pglite.data                  PGlite filesystem image
 //     vector.tar.gz                pgvector contrib (referenced via ../)
 //     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
-//     ort-wasm-simd-threaded.mjs   ONNX Runtime Web WASM loader for local TTS
-//     ort-wasm-simd-threaded.wasm  ONNX Runtime Web WASM payload for local TTS
 //     plugins-manifest.json        list of plugins statically baked into the bundle
 //
 // What this build does NOT do:
@@ -90,6 +88,23 @@ console.log("[build-mobile] output dir:", outDir);
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
+
+const generateCssStringsScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "generate-css-strings.mjs",
+);
+if (existsSync(generateCssStringsScript)) {
+  const cssResult = spawnSync(process.execPath, [generateCssStringsScript], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (cssResult.status !== 0) {
+    console.error("[build-mobile] FATAL: generate-css-strings failed");
+    process.exit(cssResult.status ?? 1);
+  }
+}
 
 // Ensure generated keyword data exists. `@elizaos/shared` ships a
 // runtime-loaded `validation-keyword-data.js` that's produced by
@@ -186,45 +201,6 @@ function findPgliteDist() {
   return null;
 }
 
-function findOnnxRuntimeWebDist() {
-  // Android Kokoro TTS uses `onnxruntime-web/wasm` inside the bun agent.
-  // Bun bundles the JS import, but the runtime loader still resolves its
-  // worker-free WASM sidecars relative to agent-bundle.js on device. Stage the
-  // exact package version that the bundle resolves so stock APK installs do not
-  // fall back to missing node_modules at runtime.
-  const candidates = [
-    path.join(
-      repoRoot,
-      "plugins",
-      "plugin-aosp-local-inference",
-      "node_modules",
-      "onnxruntime-web",
-      "dist",
-    ),
-    path.join(repoRoot, "node_modules", "onnxruntime-web", "dist"),
-  ];
-  const bunDir = path.join(repoRoot, "node_modules", ".bun");
-  if (existsSync(bunDir)) {
-    const sortedEntries = readdirSyncSafe(bunDir)
-      .filter((e) => e.startsWith("onnxruntime-web@"))
-      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    for (const entry of sortedEntries) {
-      candidates.push(
-        path.join(bunDir, entry, "node_modules", "onnxruntime-web", "dist"),
-      );
-    }
-  }
-  for (const c of candidates) {
-    if (
-      existsSync(path.join(c, "ort-wasm-simd-threaded.mjs")) &&
-      existsSync(path.join(c, "ort-wasm-simd-threaded.wasm"))
-    ) {
-      return c;
-    }
-  }
-  return null;
-}
-
 function readdirSyncSafe(p) {
   try {
     return readdirSync(p);
@@ -242,16 +218,6 @@ if (!pgliteDist) {
   process.exit(1);
 }
 console.log("[build-mobile] pglite dist:", pgliteDist);
-
-const onnxRuntimeWebDist = findOnnxRuntimeWebDist();
-if (!onnxRuntimeWebDist) {
-  console.error(
-    "[build-mobile] FATAL: could not locate onnxruntime-web/dist with " +
-      "ort-wasm-simd-threaded.{mjs,wasm}. Run `bun install` first.",
-  );
-  process.exit(1);
-}
-console.log("[build-mobile] onnxruntime-web dist:", onnxRuntimeWebDist);
 
 // Native deps without an Android prebuild — replace at bundle time with
 // throw-on-call shims. Bun.build's `--external` would leave bare-name imports
@@ -292,12 +258,12 @@ const nativeStubs = {
   "@types/react": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
+  // node-llama-cpp and its @node-llama-cpp/<platform> prebuilds are desktop
+  // native surfaces. Keep them stubbed in mobile bundles; otherwise Bun
+  // follows transitive desktop helper imports into uninstalled host packages
+  // such as @node-llama-cpp/mac-x64 or @node-llama-cpp/win-x64-cuda.
   "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
   // llama-cpp-capacitor is the WebView-side JNI binding for the Capacitor
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build
@@ -445,6 +411,13 @@ const optionalPluginStubs = {
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
+  // Desktop/server-only optional integrations. The mobile agent does not host
+  // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
+  // imports both optional modules lazily. Resolve them to the shared no-op
+  // plugin stub so a clean mobile checkout does not depend on those packages
+  // being linked into packages/agent/node_modules.
+  "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.cjs"),
   // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
   // server. Mobile never runs the streaming worker pool — the agent
   // statically imports `streamManager` and `handleTtsRoutes`, so we
@@ -564,6 +537,8 @@ const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
   "@elizaos/shared",
+  "@elizaos/shared/brand",
+  "@elizaos/shared-brand",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-omnivoice",
   "@elizaos/plugin-ollama",
@@ -595,6 +570,22 @@ const dedupeTargets = {
     "packages",
     "shared",
     "src",
+    "index.ts",
+  ),
+  "@elizaos/shared/brand": path.resolve(
+    repoRoot,
+    "packages",
+    "shared",
+    "src",
+    "brand",
+    "index.ts",
+  ),
+  "@elizaos/shared-brand": path.resolve(
+    repoRoot,
+    "packages",
+    "shared",
+    "src",
+    "brand",
     "index.ts",
   ),
   // Pin plugin-sql to its src as well. The published `dist/node/index.node.js`
@@ -1674,24 +1665,6 @@ for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 
-for (const asset of [
-  "ort-wasm-simd-threaded.mjs",
-  "ort-wasm-simd-threaded.wasm",
-]) {
-  const src = path.join(onnxRuntimeWebDist, asset);
-  if (!existsSync(src)) {
-    console.error(
-      `[build-mobile] FATAL: missing ${asset} in ${onnxRuntimeWebDist}`,
-    );
-    process.exit(1);
-  }
-  await copyFile(src, path.join(outDir, asset));
-  const sz = (await stat(src)).size;
-  console.log(
-    `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
-  );
-}
-
 const manifest = {
   generatedAt: new Date().toISOString(),
   bundle: bundleFilename,
@@ -1708,10 +1681,6 @@ const manifest = {
         expectedAt: "../fuzzystrmatch.tar.gz",
       },
     },
-  },
-  onnxRuntimeWeb: {
-    wasmLoader: "ort-wasm-simd-threaded.mjs",
-    wasm: "ort-wasm-simd-threaded.wasm",
   },
   plugins: {
     core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],

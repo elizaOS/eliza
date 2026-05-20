@@ -498,7 +498,7 @@ function randomParticipants(count: number, exclude: string[] = []): string[] {
 // ==================== Prompt construction ====================
 
 function buildTeacherSystemPrompt(): string {
-  return `You are a synthetic data generator for training an AI agent's v5 messageHandler router.
+  return `Generate synthetic multi-turn group chat conversations for training an AI agent's v5 messageHandler router.
 Your task is to generate realistic multi-turn group chat conversations.
 
 IMPORTANT RULES:

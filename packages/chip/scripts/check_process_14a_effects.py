@@ -33,6 +33,40 @@ REQUIRED_RELEASE_GATES = {
     "cpu_ap_completion_gate",
     "aosp_simulator_completion_gate",
 }
+REQUIRED_VARIANT_ARTIFACTS = {
+    "pd_signoff_run_manifest",
+    "pdn_ir_drop_report",
+    "pdn_em_report",
+    "pdn_pdn_impedance_curve",
+    "thermal_model_per_variant",
+    "reliability_derate_per_variant",
+}
+REQUIRED_LIBRARY_VARIANT_ARTIFACTS = {
+    "library_variant_manifest_per_run",
+    "cell_variant_summary_per_design",
+}
+REQUIRED_RELIABILITY_INPUTS = {
+    "bti_nanosheet_ted2023",
+    "self_heating_nanosheet_edl2024",
+    "em_advanced_beol_tdmr2024",
+    "irds_2024_more_moore",
+}
+REQUIRED_SRAM_POLICY = {
+    "SECDED on all L1/L2/NPU local SRAM",
+    "parity_or_ECC on flop-heavy pipelines (NPU accumulators, CPU rename/ROB)",
+    "bit_interleaving in SRAM layout to bound MBU",
+    "repair_fuse_and_BIST_coverage",
+    "latch_FIT_and_bit_FIT_separately_budgeted",
+}
+REQUIRED_THERMAL_PHASES = {
+    "vapor_chamber_transient": False,
+    "vapor_chamber_steady_state": True,
+}
+REQUIRED_FORBIDDEN_PACKAGING = {
+    "CoWoS_silicon_interposer",
+    "SoW_wafer_scale",
+    "CoWoS_L_with_silicon_bridge",
+}
 
 
 def rel(path: Path) -> str:
@@ -174,6 +208,133 @@ def check_release_gate(data: dict[str, Any], errors: list[str]) -> None:
         errors.append("release_gate.must_pass_before_release_claim missing: " + ", ".join(missing))
 
 
+def check_variant_requirements(data: dict[str, Any], errors: list[str]) -> None:
+    variants = data.get("variant_requirements")
+    if not isinstance(variants, dict):
+        errors.append("variant_requirements must be a mapping")
+        return
+    rationale = variants.get("rationale")
+    if not isinstance(rationale, str) or "not transferable" not in rationale:
+        errors.append("variant_requirements.rationale must state evidence is not transferable")
+    artifacts = variants.get("per_variant_artifacts_required")
+    if not isinstance(artifacts, list):
+        errors.append("variant_requirements.per_variant_artifacts_required must be a list")
+        return
+    missing = sorted(REQUIRED_VARIANT_ARTIFACTS - set(artifacts))
+    if missing:
+        errors.append(
+            "variant_requirements.per_variant_artifacts_required missing: " + ", ".join(missing)
+        )
+
+
+def check_library_variant_binding(data: dict[str, Any], errors: list[str]) -> None:
+    binding = data.get("library_variant_binding")
+    if not isinstance(binding, dict):
+        errors.append("library_variant_binding must be a mapping")
+        return
+    rationale = binding.get("rationale")
+    if not isinstance(rationale, str) or not {"NanoFlex", "FinFLEX"}.issubset(
+        set(rationale.split())
+    ):
+        errors.append("library_variant_binding.rationale must name NanoFlex and FinFLEX")
+    artifacts = binding.get("required_artifacts")
+    if not isinstance(artifacts, list):
+        errors.append("library_variant_binding.required_artifacts must be a list")
+        return
+    missing = sorted(REQUIRED_LIBRARY_VARIANT_ARTIFACTS - set(artifacts))
+    if missing:
+        errors.append("library_variant_binding.required_artifacts missing: " + ", ".join(missing))
+
+
+def check_reliability_derate_sources(data: dict[str, Any], errors: list[str]) -> None:
+    derates = data.get("reliability_derate_sources")
+    if not isinstance(derates, dict):
+        errors.append("reliability_derate_sources must be a mapping")
+        return
+    rationale = derates.get("rationale")
+    if not isinstance(rationale, str) or "nanosheet-era physics" not in rationale:
+        errors.append("reliability_derate_sources.rationale must require nanosheet-era physics")
+    inputs = derates.get("inputs")
+    if not isinstance(inputs, list):
+        errors.append("reliability_derate_sources.inputs must be a list")
+        return
+    input_ids = {item.get("id") for item in inputs if isinstance(item, dict)}
+    missing = sorted(REQUIRED_RELIABILITY_INPUTS - input_ids)
+    if missing:
+        errors.append("reliability_derate_sources.inputs missing: " + ", ".join(missing))
+
+
+def check_sram_vmin_ecc_repair_plan(data: dict[str, Any], errors: list[str]) -> None:
+    plan = data.get("sram_vmin_ecc_repair_plan")
+    if not isinstance(plan, dict):
+        errors.append("sram_vmin_ecc_repair_plan must be a mapping")
+        return
+    policy = plan.get("required_policy")
+    if not isinstance(policy, list):
+        errors.append("sram_vmin_ecc_repair_plan.required_policy must be a list")
+        return
+    missing = sorted(REQUIRED_SRAM_POLICY - set(policy))
+    if missing:
+        errors.append("sram_vmin_ecc_repair_plan.required_policy missing: " + ", ".join(missing))
+
+
+def check_thermal_capture_phases(data: dict[str, Any], errors: list[str]) -> None:
+    capture = data.get("thermal_capture_phases")
+    if not isinstance(capture, dict):
+        errors.append("thermal_capture_phases must be a mapping")
+        return
+    phases = capture.get("phases")
+    if not isinstance(phases, list):
+        errors.append("thermal_capture_phases.phases must be a list")
+        return
+    by_id = {phase.get("id"): phase for phase in phases if isinstance(phase, dict)}
+    for phase_id, sustained_allowed in REQUIRED_THERMAL_PHASES.items():
+        phase = by_id.get(phase_id)
+        if not isinstance(phase, dict):
+            errors.append(f"thermal_capture_phases.phases missing: {phase_id}")
+            continue
+        if phase.get("sustained_metric_allowed") is not sustained_allowed:
+            errors.append(
+                f"{phase_id}.sustained_metric_allowed must be {str(sustained_allowed).lower()}"
+            )
+    steady = by_id.get("vapor_chamber_steady_state")
+    if isinstance(steady, dict) and steady.get("after_phase") != "vapor_chamber_transient":
+        errors.append("vapor_chamber_steady_state.after_phase must be vapor_chamber_transient")
+    skin = capture.get("skin_temperature_limit")
+    if not isinstance(skin, dict):
+        errors.append("thermal_capture_phases.skin_temperature_limit must be a mapping")
+        return
+    if skin.get("stop_condition") != "hard":
+        errors.append("skin_temperature_limit.stop_condition must be hard")
+    limit = skin.get("limit_c")
+    if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit > 45:
+        errors.append("skin_temperature_limit.limit_c must be numeric and <= 45")
+
+
+def check_packaging_default(data: dict[str, Any], errors: list[str]) -> None:
+    packaging = data.get("packaging_default")
+    if not isinstance(packaging, dict):
+        errors.append("packaging_default must be a mapping")
+        return
+    baseline = packaging.get("baseline")
+    if not isinstance(baseline, dict):
+        errors.append("packaging_default.baseline must be a mapping")
+    else:
+        if baseline.get("type") != "monolithic_die":
+            errors.append("packaging_default.baseline.type must remain monolithic_die")
+        memory = baseline.get("memory")
+        if not isinstance(memory, str) or "lpddr" not in memory.lower():
+            errors.append("packaging_default.baseline.memory must identify on-package LPDDR")
+    forbidden = packaging.get("forbidden_in_e1_envelope")
+    if not isinstance(forbidden, list):
+        errors.append("packaging_default.forbidden_in_e1_envelope must be a list")
+        return
+    forbidden_names = {item for item in forbidden if isinstance(item, str)}
+    missing = sorted(REQUIRED_FORBIDDEN_PACKAGING - forbidden_names)
+    if missing:
+        errors.append("packaging_default.forbidden_in_e1_envelope missing: " + ", ".join(missing))
+
+
 def main() -> int:
     errors: list[str] = []
     data = load_yaml(SPEC, errors)
@@ -188,6 +349,12 @@ def main() -> int:
         check_node_target(data, errors)
         check_sources(data, errors)
         check_effects(data, errors)
+        check_variant_requirements(data, errors)
+        check_library_variant_binding(data, errors)
+        check_reliability_derate_sources(data, errors)
+        check_sram_vmin_ecc_repair_plan(data, errors)
+        check_thermal_capture_phases(data, errors)
+        check_packaging_default(data, errors)
         check_release_gate(data, errors)
 
     if errors:

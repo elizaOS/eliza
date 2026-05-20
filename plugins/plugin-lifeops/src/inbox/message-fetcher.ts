@@ -22,6 +22,15 @@ const THREAD_CONTEXT_LIMIT = 5;
 const SNIPPET_MAX_LENGTH = 200;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
+const PHONE_BACKED_SOURCES = new Set([
+  "imessage",
+  "sms",
+  "bluebubbles",
+  "blooio",
+  "twilio",
+  "whatsapp",
+]);
+
 export interface GmailInboxSource {
   getGoogleConnectorStatus(
     requestUrl: URL,
@@ -145,6 +154,7 @@ export async function fetchChatMessages(
     if (!source) continue;
     const text = extractText(memory);
     if (!text) continue;
+    const phoneIdentity = extractPhoneIdentity(memory, source);
 
     const senderName = extractSenderName(memory) ?? "Unknown";
     const participantCount = participantCountByRoom.get(roomId);
@@ -188,10 +198,83 @@ export async function fetchChatMessages(
       threadId: roomId,
       chatType,
       participantCount,
+      ...phoneIdentity,
     });
   }
 
   return results;
+}
+
+function extractPhoneIdentity(
+  memory: Memory,
+  source: string,
+): Pick<
+  InboundMessage,
+  "phoneAccountId" | "phoneAccountLabel" | "phoneNumber"
+> {
+  if (!PHONE_BACKED_SOURCES.has(source)) {
+    return {};
+  }
+  const metadata = asRecord(memory.metadata);
+  const content = asRecord(memory.content);
+  const nested =
+    asRecord(metadata.imessage) ??
+    asRecord(metadata.bluebubbles) ??
+    asRecord(metadata.blooio) ??
+    asRecord(metadata.twilio) ??
+    asRecord(metadata.whatsapp);
+
+  const phoneNumber = firstString(
+    metadata.localPhoneNumber,
+    metadata.phoneNumber,
+    metadata.recipientPhoneNumber,
+    metadata.toPhoneNumber,
+    metadata.destinationCallerId,
+    content.localPhoneNumber,
+    content.phoneNumber,
+    nested?.localPhoneNumber,
+    nested?.phoneNumber,
+    nested?.recipientPhoneNumber,
+    nested?.toPhoneNumber,
+    nested?.destinationCallerId,
+  );
+  const phoneAccountId = firstString(
+    metadata.phoneAccountId,
+    metadata.localPhoneAccountId,
+    nested?.phoneAccountId,
+    nested?.localPhoneAccountId,
+    phoneNumber,
+    metadata.accountId,
+  );
+  const phoneAccountLabel = firstString(
+    metadata.phoneAccountLabel,
+    metadata.localPhoneAccountLabel,
+    nested?.phoneAccountLabel,
+    nested?.localPhoneAccountLabel,
+    phoneNumber,
+    phoneAccountId,
+  );
+
+  return {
+    ...(phoneAccountId ? { phoneAccountId } : {}),
+    ...(phoneAccountLabel ? { phoneAccountLabel } : {}),
+    ...(phoneNumber ? { phoneNumber } : {}),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return undefined;
 }
 
 export async function fetchGmailMessages(

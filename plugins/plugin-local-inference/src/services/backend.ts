@@ -3,7 +3,7 @@
  *
  * Two real implementations live behind this interface:
  *
- *   - `node-llama-cpp`  → in-process via the node-llama-cpp binding. Stock
+ *   - `capacitor-llama`  → in-process via the capacitor-llama binding. Stock
  *     GGUFs, no drafter, no MoE expert offload, no `--lookahead`. Fastest
  *     to start, lowest IPC overhead, narrowest feature surface.
  *   - `llama-server`    → out-of-process llama-server (the buun-llama-cpp
@@ -20,10 +20,10 @@
  *      provide these kernels at all.
  *   3. Catalog `runtime.preferredBackend` — soft preference. We pick
  *      `llama-server` when this is set AND the binary is available;
- *      otherwise we fall back to `node-llama-cpp` unless DFlash is
+ *      otherwise we fall back to `capacitor-llama` unless DFlash is
  *      explicitly required (`ELIZA_DFLASH_REQUIRED=1`).
  *   4. Default: custom `llama-server` when the managed binary is available;
- *      `node-llama-cpp` is only a last-resort compatibility path for hosts
+ *      `capacitor-llama` is only a last-resort compatibility path for hosts
  *      without the custom llama.cpp runtime.
  *
  * The dispatcher does NOT own the spawn body — `llama-server` and the
@@ -81,7 +81,7 @@ export interface BackendPlan {
 	/**
 	 * Catalog model id, when known. The dispatcher uses this to pull
 	 * `runtime.optimizations` and `runtime.dflash` — without it, we can
-	 * only honour the env override and fall back to `node-llama-cpp`.
+	 * only honour the env override and fall back to `capacitor-llama`.
 	 */
 	modelId?: string;
 	/** Catalog entry, when the caller already resolved it. */
@@ -107,7 +107,7 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	/**
 	 * Optional cache key from the runtime's `ProviderCachePlan`. Identical
 	 * keys reuse the same KV cache prefix in both backends:
-	 *   - `node-llama-cpp` → routes to a pooled `LlamaChatSession` that
+	 *   - `capacitor-llama` → routes to a pooled `LlamaChatSession` that
 	 *     retains chat history (and therefore the KV) across calls.
 	 *   - `llama-server`   → derives a deterministic `slot_id` so requests
 	 *     with the same key land on the same persisted slot.
@@ -116,7 +116,7 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	cacheKey?: string;
 	/**
 	 * Per-request abort signal. Backends honour it cooperatively:
-	 *   - `node-llama-cpp` passes it to `LlamaChatSession.prompt()` as
+	 *   - `capacitor-llama` passes it to `LlamaChatSession.prompt()` as
 	 *     `stopOnAbortSignal`, so the binding bails out of the generation
 	 *     loop on the next sampler tick.
 	 *   - `llama-server`   wires it into the HTTP request so the outgoing
@@ -171,8 +171,8 @@ export interface EmbedResult {
  * loadable, is the binary on disk). Loading a specific model is `load()`.
  */
 export interface LocalInferenceBackend {
-	/** Identifier — `"node-llama-cpp"` or `"llama-server"`. */
-	readonly id: "node-llama-cpp" | "llama-server";
+	/** Identifier for the concrete backend implementation. */
+	readonly id: "capacitor-llama" | "node-llama-cpp" | "llama-server";
 	available(): Promise<boolean>;
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
@@ -218,10 +218,7 @@ export interface LocalInferenceBackend {
 	}>;
 
 	/** Persist a slot's KV cache to disk under the conversation directory. */
-	persistConversationKv?(
-		conversationId: string,
-		slotId: number,
-	): Promise<boolean>;
+	persistConversationKv?(conversationId: string, slotId: number): Promise<void>;
 
 	/** Restore a slot's KV cache from disk into the running backend. */
 	restoreConversationKv?(
@@ -272,11 +269,11 @@ export interface LocalInferenceBackend {
 	currentRuntimeLoadConfig?(): DflashRuntimeLoadConfig | null;
 }
 
-export type BackendOverride = "auto" | "node-llama-cpp" | "llama-server";
+export type BackendOverride = "auto" | "capacitor-llama" | "llama-server";
 
 export function readBackendOverride(): BackendOverride {
 	const raw = process.env.ELIZA_LOCAL_BACKEND?.trim().toLowerCase();
-	if (raw === "node-llama-cpp" || raw === "llama-server" || raw === "auto") {
+	if (raw === "capacitor-llama" || raw === "llama-server" || raw === "auto") {
 		return raw;
 	}
 	return "auto";
@@ -333,7 +330,7 @@ export function __resetReducedModeWarnedForTests(): void {
 }
 
 export interface BackendDecision {
-	backend: "node-llama-cpp" | "llama-server";
+	backend: "capacitor-llama" | "llama-server";
 	/** Why this backend was chosen — for diagnostics and warnings. */
 	reason:
 		| "env-override"
@@ -384,7 +381,7 @@ export function decideBackend(input: {
 		input.binaryKernels ?? null,
 	);
 
-	if (override === "node-llama-cpp") {
+	if (override === "capacitor-llama") {
 		if (kernels.length > 0 || dflashRequired) {
 			// The override conflicts with a hard requirement. Prefer the kernel
 			// requirement — silently honoring the override would silently break
@@ -398,7 +395,7 @@ export function decideBackend(input: {
 			};
 		}
 		return {
-			backend: "node-llama-cpp",
+			backend: "capacitor-llama",
 			reason: "env-override",
 			kernels,
 			unsatisfiedKernels,
@@ -437,9 +434,9 @@ export function decideBackend(input: {
 			unsatisfiedKernels,
 		};
 	}
-	if (preferredBackend === "node-llama-cpp") {
+	if (preferredBackend === "capacitor-llama") {
 		return {
-			backend: "node-llama-cpp",
+			backend: "capacitor-llama",
 			reason: "preferred-backend",
 			kernels,
 			unsatisfiedKernels,
@@ -454,7 +451,7 @@ export function decideBackend(input: {
 		};
 	}
 	return {
-		backend: "node-llama-cpp",
+		backend: "capacitor-llama",
 		reason: "default",
 		kernels,
 		unsatisfiedKernels,
@@ -494,7 +491,7 @@ export function resolveCatalogForPlan(
  * the previous backend before loading the new one if they differ.
  */
 export class BackendDispatcher implements LocalInferenceBackend {
-	readonly id = "node-llama-cpp" as const;
+	readonly id = "capacitor-llama" as const;
 	// The dispatcher's `id` is informational; the active backend's id is what
 	// matters for diagnostics. We expose `activeBackendId()` for that.
 
@@ -542,7 +539,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return this.llamaServer.available();
 	}
 
-	activeBackendId(): "node-llama-cpp" | "llama-server" | null {
+	activeBackendId():
+		| "capacitor-llama"
+		| "node-llama-cpp"
+		| "llama-server"
+		| null {
 		return this.active ? this.active.id : null;
 	}
 
@@ -679,10 +680,10 @@ export class BackendDispatcher implements LocalInferenceBackend {
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		this.ensureLoaded();
-		if (!this.active?.persistConversationKv) return false;
-		return this.active?.persistConversationKv(conversationId, slotId);
+		if (!this.active?.persistConversationKv) return;
+		await this.active?.persistConversationKv(conversationId, slotId);
 	}
 
 	async restoreConversationKv(

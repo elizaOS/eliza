@@ -12,6 +12,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumeStewardCodeFromQuery,
@@ -78,13 +79,36 @@ const TEST_PROVIDERS: StewardProviders = {
   siwe: true,
 };
 
-const CALLBACK_REASON_MESSAGES: Record<string, string> = {
-  invalid_token: "That login link is invalid. Try signing in again.",
-  expired_token: "That login link has expired. Request a new one below.",
-  email_mismatch: "The link doesn't match the email you entered. Try again.",
-  server_error: "Something went wrong on our end. Try again in a moment.",
-};
-const CALLBACK_UNKNOWN_MESSAGE = "Couldn't complete sign-in. Try again.";
+type LoginTranslator = ReturnType<typeof useT>;
+
+function getCallbackReasonMessage(
+  reason: string | null,
+  t: LoginTranslator,
+): string {
+  switch (reason) {
+    case "invalid_token":
+      return t("cloud.login.callback.invalidToken", {
+        defaultValue: "That login link is invalid. Try signing in again.",
+      });
+    case "expired_token":
+      return t("cloud.login.callback.expiredToken", {
+        defaultValue: "That login link has expired. Request a new one below.",
+      });
+    case "email_mismatch":
+      return t("cloud.login.callback.emailMismatch", {
+        defaultValue:
+          "The link doesn't match the email you entered. Try again.",
+      });
+    case "server_error":
+      return t("cloud.login.callback.serverError", {
+        defaultValue: "Something went wrong on our end. Try again in a moment.",
+      });
+    default:
+      return t("cloud.login.callback.unknown", {
+        defaultValue: "Couldn't complete sign-in. Try again.",
+      });
+  }
+}
 
 function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
@@ -108,6 +132,7 @@ function loadStewardProviders(auth: {
 }
 
 export default function StewardLoginSection() {
+  const t = useT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const pathname = useLocation().pathname;
@@ -262,8 +287,7 @@ export default function StewardLoginSection() {
     if (!errorCode) return;
 
     const reason = searchParams.get("reason");
-    const message =
-      (reason && CALLBACK_REASON_MESSAGES[reason]) || CALLBACK_UNKNOWN_MESSAGE;
+    const message = getCallbackReasonMessage(reason, t);
     setCallbackError(message);
 
     if (errorCode === "email_auth_failed") {
@@ -275,7 +299,7 @@ export default function StewardLoginSection() {
     remaining.delete("reason");
     const qs = remaining.toString();
     navigate(qs ? `${pathname}?${qs}` : pathname, { replace: true });
-  }, [pathname, searchParams, navigate]);
+  }, [pathname, searchParams, navigate, t]);
   async function handleSuccess(token: string, refreshToken?: string | null) {
     await syncStewardSessionCookie(token, refreshToken);
     setStep("success");
@@ -451,7 +475,8 @@ export default function StewardLoginSection() {
               disabled={isLoading}
               className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
             >
-              {loading === "google" ? <Spinner /> : <GoogleIcon />} Google
+              {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
+              {t("cloud.login.button.google", { defaultValue: "Google" })}
             </button>
           )}
           {providers.discord && (
@@ -466,7 +491,7 @@ export default function StewardLoginSection() {
               ) : (
                 <DiscordIcon className="h-4 w-4" />
               )}{" "}
-              Discord
+              {t("cloud.login.button.discord", { defaultValue: "Discord" })}
             </button>
           )}
           {providers.github && (
@@ -481,7 +506,7 @@ export default function StewardLoginSection() {
               ) : (
                 <Github className="h-4 w-4" />
               )}{" "}
-              GitHub
+              {t("cloud.login.button.github", { defaultValue: "GitHub" })}
             </button>
           )}
         </div>
@@ -492,7 +517,9 @@ export default function StewardLoginSection() {
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-white/14" />
             <span className="text-xs text-white/62">
-              or sign in with a wallet
+              {t("cloud.login.orSignInWallet", {
+                defaultValue: "or sign in with a wallet",
+              })}
             </span>
             <div className="h-px flex-1 bg-white/14" />
           </div>
@@ -510,7 +537,12 @@ export default function StewardLoginSection() {
               handleSuccess(result.token, result.refreshToken)
             }
             onError={(walletError) => {
-              setError(walletError.message || "Wallet sign-in failed");
+              setError(
+                walletError.message ||
+                  t("cloud.login.error.walletFailed", {
+                    defaultValue: "Wallet sign-in failed",
+                  }),
+              );
             }}
           />
         </>

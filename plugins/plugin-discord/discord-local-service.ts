@@ -1205,6 +1205,11 @@ export class DiscordLocalService extends Service {
 			typeof replyReference === "string" && replyReference.length > 0
 				? messageIdFor(this.runtime, replyChannelId, replyReference)
 				: undefined;
+		const replyToMessageText = message.referenced_message?.content?.trim();
+		const replyToSenderName =
+			message.referenced_message?.author?.global_name?.trim() ||
+			message.referenced_message?.author?.username?.trim();
+		const replyToSenderId = message.referenced_message?.author?.id;
 
 		const memory = createMessageMemory({
 			id: memoryId,
@@ -1216,6 +1221,10 @@ export class DiscordLocalService extends Service {
 				source: DISCORD_LOCAL_SERVICE_NAME,
 				...(attachments.length > 0 ? { attachments } : {}),
 				...(inReplyTo ? { inReplyTo } : {}),
+				...(replyReference ? { replyToExternalMessageId: replyReference } : {}),
+				...(replyToSenderId ? { replyToSenderId } : {}),
+				...(replyToSenderName ? { replyToSenderName } : {}),
+				...(replyToMessageText ? { replyToMessageText } : {}),
 			},
 		}) as Memory;
 		memory.createdAt = message.timestamp

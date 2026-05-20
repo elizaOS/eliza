@@ -43,7 +43,7 @@ async function embed(
     });
     if (!res.ok) return null;
     const json = (await res.json()) as EmbeddingResponse;
-    const vectors = json.data?.map((d) => d.embedding) ?? [];
+    const vectors = json.data.map((d) => d.embedding);
     if (vectors.length !== inputs.length) return null;
     return vectors;
   } catch {

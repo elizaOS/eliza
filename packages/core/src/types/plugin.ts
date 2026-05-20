@@ -437,10 +437,59 @@ export interface PluginAppUiExtension {
 }
 
 /** Platform availability for a view. */
-export type ViewPlatform = "web" | "desktop" | "ios" | "android";
+export type ViewPlatform =
+	| "web"
+	| "desktop"
+	| "ios"
+	| "android"
+	| "quest"
+	| "xreal";
 
 /** Presentation/runtime family for a view. */
-export type ViewType = "gui" | "tui";
+export type ViewType = "gui" | "tui" | "xr";
+
+/**
+ * XR-specific panel options for a view rendered in a WebXR overlay.
+ * All fields are optional and have sensible defaults for headset use.
+ */
+export interface XRViewOptions {
+	/**
+	 * Panel width in meters when rendered in world space.
+	 * Defaults to 1.0 m (roughly a letter-size page at arm's length).
+	 */
+	defaultWidthMeters?: number;
+	/**
+	 * Panel height in meters. Defaults to 0.75 m.
+	 */
+	defaultHeightMeters?: number;
+	/**
+	 * How the panel follows the user's gaze / camera.
+	 *  - "billboard"  — always faces the camera, orbits at fixed distance (default).
+	 *  - "fixed"      — stays at its world-space transform once opened.
+	 *  - "follow"     — smoothly lag-follows the camera without rotating.
+	 */
+	followMode?: "billboard" | "fixed" | "follow";
+	/**
+	 * Distance from the camera origin the panel is placed at (meters).
+	 * Defaults to 1.5 m.
+	 */
+	defaultDistance?: number;
+	/**
+	 * Preferred initial position relative to the camera in meters [x, y, z].
+	 * e.g. [0, 0, -1.5] is directly in front.
+	 */
+	defaultOffset?: [number, number, number];
+	/**
+	 * Whether this view supports voice input to its form fields.
+	 * Defaults to true — app-xr will pipe Whisper transcripts to focused inputs.
+	 */
+	voiceInputEnabled?: boolean;
+	/**
+	 * Whether this view should render in the full overlay (true) or as a
+	 * side panel / mini panel (false). Defaults to false.
+	 */
+	fullscreen?: boolean;
+}
 
 /** A discrete capability the agent can exercise on a mounted view. */
 export interface ViewCapability {
@@ -530,6 +579,11 @@ export interface ViewDeclaration {
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;
+	/**
+	 * XR-specific panel behaviour. Only meaningful when viewType === "xr".
+	 * Omit to accept all defaults (1m-wide billboard panel at 1.5 m distance).
+	 */
+	xrOptions?: XRViewOptions;
 }
 
 export interface PluginApp {

@@ -271,7 +271,41 @@ export const pluginEntrySchema = z.object({
   ...commonFields,
   kind: z.literal("plugin"),
   subtype: pluginSubtype,
+  launch: appLaunchSchema.optional(),
 });
+
+// ---------------------------------------------------------------------------
+// Per-account auth config. Connectors can declare an OWNER side (the user's
+// own platform account — e.g. user's Gmail, user's Discord) and/or an AGENT
+// side (a separate identity the agent operates — e.g. a bot Gmail, a Discord
+// bot). Auth method, credential keys, and OS support are independent per side.
+//
+// Purely additive over `auth`. When a manifest only declares `auth`, the
+// loader auto-maps it to `accounts.agent` (see loader.ts:normalizeConnectorAuth).
+// ---------------------------------------------------------------------------
+
+const accountAuthKind = z.enum([
+  "oauth-cloud", // "Log in with X" routed through Eliza Cloud
+  "oauth-local", // local-only OAuth (e.g. per-homeserver Matrix)
+  "qr", // QR-pairing (WhatsApp Baileys, Signal device-link)
+  "local-app", // local-app inspection (Discord-CDP, iMessage chat.db)
+  "browser-extension", // browser companion
+  "api-key", // manual paste of bot token / API key
+  "none",
+]);
+
+const accountOsSupport = z.enum(["darwin", "win32", "linux"]);
+
+export const accountConfigSchema = z.object({
+  supported: z.boolean().default(true),
+  authKind: accountAuthKind,
+  credentialKeys: z.array(z.string()).default([]),
+  osSupport: z.array(accountOsSupport).optional(),
+  notes: z.string().optional(),
+});
+
+export type AccountConfig = z.infer<typeof accountConfigSchema>;
+export type AccountAuthKind = z.infer<typeof accountAuthKind>;
 
 export const connectorEntrySchema = z.object({
   ...commonFields,
@@ -281,6 +315,12 @@ export const connectorEntrySchema = z.object({
     .object({
       kind: z.enum(["token", "oauth", "credentials", "none"]),
       credentialKeys: z.array(z.string()).default([]),
+    })
+    .optional(),
+  accounts: z
+    .object({
+      owner: accountConfigSchema.optional(),
+      agent: accountConfigSchema.optional(),
     })
     .optional(),
 });

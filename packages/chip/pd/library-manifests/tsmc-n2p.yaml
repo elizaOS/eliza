@@ -1,0 +1,48 @@
+schema: eliza.pd_library_manifest.v1
+pdk: TSMC_N2P
+node_class: tsmc_n2_class_gaa_nanosheet
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_library_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - No TSMC standard-cell, SRAM, IO, or hard-IP library data may be checked in until a TSMC OIP agreement is in place.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed TSMC Open Innovation Platform / NDA agreement at N2P.
+    - SRAM compiler license at N2P (HD 38.1 Mb/mm² macro, with NanoFlex assist circuitry).
+    - LPDDR5X PHY license at N2P (Synopsys DesignWare proven, Cadence LPDDR6/5X IP, or Rambus).
+    - USB 3.2 / USB4 PHY at N2P (Synopsys / Cadence / Rambus).
+    - MIPI D-PHY v3 + C-PHY v2 + DSI-2 / CSI-2 IP at N2P.
+    - PLL hard IP at N2P (Synopsys / Cadence).
+    - PCIe Gen5 PHY at N2P (optional, NVMe).
+    - Analog catalogue: PMIC LDOs, ADC, temperature sensor, eFuse.
+    - DFT / scan / MBIST IP per N2P methodology.
+    - Multi-Vt mix: SLVT, LVT, RVT, HVT, plus HVT_SRAM_assist.
+    - NanoFlex cell-mix DTCO methodology guidance from TSMC.
+
+economics:
+  wafer_usd: 30000
+  wafer_usd_high: 33000
+  mask_set_usd_estimate: 40000000
+  tapeout_nre_usd_low: 250000000
+  tapeout_nre_usd_high: 400000000
+  apple_wafer_share_through_2027q2_pct: 50
+  lead_customer_window: "Apple A20-class 2026-2027; Qualcomm/MTK transition 2027; mobile-mature 2028"
+
+required_provenance_fields_after_unblock:
+  - PDK release tag
+  - STD_CELL_LIBRARY revision (per Vt flavor)
+  - SRAM compiler revision
+  - LPDDR PHY vendor + IP revision
+  - USB / MIPI PHY revision
+  - PLL hard IP revision
+  - Commercial EDA tool versions (Innovus, Tempus, Voltus, StarRC, IC Validator)
+
+forbidden_claims_until_unblocked:
+  - tsmc_n2p_library_release
+  - tsmc_n2p_signoff_clean
+  - tsmc_n2p_tapeout_ready

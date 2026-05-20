@@ -170,12 +170,16 @@ Replay scoring example (from normalized Eliza capture artifacts):
 
 ## Code Agent Matrix
 
-Worker lane for comparing real coding agents on SWE-bench cells:
+Worker lane for comparing real coding agents across coding, terminal, browser,
+and computer-use benchmarks. The default included matrix is sourced from
+`benchmarks/orchestrator/code_agent_coverage.py` and currently covers
+`swe_bench`, `terminal_bench`, `mind2web`, `visualwebbench`, `webshop`, and
+`osworld` for both `elizaos` and `opencode`.
 
 ```bash
 cd /Users/shawwalters/milaidy/eliza/packages
 python -m benchmarks.orchestrator.code_agent_matrix \
-  --benchmarks swe_bench \
+  --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld \
   --adapters elizaos,opencode \
   --provider cerebras \
   --model gpt-oss-120b \
@@ -190,7 +194,35 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 - `stdout.log` and `stderr.log` with secret-looking env values redacted.
 - benchmark output JSON under each cell's `output/` directory.
 - requested trajectory output under each cell's `trajectories/` directory.
-- top-level `summary.json` and `summary.md` with failure buckets.
+- top-level `summary.json` and `summary.md` with failure buckets, normalized
+  right/wrong/total/accuracy, input/output/cached token metrics, LLM call
+  counts, run configuration metadata, an ElizaOS-vs-OpenCode head-to-head
+  status per benchmark with target/baseline input, output, total, cached
+  percentage, and LLM-call counts, and an explicit token-evidence section that
+  flags cells where no usable LLM/token telemetry was captured. Reports also
+  include a combined report gate for coverage, comparability, and required
+  stats; a benchmark-coverage section showing selected included benchmarks and
+  related deferred benchmarks; and an improvement queue pointing to logs,
+  results, and trajectory directories for inferior, weak, or missing
+  comparisons. `weak` means both adapters
+  produced measured zero accuracy, so the result is not accepted as meaningful
+  comparability. Queue entries include compact trajectory review briefs with
+  turn/token counts, cached-token percentage, latency, repeated-prefix signals,
+  and deterministic diagnosis strings that call out missing evidence, accuracy
+  loss, failure classes, extra token/call cost, or cache regressions. They also
+  include rerun command templates for targeted follow-up runs. Generated rerun
+  templates preserve the original
+  provider, model, task limit, timeout, smoke/dry-run mode, Docker mode, and
+  comparable/token/stat enforcement flags while intentionally omitting secret
+  env values, the original run root, and coverage enforcement. Coverage
+  enforcement is reserved for full release-style matrix reports, not targeted
+  reruns.
+
+Smoke mode uses each benchmark's cheap offline fixtures where available:
+Mind2Web `--sample --mock`, VisualWebBench `--use-sample-tasks --mock`,
+WebShop `--use-sample-tasks --mock`, and OSWorld `--dry_run`. Real WebShop
+runs add `--bridge`; real OSWorld runs do not add `--dry_run`, so they require
+the desktop/VM capacity expected by OSWorld.
 
 Resume is default: cells with `cell-result.json` are reused. Add `--force` to
 rerun, or summarize an interrupted/keyed run without executing anything:
@@ -199,6 +231,82 @@ rerun, or summarize an interrupted/keyed run without executing anything:
 cd /Users/shawwalters/milaidy/eliza/packages
 python -m benchmarks.orchestrator.code_agent_matrix \
   --summarize /path/to/benchmark_results/code-agent-matrix/20260516T120000Z
+```
+
+To rerun only queued comparisons from a previous report, point at its
+`summary.json`. This is useful after fixing ElizaOS behavior on one inferior
+benchmark because it avoids rebuilding the full matrix:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --rerun-queue /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
+  --compare-summary /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
+  --queue-priorities p0 \
+  --force
+```
+
+Use `--compare-summary` on any full or queued rerun to add a previous-summary
+comparison table showing ElizaOS accuracy, token, cached-token, and LLM-call
+deltas by benchmark.
+
+When ElizaOS is accuracy-comparable but less efficient, `summary.json` includes
+an `efficiency_queue` and the markdown includes an Efficiency Queue section.
+This flags higher total-token use, extra LLM calls, and lower cached-token
+percentage versus OpenCode so optimization work is not hidden by a passing
+accuracy gate.
+
+Use `--enforce-comparable` in CI or release gates to exit nonzero unless every
+selected benchmark is `superior` or `comparable` for ElizaOS against OpenCode.
+Inferior, weak, and missing comparisons block the gate. The generated
+`summary.json` always includes `benchmark_gate` with the same blocking
+benchmark list.
+
+Use `--enforce-coverage` when the report must cover every benchmark currently
+marked included in `code_agent_coverage.py`. This is separate from queued or
+single-benchmark reruns: partial reruns can still produce useful comparison
+and trajectory evidence, while full release reports can require the coverage
+gate.
+
+Use `--enforce-token-evidence` for live runs where token telemetry is required.
+It exits nonzero unless every selected cell produced usable LLM-call and token
+usage evidence. This should usually be omitted for no-LLM smoke fixtures.
+
+Use `--enforce-required-stats` when a run should fail unless the report has
+all stats required for the head-to-head benchmark claim. It checks measured
+right/wrong/total outcome evidence for every selected benchmark and requires
+token evidence for live runs. Smoke, dry-run, and summarize reports do not
+require token evidence unless `--enforce-token-evidence` is also set.
+
+Use `--enforce-report` for a single release-readiness exit code over the
+combined report gate. It fails unless coverage, comparability, and required
+stats all pass for the generated report.
+
+The generated `summary.json` includes an `exit_codes` map for automation. The
+current contract is:
+
+| code | name | meaning |
+| --- | --- | --- |
+| 0 | `ok` | run completed without an enforced gate failure |
+| 2 | `preflight_failed` | preflight checks failed |
+| 3 | `comparable_gate_failed` | ElizaOS was not comparable-or-better than OpenCode on every selected benchmark |
+| 4 | `token_evidence_failed` | one or more selected cells lacked usable LLM token telemetry |
+| 5 | `required_stats_failed` | one or more selected benchmarks lacked required outcome or token stats |
+| 6 | `coverage_gate_failed` | the run did not cover every included code-agent benchmark |
+| 7 | `report_gate_failed` | the combined release-readiness report gate failed |
+
+Before a run, use `--preflight` to check the OpenCode adapter executable,
+benchmark working directories, command executables, and provider keys for live
+runs. Smoke and dry-run preflights do not require provider keys because they do
+not make LLM calls:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --preflight \
+  --smoke \
+  --no-docker \
+  --max-tasks 1
 ```
 
 No-key smoke/dry validation:
@@ -240,6 +348,41 @@ Viewer supports:
 ```bash
 /opt/miniconda3/bin/python -m benchmarks.orchestrator export-viewer-data
 ```
+
+## Validate latest benchmark readiness
+
+Use these gates before treating `benchmark_results/latest/` as publishable.
+They are intentionally stricter than `export-viewer-data`: latest rows must be
+real successful runs with numeric scores, no sample/demo/mock/stub markers, and
+comparable real-harness scores.
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-matrix
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-runtime-gates
+/opt/miniconda3/bin/python -m benchmarks.orchestrator calibration-report --tolerance 0.08
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-publishability
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-comparability --tolerance 0.08
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
+```
+
+`validate-latest-readiness` is the completion gate. It fails unless every
+Eliza/Hermes/OpenClaw cell required by the latest matrix is present,
+successful, scored, publishable, and comparable. Unsupported cells include
+their reason in `latest/index.json` under `matrix_contract.benchmarks`.
+`validate-runtime-gates` probes the current host for the external services and
+credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
+
+Expected real-runtime gates:
+
+- GAIA rows require official dataset access via `HF_TOKEN`,
+  `HUGGINGFACE_HUB_TOKEN`, `GAIA_DATASET_PATH`, or a pre-cached official
+  `gaia-benchmark/GAIA` dataset. Sample GAIA rows are not publishable.
+- Hyperliquid rows require `HL_PRIVATE_KEY` and live execution with demo mode
+  disabled.
+- Terminal-Bench and Hermes sandbox-family rows require either a reachable
+  Docker daemon or, where supported, Modal credentials.
+- Vision-language Hermes/OpenClaw rows require `VISION_LANGUAGE_MODEL` plus
+  provider credentials for a multimodal OpenAI-compatible model.
 
 ## Recover stale/interrupted runs
 

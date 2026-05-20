@@ -2,6 +2,7 @@
 set -eu
 
 repo_dir="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$repo_dir"
 if [ -d "$repo_dir/external/oss-cad-suite/bin" ]; then
     PATH="$repo_dir/external/oss-cad-suite/bin:$PATH"
 fi

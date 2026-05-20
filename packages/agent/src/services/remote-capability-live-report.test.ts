@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -74,6 +74,21 @@ describe("remote capability live report summaries", () => {
           pluginName: "@remote/surface",
           moduleId: "surface-module",
           endpointId: "surface-endpoint",
+          actionCount: 1,
+          providerCount: 1,
+          evaluatorCount: 1,
+          responseHandlerEvaluatorCount: 1,
+          responseHandlerFieldEvaluatorCount: 1,
+          routeCount: 1,
+          modelCount: 1,
+          eventCount: 2,
+          serviceCount: 1,
+          appCount: 1,
+          appBridgeCount: 1,
+          lifecycleCount: 3,
+          widgetCount: 1,
+          componentTypeCount: 1,
+          viewCount: 1,
         },
       ],
       actionCount: 1,
@@ -122,6 +137,7 @@ describe("remote capability live report summaries", () => {
       await writeRemoteCapabilityLiveReport("home-machine", {
         kind: "provider",
         provider: "home-machine",
+        providerId: "home-machine",
       });
       await expect(
         readFile(join(dir, "home-machine.json"), "utf8"),
@@ -130,6 +146,7 @@ describe("remote capability live report summaries", () => {
         writeRemoteCapabilityLiveReport("home-machine", {
           kind: "provider",
           provider: "home-machine",
+          providerId: "home-machine",
         }),
       ).rejects.toThrow();
       await expect(
@@ -141,13 +158,41 @@ describe("remote capability live report summaries", () => {
         writeRemoteCapabilityLiveReport("e2b", {
           kind: "provider",
           provider: "home-machine",
+          providerId: "home-machine",
         }),
       ).rejects.toThrow("must match provider");
+      await expect(
+        writeRemoteCapabilityLiveReport("e2b", {
+          kind: "provider",
+          provider: "e2b",
+        }),
+      ).rejects.toThrow("providerId must match provider");
+      await expect(
+        writeRemoteCapabilityLiveReport("e2b", {
+          kind: "provider",
+          provider: "e2b",
+          providerId: "home-machine",
+        }),
+      ).rejects.toThrow("providerId must match provider");
       await expect(
         writeRemoteCapabilityLiveReport("cloud-live", {
           kind: "cloud",
         }),
       ).rejects.toThrow('must be "cloud"');
+      await expect(
+        writeRemoteCapabilityLiveReport("cloud", {
+          kind: "cloud",
+          provider: "e2b",
+        }),
+      ).rejects.toThrow('field "provider" is not valid');
+      await expect(
+        writeRemoteCapabilityLiveReport("e2b", {
+          kind: "provider",
+          provider: "e2b",
+          providerId: "e2b",
+          cloudApiBase: "https://api.example.test",
+        }),
+      ).rejects.toThrow('field "cloudApiBase" is not valid');
       await expect(
         writeRemoteCapabilityLiveReport("e2b", {
           kind: "other",

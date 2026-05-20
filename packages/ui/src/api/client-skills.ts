@@ -1,5 +1,5 @@
 /**
- * Skills domain methods — skills, catalog, marketplace, apps, Babylon,
+ * Skills domain methods — skills, catalog, marketplace, apps, Feed,
  * custom actions, WhatsApp, agent events.
  */
 
@@ -32,31 +32,31 @@ import type {
   SkillScanReportSummary,
 } from "./client-types";
 import type {
-  BabylonActivityFeed,
-  BabylonAgentGoal,
-  BabylonAgentStats,
-  BabylonAgentStatus,
-  BabylonAgentSummary,
-  BabylonChat,
-  BabylonChatMessage,
-  BabylonChatMessagesResponse,
-  BabylonChatResponse,
-  BabylonChatsResponse,
-  BabylonLogEntry,
-  BabylonPerpMarket,
-  BabylonPerpPosition,
-  BabylonPerpTradeResult,
-  BabylonPostResult,
-  BabylonPostsResponse,
-  BabylonPredictionMarket,
-  BabylonPredictionMarketsResponse,
-  BabylonSendMessageResult,
-  BabylonTeamChatInfo,
-  BabylonTeamResponse,
-  BabylonToggleResponse,
-  BabylonTradeResult,
-  BabylonWallet,
-} from "./client-types-babylon";
+  FeedActivityFeed,
+  FeedAgentGoal,
+  FeedAgentStats,
+  FeedAgentStatus,
+  FeedAgentSummary,
+  FeedChat,
+  FeedChatMessage,
+  FeedChatMessagesResponse,
+  FeedChatResponse,
+  FeedChatsResponse,
+  FeedLogEntry,
+  FeedPerpMarket,
+  FeedPerpPosition,
+  FeedPerpTradeResult,
+  FeedPostResult,
+  FeedPostsResponse,
+  FeedPredictionMarket,
+  FeedPredictionMarketsResponse,
+  FeedSendMessageResult,
+  FeedTeamChatInfo,
+  FeedTeamResponse,
+  FeedToggleResponse,
+  FeedTradeResult,
+  FeedWallet,
+} from "./client-types-feed";
 
 export type AppRunSteeringDisposition =
   | "accepted"
@@ -464,106 +464,106 @@ declare module "./client-base" {
       reason?: string;
     }>;
 
-    // Babylon terminal methods
-    getBabylonAgentStatus(): Promise<BabylonAgentStatus>;
-    getBabylonAgentActivity(opts?: {
+    // Feed terminal methods
+    getFeedAgentStatus(): Promise<FeedAgentStatus>;
+    getFeedAgentActivity(opts?: {
       limit?: number;
       type?: string;
-    }): Promise<BabylonActivityFeed>;
-    getBabylonAgentLogs(opts?: {
+    }): Promise<FeedActivityFeed>;
+    getFeedAgentLogs(opts?: {
       type?: string;
       level?: string;
-    }): Promise<BabylonLogEntry[]>;
-    getBabylonAgentWallet(): Promise<BabylonWallet>;
-    getBabylonTeam(): Promise<BabylonTeamResponse>;
-    getBabylonTeamChat(): Promise<BabylonTeamChatInfo>;
-    sendBabylonTeamChat(
+    }): Promise<FeedLogEntry[]>;
+    getFeedAgentWallet(): Promise<FeedWallet>;
+    getFeedTeam(): Promise<FeedTeamResponse>;
+    getFeedTeamChat(): Promise<FeedTeamChatInfo>;
+    sendFeedTeamChat(
       content: string,
       mentions?: string[],
-    ): Promise<BabylonChatResponse>;
-    toggleBabylonAgent(
+    ): Promise<FeedChatResponse>;
+    toggleFeedAgent(
       action: "pause" | "resume" | "toggle",
-    ): Promise<BabylonToggleResponse>;
-    toggleBabylonAgentAutonomy(opts: {
+    ): Promise<FeedToggleResponse>;
+    toggleFeedAgentAutonomy(opts: {
       trading?: boolean;
       posting?: boolean;
       commenting?: boolean;
       dms?: boolean;
-    }): Promise<BabylonToggleResponse>;
+    }): Promise<FeedToggleResponse>;
 
-    // Babylon markets
-    getBabylonPredictionMarkets(opts?: {
+    // Feed markets
+    getFeedPredictionMarkets(opts?: {
       page?: number;
       pageSize?: number;
       status?: string;
       category?: string;
-    }): Promise<BabylonPredictionMarketsResponse>;
-    getBabylonPredictionMarket(
+    }): Promise<FeedPredictionMarketsResponse>;
+    getFeedPredictionMarket(
       marketId: string,
-    ): Promise<BabylonPredictionMarket>;
-    buyBabylonPredictionShares(
-      marketId: string,
-      side: "yes" | "no",
-      amount: number,
-    ): Promise<BabylonTradeResult>;
-    sellBabylonPredictionShares(
+    ): Promise<FeedPredictionMarket>;
+    buyFeedPredictionShares(
       marketId: string,
       side: "yes" | "no",
       amount: number,
-    ): Promise<BabylonTradeResult>;
-    getBabylonPerpMarkets(): Promise<BabylonPerpMarket[]>;
-    getBabylonOpenPerpPositions(): Promise<BabylonPerpPosition[]>;
-    closeBabylonPerpPosition(
+    ): Promise<FeedTradeResult>;
+    sellFeedPredictionShares(
+      marketId: string,
+      side: "yes" | "no",
+      amount: number,
+    ): Promise<FeedTradeResult>;
+    getFeedPerpMarkets(): Promise<FeedPerpMarket[]>;
+    getFeedOpenPerpPositions(): Promise<FeedPerpPosition[]>;
+    closeFeedPerpPosition(
       positionId: string,
-    ): Promise<BabylonPerpTradeResult>;
+    ): Promise<FeedPerpTradeResult>;
 
-    // Babylon social
-    getBabylonPosts(opts?: {
+    // Feed social
+    getFeedPosts(opts?: {
       page?: number;
       limit?: number;
       feed?: string;
-    }): Promise<BabylonPostsResponse>;
-    createBabylonPost(
+    }): Promise<FeedPostsResponse>;
+    createFeedPost(
       content: string,
       marketId?: string,
-    ): Promise<BabylonPostResult>;
-    commentOnBabylonPost(
+    ): Promise<FeedPostResult>;
+    commentOnFeedPost(
       postId: string,
       content: string,
-    ): Promise<BabylonPostResult>;
-    likeBabylonPost(postId: string): Promise<{ ok: boolean }>;
+    ): Promise<FeedPostResult>;
+    likeFeedPost(postId: string): Promise<{ ok: boolean }>;
 
-    // Babylon messaging
-    getBabylonChats(): Promise<BabylonChatsResponse>;
-    getBabylonChatMessages(
+    // Feed messaging
+    getFeedChats(): Promise<FeedChatsResponse>;
+    getFeedChatMessages(
       chatId: string,
-    ): Promise<BabylonChatMessagesResponse>;
-    sendBabylonChatMessage(
+    ): Promise<FeedChatMessagesResponse>;
+    sendFeedChatMessage(
       chatId: string,
       content: string,
-    ): Promise<BabylonSendMessageResult>;
-    getBabylonDM(userId: string): Promise<BabylonChat>;
+    ): Promise<FeedSendMessageResult>;
+    getFeedDM(userId: string): Promise<FeedChat>;
 
-    // Babylon agent management
-    getBabylonAgentGoals(): Promise<BabylonAgentGoal[]>;
-    getBabylonAgentStats(): Promise<BabylonAgentStats>;
-    getBabylonAgentSummary(): Promise<BabylonAgentSummary>;
-    getBabylonAgentRecentTrades(): Promise<BabylonActivityFeed>;
-    getBabylonAgentTradingBalance(): Promise<{ balance: number }>;
-    sendBabylonAgentChat(content: string): Promise<BabylonChatResponse>;
-    getBabylonAgentChat(): Promise<{ messages: BabylonChatMessage[] }>;
+    // Feed agent management
+    getFeedAgentGoals(): Promise<FeedAgentGoal[]>;
+    getFeedAgentStats(): Promise<FeedAgentStats>;
+    getFeedAgentSummary(): Promise<FeedAgentSummary>;
+    getFeedAgentRecentTrades(): Promise<FeedActivityFeed>;
+    getFeedAgentTradingBalance(): Promise<{ balance: number }>;
+    sendFeedAgentChat(content: string): Promise<FeedChatResponse>;
+    getFeedAgentChat(): Promise<{ messages: FeedChatMessage[] }>;
 
-    // Babylon feed
-    getBabylonFeedForYou(): Promise<BabylonPostsResponse>;
-    getBabylonFeedHot(): Promise<BabylonPostsResponse>;
-    getBabylonTrades(): Promise<BabylonActivityFeed>;
+    // Feed feed
+    getFeedFeedForYou(): Promise<FeedPostsResponse>;
+    getFeedFeedHot(): Promise<FeedPostsResponse>;
+    getFeedTrades(): Promise<FeedActivityFeed>;
 
-    // Babylon discover & team
-    discoverBabylonAgents(): Promise<BabylonTeamResponse>;
-    getBabylonTeamDashboard(): Promise<Record<string, unknown>>;
-    getBabylonTeamConversations(): Promise<Record<string, unknown>>;
-    pauseAllBabylonAgents(): Promise<{ ok: boolean }>;
-    resumeAllBabylonAgents(): Promise<{ ok: boolean }>;
+    // Feed discover & team
+    discoverFeedAgents(): Promise<FeedTeamResponse>;
+    getFeedTeamDashboard(): Promise<Record<string, unknown>>;
+    getFeedTeamConversations(): Promise<Record<string, unknown>>;
+    pauseAllFeedAgents(): Promise<{ ok: boolean }>;
+    resumeAllFeedAgents(): Promise<{ ok: boolean }>;
   }
 }
 
@@ -1326,16 +1326,16 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
 };
 
 // ---------------------------------------------------------------------------
-// Babylon terminal methods
+// Feed terminal methods
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonAgentStatus = async function (
+ElizaClient.prototype.getFeedAgentStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/status");
 };
 
-ElizaClient.prototype.getBabylonAgentActivity = async function (
+ElizaClient.prototype.getFeedAgentActivity = async function (
   this: ElizaClient,
   opts?,
 ) {
@@ -1348,7 +1348,7 @@ ElizaClient.prototype.getBabylonAgentActivity = async function (
   );
 };
 
-ElizaClient.prototype.getBabylonAgentLogs = async function (
+ElizaClient.prototype.getFeedAgentLogs = async function (
   this: ElizaClient,
   opts?,
 ) {
@@ -1361,21 +1361,21 @@ ElizaClient.prototype.getBabylonAgentLogs = async function (
   );
 };
 
-ElizaClient.prototype.getBabylonAgentWallet = async function (
+ElizaClient.prototype.getFeedAgentWallet = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/wallet");
 };
 
-ElizaClient.prototype.getBabylonTeam = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedTeam = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/team");
 };
 
-ElizaClient.prototype.getBabylonTeamChat = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedTeamChat = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/team/info");
 };
 
-ElizaClient.prototype.sendBabylonTeamChat = async function (
+ElizaClient.prototype.sendFeedTeamChat = async function (
   this: ElizaClient,
   content,
   mentions?,
@@ -1386,7 +1386,7 @@ ElizaClient.prototype.sendBabylonTeamChat = async function (
   });
 };
 
-ElizaClient.prototype.toggleBabylonAgent = async function (
+ElizaClient.prototype.toggleFeedAgent = async function (
   this: ElizaClient,
   action,
 ) {
@@ -1396,7 +1396,7 @@ ElizaClient.prototype.toggleBabylonAgent = async function (
   });
 };
 
-ElizaClient.prototype.toggleBabylonAgentAutonomy = async function (
+ElizaClient.prototype.toggleFeedAgentAutonomy = async function (
   this: ElizaClient,
   opts,
 ) {
@@ -1407,10 +1407,10 @@ ElizaClient.prototype.toggleBabylonAgentAutonomy = async function (
 };
 
 // ---------------------------------------------------------------------------
-// Babylon markets
+// Feed markets
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonPredictionMarkets = async function (
+ElizaClient.prototype.getFeedPredictionMarkets = async function (
   this: ElizaClient,
   opts?,
 ) {
@@ -1425,7 +1425,7 @@ ElizaClient.prototype.getBabylonPredictionMarkets = async function (
   );
 };
 
-ElizaClient.prototype.getBabylonPredictionMarket = async function (
+ElizaClient.prototype.getFeedPredictionMarket = async function (
   this: ElizaClient,
   marketId,
 ) {
@@ -1434,7 +1434,7 @@ ElizaClient.prototype.getBabylonPredictionMarket = async function (
   );
 };
 
-ElizaClient.prototype.buyBabylonPredictionShares = async function (
+ElizaClient.prototype.buyFeedPredictionShares = async function (
   this: ElizaClient,
   marketId,
   side,
@@ -1446,7 +1446,7 @@ ElizaClient.prototype.buyBabylonPredictionShares = async function (
   );
 };
 
-ElizaClient.prototype.sellBabylonPredictionShares = async function (
+ElizaClient.prototype.sellFeedPredictionShares = async function (
   this: ElizaClient,
   marketId,
   side,
@@ -1458,19 +1458,19 @@ ElizaClient.prototype.sellBabylonPredictionShares = async function (
   );
 };
 
-ElizaClient.prototype.getBabylonPerpMarkets = async function (
+ElizaClient.prototype.getFeedPerpMarkets = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/markets/perps");
 };
 
-ElizaClient.prototype.getBabylonOpenPerpPositions = async function (
+ElizaClient.prototype.getFeedOpenPerpPositions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/markets/perps/open");
 };
 
-ElizaClient.prototype.closeBabylonPerpPosition = async function (
+ElizaClient.prototype.closeFeedPerpPosition = async function (
   this: ElizaClient,
   positionId,
 ) {
@@ -1481,10 +1481,10 @@ ElizaClient.prototype.closeBabylonPerpPosition = async function (
 };
 
 // ---------------------------------------------------------------------------
-// Babylon social
+// Feed social
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonPosts = async function (
+ElizaClient.prototype.getFeedPosts = async function (
   this: ElizaClient,
   opts?,
 ) {
@@ -1496,7 +1496,7 @@ ElizaClient.prototype.getBabylonPosts = async function (
   return this.fetch(`/api/apps/babylon/posts${qs ? `?${qs}` : ""}`);
 };
 
-ElizaClient.prototype.createBabylonPost = async function (
+ElizaClient.prototype.createFeedPost = async function (
   this: ElizaClient,
   content,
   marketId?,
@@ -1507,7 +1507,7 @@ ElizaClient.prototype.createBabylonPost = async function (
   });
 };
 
-ElizaClient.prototype.commentOnBabylonPost = async function (
+ElizaClient.prototype.commentOnFeedPost = async function (
   this: ElizaClient,
   postId,
   content,
@@ -1518,7 +1518,7 @@ ElizaClient.prototype.commentOnBabylonPost = async function (
   );
 };
 
-ElizaClient.prototype.likeBabylonPost = async function (
+ElizaClient.prototype.likeFeedPost = async function (
   this: ElizaClient,
   postId,
 ) {
@@ -1529,14 +1529,14 @@ ElizaClient.prototype.likeBabylonPost = async function (
 };
 
 // ---------------------------------------------------------------------------
-// Babylon messaging
+// Feed messaging
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonChats = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedChats = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/chats");
 };
 
-ElizaClient.prototype.getBabylonChatMessages = async function (
+ElizaClient.prototype.getFeedChatMessages = async function (
   this: ElizaClient,
   chatId,
 ) {
@@ -1545,7 +1545,7 @@ ElizaClient.prototype.getBabylonChatMessages = async function (
   );
 };
 
-ElizaClient.prototype.sendBabylonChatMessage = async function (
+ElizaClient.prototype.sendFeedChatMessage = async function (
   this: ElizaClient,
   chatId,
   content,
@@ -1556,7 +1556,7 @@ ElizaClient.prototype.sendBabylonChatMessage = async function (
   );
 };
 
-ElizaClient.prototype.getBabylonDM = async function (
+ElizaClient.prototype.getFeedDM = async function (
   this: ElizaClient,
   userId,
 ) {
@@ -1566,40 +1566,40 @@ ElizaClient.prototype.getBabylonDM = async function (
 };
 
 // ---------------------------------------------------------------------------
-// Babylon agent management
+// Feed agent management
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonAgentGoals = async function (
+ElizaClient.prototype.getFeedAgentGoals = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/goals");
 };
 
-ElizaClient.prototype.getBabylonAgentStats = async function (
+ElizaClient.prototype.getFeedAgentStats = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/stats");
 };
 
-ElizaClient.prototype.getBabylonAgentSummary = async function (
+ElizaClient.prototype.getFeedAgentSummary = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/summary");
 };
 
-ElizaClient.prototype.getBabylonAgentRecentTrades = async function (
+ElizaClient.prototype.getFeedAgentRecentTrades = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/recent-trades");
 };
 
-ElizaClient.prototype.getBabylonAgentTradingBalance = async function (
+ElizaClient.prototype.getFeedAgentTradingBalance = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agent/trading-balance");
 };
 
-ElizaClient.prototype.sendBabylonAgentChat = async function (
+ElizaClient.prototype.sendFeedAgentChat = async function (
   this: ElizaClient,
   content,
 ) {
@@ -1609,51 +1609,51 @@ ElizaClient.prototype.sendBabylonAgentChat = async function (
   });
 };
 
-ElizaClient.prototype.getBabylonAgentChat = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedAgentChat = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/chat");
 };
 
 // ---------------------------------------------------------------------------
-// Babylon feed
+// Feed feed
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getBabylonFeedForYou = async function (
+ElizaClient.prototype.getFeedFeedForYou = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/feed/for-you");
 };
 
-ElizaClient.prototype.getBabylonFeedHot = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedFeedHot = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/feed/hot");
 };
 
-ElizaClient.prototype.getBabylonTrades = async function (this: ElizaClient) {
+ElizaClient.prototype.getFeedTrades = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/trades");
 };
 
 // ---------------------------------------------------------------------------
-// Babylon discover & team management
+// Feed discover & team management
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.discoverBabylonAgents = async function (
+ElizaClient.prototype.discoverFeedAgents = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon@elizaos/agents/discover");
 };
 
-ElizaClient.prototype.getBabylonTeamDashboard = async function (
+ElizaClient.prototype.getFeedTeamDashboard = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/team/dashboard");
 };
 
-ElizaClient.prototype.getBabylonTeamConversations = async function (
+ElizaClient.prototype.getFeedTeamConversations = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/team/conversations");
 };
 
-ElizaClient.prototype.pauseAllBabylonAgents = async function (
+ElizaClient.prototype.pauseAllFeedAgents = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/admin@elizaos/agents/pause-all", {
@@ -1661,7 +1661,7 @@ ElizaClient.prototype.pauseAllBabylonAgents = async function (
   });
 };
 
-ElizaClient.prototype.resumeAllBabylonAgents = async function (
+ElizaClient.prototype.resumeAllFeedAgents = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/apps/babylon/admin@elizaos/agents/resume-all", {

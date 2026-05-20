@@ -27,10 +27,9 @@ function couldBeEmoji(segment: string): boolean {
 
 // Regexes for character classification (same as string-width library)
 const zeroWidthRegex =
-  /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/v;
+  /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/u;
 const leadingNonPrintingRegex =
-  /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/v;
-const rgiEmojiRegex = /^\p{RGI_Emoji}$/v;
+  /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/u;
 
 // Cache for non-ASCII strings
 const WIDTH_CACHE_SIZE = 512;
@@ -48,7 +47,7 @@ function graphemeWidth(segment: string): number {
   }
 
   // Emoji check with pre-filter
-  if (couldBeEmoji(segment) && rgiEmojiRegex.test(segment)) {
+  if (couldBeEmoji(segment)) {
     return 2;
   }
 

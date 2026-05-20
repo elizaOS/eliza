@@ -1,0 +1,220 @@
+schema: eliza.axi4_burst_evidence_gate.v1
+status: blocked_until_evidence
+scope:
+  - rtl/interconnect/axi4/e1_axi4_interconnect.sv
+  - rtl/interconnect/axi4/e1_axi4_pkg.sv
+  - rtl/memory/dram_ctrl/e1_axi4_dram_model.sv
+  - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+  - rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv
+
+required_capabilities:
+  axi4_full_bursts:
+    incr_burst_max_len: 256
+    wrap_burst_max_len: 16
+    fixed_burst_max_len: 16
+    description: >
+      The production AXI4 fabric must support INCR, WRAP, and FIXED burst
+      types with AWLEN/ARLEN widths up to 8 bits (256 beats). Single-beat
+      AXI-Lite-compatible bursts must continue to work for backward
+      compatibility with the e1_axi_lite_interconnect scaffold tests.
+  axid_ordering:
+    description: >
+      Per-AxID ordering must be preserved: two interleaved bursts with
+      different AxIDs return responses in their own arrival order, and
+      bursts with the same AxID return in submission order.
+  cacheability_attributes:
+    description: >
+      ARCACHE/AWCACHE bits must be propagated unchanged from the master
+      to the downstream slave so the SLC and DRAM controller can honor
+      bufferability and write-allocate hints. Five named attribute
+      classes are encoded in e1_axi4_pkg.sv.
+  exclusive_access:
+    description: >
+      ARLOCK + AWLOCK on the same address from the same master must
+      return RESP_EXOKAY when uncontended. An intervening AW from any
+      other master must clear the reservation and the subsequent
+      AWLOCK must return RESP_OKAY with the exclusive_fail_irq set.
+  multi_master_arbitration:
+    description: >
+      Round-robin arbitration biased by AxQOS must guarantee bounded
+      starvation; the same master cannot block forever when other
+      masters present higher-QoS requests.
+  backpressure:
+    description: >
+      Per-master MAX_OUTST limits drive AW/AR ready deassertion before
+      the per-master FIFO overflows. Slaves never see more than
+      MAX_OUTST in-flight bursts per master.
+  ordering_domains:
+    description: >
+      Each (master, AxID) pair forms an ordering domain. The
+      interconnect must not reorder responses within a single domain.
+  decode_error:
+    description: >
+      An access to an unmapped address must return RESP_DECERR within
+      a single beat (read) or a single write response, with
+      decode_err_irq pulsed for the offending master.
+
+required_tests:
+  - id: incr_burst_length_sweep
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: INCR bursts of length 1, 4, 16, and 64 read-back match writes.
+  - id: write_strobe_partial_beat_preserves_unwritten_bytes
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Byte strobes leave unwritten bytes unchanged.
+  - id: id_ordering_per_axid
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Two AxIDs return data in their own arrival order.
+  - id: decode_error_returns_decerr
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Reads to unmapped addresses return RESP_DECERR with RLAST.
+  - id: exclusive_read_then_write_returns_exokay_or_okay
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Exclusive monitor invalidates on foreign AW.
+  - id: decode_err_irq_w1c_clears_status
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      Sticky decode_err_irq clears via the write-1-to-clear MMR path and
+      re-asserts on a subsequent fault.
+  - id: excl_fail_irq_w1c_clears_status
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      Sticky exclusive_fail_irq clears via the W1C MMR and re-asserts on
+      a subsequent foreign-AW invalidation.
+  - id: w1c_clears_only_masked_bits
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      irq_status_clear_we with a zero mask must not clear any sticky
+      bits; only bits explicitly set in the mask are cleared.
+  - id: equal_qos_round_robin_no_starvation
+    location: verify/cocotb/axi4/test_multi_master_fairness.py
+    pass_criteria: >
+      Eight masters at equal QoS each receive at least 64 R-beats with
+      no master exceeding the configured starvation window (64 beats).
+  - id: qos_weighted_high_master_wins_no_starvation
+    location: verify/cocotb/axi4/test_multi_master_fairness.py
+    pass_criteria: >
+      A high-QoS master receives at least the average service of the
+      equal-QoS baseline while no master goes unserved within the
+      starvation window.
+  - id: dfi_init_brings_cke_high
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      e1_dram_ctrl asserts dfi_init_start at boot and brings dfi_cke
+      high after the init handshake completes.
+  - id: dfi_write_emits_activate_then_write_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      Each AXI4 write burst emits an ACTIVATE-shaped DFI command on AW
+      handshake followed by a WRITE-shaped command with dfi_wrdata_en
+      asserted per W beat.
+  - id: dfi_read_emits_activate_then_read_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      Each AXI4 read burst emits an ACTIVATE-shaped DFI command on AR
+      handshake followed by a READ-shaped command with dfi_rddata_en
+      asserted per R beat.
+  - id: dfi_refresh_fires_within_window
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      The refresh scheduler raises refresh_active and emits at least
+      one REFRESH-shaped DFI command within a few TREFI windows.
+
+required_artifacts:
+  - docs/evidence/memory/axi4_burst_correctness_report.json
+  - docs/evidence/memory/axi4_id_ordering_report.json
+  - docs/evidence/memory/axi4_exclusive_monitor_report.json
+  - docs/evidence/memory/axi4_qos_fairness_report.json
+
+required_artifact_schemas:
+  docs/evidence/memory/axi4_burst_correctness_report.json: eliza.memory.axi4_burst_correctness.v1
+  docs/evidence/memory/axi4_id_ordering_report.json: eliza.memory.axi4_id_ordering.v1
+  docs/evidence/memory/axi4_exclusive_monitor_report.json: eliza.memory.axi4_exclusive_monitor.v1
+  docs/evidence/memory/axi4_qos_fairness_report.json: eliza.memory.axi4_qos_fairness.v1
+
+unblock_requires:
+  - All required cocotb tests pass under verilator or icarus locally.
+  - All required artifact paths exist and validate against their schema.
+  - No closed-IP PHY substitution: the AXI4 controller stops at the DFI 5.0 north interface.
+  - The e1_axi_lite_interconnect scaffold continues to elaborate for backward compatibility.
+
+cocotb_status_at_check_in:
+  elaboration: pass
+  test_pass_count: 14
+  test_fail_count: 0
+  passing_tests:
+    - incr_burst_length_sweep
+    - decode_error_returns_decerr
+    - write_strobe_partial_beat_preserves_unwritten_bytes
+    - id_ordering_per_axid
+    - exclusive_read_then_write_returns_exokay_or_okay
+    - decode_err_irq_w1c_clears_status
+    - excl_fail_irq_w1c_clears_status
+    - w1c_clears_only_masked_bits
+    - equal_qos_round_robin_no_starvation
+    - qos_weighted_high_master_wins_no_starvation
+    - dfi_init_brings_cke_high
+    - dfi_write_emits_activate_then_write_col
+    - dfi_read_emits_activate_then_read_col
+    - dfi_refresh_fires_within_window
+  multi_master_fairness: cocotb_PASS
+  irq_w1c_mmr: cocotb_PASS
+  dfi_traffic: cocotb_PASS
+  root_cause_history:
+    summary: >
+      Round-2 fixed five RTL/test bugs to get the original five tests
+      green.  Round-3 promoted the sticky IRQs to a documented
+      write-1-to-clear MMR, exercised the e1_dram_ctrl wrapper between
+      the fabric and the behavioural DRAM model so the DFI 5.0 north
+      command shaper drives CKE / CS_n / RAS_n / CAS_n / WE_n / ADDR /
+      BA / wrdata_en / rddata_en on every transaction, and added an
+      8-master fairness regression with QoS bias.  Nine new cocotb
+      tests were checked in alongside the corresponding RTL changes.
+    bugs_fixed_round2:
+      - The AW/AR grant always_comb block was decoupled from the AW/AR
+        fanout block, allowing Verilator to read stale grant values in the
+        same delta cycle (s_awvalid was driven high while grant=NUM_MASTERS).
+        Merged grant + fanout into a single combinational block per
+        channel and propagate m_*valid[g] rather than unconditional 1'b1.
+      - Decode-error detection in the comb + handshake blocks compared the
+        decoder return value against NUM_MASTERS instead of NUM_SLAVES; the
+        decoder returns NUM_SLAVES on miss, so the DECERR path was never
+        taken and out-of-aperture transactions hung the response queue.
+      - The behavioural DRAM R_DATA state had overlapping rvalid drivers
+        across two branches; multi-beat reads stuck after the first beat.
+        Rewrote as an explicit prefill / handshake-advance / last-clear state.
+      - exclusive_fail_irq was a one-cycle pulse; the test inspected the
+        flag after write_burst returned which polled the B response, so
+        the pulse was lost.  Latched to a sticky IRQ that holds until the
+        next reset.
+      - write_strobe_partial_beat_preserves_unwritten_bytes set its
+        replacement byte via OR instead of clear+OR, so the expected and
+        actual values disagreed; corrected the bench expression.
+    deltas_round3:
+      - decode_err_irq and exclusive_fail_irq are now write-1-to-clear
+        MMR bits.  e1_axi4_interconnect grows three ports
+        (irq_status_clear_we, irq_status_decode_err_clear_mask,
+        irq_status_excl_fail_clear_mask).  Hardware-set wins ties with
+        software clears so a new fault coincident with a W1C write is
+        not silently dropped.  MMIO bindings are documented in
+        docs/spec-db/axi4-interconnect-mmio.yaml.
+      - e1_dram_ctrl now drives the DFI 5.0 north command shaper from
+        the AXI4 handshake + refresh scheduler (ACTIVATE / WRITE / READ
+        / REFRESH command shapes mapped per JEDEC LPDDR5/6 controller
+        semantics).  dfi_init_start holds for a minimum window before
+        dfi_init_complete latches dfi_cke high so cocotb can observe
+        the init handshake on the wire.
+      - e1_axi4_multimaster_tb wires NUM_MASTERS=8 to the same DRAM-
+        backed slave; test_multi_master_fairness asserts every master
+        is served and no master exceeds the configured starvation
+        window even under QoS bias.
+  command_to_reproduce: make memory-axi4-check
+
+claim_rules:
+  - The production data path is the AXI4 fabric. The AXI-Lite scaffold remains for boot-bringup testing only.
+  - Bandwidth claims based on this AXI4 fabric remain blocked until a real DRAM controller + PHY is attached and STREAM/lmbench evidence exists.
+  - The AXI4 interconnect is not cache-coherent. Coherence lives in the cache agent's CHI-class fabric; this AXI4 layer is the south side.
+
+next_commands:
+  rtl_elaboration: make rtl-check
+  burst_tests: make cocotb-axi4
+  gate_check: make memory-axi4-check

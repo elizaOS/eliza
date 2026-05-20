@@ -97,10 +97,16 @@ function getDiscordBotApplicationId(): string {
 
 const MONO = "Poppins, system-ui, sans-serif";
 
-function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
+function ProvisioningChatStep({
+  onboardingSessionId,
+  onContinue,
+}: {
+  onboardingSessionId?: string | null;
+  onContinue: () => void;
+}) {
   const t = useT();
   const { messages, sendMessage, containerStatus, isLoading, isReady } =
-    useElizaAppProvisioningChat(true);
+    useElizaAppProvisioningChat(true, onboardingSessionId);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -318,6 +324,7 @@ export default function GetStartedPage() {
   } = useAuth();
 
   const methodParam = searchParams.get("method") as OnboardingMethod | null;
+  const onboardingSessionId = searchParams.get("onboardingSession");
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
   const guideParam = searchParams.get("guide");
@@ -431,6 +438,7 @@ export default function GetStartedPage() {
       isAuthenticated &&
       !suppressRedirect &&
       !guideParam &&
+      !onboardingSessionId &&
       !isLinkMode &&
       !discordCode &&
       step !== "PROVISIONING_CHAT"
@@ -443,6 +451,7 @@ export default function GetStartedPage() {
     navigate,
     suppressRedirect,
     guideParam,
+    onboardingSessionId,
     isLinkMode,
     discordCode,
     step,
@@ -456,6 +465,13 @@ export default function GetStartedPage() {
       setSuppressRedirect(true);
       setSelectedMethod("discord");
       setStep("DISCORD_SETUP_GUIDE");
+      return;
+    }
+
+    if (onboardingSessionId && isAuthenticated && !isLinkMode) {
+      setInitialMethodHandled(true);
+      setSuppressRedirect(true);
+      setStep("PROVISIONING_CHAT");
       return;
     }
 
@@ -502,6 +518,7 @@ export default function GetStartedPage() {
     }
   }, [
     methodParam,
+    onboardingSessionId,
     discordCode,
     discordState,
     guideParam,
@@ -854,6 +871,7 @@ export default function GetStartedPage() {
     !suppressRedirect &&
     !isLinkMode &&
     !guideParam &&
+    !onboardingSessionId &&
     !discordCode &&
     step !== "PROVISIONING_CHAT"
   ) {
@@ -1236,7 +1254,10 @@ export default function GetStartedPage() {
           )}
 
           {step === "PROVISIONING_CHAT" && (
-            <ProvisioningChatStep onContinue={() => navigate("/connected")} />
+            <ProvisioningChatStep
+              onboardingSessionId={onboardingSessionId}
+              onContinue={() => navigate("/connected")}
+            />
           )}
 
           {step === "DISCORD_CALLBACK" && (

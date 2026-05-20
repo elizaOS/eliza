@@ -78,6 +78,13 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="realm:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="realm:root"), ctx="realm:metrics")
+    metadata = get_optional(root, "metadata")
+    metadata_dict = metadata if isinstance(metadata, dict) else {}
+    config = metadata_dict.get("config")
+    config_dict = config if isinstance(config, dict) else {}
+    use_sample_tasks = bool(config_dict.get("use_sample_tasks"))
+    if use_sample_tasks:
+        raise ValueError("realm: sample-task run is not publishable as a real harness score")
     overall = expect_float(
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
@@ -95,6 +102,7 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "avg_plan_quality": get_optional(metrics, "avg_plan_quality") or 0,
             "avg_efficiency": get_optional(metrics, "avg_efficiency") or 0,
+            "use_sample_tasks": use_sample_tasks,
         },
     )
 
@@ -224,6 +232,18 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     )
     if total_tasks <= 0:
         raise ValueError("terminal_bench: zero-task score is not publishable")
+    results = root.get("results")
+    if isinstance(results, list) and results:
+        docker_unavailable = [
+            item
+            for item in results
+            if isinstance(item, dict)
+            and "Docker daemon is not reachable" in str(item.get("error_message") or "")
+        ]
+        if len(docker_unavailable) == len(results):
+            raise ValueError(
+                "terminal_bench: Docker-unavailable task failures are not publishable scores"
+            )
     return ScoreExtraction(
         score=acc,
         unit="ratio",
@@ -1057,6 +1077,13 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
     base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
     """
     root = expect_dict(data, ctx="hyperliquid_bench:root")
+    demo_mode = get_optional(root, "demo_mode")
+    if demo_mode is None:
+        demo_mode = True
+    if demo_mode is True:
+        raise ValueError(
+            "hyperliquid_bench: demo-mode result is not publishable as a real harness score"
+        )
     overall = expect_float(
         get_required(root, "final_score", ctx="hyperliquid_bench:root"),
         ctx="hyperliquid_bench:final_score",
@@ -1076,7 +1103,7 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
             "mode": get_optional(root, "mode") or "",
             "model": get_optional(root, "model") or "",
             "network": get_optional(root, "network") or "",
-            "demo_mode": get_optional(root, "demo_mode") if get_optional(root, "demo_mode") is not None else True,
+            "demo_mode": demo_mode,
         },
     )
 

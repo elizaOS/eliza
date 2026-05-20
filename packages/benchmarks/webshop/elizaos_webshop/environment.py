@@ -19,6 +19,7 @@ import logging
 import os
 import subprocess
 import sys
+import json
 import importlib.util
 from importlib.machinery import ModuleSpec
 from html.parser import HTMLParser
@@ -41,6 +42,24 @@ _spacy_nlp_singleton: Any | None = None
 _spacy_load_attempted = False
 
 
+class _FallbackSpacyToken:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.lemma_ = text.lower()
+        self.pos_ = "NOUN"
+
+
+class _FallbackSpacyDoc(list[_FallbackSpacyToken]):
+    @property
+    def text(self) -> str:
+        return " ".join(token.text for token in self)
+
+
+class _FallbackSpacyNLP:
+    def __call__(self, text: str) -> _FallbackSpacyDoc:
+        return _FallbackSpacyDoc(_FallbackSpacyToken(part) for part in str(text).split())
+
+
 def _ensure_spacy_model_available(
     *,
     model: str = "en_core_web_sm",
@@ -61,6 +80,14 @@ def _ensure_spacy_model_available(
         return _spacy_nlp_singleton
     except OSError as exc:
         _spacy_load_attempted = True
+        if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB"):
+            logger.warning(
+                "spaCy model %r is missing; using lightweight WebShop smoke stub "
+                "because WEBSHOP_ALLOW_SPACY_STUB is set.",
+                model,
+            )
+            _spacy_nlp_singleton = _FallbackSpacyNLP()
+            return _spacy_nlp_singleton
         if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
             raise OSError(
                 f"spaCy model {model!r} is missing and WEBSHOP_NO_AUTOFETCH is set. "
@@ -337,26 +364,13 @@ def _install_optional_dependency_stubs() -> None:
 
             fuzz_mod.token_set_ratio = _token_set_ratio  # type: ignore[attr-defined]
 
-    if "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None:
+    if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB") or (
+        "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None
+    ):
         spacy_stub = _types.ModuleType("spacy")
 
-        class _Token:
-            def __init__(self, text: str) -> None:
-                self.text = text
-                self.lemma_ = text.lower()
-                self.pos_ = "NOUN"
-
-        class _Doc(list[_Token]):
-            @property
-            def text(self) -> str:
-                return " ".join(token.text for token in self)
-
-        class _NLP:
-            def __call__(self, text: str) -> _Doc:
-                return _Doc(_Token(part) for part in str(text).split())
-
-        def _load(_model: str) -> _NLP:
-            return _NLP()
+        def _load(_model: str) -> _FallbackSpacyNLP:
+            return _FallbackSpacyNLP()
 
         spacy_stub.load = _load  # type: ignore[attr-defined]
         sys.modules["spacy"] = spacy_stub
@@ -685,6 +699,7 @@ class WebShopEnvironment:
             self._gym_env.server.assigned_instruction_text = None
 
         obs_text, _info = self._gym_env.reset()
+        self._install_task_goal(task)
         observation = self._wrap_observation(obs_text)
         self._last_observation = observation
         return observation
@@ -716,6 +731,25 @@ class WebShopEnvironment:
         self._gym_env.close()
 
     # ----- helpers ------------------------------------------------------------
+
+    def _install_task_goal(self, task: WebShopTask | None) -> None:
+        if task is None:
+            return
+        raw_goal = task.metadata.get("upstream_goal_json")
+        if not isinstance(raw_goal, str) or not raw_goal.strip():
+            return
+        try:
+            goal = json.loads(raw_goal)
+        except json.JSONDecodeError:
+            return
+        session_id = getattr(self._gym_env, "session", None)
+        sessions = getattr(self._gym_env.server, "user_sessions", {})
+        session = sessions.get(session_id) if session_id else None
+        if not isinstance(session, dict):
+            return
+        session["goal"] = goal
+        if task.instruction:
+            session["goal"]["instruction_text"] = task.instruction
 
     def _wrap_observation(self, raw: str) -> PageObservation:
         url = getattr(self._gym_env.browser, "current_url", "") or ""

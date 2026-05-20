@@ -2865,6 +2865,153 @@ export const allActionsSpec = {
 				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
+			name: "AINEX_BOW",
+			description: "Play the `bow` action group on the AiNex robot.",
+			parameters: [],
+			similes: ["BOW", "TAKE_A_BOW"],
+			descriptionCompressed: "Play the `bow` action group on the AiNex robot.",
+		},
+		{
+			name: "AINEX_PICK_UP",
+			description:
+				"Run the learned `pick_up` policy. Starts a policy.start with task='pick_up'; options: target_label (default 'red ball'), max_steps.",
+			parameters: [],
+			similes: ["PICK_UP", "GRAB", "GRASP_OBJECT"],
+			descriptionCompressed:
+				"Run the learned `pick_up` policy. Starts a policy. start with task='pick_up'. options: target_label (default 'red ball'), max_steps.",
+		},
+		{
+			name: "AINEX_PLACE_DOWN",
+			description:
+				"Run the learned `place_down` policy. Starts a policy.start with task='place_down'.",
+			parameters: [],
+			similes: ["PLACE_DOWN", "PUT_DOWN", "RELEASE", "DROP"],
+			descriptionCompressed:
+				"Run the learned `place_down` policy. Starts a policy. start with task='place_down'.",
+		},
+		{
+			name: "AINEX_RUN_ACTION_GROUP",
+			description:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions.groups).",
+			parameters: [],
+			similes: ["RUN_ACTION_GROUP", "PLAY_ACTION", "PLAY_ACTION_GROUP"],
+			descriptionCompressed:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions. groups).",
+		},
+		{
+			name: "AINEX_RUN_RL",
+			description:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text` ",
+			parameters: [],
+			similes: [
+				"RUN_RL",
+				"TEXT_COMMAND",
+				"ROBOT_DO",
+				"ROBOT_SAY",
+				"PERFORM_TASK",
+				"EXECUTE_TASK",
+			],
+			descriptionCompressed:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text`",
+		},
+		{
+			name: "AINEX_SET_SERVO",
+			description:
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",
+			parameters: [],
+			similes: ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT", "SET_JOINT"],
+			descriptionCompressed:
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0. 5).",
+		},
+		{
+			name: "AINEX_SIDE_STEP_LEFT",
+			description:
+				"Strafe the AiNex robot to its left. Fire-and-forget — robot walks until AINEX_STOP.",
+			parameters: [],
+			similes: ["SIDE_STEP_LEFT", "STRAFE_LEFT", "SHUFFLE_LEFT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its left. Fire-and-forget - robot walks until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_SIDE_STEP_RIGHT",
+			description:
+				"Strafe the AiNex robot to its right. Fire-and-forget — robot walks until AINEX_STOP.",
+			parameters: [],
+			similes: ["SIDE_STEP_RIGHT", "STRAFE_RIGHT", "SHUFFLE_RIGHT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its right. Fire-and-forget - robot walks until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_SIT",
+			description:
+				"Play the `sit` action group — moves the AiNex into a seated pose.",
+			parameters: [],
+			similes: ["SIT", "SIT_DOWN", "CROUCH"],
+			descriptionCompressed:
+				"Play the `sit` action group - moves the AiNex into a seated pose.",
+		},
+		{
+			name: "AINEX_STAND",
+			description:
+				"Play the `stand` action group — moves the AiNex into its calibrated home pose.",
+			parameters: [],
+			similes: ["STAND", "STAND_UP", "GET_UP"],
+			descriptionCompressed:
+				"Play the `stand` action group - moves the AiNex into its calibrated home pose.",
+		},
+		{
+			name: "AINEX_STOP",
+			description:
+				"Stop the AiNex robot immediately. Sends walk.command:stop with preempt=true so any in-flight commands or active policy are cleared.",
+			parameters: [],
+			similes: ["STOP", "HALT", "FREEZE", "EMERGENCY_STOP"],
+			descriptionCompressed:
+				"Stop the AiNex robot immediately. Sends walk. command:stop with preempt=true so any in-flight commands or active policy are cleared.",
+		},
+		{
+			name: "AINEX_TURN_LEFT",
+			description:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+			parameters: [],
+			similes: ["TURN_LEFT", "ROTATE_LEFT", "SPIN_LEFT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_TURN_RIGHT",
+			description:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+			parameters: [],
+			similes: ["TURN_RIGHT", "ROTATE_RIGHT", "SPIN_RIGHT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_WALK_BACKWARD",
+			description:
+				"Start walking the AiNex robot backward. Sends walk.set+walk.command:start to the bridge; robot keeps walking until AINEX_STOP. Options: speed (1-4).",
+			parameters: [],
+			similes: ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK", "BACK_UP"],
+			descriptionCompressed:
+				"Start walking the AiNex robot backward. Sends walk. set+walk. command:start to the bridge. robot keeps walking until AINEX_STOP. Options: speed (1-4).",
+		},
+		{
+			name: "AINEX_WALK_FORWARD",
+			description:
+				"Start walking the AiNex robot forward. Sends walk.set+walk.command:start to the bridge; the robot keeps walking until AINEX_STOP is issued. Options: speed (1-4), x (0-0.05).",
+			parameters: [],
+			similes: ["WALK_FORWARD", "MOVE_FORWARD", "GO_FORWARD"],
+			descriptionCompressed:
+				"Start walking the AiNex robot forward. Sends walk. set+walk. command:start to the bridge. the robot keeps walking until AINEX_STOP is issued. Options: speed...",
+		},
+		{
+			name: "AINEX_WAVE",
+			description: "Play the `wave` action group on the AiNex robot.",
+			parameters: [],
+			similes: ["WAVE", "WAVE_HAND", "GREET", "SAY_HI"],
+			descriptionCompressed: "Play the `wave` action group on the AiNex robot.",
+		},
+		{
 			name: "ALARM",
 			description:
 				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
@@ -7663,9 +7810,59 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "SMARTGLASSES_CONTROL",
+			description:
+				"Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
+			similes: [
+				"EVEN_GLASSES_CONTROL",
+				"SMARTGLASSES_SETTINGS",
+				"SMARTGLASSES_NOTIFICATION",
+				"SMARTGLASSES_NOTE",
+			],
+		},
+		{
+			name: "SMARTGLASSES_DISPLAY_TEXT",
+			description:
+				"Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets. JSON input may include mode, pageHoldMs, and completionDelayMs.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-display-text: show wrapped text on Even G1/G2 display",
+			similes: [
+				"DISPLAY_ON_GLASSES",
+				"EVEN_DISPLAY_TEXT",
+				"SHOW_ON_SMARTGLASSES",
+			],
+		},
+		{
+			name: "SMARTGLASSES_MICROPHONE",
+			description:
+				"Enable or disable microphone capture on Even Realities smartglasses. Long press / Even AI start and single tap enable, while double tap / recording stop disable automatically when events arrive.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-microphone: enable, disable, or toggle Even G1/G2 microphone",
+			similes: [
+				"EVEN_MICROPHONE",
+				"OPEN_GLASSES_MIC",
+				"CLOSE_GLASSES_MIC",
+				"TOGGLE_GLASSES_MIC",
+			],
+		},
+		{
+			name: "SMARTGLASSES_STATUS",
+			description:
+				"Report smartglasses connection, transport, microphone, Wi-Fi bridge capability/status, latest event, and audio streaming status.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-status: connection, mic, Wi-Fi, last event, audio chunks",
+			similes: ["EVEN_GLASSES_STATUS", "GLASSES_STATUS"],
+		},
+		{
 			name: "TASKS",
 			description:
-				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
 			parameters: [
 				{
 					name: "action",
@@ -7708,13 +7905,13 @@ export const allActionsSpec = {
 				{
 					name: "agentType",
 					description:
-						"Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Agent type (codex, claude, or opencode) for create/spawn_agent/control. resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create/spawn_agent/control. resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
 				},
 				{
 					name: "agents",
@@ -8164,16 +8361,40 @@ export const allActionsSpec = {
 				},
 				{
 					name: "metadata",
-					description: "Additional metadata for action=create.",
+					description:
+						"Additional metadata for action=create / action=spawn_agent.",
 					required: false,
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed: "Additional metadata for action=create.",
+					descriptionCompressed:
+						"Additional metadata for action=create/action=spawn_agent.",
+				},
+				{
+					name: "taskRoomId",
+					description:
+						"Optional task-owner swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional task-owner swarm room id for action=create/action=spawn_agent.",
+				},
+				{
+					name: "worktreeRoomId",
+					description:
+						"Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional worktree coordination swarm room id for action=create/action=spawn_agent.",
 				},
 			],
 			descriptionCompressed:
-				"ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+				"ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",
@@ -8321,6 +8542,8 @@ export const allActionsSpec = {
 							maxRetries: "example",
 							onVerificationFail: "retry",
 							metadata: "example",
+							taskRoomId: "example",
+							worktreeRoomId: "example",
 						},
 					},
 				},
@@ -9396,6 +9619,68 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "XR_CLOSE_VIEW",
+			description: "Closes a specific view panel on the connected XR headset.",
+			parameters: [],
+			similes: ["CLOSE_XR_VIEW", "HIDE_XR_PANEL", "XR_CLOSE", "XR_DISMISS"],
+			descriptionCompressed:
+				"Closes a specific view panel on the connected XR headset.",
+		},
+		{
+			name: "XR_LIST_VIEWS",
+			description:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+			parameters: [],
+			similes: [
+				"LIST_XR_VIEWS",
+				"XR_VIEWS",
+				"WHAT_XR_VIEWS",
+				"SHOW_XR_LAUNCHER",
+			],
+			descriptionCompressed:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+		},
+		{
+			name: "XR_OPEN_VIEW",
+			description:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+			parameters: [],
+			similes: ["OPEN_XR_VIEW", "SHOW_XR_PANEL", "XR_SHOW", "XR_LAUNCH"],
+			descriptionCompressed:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+		},
+		{
+			name: "XR_QUERY_VISION",
+			description:
+				"Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
+			parameters: [],
+			descriptionCompressed:
+				"Describe what user is looking at through their XR headset camera. Use when user asks 'what do you see', 'look at this', or any question about their...",
+		},
+		{
+			name: "XR_RESIZE_VIEW",
+			description:
+				"Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+			parameters: [],
+			similes: [
+				"RESIZE_XR_PANEL",
+				"XR_MAKE_BIGGER",
+				"XR_MAKE_SMALLER",
+				"XR_SCALE",
+			],
+			descriptionCompressed:
+				"Resizes or repositions the active XR view panel. Accepts scale (0. 5 = half, 2. 0 = double) and distance.",
+		},
+		{
+			name: "XR_SWITCH_VIEW",
+			description:
+				"Switches the active (foreground) view on the XR headset without closing others.",
+			parameters: [],
+			similes: ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"],
+			descriptionCompressed:
+				"Switches the active (foreground) view on the XR headset without closing others.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

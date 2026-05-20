@@ -1729,6 +1729,13 @@ def run_benchmark(
     }
     if execution_command != command:
         result["resolved_command"] = execution_command
+    # MLPerf Power-style integrated energy is passed through verbatim from
+    # the benchmark plan. The harness never computes or synthesises this
+    # value; missing or malformed metadata stays missing so downstream
+    # validators (docs/benchmarks/report-schema.yaml) fail closed.
+    energy_metadata = bench.get("energy_joules_per_inference")
+    if isinstance(energy_metadata, dict):
+        result["energy_joules_per_inference"] = copy.deepcopy(energy_metadata)
 
     if args.dry_run:
         result["status"] = (

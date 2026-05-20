@@ -8,6 +8,7 @@
 // running process.
 
 import {
+  type AccountAuthKind,
   type AppEntry,
   type ConnectorEntry,
   type PluginEntry,
@@ -52,7 +53,10 @@ export function loadRegistryFromRawEntries(raws: RawEntry[]): LoadedRegistry {
       throw new RegistryValidationError(file, parsed.error);
     }
 
-    const entry = parsed.data;
+    const entry =
+      parsed.data.kind === "connector"
+        ? normalizeConnectorAuth(parsed.data)
+        : parsed.data;
     if (seenIds.has(entry.id)) {
       throw new RegistryValidationError(
         file,
@@ -64,6 +68,33 @@ export function loadRegistryFromRawEntries(raws: RawEntry[]): LoadedRegistry {
   }
 
   return indexEntries(all);
+}
+
+// Legacy `auth` → `accounts.agent` auto-mapping. Connector manifests that
+// only declared `auth` keep working without edits — the resulting `accounts`
+// shape lets the UI render a single agent section (backwards compatible) and
+// gives downstream code a uniform field to read. When a manifest already
+// declares `accounts`, the legacy `auth` is left untouched.
+export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
+  if (!entry.auth || entry.accounts) {
+    return entry;
+  }
+  const authKind: AccountAuthKind =
+    entry.auth.kind === "oauth"
+      ? "oauth-cloud"
+      : entry.auth.kind === "none"
+        ? "none"
+        : "api-key";
+  return {
+    ...entry,
+    accounts: {
+      agent: {
+        supported: true,
+        authKind,
+        credentialKeys: entry.auth.credentialKeys,
+      },
+    },
+  };
 }
 
 export function indexEntries(entries: RegistryEntry[]): LoadedRegistry {

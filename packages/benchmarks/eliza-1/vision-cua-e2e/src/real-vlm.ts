@@ -29,7 +29,7 @@ export interface RealVlmGroundingExtra {
 
 const DESCRIBE_PROMPT_TEMPLATE = (taskJson: string): string =>
   [
-    "You are a desktop-screenshot describer. Look at the image and write a single",
+    "Desktop-screenshot describer. Look at the image and write a single",
     "concise sentence summarising the focused window's chrome and visible buttons.",
     "Do not invent UI that isn't present.",
     "",
@@ -42,7 +42,7 @@ const GROUND_PROMPT_TEMPLATE = (
   tileH: number,
 ): string =>
   [
-    "You are a UI-grounding model. Look at the image (a screenshot tile of",
+    "UI-grounding model. Look at the image (a screenshot tile of",
     `dimensions ${tileW}x${tileH} pixels) and locate this element:`,
     "",
     `  "${target}"`,
@@ -64,7 +64,7 @@ export class RealVlm {
       imageUrl: req.imageUrl,
       prompt: promptForModel,
     });
-    const description = result.description?.trim() ?? "";
+    const description = result.description.trim();
     if (description.length === 0) {
       throw new Error(
         "[real-vlm] IMAGE_DESCRIPTION returned an empty description",
@@ -87,7 +87,7 @@ export class RealVlm {
       imageUrl,
       prompt,
     });
-    const text = `${result.title ?? ""}\n${result.description ?? ""}`;
+    const text = `${result.title}\n${result.description}`;
     const parsed = parseGroundingResponse(text);
     if (parsed.x < 0 || parsed.y < 0) {
       throw new Error(

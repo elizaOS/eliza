@@ -1,0 +1,32 @@
+schema: eliza.compiler.executorch_evidence.v1
+as_of: 2026-05-19
+claim_boundary: |
+  ExecuTorch backend skeleton + partitioner + op-support table committed;
+  no executable PTE generation is accepted until torch + executorch +
+  IREE are built in the canonical Linux container.
+
+pinned_sha: 5eb84927cb9380f2a56d1f39f28d799dd7573254
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/pytorch/executorch.git HEAD
+
+blocked_until:
+  - torch>=2.5 and executorch installed in the canonical container
+  - build/iree/install/bin/iree-compile exists
+  - build/reports/compiler/eliza-2layer-mlp.pte produced
+  - build/reports/compiler/executorch-partition.json valid against
+    eliza.executorch_partition.v1
+
+required_artifacts:
+  - path: compiler/executorch-eliza/backend/__init__.py
+  - path: compiler/executorch-eliza/backend/ElizaPartitioner.py
+  - path: compiler/executorch-eliza/backend/ElizaPreprocessor.py
+  - path: compiler/executorch-eliza/backend/eliza_op_support.py
+  - path: compiler/executorch-eliza/tests/test_partition.py
+  - path: docs/toolchain/executorch-riscv.md
+
+verification_commands:
+  - python3 -m pytest compiler/executorch-eliza/tests/
+
+forbidden_claims_without_required_evidence:
+  - "ExecuTorch on e1 NPU end-to-end"
+  - "PyTorch 2 export -> elizanpu IREE roundtrip"

@@ -7,7 +7,15 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from .adapters import discover_adapters
+from .adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+    discover_adapters,
+)
 from .db import (
     connect_database,
     initialize_database,
@@ -176,6 +184,66 @@ def _discover_agent_compatibility(workspace_root: Path) -> dict[str, tuple[str, 
     }
 
 
+def _unsupported_real_reasons(
+    benchmark_id: str,
+    unsupported_real_harnesses: list[str],
+    supported_real_harnesses: list[str],
+) -> dict[str, str]:
+    if (
+        benchmark_id in {"gaia", "gaia_orchestrated"}
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id == "hyperliquid_bench"
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id == "terminal_bench"
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id
+        in {
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: HERMES_SANDBOX_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if benchmark_id == "vision_language" and unsupported_real_harnesses:
+        reason = (
+            VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+            if not supported_real_harnesses
+            else VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
+        )
+        return {
+            agent: reason
+            for agent in unsupported_real_harnesses
+        }
+    return {}
+
+
 def _real_pattern_for_scores(
     *,
     scores: list[float],
@@ -252,6 +320,11 @@ def build_calibration_report(
         unsupported_real_harnesses = [
             agent for agent in REAL_HARNESSES if agent not in supported_harnesses
         ]
+        unsupported_real_reasons = _unsupported_real_reasons(
+            benchmark_id,
+            unsupported_real_harnesses,
+            supported_real_harnesses,
+        )
         calibration: dict[str, dict[str, Any]] = {}
         calibration_status = "valid"
         missing_calibration: list[str] = []
@@ -354,7 +427,7 @@ def build_calibration_report(
         for agent in REAL_HARNESSES:
             run = real_runs.get(agent)
             required = agent in supported_real_harnesses
-            non_real_warnings = _non_real_publication_warnings(run)
+            non_real_warnings = _non_real_publication_warnings(run) if required else []
             if not required:
                 state = "unsupported"
             elif run is None:
@@ -425,6 +498,7 @@ def build_calibration_report(
                 "real_cells": real_cells,
                 "real_required_harnesses": supported_real_harnesses,
                 "real_unsupported_harnesses": unsupported_real_harnesses,
+                "real_unsupported_reasons": unsupported_real_reasons,
                 "missing_required_real_harnesses": missing_required_real,
                 "failed_required_real_harnesses": failed_required_real,
                 "warned_required_real_harnesses": warned_required_real,
@@ -492,6 +566,7 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         failed = row.get("failed_required_real_harnesses") or []
         warned = row.get("warned_required_real_harnesses") or {}
         unsupported = row.get("real_unsupported_harnesses") or []
+        unsupported_reasons = row.get("real_unsupported_reasons") or {}
         if missing:
             print(f"  missing required real harnesses: {', '.join(missing)}")
         if failed:
@@ -504,6 +579,12 @@ def print_calibration_report(report: dict[str, Any]) -> None:
             print(f"  warned required real harnesses: {json.dumps(formatted, sort_keys=True)}")
         if unsupported:
             print(f"  unsupported real harnesses: {', '.join(unsupported)}")
+        if unsupported_reasons:
+            formatted = {
+                agent: reason
+                for agent, reason in sorted(unsupported_reasons.items())
+            }
+            print(f"  unsupported reasons: {json.dumps(formatted, sort_keys=True)}")
         extras = row.get("non_leaderboard_db_labels") or []
         if extras:
             print(f"  non-leaderboard DB labels: {', '.join(extras)}")

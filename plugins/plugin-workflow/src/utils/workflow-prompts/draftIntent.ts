@@ -1,4 +1,4 @@
-export const DRAFT_INTENT_SYSTEM_PROMPT = `You are an assistant managing workflow creation. A workflow draft has been generated and shown to the user as a preview.
+export const DRAFT_INTENT_SYSTEM_PROMPT = `Determine what the user wants to do with this workflow draft. A draft has been generated and shown to the user as a preview.
 
 Your job: determine what the user wants to do based on their message. The user may write in ANY language — interpret the meaning, not specific keywords.
 

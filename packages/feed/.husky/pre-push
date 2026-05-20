@@ -1,0 +1,16 @@
+echo "Running pre-push checks..."
+
+# Quick format/lint check (Biome, ~15s)
+bun run check
+if [ $? -ne 0 ]; then
+  echo "❌ Biome check failed. Run 'bun run check' to auto-fix."
+  exit 1
+fi
+
+echo "✅ Pre-push checks passed!"
+echo ""
+echo "Reminder: run these locally or rely on CI before merging:"
+echo "  bun run typecheck"
+echo "  bun run lint"
+echo "  bun run test:unit"
+echo "  bun run build"

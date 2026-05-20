@@ -1,8 +1,14 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
-import { Z_DIALOG, Z_DIALOG_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+
+// z-index values are kept as literal `z-[160]` / `z-[170]` classes so
+// Tailwind v4's source scanner emits them. Template-literal interpolation
+// from the floating-layers constants is invisible to the scanner and would
+// drop `position: fixed` / stacking on the sheet — see dialog.tsx for the
+// full bug history. Keep in sync with packages/ui/src/lib/floating-layers.ts
+// (Z_DIALOG_OVERLAY = 160, Z_DIALOG = 170).
 
 const DrawerSheet = DialogPrimitive.Root;
 
@@ -19,7 +25,7 @@ const DrawerSheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      `fixed inset-0 z-[${Z_DIALOG_OVERLAY}] bg-black/72 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0`,
+      "fixed inset-0 z-[160] bg-black/72 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -43,7 +49,7 @@ const DrawerSheetContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          `fixed left-[max(0.5rem,var(--safe-area-left,0px))] right-[max(0.5rem,var(--safe-area-right,0px))] bottom-[max(0.5rem,var(--safe-area-bottom,0px))] z-[${Z_DIALOG}] flex max-h-[min(calc(100dvh_-_1rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] flex-col overflow-hidden rounded-sm border border-border bg-bg shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-6 data-[state=open]:slide-in-from-bottom-6`,
+          "fixed left-[max(0.5rem,var(--safe-area-left,0px))] right-[max(0.5rem,var(--safe-area-right,0px))] bottom-[max(0.5rem,var(--safe-area-bottom,0px))] z-[170] flex max-h-[min(calc(100dvh_-_1rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] flex-col overflow-hidden rounded-sm border border-border bg-bg shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-6 data-[state=open]:slide-in-from-bottom-6",
           className,
         )}
         {...props}

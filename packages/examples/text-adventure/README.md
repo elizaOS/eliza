@@ -14,7 +14,7 @@ export OPENAI_API_KEY=your_key_here
 ## Run
 
 ```bash
-cd examples/text-adventure
+cd packages/examples/text-adventure
 cp .env.example .env   # set OPENAI_API_KEY
 bun install
 
@@ -33,6 +33,6 @@ PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run game.ts
 
 ## Related examples
 
-- `examples/chat/chat.ts` — CLI chat
-- `examples/tic-tac-toe/game.ts` — no-LLM minimax demo
-- `examples/game-of-life/game.ts` — no-LLM multi-agent simulation
+- `packages/examples/chat/chat.ts` — CLI chat
+- `packages/examples/tic-tac-toe/game.ts` — no-LLM minimax demo
+- `packages/examples/game-of-life/game.ts` — no-LLM multi-agent simulation

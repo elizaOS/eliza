@@ -36,8 +36,8 @@ PRODUCT_COPY_FILES += \
 # has host-controller, firmware, regulatory, and framework evidence.
 
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.soc.manufacturer=Eliza \
-    ro.soc.model=eliza_ai_soc \
+    vendor.eliza.soc.manufacturer=Eliza \
+    vendor.eliza.soc.model=eliza_ai_soc \
     vendor.e1_npu.ready=0 \
     ro.hardware.hwcomposer=eliza \
     ro.hardware.gralloc=eliza

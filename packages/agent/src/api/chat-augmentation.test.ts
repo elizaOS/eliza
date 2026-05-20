@@ -1,8 +1,9 @@
+import type { AgentRuntime, createMessageMemory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
 
-function makeMessage() {
+function makeMessage(): ReturnType<typeof createMessageMemory> {
   return {
     id: "00000000-0000-0000-0000-000000000001",
     agentId: "00000000-0000-0000-0000-0000000000aa",
@@ -10,10 +11,13 @@ function makeMessage() {
     roomId: "00000000-0000-0000-0000-0000000000cc",
     content: { text: "what are you up to?" },
     createdAt: Date.now(),
-  } as any;
+  } as unknown as ReturnType<typeof createMessageMemory>;
 }
 
-function makeRuntime(documentsService: unknown, useModel = vi.fn()) {
+function makeRuntime(
+  documentsService: unknown,
+  useModel = vi.fn(),
+): AgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-0000000000aa",
     getService: vi.fn((name: string) =>
@@ -27,7 +31,7 @@ function makeRuntime(documentsService: unknown, useModel = vi.fn()) {
       info: vi.fn(),
       warn: vi.fn(),
     },
-  } as any;
+  } as unknown as AgentRuntime;
 }
 
 describe("maybeAugmentChatMessageWithDocuments", () => {

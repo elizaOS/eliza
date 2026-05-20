@@ -50,7 +50,7 @@ function makeBackend(opts?: { totalSamples?: number; chunkCount?: number }): {
 		runtime,
 		layout: {
 			root: "/tmp/kokoro",
-			modelFile: "model.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voicesDir: "/tmp/kokoro/voices",
 			sampleRate: 24000,
 		},

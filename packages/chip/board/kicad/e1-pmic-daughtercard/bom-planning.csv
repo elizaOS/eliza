@@ -1,0 +1,17 @@
+ref,rail,role,vendor,family,mpn_candidate,topology,vmin_v,vmax_v,i_max_a,control,board_target_nf,notes
+U_CORE,VDD_CPU_BIG,buck_dvfs,Renesas,RAA489xx,RAA489000-CORE-CH0,buck_smps,0.40,1.00,4.0,spmi_v2,22000,DVFS via SPMI; per-core dLDO trims further on-die
+U_CORE,VDD_CPU_LITTLE,buck_dvfs,Renesas,RAA489xx,RAA489000-CORE-CH1,buck_smps,0.40,0.90,2.0,spmi_v2,10000,DVFS via SPMI; per-cluster dLDO on-die
+U_CORE,VDD_NPU,buck_dvfs,Renesas,RAA489xx,RAA489000-CORE-CH2,buck_smps,0.50,0.95,3.0,spmi_v2,22000,DVFS via SPMI; per-tile dLDO on-die
+U_CORE,VDD_GPU,buck_dvfs,Renesas,RAA48xx,RAA48xxx-GPU,buck_smps,0.50,0.95,2.5,spmi_v2,10000,Companion buck; no on-die dLDO
+U_CORE,VDD_SOC_FABRIC,buck_dvfs,Renesas,RAA48xx,RAA48xxx-FAB,buck_smps,0.60,0.90,1.5,spmi_v2,4700,Companion buck; NoC/IOMMU/SLC
+U_CORE,VDD_SRAM,buck_dvfs,Renesas,RAA48xx,RAA48xxx-SRAM,buck_smps,0.65,0.95,2.0,spmi_v2,10000,Companion buck; retention down to 0.7V
+U_LPDDR,VDD_LPDDR_VDDQ,buck_fixed,Texas Instruments,TPS65941,TPS65941-VDDQ,buck_smps,0.45,0.55,1.0,spmi_v2,10000,LPDDR5X IO 0.5 V
+U_LPDDR,VDD_LPDDR_VDD1,ldo_fixed,Texas Instruments,TPS65941,TPS65941-VDD1,ldo_linear,1.70,1.90,0.5,spmi_v2,4700,LPDDR5X array supply 1.8 V
+U_LPDDR,VDD_LPDDR_VDD2H_2L,buck_dual,Texas Instruments,TPS65941,TPS65941-VDD2,buck_dual_output,0.45,1.10,0.7,spmi_v2,10000,Dual output: VDD2H 1.05 V / VDD2L 0.50 V
+U_LPDDR,VDD_PHY_ANALOG,ldo_fixed,Texas Instruments,TPS7A39,TPS7A39-PHY,ldo_linear,0.80,0.90,0.5,enable_pin_only,4700,LPDDR PHY analog 0.85 V
+U_AON,VDD_AON,ldo_fixed,Maxim,MAX77860,MAX77860-AON,ldo_linear,0.70,0.80,0.1,enable_pin_only,1000,AON island + retention LDO on-die
+U_AON,VDD_PMC,ldo_fixed,Maxim,MAX77860,MAX77860-PMC,ldo_linear,0.75,0.85,0.2,enable_pin_only,1000,Ibex PMC core supply
+U_AON,VDD_IO_18,buck_fixed,Maxim,MAX77860,MAX77860-IO18,buck_smps,1.75,1.85,0.6,enable_pin_only,10000,Slow IO 1.8 V
+U_AON,VDD_IO_33,buck_fixed,Maxim,MAX77860,MAX77860-IO33,buck_smps,3.20,3.40,0.3,enable_pin_only,4700,Slow IO + eMMC fallback 3.3 V
+U_RF,VDD_USB_PCIE_PHY,ldo_dual,Texas Instruments,TPS7A39,TPS7A39-USB-PCIE,ldo_dual_output,0.80,1.25,0.4,enable_pin_only,4700,USB 3.x 0.85 V + PCIe Gen4 1.20 V
+U_RF,VDD_RF_REF,ldo_fixed,Texas Instruments,TPS7A39,TPS7A39-RF,ldo_linear,1.75,1.85,0.3,enable_pin_only,1000,WiFi/BT analog reference 1.8 V

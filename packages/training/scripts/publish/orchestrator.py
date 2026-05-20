@@ -92,6 +92,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
 )
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
+    required_files_for_tier,
 )
 from scripts.manifest.eliza1_licenses import (  # noqa: E402
     verify_bundle_licenses,
@@ -585,6 +586,120 @@ def _validate_dflash_release_metadata(
     ):
         errors.append("acceptanceWindow must be [draftMin, draftMax]")
 
+    validation_path = ctx.bundle_dir / "dflash" / "validation-real.json"
+    if not validation_path.is_file():
+        errors.append("dflash/validation-real.json is required")
+    else:
+        validation = _read_sidecar(validation_path)
+        if validation.get("pass") is not True:
+            errors.append("dflash/validation-real.json pass must be true")
+        checks = validation.get("checks")
+        rollout = (
+            checks.get("acceptanceRollout")
+            if isinstance(checks, dict)
+            else None
+        )
+        if not isinstance(rollout, dict):
+            errors.append(
+                "dflash/validation-real.json checks.acceptanceRollout is required"
+            )
+        else:
+            if rollout.get("pass") is not True:
+                errors.append(
+                    "dflash/validation-real.json acceptanceRollout.pass must be true"
+                )
+            report_rate = _optional_float(rollout.get("acceptanceRate"))
+            report_gate = _optional_float(rollout.get("gate"))
+            if (
+                report_rate is not None
+                and isinstance(acceptance_rate, (int, float))
+                and not isinstance(acceptance_rate, bool)
+                and report_rate < float(acceptance_rate)
+            ):
+                errors.append(
+                    "dflash/validation-real.json acceptanceRate must be at least "
+                    "target-meta acceptanceRate"
+                )
+            if report_gate is not None and report_rate is not None and report_rate < report_gate:
+                errors.append(
+                    "dflash/validation-real.json acceptanceRate is below its gate"
+                )
+
+    runtime_path = ctx.bundle_dir / "dflash" / "runtime-smoke-native.json"
+    if not runtime_path.is_file():
+        errors.append("dflash/runtime-smoke-native.json is required")
+    else:
+        runtime = _read_sidecar(runtime_path)
+        if runtime.get("metadataStatus") != "metadata_loadable":
+            errors.append("dflash/runtime-smoke-native.json metadataStatus must be metadata_loadable")
+        if runtime.get("metadataFailures") not in (None, []):
+            errors.append("dflash/runtime-smoke-native.json metadataFailures must be empty")
+        runs = runtime.get("runtime")
+        accepted_run = False
+        if isinstance(runs, list):
+            for run in runs:
+                if not isinstance(run, dict) or run.get("status") != 0:
+                    continue
+                dflash = run.get("dflash")
+                if not isinstance(dflash, dict):
+                    continue
+                accepted_run = (
+                    dflash.get("requiresTrueDrafting") is True
+                    and dflash.get("draftingActive") is True
+                    and isinstance(dflash.get("drafted"), int)
+                    and dflash.get("drafted") > 0
+                    and isinstance(dflash.get("accepted"), int)
+                    and dflash.get("accepted") > 0
+                    and not dflash.get("dflashFailure")
+                )
+                if accepted_run:
+                    break
+        if not accepted_run:
+            errors.append("dflash/runtime-smoke-native.json must include an accepted native DFlash run")
+        bench = runtime.get("bench")
+        if not isinstance(bench, dict):
+            errors.append("dflash/runtime-smoke-native.json bench is required")
+        else:
+            if bench.get("available") is not True:
+                errors.append("dflash/runtime-smoke-native.json bench.available must be true")
+            if bench.get("status") != "pass":
+                errors.append("dflash/runtime-smoke-native.json bench.status must be pass")
+            if not isinstance(bench.get("drafted"), int) or bench.get("drafted") <= 0:
+                errors.append("dflash/runtime-smoke-native.json bench.drafted must be positive")
+            if not isinstance(bench.get("accepted"), int) or bench.get("accepted") <= 0:
+                errors.append("dflash/runtime-smoke-native.json bench.accepted must be positive")
+            bench_rate = _optional_float(bench.get("acceptanceRate"))
+            bench_gate = _optional_float(bench.get("gate"))
+            if bench_gate is None:
+                rollout = meta.get("acceptanceRollout")
+                bench_gate = (
+                    _optional_float(rollout.get("gate"))
+                    if isinstance(rollout, dict)
+                    else None
+                )
+            if bench_gate is not None and bench_rate is not None and bench_rate < bench_gate:
+                errors.append("dflash/runtime-smoke-native.json bench.acceptanceRate is below gate")
+            if (
+                bench_rate is not None
+                and isinstance(acceptance_rate, (int, float))
+                and not isinstance(acceptance_rate, bool)
+                and bench_rate < float(acceptance_rate)
+            ):
+                errors.append(
+                    "dflash/runtime-smoke-native.json bench.acceptanceRate must be at least target-meta acceptanceRate"
+                )
+            speedup = _optional_float(bench.get("speedup"))
+            if speedup is None or speedup <= 1.0:
+                errors.append("dflash/runtime-smoke-native.json bench.speedup must be greater than 1")
+            summary = bench.get("summary")
+            if isinstance(summary, dict):
+                if summary.get("status") != "pass":
+                    errors.append("dflash/runtime-smoke-native.json bench.summary.status must be pass")
+                if summary.get("dflashDraftingActive") is not True:
+                    errors.append(
+                        "dflash/runtime-smoke-native.json bench.summary.dflashDraftingActive must be true"
+                    )
+
     if errors:
         raise OrchestratorError(
             "DFlash release metadata invalid:\n  - " + "\n  - ".join(errors),
@@ -830,6 +945,16 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         )
 
     out["quantization_sidecars"] = _validate_quantization_sidecars(bundle)
+
+    missing_platform_files = sorted(
+        rel for rel in required_files_for_tier(ctx.tier) if not (bundle / rel).is_file()
+    )
+    if missing_platform_files:
+        raise OrchestratorError(
+            "bundle layout: missing platform-plan required file(s): "
+            f"{missing_platform_files}",
+            EXIT_MISSING_FILE,
+        )
 
     return out
 

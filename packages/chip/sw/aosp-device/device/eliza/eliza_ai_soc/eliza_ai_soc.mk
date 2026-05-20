@@ -1,5 +1,7 @@
-$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base.mk)
+# Start from the upstream riscv64 Cuttlefish phone product so launch_cvd has
+# the image set and vendor packages it expects, then layer the Eliza E1 BSP
+# contract on top.
+$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)
 $(call inherit-product, device/eliza/eliza_ai_soc/device.mk)
 
 PRODUCT_NAME := eliza_ai_soc

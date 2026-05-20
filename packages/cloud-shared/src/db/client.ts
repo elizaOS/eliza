@@ -34,6 +34,15 @@ type Database = NodePgDatabase<typeof schema>;
 /** Transaction handle for `writeTransaction` callbacks. */
 type DbTransaction = NodePgTransaction<typeof schema, SchemaTables>;
 
+type DatabaseCloser = () => Promise<void> | void;
+
+const databaseClosers = new WeakMap<Database, DatabaseCloser>();
+
+function registerDatabaseCloser(database: Database, closer: DatabaseCloser): Database {
+  databaseClosers.set(database, closer);
+  return database;
+}
+
 /**
  * Get the primary database URL (always required)
  */
@@ -90,7 +99,9 @@ function createPGliteClient(dataDir: string): Database {
     extensions: { vector },
   });
   const database: PgliteDatabase<typeof schema> = drizzlePGlite({ client, schema });
-  return database as Database;
+  return registerDatabaseCloser(database as Database, async () => {
+    await client.close();
+  });
 }
 
 function isLocalTcpPostgresUrl(url: string): boolean {
@@ -164,11 +175,11 @@ function createConnection(url: string): Database {
       neonConfig.webSocketConstructor = ws;
     }
     const pool = new NeonPool({ connectionString: url });
-    return drizzleNeon(pool, { schema }) as Database;
+    return registerDatabaseCloser(drizzleNeon(pool, { schema }) as Database, () => pool.end());
   }
 
   const pool = createPgPool(url);
-  return drizzleNode(pool, { schema }) as Database;
+  return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
 }
 
 // ============================================================================
@@ -265,6 +276,25 @@ class DatabaseConnectionManager {
       databaseUrlConfigured: !!applyDatabaseUrlFallback(env),
     };
   }
+
+  /**
+   * Close process-level cached connections.
+   *
+   * Used by local test/dev harnesses that bring up and tear down ephemeral
+   * Postgres/PGlite servers in the same Node/Bun process. Workers use
+   * request-scoped caches and do not share this singleton pool.
+   */
+  async closeAll(): Promise<void> {
+    const databases = Array.from(this.connections.values());
+    this.connections.clear();
+    const requestCache = dbCacheAls.getStore();
+    requestCache?.clear();
+    await Promise.all(
+      databases.map(async (database) => {
+        await databaseClosers.get(database)?.();
+      }),
+    );
+  }
 }
 
 const connectionManager = new DatabaseConnectionManager();
@@ -327,6 +357,13 @@ export const dbWrite = new Proxy({} as Database, {
  */
 export function getDbConnectionInfo() {
   return connectionManager.getConnectionInfo();
+}
+
+/**
+ * Close cached process-local DB pools for local test/dev teardown.
+ */
+export async function closeDatabaseConnectionsForTests(): Promise<void> {
+  await connectionManager.closeAll();
 }
 
 /**

@@ -69,7 +69,7 @@ describe("publicStatusFor", () => {
 });
 
 describe("deploymentIdFor", () => {
-  test("composes `${appId}:${lastDeployedAt.toISOString()}`", () => {
+  test("composes app id and last deployed timestamp", () => {
     const id = deploymentIdFor({
       id: "abc-123",
       last_deployed_at: new Date("2026-05-19T12:00:00.000Z"),

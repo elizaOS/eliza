@@ -367,12 +367,12 @@ method no_incremental_explanation (Str $no_incremental_reason) {
     }
     elsif ($no_incremental_reason eq 'non-writable-device') {
         $explanation = __(
-            q{Tails was started from a DVD or a read-only device}
+            q{elizaOS was started from a DVD or a read-only device}
         );
     }
     elsif ($no_incremental_reason eq 'not-enough-free-space') {
         $explanation = __(
-            q{there is not enough free space on the Tails system partition}
+            q{there is not enough free space on the elizaOS system partition}
         );
     }
     elsif ($no_incremental_reason eq 'not-enough-free-memory') {
@@ -449,7 +449,7 @@ method run () {
                     $self->info(__x(
                                     "The available incremental upgrade requires ".
                                     "{space_needed} ".
-                                    "of free space on Tails system partition, ".
+                                    "of free space on the elizaOS system partition, ".
                                     " but only {free_space} is available.",
                                     space_needed => $self->format_bytes($space_needed),
                                     free_space   => $self->format_bytes($free_space),

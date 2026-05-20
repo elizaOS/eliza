@@ -19,6 +19,7 @@ import {
 } from "@elizaos/ui";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@/providers/I18nProvider";
 import type { EnhancedAnalyticsDataDto } from "@/types/cloud-api";
 
 interface ModelBreakdownProps {
@@ -38,6 +39,7 @@ const formatTokens = (tokens: number) => {
 };
 
 export function ModelBreakdown({ models }: ModelBreakdownProps) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const displayLimit = 5;
   const displayedModels = expanded ? models : models.slice(0, displayLimit);
@@ -48,10 +50,14 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
       <Card className="border-border/70 bg-background/60 shadow-sm">
         <CardHeader className="p-6 pb-5">
           <CardTitle className="text-base font-semibold">
-            Model breakdown
+            {t("cloud.analytics.modelBreakdown.title", {
+              defaultValue: "Model breakdown",
+            })}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            No model data available for the selected period.
+            {t("cloud.analytics.modelBreakdown.noData", {
+              defaultValue: "No model data available for the selected period.",
+            })}
           </p>
         </CardHeader>
       </Card>
@@ -72,15 +78,23 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
       <CardHeader className="flex flex-col gap-3 p-6 pb-5">
         <div className="flex items-center gap-3">
           <CardTitle className="text-base font-semibold">
-            Model breakdown
+            {t("cloud.analytics.modelBreakdown.title", {
+              defaultValue: "Model breakdown",
+            })}
           </CardTitle>
           <Badge variant="outline" className="rounded-full text-xs">
-            {models.length} model{models.length !== 1 ? "s" : ""}
+            {t("cloud.analytics.modelBreakdown.count", {
+              defaultValue: "{{n}} model{{plural}}",
+              n: models.length,
+              plural: models.length !== 1 ? "s" : "",
+            })}
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Detailed usage statistics and cost analysis per model with efficiency
-          metrics.
+          {t("cloud.analytics.modelBreakdown.subtitle", {
+            defaultValue:
+              "Detailed usage statistics and cost analysis per model with efficiency metrics.",
+          })}
         </p>
       </CardHeader>
       <CardContent className="border-t border-border/60 p-6">
@@ -90,22 +104,34 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
               <thead>
                 <tr className="border-b border-border/50">
                   <th className="pb-3 text-left font-medium text-muted-foreground">
-                    Model
+                    {t("cloud.analytics.modelBreakdown.col.model", {
+                      defaultValue: "Model",
+                    })}
                   </th>
                   <th className="pb-3 text-left font-medium text-muted-foreground">
-                    Provider
+                    {t("cloud.analytics.modelBreakdown.col.provider", {
+                      defaultValue: "Provider",
+                    })}
                   </th>
                   <th className="pb-3 text-right font-medium text-muted-foreground">
-                    Requests
+                    {t("cloud.analytics.modelBreakdown.col.requests", {
+                      defaultValue: "Requests",
+                    })}
                   </th>
                   <th className="pb-3 text-right font-medium text-muted-foreground">
-                    Cost
+                    {t("cloud.analytics.modelBreakdown.col.cost", {
+                      defaultValue: "Cost",
+                    })}
                   </th>
                   <th className="pb-3 text-right font-medium text-muted-foreground">
-                    Tokens
+                    {t("cloud.analytics.modelBreakdown.col.tokens", {
+                      defaultValue: "Tokens",
+                    })}
                   </th>
                   <th className="pb-3 text-right font-medium text-muted-foreground">
-                    Success
+                    {t("cloud.analytics.modelBreakdown.col.success", {
+                      defaultValue: "Success",
+                    })}
                   </th>
                 </tr>
               </thead>
@@ -152,12 +178,17 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
                 {expanded ? (
                   <>
                     <ChevronUp className="h-4 w-4" />
-                    Show less
+                    {t("cloud.analytics.modelBreakdown.showLess", {
+                      defaultValue: "Show less",
+                    })}
                   </>
                 ) : (
                   <>
                     <ChevronDown className="h-4 w-4" />
-                    Show {models.length - displayLimit} more
+                    {t("cloud.analytics.modelBreakdown.showMore", {
+                      defaultValue: "Show {{n}} more",
+                      n: models.length - displayLimit,
+                    })}
                   </>
                 )}
               </Button>
@@ -167,7 +198,9 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
           <div className="grid grid-cols-2 gap-4 rounded-sm border border-border/60 bg-muted/30 p-4">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">
-                Total requests
+                {t("cloud.analytics.modelBreakdown.totalRequests", {
+                  defaultValue: "Total requests",
+                })}
               </p>
               <p className="text-lg font-semibold text-foreground">
                 {numberFormatter.format(totalRequests)}
@@ -175,7 +208,9 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
             </div>
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">
-                Total cost
+                {t("cloud.analytics.modelBreakdown.totalCost", {
+                  defaultValue: "Total cost",
+                })}
               </p>
               <p className="text-lg font-semibold text-foreground">
                 ${formatCurrency(totalCost)}

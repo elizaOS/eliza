@@ -1,4 +1,10 @@
 import {
+  createHash,
+  createPublicKey,
+  verify as verifySignature,
+} from "node:crypto";
+
+import {
   type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
@@ -54,7 +60,12 @@ export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
 export type RemotePluginTrustPolicy = {
   allowedEndpointIds?: string[];
   allowedModuleIds?: string[];
+  allowedProvenanceIssuers?: string[];
+  trustedProvenancePublicKeys?: Record<string, string>;
   requireEndpointId?: boolean;
+  requireSignedProvenance?: boolean;
+  requireVerifiedProvenance?: boolean;
+  requireProvenanceDigestMatch?: boolean;
 };
 
 export type RemotePluginTrustDecision = {
@@ -67,7 +78,13 @@ export type RemotePluginTrustDecision = {
     | "allowed"
     | "missing-endpoint-id"
     | "endpoint-not-allowed"
-    | "module-not-allowed";
+    | "module-not-allowed"
+    | "missing-provenance"
+    | "provenance-issuer-not-allowed"
+    | "missing-provenance-public-key"
+    | "invalid-provenance-signature"
+    | "invalid-provenance-digest";
+  provenanceIssuer?: string;
 };
 
 export type RemotePluginSyncResult = {
@@ -924,10 +941,18 @@ function evaluateRemotePluginTrustPolicy(
     policy.allowedModuleIds === undefined
       ? null
       : new Set(policy.allowedModuleIds);
+  const allowedProvenanceIssuers =
+    policy.allowedProvenanceIssuers === undefined
+      ? null
+      : new Set(policy.allowedProvenanceIssuers);
 
   const decisions: RemotePluginTrustDecision[] = [];
   for (const module of modules) {
     const endpointId = remoteModuleEndpointId(module);
+    const provenanceIssuer =
+      typeof module.provenance?.issuer === "string"
+        ? module.provenance.issuer
+        : undefined;
     if (policy.requireEndpointId && endpointId === undefined) {
       const decision = trustDecision(
         module,
@@ -979,9 +1004,210 @@ function evaluateRemotePluginTrustPolicy(
         details: { trustDecision: decision },
       });
     }
+    if (policy.requireSignedProvenance && module.provenance === undefined) {
+      const decision = trustDecision(
+        module,
+        endpointId,
+        false,
+        "missing-provenance",
+      );
+      decisions.push(decision);
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: `Remote plugin module "${module.id}" does not include signed provenance.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+        details: { trustDecision: decision },
+      });
+    }
+    if (
+      allowedProvenanceIssuers &&
+      (provenanceIssuer === undefined ||
+        !allowedProvenanceIssuers.has(provenanceIssuer))
+    ) {
+      const decision = trustDecision(
+        module,
+        endpointId,
+        false,
+        "provenance-issuer-not-allowed",
+      );
+      decisions.push(decision);
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: `Remote plugin module "${module.id}" provenance issuer "${provenanceIssuer ?? "unknown"}" is not trusted for registration.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+        details: { trustDecision: decision },
+      });
+    }
+    if (policy.requireVerifiedProvenance) {
+      if (module.provenance === undefined) {
+        const decision = trustDecision(
+          module,
+          endpointId,
+          false,
+          "missing-provenance",
+        );
+        decisions.push(decision);
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: `Remote plugin module "${module.id}" does not include signed provenance.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+          details: { trustDecision: decision },
+        });
+      }
+      const publicKey =
+        policy.trustedProvenancePublicKeys?.[module.provenance.issuer];
+      if (!publicKey) {
+        const decision = trustDecision(
+          module,
+          endpointId,
+          false,
+          "missing-provenance-public-key",
+        );
+        decisions.push(decision);
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: `Remote plugin module "${module.id}" provenance issuer "${module.provenance.issuer}" has no trusted verification key.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+          details: { trustDecision: decision },
+        });
+      }
+      if (!verifyRemotePluginModuleProvenance(module, publicKey)) {
+        const decision = trustDecision(
+          module,
+          endpointId,
+          false,
+          "invalid-provenance-signature",
+        );
+        decisions.push(decision);
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: `Remote plugin module "${module.id}" provenance signature is invalid.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+          details: { trustDecision: decision },
+        });
+      }
+    }
+    if (policy.requireProvenanceDigestMatch) {
+      if (module.provenance === undefined) {
+        const decision = trustDecision(
+          module,
+          endpointId,
+          false,
+          "missing-provenance",
+        );
+        decisions.push(decision);
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: `Remote plugin module "${module.id}" does not include signed provenance.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+          details: { trustDecision: decision },
+        });
+      }
+      if (!remotePluginModuleProvenanceDigestMatches(module)) {
+        const decision = trustDecision(
+          module,
+          endpointId,
+          false,
+          "invalid-provenance-digest",
+        );
+        decisions.push(decision);
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: `Remote plugin module "${module.id}" provenance digest does not match module contents.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+          details: { trustDecision: decision },
+        });
+      }
+    }
     decisions.push(trustDecision(module, endpointId, true, "allowed"));
   }
   return decisions;
+}
+
+function verifyRemotePluginModuleProvenance(
+  module: RemotePluginModuleManifest,
+  publicKeyPem: string,
+): boolean {
+  const provenance = module.provenance;
+  if (!provenance) return false;
+  if (provenance.signatureAlgorithm.toLowerCase() !== "ed25519") {
+    return false;
+  }
+  try {
+    return verifySignature(
+      null,
+      Buffer.from(remotePluginModuleProvenancePayload(provenance), "utf8"),
+      createPublicKey(publicKeyPem),
+      Buffer.from(provenance.signature, "base64"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function remotePluginModuleProvenancePayload(
+  provenance: NonNullable<RemotePluginModuleManifest["provenance"]>,
+): string {
+  return [
+    `issuer:${provenance.issuer}`,
+    `subject:${provenance.subject}`,
+    `digestSha256:${provenance.digestSha256.toLowerCase()}`,
+  ].join("\n");
+}
+
+function remotePluginModuleProvenanceDigestMatches(
+  module: RemotePluginModuleManifest,
+): boolean {
+  const provenance = module.provenance;
+  if (!provenance) return false;
+  return (
+    hashRemotePluginModuleForProvenance(module) ===
+    provenance.digestSha256.toLowerCase()
+  );
+}
+
+function hashRemotePluginModuleForProvenance(
+  module: RemotePluginModuleManifest,
+): string {
+  return createHash("sha256")
+    .update(canonicalJsonForRemotePluginProvenance(module), "utf8")
+    .digest("hex");
+}
+
+function canonicalJsonForRemotePluginProvenance(
+  module: RemotePluginModuleManifest,
+): string {
+  const {
+    capabilityEndpointId: _endpointId,
+    provenance: _provenance,
+    ...rest
+  } = module;
+  return JSON.stringify(canonicalizeForRemotePluginProvenance(rest));
+}
+
+function canonicalizeForRemotePluginProvenance(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeForRemotePluginProvenance(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [
+          key,
+          canonicalizeForRemotePluginProvenance(entry),
+        ]),
+    );
+  }
+  return value;
 }
 
 function trustDecision(
@@ -994,6 +1220,9 @@ function trustDecision(
     moduleId: module.id,
     pluginName: module.name,
     ...(endpointId === undefined ? {} : { endpointId }),
+    ...(module.provenance?.issuer === undefined
+      ? {}
+      : { provenanceIssuer: module.provenance.issuer }),
     trusted,
     reason,
   };
@@ -1006,9 +1235,14 @@ function resolveConfiguredRemotePluginTrustPolicy(
   const endpointIds = configuredEndpointIds(routerConfig);
   if (endpointIds.length === 0) return undefined;
   const allowedModuleIds = configuredAllowedModuleIds(runtime, endpointIds);
+  const trustPolicy = configuredRemotePluginTrustPolicyOptions(
+    runtime,
+    endpointIds,
+  );
   return {
     allowedEndpointIds: endpointIds,
     ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
+    ...trustPolicy,
     requireEndpointId: true,
   };
 }
@@ -1054,6 +1288,94 @@ function configuredAllowedModuleIds(
   } catch {
     return [];
   }
+}
+
+function configuredRemotePluginTrustPolicyOptions(
+  runtime: IAgentRuntime,
+  endpointIds: string[],
+): RemotePluginTrustPolicy {
+  const configured = runtime.getSetting?.(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+  );
+  const raw =
+    typeof configured === "string" && configured.trim()
+      ? configured
+      : process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
+  if (typeof raw !== "string" || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const record = parsed as Record<string, unknown>;
+    const candidates = endpointIds
+      .map((endpointId) => record[endpointId])
+      .filter(
+        (value): value is Record<string, unknown> =>
+          !!value && typeof value === "object" && !Array.isArray(value),
+      );
+    const globalCandidate =
+      "allowedProvenanceIssuers" in record ||
+      "trustedProvenancePublicKeys" in record ||
+      "requireSignedProvenance" in record ||
+      "requireVerifiedProvenance" in record ||
+      "requireProvenanceDigestMatch" in record
+        ? [record]
+        : [];
+    return mergeConfiguredTrustPolicyOptions([
+      ...globalCandidate,
+      ...candidates,
+    ]);
+  } catch {
+    return {};
+  }
+}
+
+function mergeConfiguredTrustPolicyOptions(
+  values: Array<Record<string, unknown>>,
+): RemotePluginTrustPolicy {
+  const allowedProvenanceIssuers = new Set<string>();
+  const trustedProvenancePublicKeys: Record<string, string> = {};
+  let requireSignedProvenance = false;
+  let requireVerifiedProvenance = false;
+  let requireProvenanceDigestMatch = false;
+  for (const value of values) {
+    for (const issuer of uniqueStrings(value.allowedProvenanceIssuers)) {
+      allowedProvenanceIssuers.add(issuer);
+    }
+    const keys = value.trustedProvenancePublicKeys;
+    if (keys && typeof keys === "object" && !Array.isArray(keys)) {
+      for (const [issuer, publicKey] of Object.entries(keys)) {
+        if (typeof publicKey !== "string") continue;
+        const nextIssuer = issuer.trim();
+        const nextPublicKey = publicKey.trim();
+        if (nextIssuer && nextPublicKey) {
+          trustedProvenancePublicKeys[nextIssuer] = nextPublicKey;
+        }
+      }
+    }
+    requireSignedProvenance ||= value.requireSignedProvenance === true;
+    requireVerifiedProvenance ||= value.requireVerifiedProvenance === true;
+    requireProvenanceDigestMatch ||=
+      value.requireProvenanceDigestMatch === true;
+  }
+  return {
+    ...(allowedProvenanceIssuers.size === 0
+      ? {}
+      : { allowedProvenanceIssuers: [...allowedProvenanceIssuers] }),
+    ...(Object.keys(trustedProvenancePublicKeys).length === 0
+      ? {}
+      : { trustedProvenancePublicKeys }),
+    ...(requireSignedProvenance ||
+    requireVerifiedProvenance ||
+    requireProvenanceDigestMatch
+      ? { requireSignedProvenance: true }
+      : {}),
+    ...(requireVerifiedProvenance ? { requireVerifiedProvenance: true } : {}),
+    ...(requireProvenanceDigestMatch
+      ? { requireProvenanceDigestMatch: true }
+      : {}),
+  };
 }
 
 function uniqueStrings(value: unknown): string[] {

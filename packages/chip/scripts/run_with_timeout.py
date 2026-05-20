@@ -8,8 +8,25 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from contextlib import suppress
 from datetime import UTC, datetime
+
+
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _wait_for_process_group_exit(pgid: int, timeout_seconds: float) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _process_group_exists(pgid):
+            return
+        time.sleep(0.05)
 
 
 def main() -> int:
@@ -37,20 +54,24 @@ def main() -> int:
     try:
         proc.wait(timeout=args.timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        ended_at = datetime.now(UTC).isoformat()
         with suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            with suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=10)
+        _wait_for_process_group_exit(proc.pid, 5)
+        time.sleep(5)
+        ended_at = datetime.now(UTC).isoformat()
         print(
             f"[timeout-wrapper] label={args.label} status=timeout "
             f"timeout_seconds={args.timeout_seconds} ended_at={ended_at}",
             file=sys.stderr,
             flush=True,
         )
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            with suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
         return 124 if exc.timeout else 1
 
     ended_at = datetime.now(UTC).isoformat()

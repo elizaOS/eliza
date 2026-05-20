@@ -65,7 +65,7 @@
 	"scripts": {
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
-		"test": "vitest run",
+		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",

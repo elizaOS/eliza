@@ -1,0 +1,87 @@
+schema: eliza.compiler.llvm_build_evidence.v1
+as_of: 2026-05-19
+claim_boundary: |
+  pinned_recipe_only; no executable evidence of a built LLVM toolchain is
+  accepted as release evidence until the canonical Linux container build
+  produces all artifacts in this manifest.
+
+pinned_sha: de3ee84346d6dcf77ac20fe5c8acc95594886cbc
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/llvm/llvm-project.git HEAD
+
+round3_attempt:
+  status: BLOCKED
+  blocked_stage: base_image_build_failed
+  blocked_reason: |
+    docker build of eliza-chip:linux-x86_64 fails at step 5/6 (pip install -r
+    /tmp/requirements.txt) because the uncommitted WIP edit to
+    packages/chip/requirements.txt added 'cocotb-coverage>=2,<3' alongside
+    'cocotb>=1.9,<2'; cocotb-coverage 2.0 requires cocotb>=2.0, so pip
+    resolution is impossible inside the Dockerfile context. Resolution is out
+    of compiler-agent's file domain (requirements.txt is repo-wide and owned
+    by verify/cocotb agents).
+  host_capabilities:
+    docker_present: true
+    docker_daemon_reachable: true
+    host_arch: x86_64
+    host_os: Linux
+    disk_free_gib_at_attempt: 98
+  stages_completed_in_attempt:
+    - apt_install (123.1s, ~600 packages, OK)
+    - venv_create (OK)
+  stages_failed_in_attempt:
+    - pip_install_requirements (cocotb-coverage<>cocotb constraint conflict)
+  artifacts:
+    bootstrap_report: build/reports/compiler/llvm-container-bootstrap.json
+    base_build_log: build/reports/compiler/llvm-container-base-build.log
+  next_action: |
+    Once requirements.txt is unblocked (pin cocotb-coverage>=1.2,<2 to match
+    cocotb<2, or upgrade cocotb to >=2 in lockstep), rerun
+    scripts/bootstrap_llvm_container.sh followed by scripts/build_llvm_riscv.sh
+    inside the resulting eliza-chip:llvm-build image. Both scripts are
+    idempotent and skip already-completed stages.
+
+blocked_until:
+  - packages/chip/requirements.txt cocotb-coverage<=>cocotb conflict resolved
+  - eliza-chip:linux-x86_64 docker image built
+  - eliza-chip:llvm-build docker image built
+  - build/llvm-stage2/bin/clang exists
+  - build/reports/compiler/llvm-version.txt records a clang major >= 21
+  - build/reports/compiler/llvm-build-sha.txt records the 40-character SHA matching llvm-pin.json::upstream.commit_sha
+  - build/reports/compiler/llvm-hello-rva23.dump shows RVV vector instructions
+
+required_artifacts:
+  - path: compiler/llvm-build/llvm-pin.json
+    purpose: source of truth for LLVM SHA, build flags, and RVA23 patch list
+  - path: docs/toolchain/llvm-trunk-pin.md
+    purpose: human-readable pin policy and refresh procedure
+  - path: scripts/bootstrap_llvm_container.sh
+    purpose: two-step docker build for eliza-chip:linux-x86_64 then eliza-chip:llvm-build
+  - path: scripts/build_llvm_riscv.sh
+    purpose: two-stage build recipe executed inside the canonical Linux container
+  - path: build/llvm-stage2/bin/clang
+    purpose: produced stage-2 cross-targeted clang
+  - path: build/llvm-stage2/bin/ld.lld
+    purpose: produced stage-2 linker
+  - path: build/llvm-stage2/bin/llvm-bolt
+    purpose: produced post-link optimizer
+  - path: build/reports/compiler/llvm-version.txt
+    purpose: pinned `clang --version` text
+  - path: build/reports/compiler/llvm-build-sha.txt
+    purpose: resolved LLVM commit SHA from the canonical build
+  - path: build/reports/compiler/llvm-hello-rva23.dump
+    purpose: cross-compile smoke that exercises -march=rva23u64
+  - path: build/reports/compiler/llvm-rva23-extensions.txt
+    purpose: stage-2 clang --print-supported-extensions snapshot
+
+verification_commands:
+  - scripts/bootstrap_llvm_container.sh
+  - scripts/build_llvm_riscv.sh
+  - scripts/build_llvm_riscv.sh --verify
+  - scripts/check_compiler_versions.py --strict
+  - scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2
+
+forbidden_claims_without_required_evidence:
+  - "LLVM toolchain reproducible"
+  - "RVA23 release-grade compile"
+  - "ThinLTO + sample-PGO + Propeller + BOLT end-to-end"

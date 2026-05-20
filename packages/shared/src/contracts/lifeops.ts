@@ -2632,6 +2632,12 @@ export interface LifeOpsInboxMessageSender {
 export interface LifeOpsInboxMessageSourceRef {
   channel: LifeOpsInboxChannel;
   externalId: string;
+  /** Local messaging identity that received/sent this item, when known. */
+  phoneAccountId?: string;
+  /** Human-readable label for the local phone identity. */
+  phoneAccountLabel?: string;
+  /** E.164-ish phone number for the local identity, when known. */
+  phoneNumber?: string;
 }
 
 export interface LifeOpsInboxMessage {
@@ -2651,6 +2657,12 @@ export interface LifeOpsInboxMessage {
   threadId?: string;
   /** Present on Gmail messages when multiple accounts exist; identifies which Google grant the message came from. */
   gmailAccountId?: string;
+  /** Present on phone-backed messages when the local connector can identify which phone identity handled it. */
+  phoneAccountId?: string;
+  /** Display label for the local phone identity, e.g. `Gateway (+1...)`. */
+  phoneAccountLabel?: string;
+  /** Local phone number that handled the message, when known. */
+  phoneNumber?: string;
   /** LifeOps-owned account key for privacy egress. */
   connectorAccountId?: string;
   /** Display label for the Gmail account (e.g., `work@example.com`). */
@@ -2725,6 +2737,8 @@ export interface GetLifeOpsInboxRequest {
   maxParticipants?: number;
   /** Filter to a specific Google grant. */
   gmailAccountId?: string;
+  /** Filter phone-backed channels to one or more local phone identities. */
+  phoneAccountIds?: string[];
   /**
    * When true, only return messages where the user has not replied for >24h
    * and the priority score is at least 50. Applies at both the message and

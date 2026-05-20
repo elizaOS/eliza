@@ -1,0 +1,31 @@
+schema: eliza.pd_dft_fault_atpg.v1
+status: blocked_external_tool
+release_use: prohibited_until_external_review
+scope: fault_atpg_test_generation_for_scan_inserted_e1_chip_top
+description: |
+  Fault is the academic ATPG tool from MIT/CMU that consumes a scan-inserted
+  netlist plus the standard-cell library and produces stuck-at and
+  transition-delay test patterns. Today Fault is not installed in this
+  repo's tool chain; the scan_insertion.tcl pass produces the netlist Fault
+  expects, but the actual test-vector generation is BLOCKED until Fault is
+  vendored under external/ or replaced by a commercial alternative.
+required_inputs:
+  scan_netlist: build/dft/e1_chip_top.scan.v
+  standard_cell_library: sky130_fd_sc_hd
+  scan_chain_definition: build/dft/e1_chip_top.scan.csv
+  fault_model:
+    - stuck_at_0
+    - stuck_at_1
+    - transition_delay
+expected_outputs:
+  - build/dft/atpg/patterns.stil
+  - build/dft/atpg/coverage.json
+  - build/dft/atpg/scan_log.txt
+coverage_target_percent:
+  stuck_at_minimum: 95.0
+  transition_delay_minimum: 85.0
+blockers:
+  - Fault is not vendored under external/.
+  - Without a commercial ATPG license, transition-delay coverage at the
+    advanced node is BLOCKED on commercial EDA gate (see
+    docs/evidence/pd/commercial-eda-gate.yaml).

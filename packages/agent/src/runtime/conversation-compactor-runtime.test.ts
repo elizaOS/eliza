@@ -974,7 +974,7 @@ describe("installPromptOptimizations telemetry", () => {
         const record = payload as Record<string, unknown>;
         if (
           typeof record.system === "string" &&
-          record.system.includes("conversation summarizer")
+          record.system.includes("prose summary")
         ) {
           return "runtime summary preserved parcel code LIME-4421";
         }
@@ -1150,7 +1150,7 @@ describe("installPromptOptimizations telemetry", () => {
         const record = payload as Record<string, unknown>;
         if (
           typeof record.system === "string" &&
-          record.system.includes("conversation summarizer")
+          record.system.includes("prose summary")
         ) {
           return "message summary preserved parcel code LIME-4421";
         }
@@ -1236,7 +1236,7 @@ describe("installPromptOptimizations telemetry", () => {
         const record = payload as Record<string, unknown>;
         if (
           typeof record.system === "string" &&
-          record.system.includes("conversation summarizer")
+          record.system.includes("prose summary")
         ) {
           throw new Error("summarizer should not run");
         }
@@ -1310,7 +1310,7 @@ describe("installPromptOptimizations telemetry", () => {
         const record = payload as Record<string, unknown>;
         if (
           typeof record.system === "string" &&
-          record.system.includes("conversation summarizer")
+          record.system.includes("prose summary")
         ) {
           summarizerCalls++;
           return "tool payload summary";

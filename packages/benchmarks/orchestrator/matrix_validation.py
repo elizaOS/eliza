@@ -6,7 +6,17 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .adapters import discover_adapters
+from .adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+    discover_adapters,
+)
 from .runner import (
     _default_env,
     _effective_request,
@@ -108,6 +118,36 @@ def _trajectory_expectations(adapter_id: str) -> list[str]:
     return expectations
 
 
+def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tuple[str, ...]) -> str:
+    if adapter_id in {"gaia", "gaia_orchestrated"} and not allowed_harnesses:
+        return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+    if adapter_id == "hyperliquid_bench" and not allowed_harnesses:
+        return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+    if adapter_id == "terminal_bench" and not allowed_harnesses:
+        return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+    if adapter_id in {"swe_bench", "swe_bench_orchestrated"} and not allowed_harnesses:
+        return SWE_BENCH_DOCKER_UNAVAILABLE_REASON
+    if (
+        adapter_id
+        in {
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }
+        and not allowed_harnesses
+    ):
+        return HERMES_SANDBOX_UNAVAILABLE_REASON
+    if adapter_id == "vision_language":
+        if not allowed_harnesses:
+            return VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+        if harness in {"hermes", "openclaw"}:
+            return VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
+        return VISION_LANGUAGE_FIXED_RUNTIME_REASON
+    allowed = ", ".join(allowed_harnesses) or "none"
+    return f"harness '{harness}' not in adapter compatibility ({allowed})"
+
+
 def _is_secret_key(key: str) -> bool:
     key_upper = key.upper()
     return any(marker in key_upper for marker in SECRET_KEY_MARKERS)
@@ -170,8 +210,11 @@ def build_cross_matrix_report(
             error: str | None = None
 
             if not compatible:
-                allowed = ", ".join(adapter.agent_compatibility) or "none"
-                reason = f"harness '{harness}' not in adapter compatibility ({allowed})"
+                reason = _incompatibility_reason(
+                    adapter.id,
+                    harness,
+                    tuple(adapter.agent_compatibility),
+                )
             else:
                 try:
                     effective = _effective_request(adapter, base_request)

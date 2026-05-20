@@ -43,23 +43,21 @@ def _write_bundle(
     voice_paths: tuple[str, ...] | None = None,
 ) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
-    text = b"gguf text"
-    drafter = b"draft"
-    files: list[tuple[str, bytes]] = [
-        (f"text/eliza-1-{tier}-128k.gguf", text),
-        ("cache/voice-preset-default.bin", b"cache"),
-    ]
-    if tier in P.M.ELIZA_1_DFLASH_TIERS:
-        files.append((f"dflash/drafter-{tier}.gguf", drafter))
-    for i, voice_path in enumerate(voice_paths or _default_voice_paths(tier)):
-        files.append((voice_path, f"voice-{i}".encode("utf-8")))
-    for rel, blob in files:
+    files: dict[str, bytes] = {
+        rel: f"payload:{rel}".encode("utf-8")
+        for rel in P.required_files_for_tier(tier)
+    }
+    if voice_paths is not None:
+        for rel in list(files):
+            if rel.startswith("tts/"):
+                del files[rel]
+        for i, voice_path in enumerate(voice_paths):
+            files[voice_path] = f"voice-{i}".encode("utf-8")
+    for rel, blob in files.items():
         path = bundle / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
-    aggregate_path = bundle / "evals" / "aggregate.json"
-    aggregate_path.parent.mkdir(parents=True, exist_ok=True)
-    aggregate_path.write_text(
+    (bundle / "evals" / "aggregate.json").write_text(
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -69,36 +67,37 @@ def _write_bundle(
         ),
         encoding="utf-8",
     )
-    voice_entries = [
-        {"path": rel, "sha256": _sha(blob)}
-        for rel, blob in files
-        if rel.startswith("tts/")
-    ]
+    manifest_files = {
+        root: [
+            {"path": rel, "sha256": _sha(blob)}
+            for rel, blob in sorted(files.items())
+            if rel.split("/", 1)[0] == root
+        ]
+        for root in (
+            "text",
+            "voice",
+            "dflash",
+            "cache",
+            "tts",
+            "asr",
+            "vad",
+            "vision",
+            "embedding",
+            "imagegen",
+            "wakeword",
+        )
+    }
+    manifest_files["voice"] = manifest_files.pop("tts")
+    for entry in manifest_files["text"]:
+        if entry["path"].endswith("-128k.gguf"):
+            entry["ctx"] = 131072
+        elif entry["path"].endswith("-256k.gguf"):
+            entry["ctx"] = 262144
     manifest = {
         "id": f"eliza-1-{tier}",
         "tier": tier,
         "version": "1.0.0",
-        "files": {
-            "text": [
-                {
-                    "path": f"text/eliza-1-{tier}-128k.gguf",
-                    "sha256": _sha(text),
-                    "ctx": 131072,
-                }
-            ],
-            "voice": voice_entries,
-            "dflash": (
-                [{"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}]
-                if tier in P.M.ELIZA_1_DFLASH_TIERS
-                else []
-            ),
-            "cache": [
-                {
-                    "path": "cache/voice-preset-default.bin",
-                    "sha256": _sha(b"cache"),
-                }
-            ],
-        },
+        "files": manifest_files,
     }
     (bundle / "eliza-1.manifest.json").write_text(
         json.dumps(manifest), encoding="utf-8"
@@ -111,9 +110,11 @@ def _write_bundle(
         "publishEligible": True,
         "checksumManifest": P.CHECKSUMS_REL,
         "weights": sorted(
-            rel for rel, _blob in files if rel.split("/", 1)[0] in P.WEIGHT_PAYLOAD_DIRS
+            rel for rel in files if rel.split("/", 1)[0] in P.WEIGHT_PAYLOAD_DIRS
         ),
-        "evalReports": ["evals/aggregate.json"],
+        "evalReports": sorted(
+            rel for rel in files if rel.startswith("evals/") and rel.endswith(".json")
+        ),
         "final": {
             "weights": True,
             "hashes": True,
@@ -174,7 +175,7 @@ def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "source" / "text").mkdir(parents=True)
     (bundle / "source" / "text" / "raw-qwen.gguf").write_bytes(b"raw")
-    (bundle / "licenses").mkdir()
+    (bundle / "licenses").mkdir(exist_ok=True)
     (bundle / "licenses" / "LICENSE.text").write_text("license", encoding="utf-8")
     (bundle / "lineage.json").write_text("{}", encoding="utf-8")
 
@@ -209,9 +210,10 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
-    assert warning_plan.uploadable is True
+    assert warning_plan.uploadable is False
     assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
     assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)
+    assert any("platform plan missing required file" in e for e in warning_plan.errors)
     assert strict_plan.uploadable is False
     assert any("kokoro/tokenizer.json" in e for e in strict_plan.errors)
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
@@ -224,6 +226,7 @@ def test_tier_choices_cover_release_size_matrix() -> None:
         "4b",
         "9b",
         "27b",
+        "27b-256k",
     )
 
 
@@ -256,6 +259,60 @@ def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
 
     assert plan.uploadable is False
     assert any("uploadEvidence is missing" in e for e in plan.errors)
+
+
+def test_plan_bundle_blocks_uploaded_status_with_incomplete_uploaded_paths(
+    tmp_path: Path,
+):
+    bundle = _write_bundle(tmp_path, "2b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["hf"]["status"] = "uploaded"
+    release["hf"]["uploadEvidence"] = {
+        "repoId": P.DEFAULT_REPO_ID,
+        "commit": "abc123",
+        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+        "status": "uploaded",
+        "uploadedPaths": [
+            "bundles/2b/eliza-1.manifest.json",
+            "bundles/2b/README.md",
+        ],
+    }
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+    _write_checksums(bundle)
+
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert plan.uploadable is False
+    assert any("bundles/2b/evidence/release.json" in e for e in plan.errors)
+    assert any("bundles/2b/dflash/drafter-2b.gguf" in e for e in plan.errors)
+
+
+def test_plan_bundle_accepts_uploaded_status_with_complete_uploaded_paths(
+    tmp_path: Path,
+):
+    bundle = _write_bundle(tmp_path, "2b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    manifest = P._load_json(bundle / "eliza-1.manifest.json")
+    release["hf"]["status"] = "uploaded"
+    release["hf"]["uploadEvidence"] = {
+        "repoId": P.DEFAULT_REPO_ID,
+        "commit": "abc123",
+        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+        "status": "uploaded",
+        "uploadedPaths": [
+            f"bundles/2b/{rel}"
+            for rel in P._publishable_bundle_relpaths(bundle, manifest)
+        ],
+    }
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+    _write_checksums(bundle)
+
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert plan.uploadable is True
+    assert plan.errors == ()
 
 
 def test_plan_bundle_reports_release_blocking_reasons(tmp_path: Path):

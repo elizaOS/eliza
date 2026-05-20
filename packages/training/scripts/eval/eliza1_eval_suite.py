@@ -439,6 +439,23 @@ def _bundle_voice(bundle_dir: Path) -> tuple[Path | None, Path | None]:
     return voice, tok
 
 
+def _bundle_has_kokoro_voice(bundle_dir: Path) -> bool:
+    kokoro_dir = bundle_dir / "tts" / "kokoro"
+    model_candidates = (
+        kokoro_dir / "model_q4.onnx",
+        kokoro_dir / "kokoro-82m-v1_0-Q4_K_M.gguf",
+        kokoro_dir / "kokoro-82m-fp32.gguf",
+    )
+    tokenizer = kokoro_dir / "tokenizer.json"
+    voices_dir = kokoro_dir / "voices"
+    return (
+        any(p.is_file() and p.stat().st_size > 1_000_000 for p in model_candidates)
+        and tokenizer.is_file()
+        and voices_dir.is_dir()
+        and any(p.is_file() and p.stat().st_size > 100_000 for p in voices_dir.glob("*.bin"))
+    )
+
+
 def _is_real_gguf(path: Path | None, min_bytes: int = 1_000_000) -> bool:
     """A real GGUF: starts with ``GGUF`` magic and is bigger than a stub."""
     if path is None or not path.is_file():
@@ -1449,7 +1466,12 @@ def eval_e2e_and_endurance(ctx: EvalContext) -> tuple[dict[str, Any], dict[str, 
         "op": "bool",
     }
     have_text = _is_real_gguf(ctx.text_model)
-    have_voice = _is_real_gguf(ctx.voice_model) and _is_real_gguf(ctx.voice_tokenizer)
+    have_gguf_voice = _is_real_gguf(ctx.voice_model) and _is_real_gguf(ctx.voice_tokenizer)
+    have_voice = (
+        have_gguf_voice or _bundle_has_kokoro_voice(ctx.bundle_dir)
+        if _uses_kokoro_e2e_harness(ctx.tier)
+        else have_gguf_voice
+    )
     have_asr = ctx.asr_model is not None and ctx.asr_model.is_file() and ctx.asr_model.stat().st_size > 100_000
     if not (have_text and have_voice and have_asr):
         reason = (

@@ -6,6 +6,7 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
+import { assertDriveMatchesExpected } from "./write-safety";
 
 const gib = 1024 ** 3;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -17,6 +18,7 @@ const validChannels = new Set<ElizaOsImage["channel"]>([
 const validArchitectures = new Set<ElizaOsImage["architecture"]>([
   "x86_64",
   "arm64",
+  "riscv64",
 ]);
 
 interface ImageManifestValidationIssue {
@@ -61,6 +63,22 @@ export const DEFAULT_ELIZAOS_IMAGES: ElizaOsImage[] = [
     releaseNotesUrl: "https://docs.eliza.ai/os/linux",
     signatureUrl:
       "https://download.elizaos.ai/os/linux/elizaos-linux-live-nightly.iso.sig",
+  },
+  {
+    id: "elizaos-linux-live-riscv64-planned",
+    label: "elizaOS Linux Live (RISC-V 64, planned)",
+    version: "nightly",
+    channel: "nightly",
+    architecture: "riscv64",
+    buildId: "linux-live-riscv64-planned-2026.05.15",
+    publishedAt: "2026-05-15T00:00:00.000Z",
+    url: "https://download.elizaos.ai/os/linux/elizaos-linux-live-riscv64-planned.iso",
+    checksumSha256:
+      "0000000000000000000000000000000000000000000000000000000000000000",
+    sizeBytes: 4.9 * gib,
+    minUsbSizeBytes: 8 * gib,
+    manifestVersion: 1,
+    releaseNotesUrl: "https://docs.eliza.ai/os/linux",
   },
 ];
 
@@ -263,6 +281,7 @@ export class DryRunUsbInstallerBackend implements UsbInstallerBackend {
     if (!drive) {
       throw new Error(`Unknown drive id: ${request.driveId}`);
     }
+    assertDriveMatchesExpected(request, drive);
 
     const image = this.images.find(
       (candidate) => candidate.id === request.imageId,

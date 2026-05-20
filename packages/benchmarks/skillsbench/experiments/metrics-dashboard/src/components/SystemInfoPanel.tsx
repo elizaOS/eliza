@@ -293,7 +293,7 @@ export function SystemInfoPanel({
                 <span className="font-medium">CPU</span>
               </div>
               <div className="text-2xl font-bold">
-                {systemInfo.cpuUsage?.toFixed(1) || 0}%
+                {systemInfo.cpuUsage.toFixed(1) || 0}%
               </div>
             </div>
 
@@ -305,25 +305,25 @@ export function SystemInfoPanel({
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  Total: {Math.round((systemInfo.memory?.totalMb || 0) / 1024)}{" "}
+                  Total: {Math.round((systemInfo.memory.totalMb || 0) / 1024)}{" "}
                   GB
                 </div>
                 <div>
-                  Used: {Math.round((systemInfo.memory?.usedMb || 0) / 1024)} GB
+                  Used: {Math.round((systemInfo.memory.usedMb || 0) / 1024)} GB
                 </div>
                 <div>
-                  Free: {Math.round((systemInfo.memory?.freeMb || 0) / 1024)} GB
+                  Free: {Math.round((systemInfo.memory.freeMb || 0) / 1024)} GB
                 </div>
                 <div>
                   Available:{" "}
-                  {Math.round((systemInfo.memory?.availableMb || 0) / 1024)} GB
+                  {Math.round((systemInfo.memory.availableMb || 0) / 1024)} GB
                 </div>
               </div>
               <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-500"
                   style={{
-                    width: `${systemInfo.memory?.totalMb ? (systemInfo.memory.usedMb / systemInfo.memory.totalMb) * 100 : 0}%`,
+                    width: `${systemInfo.memory.totalMb ? (systemInfo.memory.usedMb / systemInfo.memory.totalMb) * 100 : 0}%`,
                   }}
                 />
               </div>
@@ -336,15 +336,15 @@ export function SystemInfoPanel({
                 <span className="font-medium">Disk</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>Total: {systemInfo.disk?.total}</div>
-                <div>Used: {systemInfo.disk?.used}</div>
-                <div>Available: {systemInfo.disk?.available}</div>
-                <div>Usage: {systemInfo.disk?.usedPercent}%</div>
+                <div>Total: {systemInfo.disk.total}</div>
+                <div>Used: {systemInfo.disk.used}</div>
+                <div>Available: {systemInfo.disk.available}</div>
+                <div>Usage: {systemInfo.disk.usedPercent}%</div>
               </div>
               <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${systemInfo.disk?.usedPercent > 80 ? "bg-yellow-500" : "bg-green-500"}`}
-                  style={{ width: `${systemInfo.disk?.usedPercent || 0}%` }}
+                  className={`h-full ${systemInfo.disk.usedPercent > 80 ? "bg-yellow-500" : "bg-green-500"}`}
+                  style={{ width: `${systemInfo.disk.usedPercent || 0}%` }}
                 />
               </div>
             </div>
@@ -354,10 +354,10 @@ export function SystemInfoPanel({
               <div className="flex items-center gap-2 mb-2">
                 <Server className="w-4 h-4" />
                 <span className="font-medium">
-                  Harbor Processes ({systemInfo.harborProcesses?.length || 0})
+                  Harbor Processes ({systemInfo.harborProcesses.length || 0})
                 </span>
               </div>
-              {systemInfo.harborProcesses?.length > 0 ? (
+              {systemInfo.harborProcesses.length > 0 ? (
                 <div className="space-y-1 text-xs font-mono max-h-40 overflow-auto">
                   {systemInfo.harborProcesses.map((p, i) => (
                     <div key={i} className="flex gap-2 p-1 bg-muted/50 rounded">
@@ -407,7 +407,7 @@ export function SystemInfoPanel({
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                All ({systemInfo.containers?.length || 0})
+                All ({systemInfo.containers.length || 0})
               </button>
               <button
                 onClick={() => setContainerTab("stuck")}
@@ -427,7 +427,7 @@ export function SystemInfoPanel({
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
-                    {systemInfo.containers?.length || 0} containers running
+                    {systemInfo.containers.length || 0} containers running
                   </span>
                   {stuckContainers.length > 0 && (
                     <button
@@ -444,14 +444,14 @@ export function SystemInfoPanel({
                     </button>
                   )}
                 </div>
-                {systemInfo.containers?.length === 0 ? (
+                {systemInfo.containers.length === 0 ? (
                   <div className="text-muted-foreground py-4 text-center">
                     No containers running
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {systemInfo.containers?.map((c, i) => {
-                      const isStuck = c.runningFor?.includes("hour");
+                    {systemInfo.containers.map((c, i) => {
+                      const isStuck = c.runningFor.includes("hour");
                       return (
                         <div
                           key={i}

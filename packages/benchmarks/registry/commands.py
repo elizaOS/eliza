@@ -224,13 +224,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _realm_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        provider_name = (model.provider or "").strip().lower()
         data_path = extra.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
             args.extend(["--data-path", data_path.strip()])
         categories = extra.get("categories")
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
-        elif extra.get("max_tasks") == 1:
+        elif extra.get("use_sample_tasks") is True or extra.get("mock") is True or provider_name == "mock":
             args.append("--use-sample-tasks")
         execution_model = extra.get("execution_model")
         if isinstance(execution_model, str) and execution_model.strip():
@@ -251,7 +252,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             # picked by the in-process elizaOS Python runtime (default) or by the
             # TS bridge (when --provider eliza is set).
             args.extend(["--model", model.model])
-        provider_name = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
@@ -996,11 +996,19 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "vision-language-results.json"),
         ]
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", agent])
+        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        if provider_name:
+            args.extend(["--model-provider", provider_name])
+        model_name = str(extra.get("model") or model.model or "").strip()
+        if model_name:
+            args.extend(["--model", model_name])
         if extra.get("smoke") is True:
             args.append("--smoke")
         if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
             args.append("--stub")
-        _ = model
         return args
 
     def _vision_language_result(output_dir: Path) -> Path:

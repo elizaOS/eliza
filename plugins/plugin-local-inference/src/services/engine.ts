@@ -427,7 +427,7 @@ interface LlamaBindingModule {
  * `LlamaModelOptions`.
  */
 export class NodeLlamaCppBackend implements LocalInferenceBackend {
-	readonly id = "node-llama-cpp" as const;
+	readonly id = "capacitor-llama" as const;
 
 	private llama: Llama | null = null;
 	private loadedModel: LlamaModel | null = null;
@@ -1061,7 +1061,11 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "node-llama-cpp" | "llama-server" | null {
+	activeBackendId():
+		| "capacitor-llama"
+		| "node-llama-cpp"
+		| "llama-server"
+		| null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -2558,7 +2562,7 @@ export class LocalInferenceEngine {
 		_mode: "prefer" | "force",
 		loraPath: string | undefined,
 	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
-		if (this.dispatcher.activeBackendId() !== "node-llama-cpp") return null;
+		if (this.dispatcher.activeBackendId() !== "capacitor-llama") return null;
 		const model = this.nodeBackend.getLoadedLlamaModel();
 		if (!model) return null;
 		const eotMod =

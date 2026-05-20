@@ -25,7 +25,7 @@ bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-*
 In one terminal:
 
 ```bash
-cd examples/app/capacitor/backend
+cd packages/examples/app/capacitor/backend
 bun install
 bun run dev
 ```
@@ -33,7 +33,7 @@ bun run dev
 In another terminal:
 
 ```bash
-cd examples/app/capacitor/frontend
+cd packages/examples/app/capacitor/frontend
 bun install
 bun run dev
 ```
@@ -44,14 +44,14 @@ Open the UI at `http://localhost:5176`. The backend defaults to `http://localhos
 
 The backend uses `@elizaos/plugin-localdb` and writes JSON files to:
 
-- `LOCALDB_DATA_DIR` (if set), otherwise `examples/app/capacitor/backend/.eliza-localdb`
+- `LOCALDB_DATA_DIR` (if set), otherwise `packages/examples/app/capacitor/backend/.eliza-localdb`
 
 ## Capacitor (optional)
 
 Initialize platforms as usual (not included in this repo snapshot):
 
 ```bash
-cd examples/app/capacitor
+cd packages/examples/app/capacitor
 bun install
 bunx cap add ios
 bunx cap add android
@@ -68,6 +68,6 @@ bunx cap open android
 
 ## Deploy
 
-- **Web build**: `bun run build:frontend` (from `examples/app/capacitor/`)
+- **Web build**: `bun run build:frontend` (from `packages/examples/app/capacitor/`)
 - **iOS/Android**: `bunx cap sync` then `bunx cap open ios|android`, and build/archive from Xcode / Android Studio
 

@@ -110,7 +110,8 @@ print(json.dumps([
     "Linux host with hardware virtualization enabled",
     "AOSP_DIR set to an AOSP checkout containing build/envsetup.sh and device/",
     "/dev/kvm present and readable/writable by the running user",
-    "repo and adb available on PATH",
+    "repo available on PATH when syncing or bootstrapping a checkout",
+    "adb available on PATH when running Cuttlefish boot smoke",
     "launch_cvd or cvd available on PATH or under AOSP_DIR/out/host/linux-x86/bin",
     "user in kvm/cvdnetwork/render groups, or equivalent host permissions",
 ], indent=2))
@@ -175,9 +176,15 @@ if run_cuttlefish and not cuttlefish_found:
         "Cuttlefish launcher not found; expected launch_cvd or cvd on PATH "
         "or under AOSP_DIR/out/host/linux-x86/bin"
     )
+has_existing_checkout = (
+    aosp_dir is not None
+    and (aosp_dir / "build/envsetup.sh").is_file()
+    and (aosp_dir / "device").is_dir()
+)
 repo_path = shutil.which("repo")
 if repo_path is None:
-    missing.append("repo not found on PATH")
+    if not has_existing_checkout:
+        missing.append("repo not found on PATH")
 else:
     try:
         repo_version = subprocess.run(
@@ -189,11 +196,13 @@ else:
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
-        missing.append(f"repo launcher at {repo_path} could not run --version")
+        if not has_existing_checkout:
+            missing.append(f"repo launcher at {repo_path} could not run --version")
     else:
         if repo_version.returncode != 0:
-            missing.append(f"repo launcher at {repo_path} failed --version")
-        elif "<repo not installed>" in repo_version.stdout:
+            if not has_existing_checkout:
+                missing.append(f"repo launcher at {repo_path} failed --version")
+        elif "<repo not installed>" in repo_version.stdout and not has_existing_checkout:
             missing.append(f"repo launcher found at {repo_path}, but repo is not installed")
 if run_cuttlefish and shutil.which("adb") is None:
     missing.append("adb not found on PATH")
@@ -214,21 +223,22 @@ evidence_json() {
 	python3 - "$mode" <<'PY'
 import json
 import sys
+from pathlib import Path
 
 mode = sys.argv[1]
-build = [
-    "docs/evidence/android/eliza_ai_soc_lunch.log",
-    "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-    "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-    "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-    "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-]
-full = build + [
+root = Path.cwd()
+sys.path.insert(0, str(root / "scripts"))
+import check_software_bsp
+
+full = check_software_bsp.TARGETS["aosp"]["evidence"]
+runtime = {
     "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
-]
+}
+build = [path for path in full if path not in runtime]
 print(json.dumps(build if mode == "build" else full, indent=2))
 PY
 }
@@ -434,6 +444,21 @@ if [ "$run_cts" -eq 1 ] || [ "$run_vts" -eq 1 ]; then
 fi
 
 if [ "$run_cuttlefish" -eq 1 ]; then
+	set +e
+	AOSP_PRODUCT="$aosp_product" \
+		AOSP_SHELL="$aosp_shell" \
+		AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
+		AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
+		AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
+		"$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp_dir"
+	hal_rc=$?
+	set -e
+	if [ "$hal_rc" -ne 0 ]; then
+		capture_failures=$((capture_failures + 1))
+	else
+		record_stage_result "$evidence_dir/eliza_ai_soc_cvd_hal_smoke.log" || true
+	fi
+
 	capture_aosp_shell \
 		cuttlefish_riscv64_smoke \
 		"$evidence_dir/cuttlefish_riscv64_smoke.log" \
