@@ -223,14 +223,26 @@ measured_real_claims:
     reason: |
       The cocotb harness
       `verify/cocotb/cache/test_mockingjay_accuracy.py` drives
-      `rtl/cache/replacement/e1_mockingjay_prod.sv` against a 2000-op
-      scan+reuse synthetic stream and reports its hit-rate vs a pure-
-      Python LRU oracle. Captured numbers (mj=6.40 % vs lru=50.40 %)
-      are below the +10 % threshold; root cause is documented in the
-      artifact (find_victim deterministic tie-breaker on all-MAX_ETR
-      initial state collapses to one way; the 2k-op stream is too
-      short to warm the STT/RTP). The threshold remains the
-      productization bar.
+      `rtl/cache/replacement/e1_mockingjay_prod.sv` against a
+      100000-op scan+reuse synthetic stream (10000-op warmup +
+      90000-op measurement window) and reports its hit-rate vs a
+      pure-Python LRU oracle. The R4-documented unblock plan
+      (lengthen NUM_OPS to >=50k, add LFSR tie-break in
+      `find_victim`) is applied; an additional unit-correction
+      scales reuse-distance deltas from global-access units to
+      ETR-time-units (delta >> ETR_W) before they enter the RTP.
+      Captured numbers in the measurement window
+      (mj=22.15 % vs lru=50.03 %) are a 3.5x improvement over the
+      pre-unblock baseline but remain below the +10 % threshold.
+      Next-layer root cause documented in the artifact: the STT
+      (sampled cache) is keyed by `(pc, set_id)` rather than by
+      tag/address, so a fresh scan tag at the same (pc, set_id)
+      registers as an STT hit and feeds the PC-keyed RTP a tiny
+      reuse distance, causing scan PCs to look "hot". The HPCA'22
+      paper keys the sampled table by line address; the next
+      unblock step is to thread `acc_tag` (or full address) through
+      `e1_mockingjay_prod` + the TB and key STT on (set_id, tag).
+      The threshold remains the productization bar.
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_cocotb_synthetic_report.json
 

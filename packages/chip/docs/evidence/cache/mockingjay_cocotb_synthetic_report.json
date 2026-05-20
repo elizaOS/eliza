@@ -2,13 +2,15 @@
   "schema": "eliza.cache.mockingjay_cocotb_synthetic.v1",
   "status": "measured_below_threshold",
   "evidence_class": "cocotb_synthetic_stream",
-  "captured_utc": "2026-05-19T22:00:00+00:00",
+  "captured_utc": "2026-05-19T22:30:00+00:00",
   "harness": "verify/cocotb/cache/test_mockingjay_accuracy.py",
   "dut": "rtl/cache/replacement/e1_mockingjay_prod.sv",
   "simulator": "verilator-5.049",
   "stream": {
     "type": "scan+reuse synthetic",
-    "num_ops": 2000,
+    "warmup_ops": 10000,
+    "measure_ops": 90000,
+    "num_ops": 100000,
     "hot_sets": 4,
     "hot_tags_per_set": 4,
     "hot_reps_per_burst": 4,
@@ -17,21 +19,51 @@
     "sets": 64
   },
   "result": {
+    "mockingjay_hit_rate": 0.221467,
+    "lru_hit_rate": 0.500267,
+    "abs_gain": -0.278800,
+    "rel_gain": -0.557303,
+    "dut_hits_total_stream": 22163,
+    "dut_misses_total_stream": 77837,
+    "warmup_mockingjay_hit_rate": 0.2231,
+    "measurement_window_used": "warmup-stripped"
+  },
+  "previous_result_for_reference": {
+    "captured_utc": "2026-05-19T22:00:00+00:00",
+    "num_ops": 2000,
+    "tie_break": "deterministic_argmax",
     "mockingjay_hit_rate": 0.064,
     "lru_hit_rate": 0.504,
-    "abs_gain": -0.440,
-    "rel_gain": -0.873,
-    "dut_hits": 128,
-    "dut_misses": 1872
+    "abs_gain": -0.440
   },
   "pass_threshold_abs_or_rel": 0.10,
   "passed_threshold": false,
   "test_status": "FAIL",
-  "root_cause": "find_victim deterministic tie-breaker on all-MAX_ETR initial state collapses to a single way; tracker only ever installs at that way, so Mockingjay effectively occupies fewer ways than LRU until the STT warms. The 2000-op stream is too short to warm the STT/RTP enough to overcome that bias.",
+  "unblock_plan_applied": [
+    "Lengthened NUM_OPS from 2000 to 100000 (10000-op warmup + 90000-op measurement window).",
+    "Added LFSR-driven random tie-break in `find_victim` (parameter TIE_BREAK_LFSR_SEED=0xACE1) so all-MAX_ETR initial state no longer collapses to way 0.",
+    "Scaled reuse-distance delta from global-access units to ETR-time-units (delta >> ETR_W) before writing into the per-PC RTP, so 16-op hot-PC reuse distances no longer saturate to MAX_ETR."
+  ],
+  "unblock_plan_outcome": "Necessary but insufficient. Mockingjay hit-rate improved 3.5x (6.4% to 22.1%) and the deterministic tie-bias is gone, but Mockingjay still loses to LRU by 27.88 percentage points absolute (55.73% relative).",
+  "next_root_cause": "STT (sampled cache) is keyed by `(pc, set_id)` rather than by tag/address. The scan PC (`0x20_0000`) is reused across every scan tag at the same hot set, so the STT lookup matches on the second scan op and reports a 1-global-op reuse distance (0 ETR units) for `scan_pc`. The PC-keyed RTP then learns that `scan_pc` has tiny reuse, causes new scan lines to be inserted with ETR=0 (most-kept), and they evict the hot lines. The Mockingjay HPCA'22 paper keys the sampled table by line address (so a fresh scan tag at the same set is an STT miss, not hit), and uses the PC only as the RTP index.",
   "next_unblock_steps": [
-    "Lengthen NUM_OPS to >=50_000 to allow STT/RTP warmup",
-    "Replace find_victim deterministic tie-breaker with random-among-ties when m == MAX_ETR (no learned signal yet)",
-    "Re-run harness; expected to flip to mockingjay_hit_rate > lru_hit_rate after warmup"
+    "Add `acc_tag` (or full line address) input to `e1_mockingjay_prod` and thread it through `e1_mockingjay_prod_tb`.",
+    "Key STT entries on (set_id, tag) so a fresh tag at the same (pc, set_id) is an STT miss, not a spurious hit.",
+    "Keep the RTP indexed by PC (acc_pc) only; the STT hit/miss event drives the RTP update with the observed per-line reuse distance.",
+    "Re-run the 100k-op harness; expected to flip to mockingjay_hit_rate > lru_hit_rate."
+  ],
+  "rtl_changes": [
+    "Added parameter TIE_BREAK_LFSR_SEED (default 0xACE1).",
+    "Added 16-bit Galois LFSR `tie_lfsr_q` (polynomial x^16+x^14+x^13+x^11+1) advanced each acc_valid cycle.",
+    "Rewrote `find_victim` to do a 3-pass argmax: find max ETR, count ways tied at max, pick the (rnd mod tied_count)-th tied way.",
+    "Scaled `delta` to ETR-time-units (delta >> ETR_W) in the RTP update path; saturate to MAX_ETR.",
+    "Added module-header documentation of the tie-break randomization rationale.",
+    "Added `e1_mockingjay_prod.sv` to scripts/run_rtl_check.sh per-module verilator-strict lint loop; lints clean."
+  ],
+  "test_changes": [
+    "NUM_OPS extended to 100k (10k warmup + 90k measure).",
+    "Measurement counters split by warmup vs measure window; LRU counters snapshotted at the warmup boundary so both policies are compared over the same window.",
+    "Updated `MOCKINGJAY_VS_LRU_SUMMARY` summary line to include warmup_ops and measure_ops."
   ],
   "phone_class_claim_blocked": true,
   "phone_class_claim_blocked_reason": "cocotb synthetic stream is not phone-class; remains blocked until full-system-simulator or silicon evidence."

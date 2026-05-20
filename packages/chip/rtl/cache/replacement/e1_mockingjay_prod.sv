@@ -26,6 +26,14 @@
 //     predicted ETR exceeds the working-set window are tagged with the
 //     maximum ETR (evicted next). The threshold is parameterizable.
 //
+//   - Tie-break randomization: at reset every line is initialised to
+//     MAX_ETR (no learned signal). A purely deterministic argmax then
+//     collapses victim choice onto a single way, starving the other
+//     ways and biasing the policy below LRU until the STT/RTP warms.
+//     `find_victim` therefore picks a uniform random way among the set
+//     of ways tied at the maximum ETR, using a Galois LFSR seeded by
+//     `TIE_BREAK_LFSR_SEED` so the harness can reproduce runs.
+//
 // The module is a drop-in for the L3 cache's existing replacement-policy
 // hook. The L3 calls into this module on every access; the module returns
 // the victim way and updates its own state. The cocotb harness
@@ -55,7 +63,10 @@ module e1_mockingjay_prod #(
     // Sampling: bit-hash to pick whether a set is sampled
     parameter logic [31:0] SAMPLE_HASH  = 32'hC0FFEE01,
     // Belady-MIN tagging: ETRs above this threshold are aged toward MAX
-    parameter int unsigned CACHE_FRIENDLY_THRESHOLD = 4
+    parameter int unsigned CACHE_FRIENDLY_THRESHOLD = 4,
+    // Galois LFSR seed for the victim-tie randomizer. Any non-zero value
+    // is fine; non-zero is required (a zero LFSR is a stuck state).
+    parameter logic [15:0] TIE_BREAK_LFSR_SEED = 16'hACE1
 )(
     input  logic                       clk,
     input  logic                       rst_n,
@@ -108,6 +119,11 @@ module e1_mockingjay_prod #(
     logic [31:0]      hits_q;
     logic [31:0]      misses_q;
 
+    // Galois LFSR used to break victim ties when multiple ways carry the
+    // same maximum ETR (the common case at reset, before STT/RTP warm).
+    // 16-bit maximal-period polynomial x^16 + x^14 + x^13 + x^11 + 1.
+    logic [15:0]      tie_lfsr_q;
+
     assign hits_count   = hits_q;
     assign misses_count = misses_q;
 
@@ -132,24 +148,46 @@ module e1_mockingjay_prod #(
         rtp_idx_of = idx;
     endfunction
 
-    // Victim selection: pick the way with the largest ETR. On ties, pick
-    // the highest-index way (deterministic, makes harness reproducible).
+    // Victim selection: pick the way with the largest ETR. On ties,
+    // pick a uniform random way among the set of ways tied at the
+    // maximum. The tie-break randomizer is driven by `tie_lfsr_q` and
+    // is necessary at reset because every line carries MAX_ETR until
+    // the STT/RTP learns; a deterministic argmax would collapse onto a
+    // single way and starve the other ways. See the module header.
     function automatic logic [WAY_IDX_W-1:0] find_victim
-        (input logic [SET_IDX_W-1:0] s);
-        logic [WAY_IDX_W-1:0] v;
+        (input logic [SET_IDX_W-1:0] s,
+         input logic [15:0]          rnd);
         logic [ETR_W-1:0]     m;
-        v = '0;
+        int                   tied_count;
+        int                   pick_idx;
+        int                   seen;
+        logic [WAY_IDX_W-1:0] v;
+        // Pass 1: find the maximum ETR in the set.
         m = '0;
         for (int w = 0; w < WAYS; w++) begin
-            if (etr[w][s] >= m) begin
-                m = etr[w][s];
-                v = w[WAY_IDX_W-1:0];
+            if (etr[w][s] > m) m = etr[w][s];
+        end
+        // Pass 2: count the ways carrying that max ETR.
+        tied_count = 0;
+        for (int w = 0; w < WAYS; w++) begin
+            if (etr[w][s] == m) tied_count = tied_count + 1;
+        end
+        // Pass 3: pick the `pick_idx`-th tied way using the LFSR.
+        // When tied_count==1 the modulo collapses to 0 and the choice
+        // is fully determined by the learned ETR signal.
+        pick_idx = int'(rnd) % tied_count;
+        seen = 0;
+        v = '0;
+        for (int w = 0; w < WAYS; w++) begin
+            if (etr[w][s] == m) begin
+                if (seen == pick_idx) v = w[WAY_IDX_W-1:0];
+                seen = seen + 1;
             end
         end
         return v;
     endfunction
 
-    assign victim_way = find_victim(query_set);
+    assign victim_way = find_victim(query_set, tie_lfsr_q);
 
     // Sampled STT lookup: return STT way index and "found" flag.
     function automatic void stt_lookup
@@ -208,10 +246,16 @@ module e1_mockingjay_prod #(
             global_ts_q <= '0;
             hits_q      <= '0;
             misses_q    <= '0;
+            tie_lfsr_q  <= TIE_BREAK_LFSR_SEED;
         end else if (acc_valid) begin
             automatic logic [RTP_IDX_W-1:0] ridx = rtp_idx_of(acc_pc);
             automatic logic [STT_SET_IDX_W-1:0] sset = stt_set_of(acc_set);
             global_ts_q <= global_ts_q + 1'b1;
+            // Advance the Galois LFSR every active cycle.
+            // Polynomial: x^16 + x^14 + x^13 + x^11 + 1 (taps 16,14,13,11).
+            tie_lfsr_q <= {tie_lfsr_q[14:0],
+                           tie_lfsr_q[15] ^ tie_lfsr_q[13] ^
+                           tie_lfsr_q[12] ^ tie_lfsr_q[10]};
 
             if (acc_hit) hits_q   <= hits_q + 1'b1;
             else         misses_q <= misses_q + 1'b1;
@@ -264,26 +308,31 @@ module e1_mockingjay_prod #(
                 logic [TS_W-1:0]       last_ts;
                 stt_lookup(acc_pc, acc_set, found, sway, last_ts);
                 if (found) begin
-                    // Compute observed reuse distance (saturating into ETR_W).
-                    automatic logic [TS_W-1:0] delta;
-                    delta = global_ts_q - last_ts;
+                    // Compute observed reuse distance in ETR-time-units.
+                    // ETR ages once per `1 << ETR_W` global accesses, so
+                    // the reuse distance in those units is `delta >>
+                    // ETR_W`. Saturate into ETR_W bits (MAX_ETR encodes
+                    // "no near-future reuse").
+                    automatic logic [TS_W-1:0]  delta;
+                    automatic logic [TS_W-1:0]  delta_etr_units;
+                    automatic logic [ETR_W-1:0] new_pred;
+                    delta            = global_ts_q - last_ts;
+                    delta_etr_units  = delta >> ETR_W;
+                    new_pred         = (delta_etr_units >
+                                        {{(TS_W-ETR_W){1'b0}},
+                                         {ETR_W{1'b1}}}) ?
+                                       MAX_ETR[ETR_W-1:0] :
+                                       delta_etr_units[ETR_W-1:0];
                     // Update RTP entry: EWMA-ish blend of old + new.
                     if (rtp[ridx].valid && rtp[ridx].pc == acc_pc) begin
                         automatic logic [ETR_W:0] avg;
-                        automatic logic [ETR_W-1:0] new_pred;
-                        new_pred = (delta > {1'b0, {ETR_W{1'b1}}}) ?
-                                   MAX_ETR[ETR_W-1:0] :
-                                   delta[ETR_W-1:0];
                         avg = {1'b0, rtp[ridx].predicted_etr}
                             + {1'b0, new_pred};
                         rtp[ridx].predicted_etr <= avg[ETR_W:1];
                     end else begin
                         rtp[ridx].valid          <= 1'b1;
                         rtp[ridx].pc             <= acc_pc;
-                        rtp[ridx].predicted_etr  <=
-                            (delta > {1'b0, {ETR_W{1'b1}}}) ?
-                            MAX_ETR[ETR_W-1:0] :
-                            delta[ETR_W-1:0];
+                        rtp[ridx].predicted_etr  <= new_pred;
                     end
                     // Refresh STT timestamp.
                     stt[sway][sset].ts <= global_ts_q;
