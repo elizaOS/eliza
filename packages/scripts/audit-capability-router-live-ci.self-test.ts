@@ -1015,7 +1015,6 @@ function assertFails(
   candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
   candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
-  console.error(`audit self-test check: ${expectedCheckName}`);
   const check = checks.find((candidate) => candidate.name === expectedCheckName);
   if (!check) throw new Error(`unknown check "${expectedCheckName}"`);
   const failures = validateCapabilityRouterLiveCi(candidate, {

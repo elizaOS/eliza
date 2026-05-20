@@ -591,9 +591,14 @@ def _manifest_required_file_blockers(
             if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):
                 manifest_paths.add(entry["path"])
     runtime_roots = {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash", "cache"}
+    runtime_eval_files = {"evals/dflash-tuning-report.json"}
     return sorted(
         rel for rel in required_files
-        if rel.split("/", 1)[0] in runtime_roots and rel not in manifest_paths
+        if (
+            rel.split("/", 1)[0] in runtime_roots
+            or rel in runtime_eval_files
+        )
+        and rel not in manifest_paths
     )
 
 

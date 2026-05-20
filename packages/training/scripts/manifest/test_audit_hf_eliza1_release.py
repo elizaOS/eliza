@@ -1052,6 +1052,28 @@ def test_hf_release_audit_blocks_required_file_missing_from_manifest_files() -> 
     )
 
 
+def test_hf_release_audit_blocks_dflash_tuning_report_missing_from_manifest_files() -> None:
+    bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    bad_manifest["files"]["evals"] = [
+        entry
+        for entry in bad_manifest["files"]["evals"]
+        if entry["path"] != "evals/dflash-tuning-report.json"
+    ]
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(bad_manifest)}),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "0_8b manifest files cover required runtime artifacts"
+        and "evals/dflash-tuning-report.json" in check["detail"]
+        for check in failed
+    )
+
+
 def test_hf_release_audit_blocks_missing_runtime_component_lineage() -> None:
     bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
     del bad_manifest["lineage"]["imagegen"]
