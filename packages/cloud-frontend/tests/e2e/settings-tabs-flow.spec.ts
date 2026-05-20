@@ -341,12 +341,16 @@ test("settings tabs: desktop navigation renders each tab surface", async ({
   await expect(page.getByText("Current Session")).toBeVisible();
 
   await main.getByRole("button", { name: "Billing" }).click();
-  await expect(page.getByText("Credit Balance")).toBeVisible();
+  await expect(
+    main.getByRole("heading", { name: "Credit Balance" }),
+  ).toBeVisible();
   await expect(page.getByText("Add credits to your account")).toBeVisible();
 
   await main.getByRole("button", { name: "APIs" }).click();
   await expect(main.getByRole("heading", { name: "API keys" })).toBeVisible();
-  await expect(page.getByText("Settings tab key")).toBeVisible();
+  await expect(
+    main.getByRole("heading", { name: "Settings tab key" }),
+  ).toBeVisible();
 
   await main.getByRole("button", { name: "Analytics" }).click();
   await expect(page.getByText("Controls")).toBeVisible();
@@ -392,7 +396,7 @@ test("settings tabs: general form edits inputs, dropdown, switches, and saves", 
     .getByPlaceholder(/when learning new concepts/i)
     .fill("Prefer direct answers with concrete next steps.");
 
-  await page.getByRole("combobox").click();
+  await page.locator("#main").getByRole("combobox").last().click();
   await page.getByRole("option", { name: "Software Developer" }).click();
 
   const switches = page.getByRole("switch");
