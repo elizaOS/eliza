@@ -15,6 +15,7 @@ import {
 	autonomyTaskContinueTemplate,
 	autonomyTaskFirstTemplate,
 } from "../../prompts";
+import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver";
 import {
 	ChannelType,
 	type Content,
@@ -654,7 +655,12 @@ export class AutonomyService extends Service {
 		template: string,
 		values: { targetRoomContext: string; lastThought: string },
 	): string {
-		let output = template.replaceAll(
+		const optimizedTemplate = resolveOptimizedPromptForRuntime(
+			this.runtime,
+			"autonomy",
+			template,
+		);
+		let output = optimizedTemplate.replaceAll(
 			"{{targetRoomContext}}",
 			values.targetRoomContext,
 		);

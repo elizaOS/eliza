@@ -3,9 +3,9 @@ import { dbRead, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
+import type { AppEnv } from "../../types/cloud-worker-env";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
-import type { AppEnv } from "../../types/cloud-worker-env";
 import { logger } from "../utils/logger";
 import { provisioningJobService } from "./provisioning-jobs";
 
@@ -231,13 +231,7 @@ class ActiveBillingService {
     message: string;
     infrastructureAction: InfrastructureCancellationAction;
   }> {
-    const {
-      organizationId,
-      resourceId,
-      resourceType,
-      mode = "stop",
-      triggerEnv,
-    } = options;
+    const { organizationId, resourceId, resourceType, mode = "stop", triggerEnv } = options;
     const now = new Date();
 
     if (!resourceType || resourceType === "container") {
