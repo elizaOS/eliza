@@ -29,6 +29,19 @@ const compatibilityFiles = [
     ),
     content: '{"version":1,"files":[]}\n',
   },
+  ...[
+    "api/analyze-photo/route.ts",
+    "api/create-character/route.ts",
+    "api/generate-field/route.ts",
+    "api/generate-photo/route.ts",
+    "api/generate-scene/route.ts",
+    "cloning/page.ts",
+    "layout.ts",
+    "page.ts",
+  ].map((relativeFile) => ({
+    file: path.join(tempDistDir, "types", "app", relativeFile),
+    content: "export {};\n",
+  })),
 ];
 
 async function writeIfMissing(file, content) {
