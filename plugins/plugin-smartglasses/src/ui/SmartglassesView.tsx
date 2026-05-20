@@ -271,6 +271,28 @@ export function parseWifiNetworks(result: unknown): string[] {
     .filter((network) => network.length > 0);
 }
 
+export function formatWifiStatus(
+  result: unknown,
+  fallback = "Wi-Fi status requested",
+): string {
+  if (!result || typeof result !== "object") return fallback;
+  const value = result as Record<string, unknown>;
+  const explicitStatus = value.status ?? value.state ?? value.message;
+  if (typeof explicitStatus === "string" && explicitStatus.trim()) {
+    return explicitStatus.trim();
+  }
+  const connected = value.connected ?? value.wifiConnected;
+  const ssid = value.ssid ?? value.wifiSsid ?? value.SSID;
+  const localIp = value.localIp ?? value.wifiLocalIp ?? value.ipAddress;
+  if (connected === true) {
+    return `Connected to ${String(ssid ?? "Wi-Fi")}${
+      localIp ? ` at ${String(localIp)}` : ""
+    }`;
+  }
+  if (connected === false) return "Wi-Fi disconnected";
+  return fallback;
+}
+
 export async function callWifiBridge(
   bridge: SmartglassesBridge,
   command: string,
@@ -667,6 +689,26 @@ export function SmartglassesView() {
     }
   }
 
+  async function refreshWifiStatus(): Promise<void> {
+    setBusy("wifi-status");
+    setError(null);
+    try {
+      if (!bridge)
+        throw new Error("No native smartglasses bridge is available");
+      const result = await callWifiBridge(bridge, "request_wifi_status");
+      const networks = parseWifiNetworks(result);
+      if (networks.length > 0) setWifiNetworks(networks);
+      setWifiStatus(formatWifiStatus(result));
+      appendEvent("wifi", "Requested Wi-Fi status through bridge");
+    } catch (err) {
+      setError(normalizeError(err));
+      setWifiStatus(normalizeError(err));
+      appendEvent("error", normalizeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function configureWifi(): Promise<void> {
     setBusy("wifi-configure");
     setError(null);
@@ -880,6 +922,12 @@ export function SmartglassesView() {
                 disabled={!bridge || busy !== null}
               >
                 Scan
+              </ActionButton>
+              <ActionButton
+                onClick={refreshWifiStatus}
+                disabled={!bridge || busy !== null}
+              >
+                Status
               </ActionButton>
               <ActionButton
                 onClick={configureWifi}
