@@ -16,6 +16,8 @@ from gi.repository import UDisks, GLib, Gio  # NOQA: E402
 
 
 logger = logging.getLogger(__name__)
+TAILS_ROOT = Path(__file__).resolve().parents[2]
+CHROOT_DIR = TAILS_ROOT / "chroot"
 
 SYSTEM_PARTITION_FLAGS = (
     1 << 0  # system partition
@@ -51,7 +53,9 @@ IMAGE_ADDITIONAL_SIZE = 10
 # that will be available to Tails Installer in the running Tails. Using
 # the same syslinux version here and in Tails Installer is important to
 # prevent issues when upgrading a Tails device via Tails Installer.
-CHROOT_SYSLINUX_COM32MODULES_DIR = "chroot/usr/lib/syslinux/modules/bios"
+CHROOT_SYSLINUX_COM32MODULES_DIR = (
+    CHROOT_DIR / "usr/lib/syslinux/modules/bios"
+)
 
 
 class ImageCreationError(Exception):
@@ -340,16 +344,19 @@ class ImageCreator:
     @contextmanager
     def mount_proc_and_image(self):
         logger.info("Mounting proc and image")
-        execute(["mount", "--types", "proc", "/proc", "chroot/proc"])
-        execute(["mkdir", "-p", "chroot%s" % os.path.dirname(self.image)])
-        execute(["touch", "chroot%s" % self.image])
-        execute(["mount", "--bind", self.image, "chroot%s" % self.image])
+        chroot_proc = CHROOT_DIR / "proc"
+        chroot_image = CHROOT_DIR / self.image.removeprefix(os.sep)
+        execute(["mkdir", "-p", str(chroot_proc)])
+        execute(["mount", "--types", "proc", "/proc", str(chroot_proc)])
+        execute(["mkdir", "-p", str(chroot_image.parent)])
+        execute(["touch", str(chroot_image)])
+        execute(["mount", "--bind", self.image, str(chroot_image)])
         try:
             yield
         finally:
             logger.info("Unmounting proc and image")
-            execute(["umount", "chroot/proc"])
-            execute(["umount", "chroot%s" % self.image])
+            execute(["umount", str(chroot_proc)])
+            execute(["umount", str(chroot_image)])
 
     def install_syslinux(self):
         logger.info("Installing bootloader")
@@ -360,7 +367,7 @@ class ImageCreator:
             execute(
                 [
                     "chroot",
-                    "chroot",
+                    str(CHROOT_DIR),
                     "/usr/bin/syslinux",
                     "--offset",
                     str(self.partition.props.partition.props.offset),

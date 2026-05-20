@@ -89,6 +89,16 @@ if printf '%s' "${file_out}" | grep -qi "ISO 9660"; then
     yellow "WARNING: writing an ISO directly is for explicit override/testing only."
     yellow "Persistent Storage may reject devices that were not created from the USB image."
 fi
+image_is_iso=0
+if printf '%s' "${file_out}" | grep -qi "ISO 9660"; then
+    image_is_iso=1
+fi
+
+if [ "${image_is_iso}" != "1" ] && ! command -v sgdisk >/dev/null 2>&1; then
+    red "sgdisk is required to prepare a cloned USB image for Persistent Storage."
+    red "Install gdisk, then rerun this writer."
+    exit 2
+fi
 
 dev_name="$(basename "${DEVICE}")"
 sys_dev="/sys/block/${dev_name}"
@@ -215,4 +225,14 @@ yellow "Syncing kernel writeback."
 sync
 sudo blockdev --flushbufs "${DEVICE}" 2>/dev/null || true
 sync
+
+if [ "${image_is_iso}" != "1" ]; then
+    yellow "Moving backup GPT header to the end of the USB device."
+    sudo sgdisk --move-second-header "${DEVICE}" >/dev/null
+    sudo partprobe "${DEVICE}" 2>/dev/null || sudo blockdev --rereadpt "${DEVICE}" 2>/dev/null || true
+    sudo udevadm settle 2>/dev/null || true
+    sudo blockdev --flushbufs "${DEVICE}" 2>/dev/null || true
+    sync
+fi
+
 green "Done. You can remove the USB device after the activity light stops."

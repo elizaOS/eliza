@@ -948,9 +948,21 @@ grep -q 'ELIZAOS_RELEASE_KEYRING' scripts/usb-write.sh
 grep -q 'gpgv --keyring' scripts/usb-write.sh
 grep -q 'ELIZAOS_CREATE_USB_IMAGE_FROM_ISO' scripts/usb-write.sh
 grep -q 'Refusing to write ISO directly to USB' scripts/usb-write.sh
+grep -q 'sgdisk --move-second-header' scripts/usb-write.sh
+grep -q 'prepare a cloned USB image for Persistent Storage' scripts/usb-write.sh
 grep -q 'PARTITION_LABEL = "Tails"' tails/auto/scripts/create-usb-image-from-iso
 grep -q 'FILESYSTEM_LABEL = "ELIZAOS"' tails/auto/scripts/create-usb-image-from-iso
+grep -q '::ELIZAOS' tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/lib/first_boot_repartition
+if grep -q '::Tails' tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/lib/first_boot_repartition; then
+    echo "first boot repartition must keep ELIZAOS filesystem label" >&2
+    exit 1
+fi
+grep -q 'TAILS_ROOT = Path(__file__).resolve().parents\[2\]' \
+    tails/auto/scripts/create-usb-image-from-iso
+grep -q 'CHROOT_DIR = TAILS_ROOT / "chroot"' \
+    tails/auto/scripts/create-usb-image-from-iso
 grep -qx 'sudo' tails/config/chroot_local-packageslists/tails-common.list
+grep -qx 'syslinux' tails/config/chroot_local-packageslists/tails-common.list
 grep -q 'elizaos.sbomLite' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.releaseProvenance' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.modelCatalog' scripts/validate-model-catalog.mjs

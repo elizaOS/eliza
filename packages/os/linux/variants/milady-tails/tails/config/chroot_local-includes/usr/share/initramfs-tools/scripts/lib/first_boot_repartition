@@ -165,7 +165,8 @@ dd if=/tmp/vbr of="${SYSTEM_PARTITION}" bs=3 count=1
 settle
 
 # Set a random filesystem UUID (aka. FAT "Volume ID" / "serial number")
-MTOOLS_SKIP_CHECK=1 mlabel -i "${SYSTEM_PARTITION}" -n ::Tails
+# while keeping the user-facing live partition label branded as elizaOS.
+MTOOLS_SKIP_CHECK=1 mlabel -i "${SYSTEM_PARTITION}" -n ::ELIZAOS
 settle
 
 # Recompute CHS values for the hybrid MBR (see #16389),
