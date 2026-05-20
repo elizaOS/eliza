@@ -303,6 +303,7 @@ def _hermes_env_payload(score: float) -> dict[str, Any]:
 
 
 def _hyperliquid_payload(score: float) -> dict[str, Any]:
+    signature = f"synthetic-calibration-{score:.6f}"
     return {
         "final_score": score,
         "total_score": score,
@@ -311,6 +312,13 @@ def _hyperliquid_payload(score: float) -> dict[str, Any]:
         "penalty": 0,
         "total_scenarios": 2,
         "passed_scenarios": _passed_count(score),
+        "scenarios": [
+            {
+                "id": "synthetic-calibration",
+                "success": True,
+                "unique_signatures": [signature],
+            }
+        ],
         "mode": "synthetic-calibration",
         "demo_mode": False,
     }

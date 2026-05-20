@@ -3,7 +3,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fireEvent, screen } from "@testing-library/dom";
 import type ReactTypes from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -163,6 +162,15 @@ function renderState(component: ReactTypes.ReactElement) {
   return JSON.parse(element?.getAttribute("data-view-state") ?? "{}");
 }
 
+function getElementByText(container: HTMLElement, text: string) {
+  const elements = Array.from(container.querySelectorAll<HTMLElement>("*"));
+  const match = elements.find((element) => element.textContent?.trim() === text);
+  if (!match) {
+    throw new Error(`Unable to find element with text: ${text}`);
+  }
+  return match;
+}
+
 afterEach(() => {
   cleanupSurfaces();
   vi.clearAllMocks();
@@ -299,9 +307,9 @@ describe("game TUI mounted surfaces", () => {
       },
     ];
 
-    renderSurface(React.createElement(ClawvilleTuiView));
+    const { container } = renderSurface(React.createElement(ClawvilleTuiView));
     await act(async () => {
-      fireEvent.click(screen.getByText("Visit nearest"));
+      getElementByText(container, "Visit nearest").click();
     });
     await vi.waitFor(() =>
       expect(sendAppRunMessage).toHaveBeenCalledWith("run-1", "Visit nearest"),
