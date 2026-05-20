@@ -274,7 +274,11 @@ function ConnectorPluginCard({
   const { elizaCloudConnected, setActionNotice, setState, setTab } = useApp();
   const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
   const [managedDiscordBusy, setManagedDiscordBusy] = useState(false);
-  const [cloudOAuthBusy, setCloudOAuthBusy] = useState(false);
+  // Keyed by role so the "agent" and "your account" buttons can each show
+  // their own loading state — clicking one no longer disables the other.
+  const [cloudOAuthBusy, setCloudOAuthBusy] = useState<
+    Partial<Record<CloudOAuthConnectionRole, boolean>>
+  >({});
   const [managedDiscordAgents, setManagedDiscordAgents] = useState<
     CloudCompatAgent[]
   >([]);
@@ -525,7 +529,7 @@ function ConnectorPluginCard({
   const handleOpenCloudOAuthConnector = async (
     connectionRole: CloudOAuthConnectionRole,
   ) => {
-    if (!cloudOAuthConnector || cloudOAuthBusy) {
+    if (!cloudOAuthConnector || cloudOAuthBusy[connectionRole]) {
       return;
     }
 
@@ -543,7 +547,7 @@ function ConnectorPluginCard({
       return;
     }
 
-    setCloudOAuthBusy(true);
+    setCloudOAuthBusy((prev) => ({ ...prev, [connectionRole]: true }));
     try {
       const redirectUrl =
         typeof window !== "undefined" ? window.location.href : undefined;
@@ -571,7 +575,7 @@ function ConnectorPluginCard({
         4200,
       );
     } finally {
-      setCloudOAuthBusy(false);
+      setCloudOAuthBusy((prev) => ({ ...prev, [connectionRole]: false }));
     }
   };
 
@@ -821,30 +825,33 @@ function ConnectorPluginCard({
             className="mb-4"
             actions={
               <div className="flex flex-wrap items-center gap-2">
-                {cloudOAuthConnector.connectionRoles.map((role) => (
-                  <Button
-                    key={role}
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
-                    onClick={() => {
-                      void handleOpenCloudOAuthConnector(role);
-                    }}
-                    disabled={cloudOAuthBusy}
-                  >
-                    {cloudOAuthBusy
-                      ? "..."
-                      : elizaCloudConnected
-                        ? buildRoleButtonLabel(
-                            cloudOAuthConnector.buttonLabel,
-                            role,
-                            cloudOAuthConnector.connectionRoles.length > 1,
-                          )
-                        : t("pluginsview.OpenElizaCloud", {
-                            defaultValue: "Open Eliza Cloud",
-                          })}
-                  </Button>
-                ))}
+                {cloudOAuthConnector.connectionRoles.map((role) => {
+                  const roleBusy = cloudOAuthBusy[role] === true;
+                  return (
+                    <Button
+                      key={role}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                      onClick={() => {
+                        void handleOpenCloudOAuthConnector(role);
+                      }}
+                      disabled={roleBusy}
+                    >
+                      {roleBusy
+                        ? "..."
+                        : elizaCloudConnected
+                          ? buildRoleButtonLabel(
+                              cloudOAuthConnector.buttonLabel,
+                              role,
+                              cloudOAuthConnector.connectionRoles.length > 1,
+                            )
+                          : t("pluginsview.OpenElizaCloud", {
+                              defaultValue: "Open Eliza Cloud",
+                            })}
+                    </Button>
+                  );
+                })}
               </div>
             }
           >
