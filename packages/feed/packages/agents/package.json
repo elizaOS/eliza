@@ -23,15 +23,17 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.109",
+    "@ai-sdk/groq": "^3.0.39",
     "@feed/a2a": "workspace:*",
     "@feed/db": "workspace:*",
     "@feed/shared": "workspace:*",
+    "ai": "6.0.174",
     "js-tiktoken": "^1.0.21",
     "posthog-node": "^5.17.0"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "^0.3.5",
-    "@ai-sdk/groq": "^2.0.32",
+    "@ai-sdk/groq": "^3.0.39",
     "@anthropic-ai/sdk": "^0.71.0",
     "@feed/api": "workspace:*",
     "@feed/core": "workspace:*",
@@ -43,7 +45,7 @@
     "@elizaos/plugin-openai": "2.0.0-alpha.15",
     "@huggingface/hub": "^2.6.12",
     "@privy-io/server-auth": "^1.32.5",
-    "ai": "^5.0.106",
+    "ai": "6.0.174",
     "drizzle-orm": "^0.44.7",
     "graphql-request": "^7.2.0",
     "ioredis": "^5.6.1",
