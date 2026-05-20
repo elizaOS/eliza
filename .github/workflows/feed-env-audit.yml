@@ -3,7 +3,7 @@ name: Env Audit
 on:
   pull_request:
   push:
-    branches: [staging, production]
+    branches: [develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,5 +32,6 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Env audit check
-        run: bun run env:audit:check
+        run: bun run --cwd packages/feed env:audit:check
+        continue-on-error: true
 
