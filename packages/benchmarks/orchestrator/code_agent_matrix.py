@@ -26,7 +26,12 @@ from pathlib import Path
 from typing import Any
 
 from .analyze_trajectory import summarize as summarize_trajectory
-from .code_agent_coverage import CODE_AGENT_COVERAGE, included_benchmark_ids
+from .code_agent_coverage import (
+    CODE_AGENT_COVERAGE,
+    coverage_status_by_id,
+    included_benchmark_ids,
+    repo_local_related_benchmark_dirs,
+)
 
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
 DEFAULT_BENCHMARKS = included_benchmark_ids()
@@ -465,6 +470,11 @@ def preflight_matrix(
             }
         )
 
+    unblock_steps = build_preflight_unblock_steps(
+        issues,
+        provider=provider,
+        provider_key=key_name,
+    )
     return {
         "ok": not any(issue["severity"] == "error" for issue in issues),
         "provider": provider,
@@ -473,8 +483,77 @@ def preflight_matrix(
         "provider_key_required": bool(require_provider_key and key_name),
         "opencode_bin": opencode_bin,
         "issues": issues,
+        "unblock_steps": unblock_steps,
+        "unblock_count": len(unblock_steps),
         "cells": cell_checks,
     }
+
+
+def build_preflight_unblock_steps(
+    issues: list[dict[str, str]],
+    *,
+    provider: str,
+    provider_key: str | None,
+) -> list[dict[str, str]]:
+    steps_by_kind: dict[str, dict[str, str]] = {}
+    for issue in issues:
+        kind = issue.get("kind", "")
+        if not kind or kind in steps_by_kind:
+            continue
+        if kind == "missing_provider_key":
+            key = provider_key or provider_key_name(provider) or "<PROVIDER_API_KEY>"
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": f"Set {key}",
+                "action": f"Export {key} in the shell before running live benchmarks.",
+                "command": f"export {key}=<redacted>",
+            }
+        elif kind == "missing_opencode_cli":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Install or point to OpenCode",
+                "action": "Install the opencode CLI or set OPENCODE_BIN to an executable path.",
+                "command": "export OPENCODE_BIN=/path/to/opencode",
+            }
+        elif kind == "missing_executable":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Install benchmark runtime dependencies",
+                "action": "Install the missing command executable reported by preflight.",
+                "command": "python -m pip install -e packages/benchmarks/orchestrator",
+            }
+        elif kind == "missing_cwd":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Restore benchmark working directory",
+                "action": "Restore or initialize the missing benchmark directory before running the matrix.",
+                "command": "git submodule update --init --recursive",
+            }
+        elif kind == "missing_nl2repo_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure NL2Repo agent command",
+                "action": (
+                    "Unset NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide NL2REPO_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
+        elif kind == "missing_docker_cli":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Install Docker",
+                "action": "Install Docker CLI/Desktop before Docker-backed benchmark scoring.",
+                "command": "docker version",
+            }
+        elif kind == "docker_daemon_unavailable":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Start Docker daemon",
+                "action": "Start Docker Desktop or the Docker daemon before release-comparable scoring.",
+                "command": "docker version",
+            }
+    return list(steps_by_kind.values())
 
 
 def default_command(
@@ -1435,6 +1514,46 @@ def build_token_evidence(results: list[CellResult]) -> dict[str, Any]:
     }
 
 
+def build_repo_local_coverage_audit(benchmarks_dir: Path | None = None) -> dict[str, Any]:
+    if benchmarks_dir is None:
+        benchmarks_dir = benchmarks_root(workspace_root())
+    status_by_id = coverage_status_by_id()
+    directories: list[dict[str, Any]] = []
+    missing_manifest: list[dict[str, Any]] = []
+    missing_directories: list[dict[str, Any]] = []
+    for item in repo_local_related_benchmark_dirs():
+        status = status_by_id.get(item.benchmark_id)
+        path = benchmarks_dir / item.directory
+        exists = path.exists()
+        row = {
+            "benchmark": item.benchmark_id,
+            "directory": item.directory,
+            "exists": exists,
+            "domains": list(item.domains),
+            "manifest_status": status.status if status else None,
+        }
+        directories.append(row)
+        if exists and status is None:
+            missing_manifest.append(row)
+        if not exists and status is not None:
+            missing_directories.append(row)
+    return {
+        "ok": not missing_manifest,
+        "benchmarks_dir": str(benchmarks_dir),
+        "directory_count": len(directories),
+        "existing_directory_count": sum(1 for item in directories if item["exists"]),
+        "manifest_complete": not missing_manifest,
+        "missing_manifest_directories": missing_manifest,
+        "missing_directory_entries": missing_directories,
+        "directories": directories,
+        "message": (
+            "all audited repo-local related benchmark directories are represented in coverage"
+            if not missing_manifest
+            else "some audited repo-local related benchmark directories are missing coverage entries"
+        ),
+    }
+
+
 def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
     selected = set(selected_benchmarks)
     included = [
@@ -1473,6 +1592,7 @@ def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
             "included_unselected": len(unselected_included),
             "deferred": len(deferred),
         },
+        "repo_local_audit": build_repo_local_coverage_audit(),
         "message": (
             "all included code-agent benchmarks are selected"
             if not unselected_included
@@ -1522,19 +1642,31 @@ def build_coverage_gate(summary: dict[str, Any]) -> dict[str, Any]:
             "message": "benchmark coverage summary is missing",
         }
     blocking = list(coverage.get("unselected_included_benchmarks") or [])
+    audit = coverage.get("repo_local_audit")
+    audit = audit if isinstance(audit, dict) else {}
+    missing_manifest = [
+        str(item.get("directory") or item.get("benchmark") or "")
+        for item in audit.get("missing_manifest_directories", [])
+        if isinstance(item, dict)
+    ]
     return {
-        "ok": bool(coverage.get("selection_complete")),
+        "ok": bool(coverage.get("selection_complete")) and not missing_manifest,
         "required": "all included code-agent benchmarks selected",
         "blocking_benchmarks": sorted(str(item) for item in blocking),
+        "missing_manifest_directories": sorted(item for item in missing_manifest if item),
         "deferred_benchmarks": [
             item.get("benchmark")
             for item in coverage.get("deferred_benchmarks", [])
             if isinstance(item, dict)
         ],
         "message": (
-            "all included code-agent benchmarks are selected"
-            if coverage.get("selection_complete")
-            else "not all included code-agent benchmarks are selected"
+            "repo-local related benchmark directories are missing coverage entries"
+            if missing_manifest
+            else (
+                "all included code-agent benchmarks are selected"
+                if coverage.get("selection_complete")
+                else "not all included code-agent benchmarks are selected"
+            )
         ),
     }
 
@@ -2824,6 +2956,28 @@ def render_markdown(summary: dict[str, Any]) -> str:
                         message=issue.get("message", ""),
                     )
                 )
+        unblock_steps = preflight.get("unblock_steps")
+        if isinstance(unblock_steps, list) and unblock_steps:
+            lines.extend(
+                [
+                    "",
+                    "### Preflight Unblock Steps",
+                    "",
+                    "| kind | title | action | command |",
+                    "| --- | --- | --- | --- |",
+                ]
+            )
+            for step in unblock_steps:
+                if not isinstance(step, dict):
+                    continue
+                lines.append(
+                    "| {kind} | {title} | {action} | `{command}` |".format(
+                        kind=step.get("kind", ""),
+                        title=step.get("title", ""),
+                        action=step.get("action", ""),
+                        command=str(step.get("command", "")).replace("`", "\\`"),
+                    )
+                )
     report_gate = summary.get("report_gate")
     if isinstance(report_gate, dict):
         lines.extend(
@@ -3002,6 +3156,38 @@ def render_markdown(summary: dict[str, Any]) -> str:
         unselected = coverage.get("unselected_included_benchmarks")
         if isinstance(unselected, list) and unselected:
             lines.append(f"Unselected included benchmarks: {', '.join(str(item) for item in unselected)}")
+        audit = coverage.get("repo_local_audit")
+        if isinstance(audit, dict):
+            missing_manifest = audit.get("missing_manifest_directories")
+            missing_manifest = missing_manifest if isinstance(missing_manifest, list) else []
+            lines.extend(
+                [
+                    "",
+                    "### Repo-Local Coverage Audit",
+                    "",
+                    f"Status: {'ok' if audit.get('ok') else 'blocked'}",
+                    f"Audited directories: {audit.get('existing_directory_count', 0)}/{audit.get('directory_count', 0)}",
+                    f"Message: {audit.get('message', '')}",
+                ]
+            )
+            if missing_manifest:
+                lines.extend(
+                    [
+                        "",
+                        "| directory | benchmark | domains |",
+                        "| --- | --- | --- |",
+                    ]
+                )
+                for item in missing_manifest:
+                    if not isinstance(item, dict):
+                        continue
+                    lines.append(
+                        "| {directory} | {benchmark} | {domains} |".format(
+                            directory=item.get("directory", ""),
+                            benchmark=item.get("benchmark", ""),
+                            domains=", ".join(str(domain) for domain in item.get("domains") or []),
+                        )
+                    )
         included = coverage.get("included_benchmarks")
         if isinstance(included, list) and included:
             lines.extend(

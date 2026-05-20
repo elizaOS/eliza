@@ -55,6 +55,7 @@ code. Leave that pairing screen open, then run:
 ```sh
 node packages/app-core/scripts/install-android-sms-gateway.mjs \
   --pair auto \
+  --wait-pair 300 \
   --connect auto \
   --wait-device 60 \
   --grant-role \
@@ -62,7 +63,7 @@ node packages/app-core/scripts/install-android-sms-gateway.mjs \
   --watch-logs 60
 ```
 
-The command waits up to 60 seconds for the phone to advertise the
+The command waits up to 300 seconds for the phone to advertise the
 `_adb-tls-pairing._tcp` endpoint and prompts for the six-digit code. For
 non-interactive shells, pass `--pair-code '<six-digit-code-from-phone>'` or set
 `ADB_PAIR_CODE`.

@@ -323,10 +323,12 @@ bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 bun run --cwd packages/examples/smartglasses hardware:prove:noble
 ```
 
-Validate that artifact independently before treating physical hardware support as proven:
+Inspect and validate that latest artifact independently before treating
+physical hardware support as proven:
 
 ```bash
-bun run --cwd packages/examples/smartglasses hardware:validate-report ./smartglasses-hardware-report.json
+bun run --cwd packages/examples/smartglasses hardware:status-latest
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 A passing report must show real lens connection, connection-ready/init writes,
@@ -337,3 +339,9 @@ status with serial and audio counters. Simulator and mock tests are useful
 regression coverage, but they do not satisfy this physical hardware gate. The
 validator reports `headsetInCradle` and `wearingStateNotObserved` separately
 when the setup state explains missing tap or microphone evidence.
+
+To validate a custom report path instead of the latest helper output:
+
+```bash
+bun run --cwd packages/examples/smartglasses hardware:validate-report ./smartglasses-hardware-report.json
+```

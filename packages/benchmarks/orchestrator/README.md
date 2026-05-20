@@ -224,7 +224,14 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 Related benchmarks that are not yet release-comparable in this matrix are
 tracked as deferred coverage rather than ignored. Current deferred entries
 include `nl2repo`, `swe_bench_pro`, `agentbench`, `mint`,
-`app_eval_coding`, and `standard_humaneval`. `nl2repo` is selectable for
+`app_eval_coding`, `standard_humaneval`, `qwen_web_bench`,
+`openclaw_benchmark`, `claw_eval`, `qwen_claw_bench`, and `clawbench`.
+`qwen_web_bench` remains deferred until the public upstream runner and dataset
+ship; the Claw/OpenClaw-family benchmarks remain deferred until their task
+runners emit ElizaOS/OpenCode-comparable right/wrong/total, token, LLM-call,
+and trajectory artifacts. These entries are tracked so front-end
+code-generation, workspace, terminal, browser, and computer-use coverage is
+not silently omitted from the code-agent roadmap. `nl2repo` is selectable for
 harness validation. Smoke mode uses canonical task metadata without Docker
 scoring. Live generation uses the repo-native helper by default; set
 `NL2REPO_AGENT_COMMAND_TEMPLATE` or
@@ -353,7 +360,10 @@ not make LLM calls. Preflight writes `preflight.json` and `preflight.md` under
 the selected run root so blocked live-run readiness is tracked without creating
 a benchmark `summary.json`. These artifacts include retry, live-evidence, and
 release-comparable command templates with the selected benchmark scope and
-release gates:
+release gates. Blocked preflights also include structured unblock steps, such
+as the provider key to export, the `OPENCODE_BIN` override to set, whether
+Docker needs to be installed or started, or whether NL2Repo should use the
+built-in agent helper:
 
 ```bash
 cd /Users/shawwalters/milaidy/eliza/packages

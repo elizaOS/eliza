@@ -65,31 +65,43 @@ The implementation is covered by:
 - `packages/examples/smartglasses/package-smoke.ts`: public package export,
   Eliza event emission, status provider, and action path.
 
-## Remaining Non-Automated Gate
+## Remaining Physical Gate
 
-The code includes physical G1 validation paths, but completion still requires
-running at least one hardware smoke against real glasses:
+The code includes physical G1 validation paths and the latest direct BLE smoke
+does reach both lenses on the plugged-in headset. The current latest report
+from `2026-05-20T06:21:51Z` proves whole-headset direct BLE connectivity,
+serial response, init/display/settings responses, state packets, heartbeats,
+and right-lens mic-disable response for serial `S110LABC040019`. It does not
+complete the physical gate because the glasses still report
+`charged_in_cradle` / `cradle_fully_charged`, so wearing, tap, and microphone
+audio evidence cannot be observed yet.
+
+Use the latest-report helpers for the next hardware proof attempt:
 
 ```bash
-SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json \
-  bun run --cwd packages/examples/smartglasses hardware:noble
+bun run --cwd packages/examples/smartglasses hardware:bleak:latest
+bun run --cwd packages/examples/smartglasses hardware:status-latest
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
-Then validate the artifact:
+or run the proof wrapper, which prints the latest status summary even when the
+physical gate fails:
 
 ```bash
-bun run --cwd packages/examples/smartglasses hardware:validate-report \
-  ./smartglasses-hardware-report.json
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 ```
 
-or the browser Web Bluetooth smoke:
+The Noble/Web Bluetooth paths are still available for adapter/browser-specific
+checks:
 
 ```bash
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
 bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
 The required evidence checklist is enforced by
 `packages/examples/smartglasses/hardware-evidence.ts`: connected lenses,
 connection-ready/init writes, display packets, serial request and response,
-settings writes, single-tap mic enable, double-tap mic disable, and microphone
-audio.
+settings writes, `wearing` physical state, single-tap mic enable, right-lens
+mic-enable write, microphone audio, double-tap mic disable, and right-lens
+mic-disable write.

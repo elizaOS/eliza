@@ -248,24 +248,30 @@ export function missingViewEvidence(
   return [...new Set(missing)];
 }
 
-function parseWifiNetworks(result: unknown): string[] {
+export function parseWifiNetworks(result: unknown): string[] {
   if (!result || typeof result !== "object") return [];
   const value = result as Record<string, unknown>;
-  const networks = value.networks ?? value.networks_neo ?? value.results;
+  const networks =
+    value.networks ??
+    value.wifiNetworks ??
+    value.accessPoints ??
+    value.networks_neo ??
+    value.results;
   if (!Array.isArray(networks)) return [];
   return networks
     .map((network) => {
       if (typeof network === "string") return network;
       if (network && typeof network === "object") {
         const record = network as Record<string, unknown>;
-        return String(record.ssid ?? record.SSID ?? "");
+        return String(record.ssid ?? record.SSID ?? record.name ?? "");
       }
       return "";
     })
-    .filter((network) => network.trim().length > 0);
+    .map((network) => network.trim())
+    .filter((network) => network.length > 0);
 }
 
-async function callWifiBridge(
+export async function callWifiBridge(
   bridge: SmartglassesBridge,
   command: string,
   payload?: Record<string, unknown>,
@@ -443,12 +449,16 @@ export function SmartglassesView() {
         if (audio.byteLength > 0) markTest("audio");
         appendEvent("audio", `${side} ${audio.byteLength} bytes`);
       });
-      const transcriptDispose = nextTransport.onTranscript?.(
-        (text, isFinal) => {
-          markTest("transcript");
-          appendEvent("transcript", `${isFinal ? "final" : "partial"} ${text}`);
-        },
-      );
+      const transcriptDispose =
+        "onTranscript" in nextTransport && nextTransport.onTranscript
+          ? nextTransport.onTranscript((text, isFinal) => {
+              markTest("transcript");
+              appendEvent(
+                "transcript",
+                `${isFinal ? "final" : "partial"} ${text}`,
+              );
+            })
+          : undefined;
       try {
         if (nextTransport instanceof WebBluetoothG1Transport) {
           await connectLens(nextTransport, "left");

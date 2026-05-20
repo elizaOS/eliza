@@ -415,11 +415,11 @@ describe("EvenBridgeTransport", () => {
       },
     });
 
-    await expect(transport.requestWifiSetup("Need upload")).resolves.toMatchObject(
-      {
-        status: "requested",
-      },
-    );
+    await expect(
+      transport.requestWifiSetup("Need upload"),
+    ).resolves.toMatchObject({
+      status: "requested",
+    });
 
     expect(calls).toEqual([
       {
