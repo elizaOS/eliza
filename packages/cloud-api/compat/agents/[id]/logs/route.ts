@@ -28,6 +28,7 @@ const CORS_METHODS = "GET, OPTIONS";
 async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
     const { user } = await requireCompatAuth(request);
@@ -58,7 +59,7 @@ async function __hono_GET(
       tail,
     });
 
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(env).catch(() => {
       // Logged inside the service.
     });
 
@@ -95,8 +96,12 @@ async function __hono_GET(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
+  __hono_GET(
+    c.req.raw,
+    {
+      params: Promise.resolve({ id: c.req.param("id")! }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;

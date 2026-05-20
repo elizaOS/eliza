@@ -34,6 +34,7 @@ const suspendSchema = z.object({
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
     const { user } = await requireCompatAuth(request);
@@ -80,7 +81,7 @@ async function __hono_POST(
       userId: user.id,
     });
 
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(env).catch(() => {
       // Logged inside the service.
     });
 
@@ -103,8 +104,12 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id") as string }),
-  }),
+  __hono_POST(
+    c.req.raw,
+    {
+      params: Promise.resolve({ id: c.req.param("id") as string }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;
