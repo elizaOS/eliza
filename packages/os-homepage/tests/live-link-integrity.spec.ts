@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HARDWARE_PRODUCTS } from "@elizaos/shared/hardware-catalog";
 import {
-  expect,
   type APIRequestContext,
+  expect,
   type Locator,
   test,
 } from "playwright/test";
-import { HARDWARE_PRODUCTS } from "@elizaos/shared/hardware-catalog";
 
 type ReleaseArtifact = {
   id: string;
@@ -73,17 +73,15 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
         hasText: artifact.label,
       });
       await expect(card).toBeVisible();
-      await expect(card.getByRole("link", { name: "Download" })).toHaveAttribute(
-        "href",
-        artifact.url,
-      );
+      await expect(
+        card.getByRole("link", { name: "Download" }),
+      ).toHaveAttribute("href", artifact.url);
       liveTargets.set(artifact.url, `${artifact.label} download`);
 
       if (artifact.checksumUrl) {
-        await expect(card.getByRole("link", { name: "SHA256" })).toHaveAttribute(
-          "href",
-          artifact.checksumUrl,
-        );
+        await expect(
+          card.getByRole("link", { name: "SHA256" }),
+        ).toHaveAttribute("href", artifact.checksumUrl);
         liveTargets.set(artifact.checksumUrl, `${artifact.label} checksum`);
       }
     }

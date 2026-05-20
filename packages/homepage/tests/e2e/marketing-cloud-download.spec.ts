@@ -1,6 +1,6 @@
 import {
-  expect,
   type APIRequestContext,
+  expect,
   type Locator,
   test,
 } from "playwright/test";

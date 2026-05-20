@@ -1,3 +1,6 @@
+const port = 30_000 + Math.floor(Math.random() * 10_000);
+const baseUrl = `http://127.0.0.1:${port}`;
+
 const proc = Bun.spawn(["bun", "run", "server.ts"], {
   cwd: import.meta.dir,
   env: {
@@ -5,29 +8,50 @@ const proc = Bun.spawn(["bun", "run", "server.ts"], {
     ELIZA_AFFILIATE_CODE: "AFF-TEST",
     ELIZA_APP_ID: "00000000-0000-4000-8000-000000000000",
     ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
-    PORT: "0",
+    PORT: String(port),
   },
   stderr: "pipe",
   stdout: "pipe",
 });
 
 const decoder = new TextDecoder();
-let baseUrl: string | null = null;
+let output = "";
+
+async function collect(stream: ReadableStream<Uint8Array> | null) {
+  if (!stream) return;
+  const reader = stream.getReader();
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) return;
+    output += decoder.decode(chunk.value);
+  }
+}
+
+const outputReaders = [
+  collect(proc.stdout).catch(() => {}),
+  collect(proc.stderr).catch(() => {}),
+];
 
 try {
   const started = Date.now();
-  let output = "";
+  let ready = false;
 
-  while (!baseUrl && Date.now() - started < 10_000) {
-    const chunk = await proc.stdout.getReader().read();
-    if (chunk.done) break;
-    output += decoder.decode(chunk.value);
-    const match = output.match(/listening on (http:\/\/[^:\s]+:\d+)/);
-    if (match) baseUrl = match[1].replace("0.0.0.0", "127.0.0.1");
+  while (!ready && Date.now() - started < 10_000) {
+    if ((await Promise.race([proc.exited, Promise.resolve(null)])) !== null) {
+      break;
+    }
+    try {
+      const health = await fetch(`${baseUrl}/health`);
+      ready = health.status === 200 && (await health.text()) === "ok";
+    } catch {
+      await Bun.sleep(100);
+    }
   }
 
-  if (!baseUrl) {
-    throw new Error("eDad smoke test server did not start");
+  if (!ready) {
+    throw new Error(
+      `eDad smoke test server did not start on ${baseUrl}\n${output}`,
+    );
   }
 
   const health = await fetch(`${baseUrl}/health`);
@@ -58,4 +82,5 @@ try {
 } finally {
   proc.kill();
   await proc.exited.catch(() => {});
+  await Promise.all(outputReaders);
 }
