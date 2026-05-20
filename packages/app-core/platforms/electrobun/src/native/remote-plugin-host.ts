@@ -168,6 +168,159 @@ class BrowserCarrotWorkerRunner implements RemotePluginWorkerRunner {
   }
 }
 
+/**
+ * Subprocess worker handle for `isolation: "isolated-process"`. Spawns
+ * the worker entry as a fresh Bun subprocess with newline-delimited
+ * JSON over stdio for the wire envelope and inherits stderr to the host
+ * log. A panic in the worker only crashes itself; the host process is
+ * unaffected.
+ *
+ * Termination policy: `terminate()` sends SIGTERM, schedules SIGKILL
+ * after a 2-second grace window. The grace window gives the worker time
+ * to flush any in-flight `worker-rpc-result` replies before being torn
+ * down.
+ */
+class SubprocessWorkerHandle implements RemotePluginWorkerHandle {
+  private readonly proc: ReturnType<typeof Bun.spawn>;
+  private readonly listeners = new Set<
+    (message: RemotePluginWorkerMessage) => void
+  >();
+  private readonly errorListeners = new Set<(error: Error) => void>();
+  private readonly decoder = new TextDecoder();
+  private pendingLineBuffer = "";
+  private killTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(workerEntry: string, runtimeContext: { cwd: string; env: Record<string, string> }) {
+    this.proc = Bun.spawn({
+      cmd: [process.execPath, workerEntry],
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "inherit",
+      cwd: runtimeContext.cwd,
+      env: runtimeContext.env,
+    });
+    void this.readStdout();
+    void this.proc.exited.then((code) => {
+      for (const listener of this.errorListeners) {
+        listener(
+          new Error(
+            code === 0
+              ? "Remote plugin worker exited."
+              : `Remote plugin worker exited with code ${code}.`,
+          ),
+        );
+      }
+    });
+  }
+
+  postMessage(message: RemotePluginWorkerMessage): void {
+    if (!this.proc.stdin) return;
+    const writer = this.proc.stdin as unknown as { write(data: string): void };
+    writer.write(`${JSON.stringify(message)}\n`);
+  }
+
+  terminate(): void {
+    if (this.killTimer) return;
+    try {
+      this.proc.kill("SIGTERM");
+    } catch {
+      // already dead
+    }
+    this.killTimer = setTimeout(() => {
+      try {
+        this.proc.kill("SIGKILL");
+      } catch {
+        // already dead
+      }
+    }, 2_000);
+  }
+
+  onMessage(listener: (message: RemotePluginWorkerMessage) => void): void {
+    this.listeners.add(listener);
+  }
+
+  onError(listener: (error: Error) => void): void {
+    this.errorListeners.add(listener);
+  }
+
+  private async readStdout(): Promise<void> {
+    if (!this.proc.stdout) return;
+    const reader = (
+      this.proc.stdout as unknown as ReadableStream<Uint8Array>
+    ).getReader();
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        this.pendingLineBuffer += this.decoder.decode(value, { stream: true });
+        let newlineIndex = this.pendingLineBuffer.indexOf("\n");
+        while (newlineIndex !== -1) {
+          const line = this.pendingLineBuffer.slice(0, newlineIndex);
+          this.pendingLineBuffer = this.pendingLineBuffer.slice(newlineIndex + 1);
+          if (line.trim()) {
+            try {
+              const message = JSON.parse(line) as RemotePluginWorkerMessage;
+              for (const listener of this.listeners) listener(message);
+            } catch (parseError) {
+              for (const listener of this.errorListeners) {
+                listener(
+                  new Error(
+                    `Remote plugin worker emitted malformed JSON: ${(parseError as Error).message}`,
+                  ),
+                );
+              }
+            }
+          }
+          newlineIndex = this.pendingLineBuffer.indexOf("\n");
+        }
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+  }
+}
+
+/**
+ * Worker runner that uses Bun.spawn for the `isolated-process`
+ * isolation tier. Today's bootstrapped {@link RemotePluginHost} can opt
+ * into this by constructing with `{ workerRunner: new IsolatedProcessWorkerRunner() }`
+ * (and shipping a subprocess-aware
+ * `@elizaos/plugin-worker-runtime/bootstrap` build for the worker side).
+ */
+export class IsolatedProcessWorkerRunner implements RemotePluginWorkerRunner {
+  start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
+    return new SubprocessWorkerHandle(remotePlugin.workerPath, {
+      cwd: remotePlugin.currentDir,
+      env: {
+        ...process.env,
+        ELIZA_REMOTE_PLUGIN_ID: remotePlugin.manifest.id,
+        ELIZA_REMOTE_PLUGIN_STATE_DIR: remotePlugin.stateDir,
+        ELIZA_REMOTE_PLUGIN_CHANNEL: "stdio",
+      } as Record<string, string>,
+    });
+  }
+}
+
+/**
+ * Runner that picks shared-worker vs isolated-process per remote-plugin
+ * manifest. Used as the default by {@link RemotePluginHost} so plugins
+ * that declare `isolation: "isolated-process"` actually get a separate
+ * process.
+ */
+export class AdaptiveWorkerRunner implements RemotePluginWorkerRunner {
+  private readonly browser = new BrowserCarrotWorkerRunner();
+  private readonly subprocess = new IsolatedProcessWorkerRunner();
+
+  start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
+    return remotePlugin.install.permissionsGranted.isolation ===
+      "isolated-process"
+      ? this.subprocess.start(remotePlugin)
+      : this.browser.start(remotePlugin);
+  }
+}
+
 function stoppedStatus(id: string): RemotePluginWorkerStatus {
   return {
     id,
@@ -239,7 +392,7 @@ export class RemotePluginHost {
 
   constructor(options: RemotePluginHostOptions = {}) {
     this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
-    this.workerRunner = options.workerRunner ?? new BrowserCarrotWorkerRunner();
+    this.workerRunner = options.workerRunner ?? new AdaptiveWorkerRunner();
     this.now = options.now ?? Date.now;
     this.events = options.events ?? {};
   }
@@ -304,11 +457,11 @@ export class RemotePluginHost {
     }
 
     fs.mkdirSync(remotePlugin.stateDir, { recursive: true });
-    if (remotePlugin.install.permissionsGranted.isolation === "isolated-process") {
-      logger.warn(
-        `[remote-plugin] ${id}: manifest requests isolation:isolated-process but the host runs all remote plugins as shared-worker today; falling back. Process isolation lands when a Bun.spawn-based runner is wired.`,
-      );
-    }
+    // Isolation is honored by the AdaptiveWorkerRunner (default):
+    //  - "shared-worker"     → BrowserCarrotWorkerRunner (Bun Worker)
+    //  - "isolated-process"  → IsolatedProcessWorkerRunner (Bun.spawn)
+    // Both speak the same wire envelope; the worker bootstrap detects
+    // ELIZA_REMOTE_PLUGIN_CHANNEL=stdio to choose the subprocess channel.
     const context = buildCarrotRuntimeContext(
       remotePlugin.currentDir,
       remotePlugin.stateDir,
