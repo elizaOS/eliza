@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-phone",
-  "version": "2.0.1",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./dist/index.js",
