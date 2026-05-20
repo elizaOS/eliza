@@ -154,7 +154,7 @@ function looksLikeCapturedToolOutput(text: string): boolean {
   const firstLine = lines[0]?.trim() ?? "";
   if (!firstLine.startsWith("[tool output:") || !firstLine.endsWith("]"))
     return false;
-  if (lines.some((line) => line.trim() === TOOL_OUTPUT_END_MARKER)) {
+  if (lines.some((line) => line.trim().startsWith(TOOL_OUTPUT_END_MARKER))) {
     return capturedToolOutputBlocksOnly(lines);
   }
   const body = lines.slice(1).join("\n").trim();
@@ -172,8 +172,14 @@ function capturedToolOutputBlocksOnly(lines: string[]): boolean {
       sawToolOutput = true;
       continue;
     }
-    if (insideToolOutput && trimmed === TOOL_OUTPUT_END_MARKER) {
+    if (insideToolOutput && trimmed.startsWith(TOOL_OUTPUT_END_MARKER)) {
       insideToolOutput = false;
+      const markerIndex = line.indexOf(TOOL_OUTPUT_END_MARKER);
+      const afterMarker =
+        markerIndex >= 0
+          ? line.slice(markerIndex + TOOL_OUTPUT_END_MARKER.length).trim()
+          : "";
+      if (afterMarker) remainder.push(afterMarker);
       continue;
     }
     if (!insideToolOutput) {
@@ -188,7 +194,7 @@ function capturedToolOutputBlocksOnly(lines: string[]): boolean {
 function userFacingCompletionBody(text: string): string {
   const body = stripRouterAnnotations(text);
   const lines = body.replace(/\r\n/g, "\n").split("\n");
-  if (!lines.some((line) => line.trim() === TOOL_OUTPUT_END_MARKER)) {
+  if (!lines.some((line) => line.trim().startsWith(TOOL_OUTPUT_END_MARKER))) {
     return body;
   }
   let insideToolOutput = false;
@@ -199,8 +205,14 @@ function userFacingCompletionBody(text: string): string {
       insideToolOutput = true;
       continue;
     }
-    if (insideToolOutput && trimmed === TOOL_OUTPUT_END_MARKER) {
+    if (insideToolOutput && trimmed.startsWith(TOOL_OUTPUT_END_MARKER)) {
       insideToolOutput = false;
+      const markerIndex = line.indexOf(TOOL_OUTPUT_END_MARKER);
+      const afterMarker =
+        markerIndex >= 0
+          ? line.slice(markerIndex + TOOL_OUTPUT_END_MARKER.length).trim()
+          : "";
+      if (afterMarker) remainder.push(afterMarker);
       continue;
     }
     if (!insideToolOutput) remainder.push(line);
@@ -252,6 +264,9 @@ function replyPatchFromCompletion(
   const body = userFacingCompletionBody(completionText);
   const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
   const cleanBody = body && !looksLikeRawToolTranscript(body) ? body : "";
+  const cleanCurrentReply = !looksLikeRawToolTranscript(currentReply)
+    ? currentReply
+    : "";
   if (!body && !verifiedUrl) return undefined;
   if (isEmptyCompletionPlaceholder(body)) return verifiedUrl;
   if (verifiedUrl && looksLikeRawToolTranscript(completionText)) {
@@ -266,8 +281,8 @@ function replyPatchFromCompletion(
     return cleanBody;
   }
   if (verifiedUrl) return verifiedUrl;
-  if (hasUrl(currentReply)) return currentReply;
-  if (currentReply.length === 0) return cleanBody || body;
+  if (hasUrl(cleanCurrentReply)) return cleanCurrentReply;
+  if (cleanCurrentReply.length === 0) return cleanBody || body;
   if (!hasUrl(currentReply) && cleanBody && hasUrl(cleanBody)) return cleanBody;
   return cleanBody || body;
 }
