@@ -1388,8 +1388,22 @@ export class LifeOpsFakeBackend {
     if (!manageOp) {
       throw new Error("MESSAGE/manage requires manageOperation");
     }
-    const msgId = pickStringOrNull(kw, ["messageId"]);
-    const threadId = pickStringOrNull(kw, ["threadId"]);
+    const target = pickStringOrNull(kw, ["target"]);
+    const targetKind = pickStringOrNull(kw, ["targetKind"]);
+    const msgId =
+      pickStringOrNull(kw, ["messageId"]) ??
+      (target !== null &&
+      (targetKind === "message" ||
+        targetKind === "email" ||
+        target.startsWith("email_"))
+        ? target
+        : null);
+    const threadId =
+      pickStringOrNull(kw, ["threadId"]) ??
+      (target !== null &&
+      (targetKind === "thread" || target.startsWith("thread_"))
+        ? target
+        : null);
 
     if (manageOp === "archive") {
       if (msgId !== null) {
