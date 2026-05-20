@@ -1308,6 +1308,16 @@ async def _run_instance(
     """Run a single SWE-bench instance through the bridge."""
     started = time.time()
     task_id = f"{provider_label}:{instance.instance_id}" if provider_label else instance.instance_id
+    repo_root: Path | None = None
+    manager: RepositoryManager | None = None
+    if provider_label in _ELIZA_WORKTREE_PROVIDERS:
+        manager = RepositoryManager(
+            Path(os.environ.get("SWE_BENCH_WORKSPACE_DIR", "swe-bench-workspace"))
+        )
+        try:
+            repo_root = await manager.setup_repo(instance)
+        except Exception:
+            repo_root = None
     try:
         send_message = client.send_message  # type: ignore[attr-defined]
         client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
@@ -1324,11 +1334,16 @@ async def _run_instance(
             },
         )
         text = getattr(response, "text", "") or ""
-        patch = _extract_patch(text)
+        patch = _extract_patch_for_repo(text, repo_root) if repo_root else _extract_patch(text)
         if not patch:
             params = getattr(response, "params", None)
             if isinstance(params, dict) and params:
-                patch = _extract_patch(json.dumps(params))
+                params_text = json.dumps(params)
+                patch = (
+                    _extract_patch_for_repo(params_text, repo_root)
+                    if repo_root
+                    else _extract_patch(params_text)
+                )
         if not patch:
             retry_response = send_message(
                 text=_build_prompt(instance, retry=True),
@@ -1345,11 +1360,20 @@ async def _run_instance(
                 },
             )
             retry_text = getattr(retry_response, "text", "") or ""
-            patch = _extract_patch(retry_text)
+            patch = (
+                _extract_patch_for_repo(retry_text, repo_root)
+                if repo_root
+                else _extract_patch(retry_text)
+            )
             if not patch:
                 retry_params = getattr(retry_response, "params", None)
                 if isinstance(retry_params, dict) and retry_params:
-                    patch = _extract_patch(json.dumps(retry_params))
+                    retry_params_text = json.dumps(retry_params)
+                    patch = (
+                        _extract_patch_for_repo(retry_params_text, repo_root)
+                        if repo_root
+                        else _extract_patch(retry_params_text)
+                    )
             if not patch:
                 text = retry_text or text
     except Exception as exc:  # noqa: BLE001 — surface any client failure
