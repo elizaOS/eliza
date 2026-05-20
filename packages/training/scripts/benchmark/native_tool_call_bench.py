@@ -274,6 +274,16 @@ def render_prompt(record: dict[str, Any], tokenizer: Any) -> tuple[str, dict[str
     messages = list(formatted["messages"])
     if messages and messages[-1].get("role") == "assistant":
         messages = messages[:-1]
+    for _msg in messages:
+        for _tc in _msg.get("tool_calls") or []:
+            _fn = _tc.get("function")
+            if isinstance(_fn, dict):
+                _args = _fn.get("arguments")
+                if isinstance(_args, str):
+                    try:
+                        _fn["arguments"] = json.loads(_args)
+                    except json.JSONDecodeError:
+                        _fn["arguments"] = {}
     kwargs = {
         "conversation": messages,
         "tokenize": False,
