@@ -32,7 +32,7 @@ jobs:
       - run: bun install
       - run: bun run --cwd packages/os/setup build
       - run: bun run --cwd packages/os/setup typecheck
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: packages/os/setup/dist/

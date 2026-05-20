@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload large-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: |
@@ -246,7 +246,7 @@ jobs:
 
       - name: Upload frontier-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: |
@@ -340,7 +340,7 @@ jobs:
 
       - name: Upload small-tier artifacts
         if: always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-small-${{ github.run_id }}
           path: |

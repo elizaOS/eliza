@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload JSON report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: riscv64-artifacts-report
           path: build/reports/riscv64_artifacts.json

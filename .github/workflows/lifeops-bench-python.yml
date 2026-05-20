@@ -138,7 +138,7 @@ jobs:
 
       - name: Upload pytest cache on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-cache-${{ github.run_id }}
           path: |
@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-smoke-${{ github.run_id }}
           path: |
@@ -384,7 +384,7 @@ jobs:
 
       - name: Upload live artifacts
         if: always() && steps.gate.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-live-${{ github.run_id }}
           path: |

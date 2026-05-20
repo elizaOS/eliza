@@ -45,7 +45,7 @@ jobs:
           fi
       - name: Package desktop app
         run: bun run --cwd packages/os/usb-installer package:${{ matrix.platform }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: packages/os/usb-installer/build/
