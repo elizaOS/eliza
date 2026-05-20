@@ -2,7 +2,8 @@ import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, Input, Textarea } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
+import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   ArrowLeft,
   ChevronLeft,
