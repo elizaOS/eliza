@@ -16,8 +16,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import app.eliza.BuildConfig;
-import app.eliza.R;
+import ai.elizaos.app.BuildConfig;
+import ai.elizaos.app.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

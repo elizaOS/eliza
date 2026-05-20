@@ -29,10 +29,11 @@ REPORT = ROOT / "build/reports/android_app_runtime_contract.json"
 SCHEMA = "eliza.android_app_runtime_contract.v1"
 CLAIM_BOUNDARY = "static_app_runtime_contract_only_not_android_boot_or_launcher_evidence"
 
-APP_GRADLE = WORKSPACE / "app/android/app/build.gradle"
-APP_MANIFEST = WORKSPACE / "app/android/app/src/main/AndroidManifest.xml"
-AGENT_SERVICE_JAVA = WORKSPACE / "app/android/app/src/main/java/app/eliza/ElizaAgentService.java"
-AGENT_PLUGIN_JAVA = WORKSPACE / "app/android/app/src/main/java/app/eliza/AgentPlugin.java"
+APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
+APP_MANIFEST = WORKSPACE / "app-core/platforms/android/app/src/main/AndroidManifest.xml"
+APP_JAVA_DIR = WORKSPACE / "app-core/platforms/android/app/src/main/java/ai/elizaos/app"
+AGENT_SERVICE_JAVA = APP_JAVA_DIR / "ElizaAgentService.java"
+NATIVE_BRIDGE_JAVA = APP_JAVA_DIR / "ElizaNativeBridge.java"
 PREBUILT_APK = WORKSPACE / "os/android/vendor/eliza/apps/Eliza/Eliza.apk"
 VENDOR_PERMISSION_XMLS = (
     WORKSPACE / "os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
@@ -203,7 +204,7 @@ def apk_agent_abis(entries: Iterable[str]) -> set[str]:
 def java_endpoint_literals(text: str) -> set[str]:
     endpoints = set(re.findall(r'["\'](/api/[A-Za-z0-9_./{}-]+)["\']', text))
     endpoints.update(re.findall(r"https?://[^\"']+(/api/[A-Za-z0-9_./{}-]+)", text))
-    return endpoints
+    return {endpoint.rstrip(".,;:") for endpoint in endpoints}
 
 
 def script_endpoint_literals(paths: Iterable[Path]) -> dict[str, set[str]]:
@@ -211,7 +212,10 @@ def script_endpoint_literals(paths: Iterable[Path]) -> dict[str, set[str]]:
     for path in paths:
         if not path.is_file():
             continue
-        found = set(re.findall(r"/api/[A-Za-z0-9_./{}-]+", read_text(path)))
+        found = {
+            endpoint.rstrip(".,;:")
+            for endpoint in re.findall(r"/api/[A-Za-z0-9_./{}-]+", read_text(path))
+        }
         if found:
             endpoints[rel(path)] = found
     return endpoints
@@ -232,20 +236,22 @@ def add_if(
 
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     findings: list[Finding] = []
-    missing = [
-        path
-        for path in (
+    required_paths = (
             APP_GRADLE,
             APP_MANIFEST,
             AGENT_SERVICE_JAVA,
-            AGENT_PLUGIN_JAVA,
+            APP_JAVA_DIR,
+            NATIVE_BRIDGE_JAVA,
             PREBUILT_APK if args.apk is None else Path(args.apk),
             *VENDOR_PERMISSION_XMLS,
             VENDOR_OVERLAY,
             VENDOR_COMMON_MK,
             *CHIP_AOSP_SCRIPTS,
         )
-        if not path.is_file()
+    missing = [
+        path
+        for path in required_paths
+        if not (path.is_dir() if path == APP_JAVA_DIR else path.is_file())
     ]
     for path in missing:
         findings.append(
@@ -272,9 +278,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     script_packages = collect_script_defaults(CHIP_AOSP_SCRIPTS, "AOSP_AGENT_PACKAGE")
     script_services = collect_script_defaults(CHIP_AOSP_SCRIPTS, "AOSP_AGENT_SERVICE")
     services = extract_manifest_services(read_text(APP_MANIFEST))
-    service_java = read_text(AGENT_SERVICE_JAVA)
-    plugin_java = read_text(AGENT_PLUGIN_JAVA)
-    app_endpoints = java_endpoint_literals(service_java) | java_endpoint_literals(plugin_java)
+    app_endpoints: set[str] = set()
+    for java_file in sorted(APP_JAVA_DIR.glob("*.java")):
+        app_endpoints.update(java_endpoint_literals(read_text(java_file)))
     script_endpoints = script_endpoint_literals(CHIP_AOSP_SCRIPTS)
 
     entries = apk_entries(apk_path)
@@ -328,15 +334,19 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Package the riscv64 Bun/local-agent payload under assets/agent/riscv64 and prove ElizaAgentService can extract it.",
     )
 
-    expected_service = "app.eliza.ElizaAgentService"
+    expected_service = f"{gradle_id}.ElizaAgentService" if gradle_id else "ElizaAgentService"
+    expected_service_components = {
+        f"{gradle_id}/.ElizaAgentService" if gradle_id else ".ElizaAgentService",
+        f"{gradle_id}/{expected_service}" if gradle_id else expected_service,
+    }
     missing_service_defaults = {
         path: value
         for path, value in script_services.items()
-        if expected_service not in value and not value.endswith("/.ElizaAgentService")
+        if value not in expected_service_components
     }
     add_if(
         findings,
-        expected_service not in services,
+        expected_service not in services and ".ElizaAgentService" not in services,
         "app_manifest_missing_agent_service",
         "AndroidManifest.xml does not expose the expected ElizaAgentService",
         f"services={sorted(services)}",
@@ -355,17 +365,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     for endpoints in script_endpoints.values():
         script_endpoint_union.update(endpoints)
     app_health_ok = "/api/health" in app_endpoints
-    app_status_ok = "/api/status" in app_endpoints
     scripts_use_app_health = "/api/health" in script_endpoint_union
     scripts_use_legacy_self_status = "/api/agent/self-status" in script_endpoint_union
     add_if(
         findings,
         app_health_ok
-        and app_status_ok
         and scripts_use_legacy_self_status
         and not scripts_use_app_health,
         "android_agent_health_contract_mismatch",
-        "chip smoke scripts check /api/agent/self-status while the Android service watchdog uses /api/health and the app plugin uses /api/status",
+        "chip smoke scripts check /api/agent/self-status while the Android service watchdog uses /api/health",
         json.dumps(
             {
                 "app_endpoints": sorted(app_endpoints),

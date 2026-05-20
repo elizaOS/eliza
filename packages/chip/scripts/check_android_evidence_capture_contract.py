@@ -31,8 +31,8 @@ REPORT = ROOT / "build/reports/android_evidence_capture_contract.json"
 SCHEMA = "eliza.android_evidence_capture_contract.v1"
 CLAIM_BOUNDARY = "static_android_evidence_capture_contract_only_not_runtime_evidence"
 LAUNCHER_EVIDENCE = "docs/evidence/android/eliza_launcher_runtime_evidence.json"
-EXPECTED_AGENT_PACKAGE = "app.eliza"
-EXPECTED_AGENT_SERVICE = "app.eliza/.ElizaAgentService"
+EXPECTED_AGENT_PACKAGE = "ai.elizaos.app"
+EXPECTED_AGENT_SERVICE = "ai.elizaos.app/.ElizaAgentService"
 REQUIRED_BOOT_GATE_TOKENS = {
     "pm path": "adb PackageManager install proof",
     "resolve-activity": "HOME intent resolution proof",

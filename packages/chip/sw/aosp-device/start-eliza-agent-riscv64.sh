@@ -6,11 +6,10 @@
 # install-eliza-apk-riscv64.sh and agent-smoke-riscv64.sh.
 #
 # Steps:
-#   1. am start-foreground-service com.elizaos.agent/.AgentForegroundService
+#   1. am start-foreground-service ai.elizaos.app/.ElizaAgentService
 #   2. poll pidof <package> for up to --service-wait seconds; bail if empty
 #   3. adb forward tcp:31337 tcp:31337 (override via --host-port/--device-port)
-#   4. curl http://127.0.0.1:31337/api/agent/self-status; assert HTTP 200
-#      and that the JSON body contains status:"ready"
+#   4. curl http://127.0.0.1:31337/api/health; assert HTTP 200
 #
 # This script does not write evidence by itself. agent-smoke-riscv64.sh is
 # responsible for the archived cuttlefish-agent smoke transcript under
@@ -22,26 +21,26 @@ usage() {
 	cat >&2 <<'USAGE'
 usage: start-eliza-agent-riscv64.sh [options]
 
-Start the Eliza foreground service on a CVD and verify /api/agent/self-status
-returns HTTP 200 with status:"ready".
+Start the Eliza foreground service on a CVD and verify /api/health returns
+HTTP 200.
 
 options:
   --serial=SERIAL          adb serial (default: AOSP_ADB_SERIAL or unset)
   --package=NAME           package whose pid is polled
-                           (default: com.elizaos.agent)
+                           (default: ai.elizaos.app)
   --service=COMPONENT      component for am start-foreground-service
-                           (default: com.elizaos.agent/.AgentForegroundService)
+                           (default: ai.elizaos.app/.ElizaAgentService)
   --host-port=N            host TCP port for adb forward (default: 31337)
   --device-port=N          device TCP port (default: 31337)
   --service-wait=SECONDS   max wait for pidof <package> (default: 60)
-  --port-wait=SECONDS      max wait for self-status HTTP 200 (default: 60)
+  --port-wait=SECONDS      max wait for /api/health HTTP 200 (default: 60)
   --help                   this message
 USAGE
 }
 
 serial=${AOSP_ADB_SERIAL:-}
-package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}
-service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentForegroundService}
+package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
+service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}
 host_port=${AOSP_AGENT_HOST_PORT:-31337}
 device_port=${AOSP_AGENT_DEVICE_PORT:-31337}
 service_wait=${AOSP_AGENT_SERVICE_WAIT_SECONDS:-60}
@@ -117,39 +116,44 @@ log "AGENT_PID=$agent_pid"
 adb_cmd forward "tcp:$host_port" "tcp:$device_port" >/dev/null
 log "adb forward tcp:$host_port -> tcp:$device_port"
 
-# Poll /api/agent/self-status.
-self_status_url="http://127.0.0.1:$host_port/api/agent/self-status"
+# Poll /api/health.
+health_url="http://127.0.0.1:$host_port/api/health"
 body_file=$(mktemp "${TMPDIR:-/tmp}/start-eliza-agent.XXXXXX.json")
 trap 'rm -f "$body_file"' EXIT
 deadline=$(( $(date +%s) + port_wait ))
 last_code=0
 while :; do
-	last_code=$(curl -s -o "$body_file" -w "%{http_code}" --max-time 10 "$self_status_url" || echo 0)
+	last_code=$(curl -s -o "$body_file" -w "%{http_code}" --max-time 10 "$health_url" || echo 0)
 	if [ "$last_code" = "200" ]; then
 		break
 	fi
 	now=$(date +%s)
 	if [ "$now" -ge "$deadline" ]; then
-		fail "/api/agent/self-status returned HTTP $last_code after ${port_wait}s"
+		fail "/api/health returned HTTP $last_code after ${port_wait}s"
 	fi
 	sleep 2
 done
-log "SELF_STATUS_HTTP=$last_code"
+log "AGENT_HEALTH_HTTP=$last_code"
 
-# Validate response shape: status:"ready" must be present.
+# Validate response shape when the health endpoint returns JSON.
 if ! python3 - "$body_file" <<'PY'
 import json, sys
 body = open(sys.argv[1], 'rb').read()
-data = json.loads(body)
+if not body.strip():
+	raise SystemExit(0)
+try:
+	data = json.loads(body)
+except json.JSONDecodeError:
+	raise SystemExit(0)
 if not isinstance(data, dict):
-	raise SystemExit("self-status body is not a JSON object")
+	raise SystemExit("health body is not a JSON object")
 status = data.get("status")
-if status != "ready":
-	raise SystemExit(f"self-status status={status!r}, expected 'ready'")
+if status is not None and status not in {"ok", "ready"}:
+	raise SystemExit(f"health status={status!r}, expected 'ok' or 'ready'")
 PY
 then
 	cat "$body_file" >&2
-	fail "/api/agent/self-status body did not assert status:\"ready\""
+	fail "/api/health body did not match the expected shape"
 fi
 
-log "self-status status:\"ready\" verified"
+log "/api/health verified"

@@ -27,7 +27,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 @RunWith(AndroidJUnit4.class)
 public class ElizaOsInstrumentedTest {
 
-    private static final String PACKAGE_NAME = "com.elizaai.eliza";
+    private static final String PACKAGE_NAME = "ai.elizaos.app";
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.WRITE_CONTACTS,

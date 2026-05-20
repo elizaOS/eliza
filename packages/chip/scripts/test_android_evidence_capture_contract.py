@@ -116,16 +116,16 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gate.CAPTURE_SCRIPT.write_text(
-                    "aosp_agent_package=${AOSP_AGENT_PACKAGE:-app.eliza}\n"
-                    "aosp_agent_service=${AOSP_AGENT_SERVICE:-app.eliza/.ElizaAgentService}\n",
+                    "aosp_agent_package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}\n"
+                    "aosp_agent_service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}\n",
                     encoding="utf-8",
                 )
                 gate.BOOT_GATE.write_text(
-                    "adb shell pm path app.eliza\n"
+                    "adb shell pm path ai.elizaos.app\n"
                     "adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME\n"
                     "adb shell cmd role holders android.app.role.ASSISTANT\n"
                     "adb shell dumpsys activity activities\n"
-                    "adb shell pidof app.eliza\n"
+                    "adb shell pidof ai.elizaos.app\n"
                     "curl http://127.0.0.1:31337/api/health\n"
                     "adb shell logcat -d | grep -Ei 'fatal|avc'\n",
                     encoding="utf-8",

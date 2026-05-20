@@ -33,7 +33,7 @@ fixtures_dir="$repo_root/sw/aosp-device/fixtures"
 capture_driver="$repo_root/sw/aosp-device/capture-aosp-evidence.sh"
 install_driver="$repo_root/sw/aosp-device/install-eliza-apk-riscv64.sh"
 start_driver="$repo_root/sw/aosp-device/start-eliza-agent-riscv64.sh"
-default_apk_rel="packages/app/android/app/build/outputs/apk/release/app-riscv64-release.apk"
+default_apk_rel="packages/app-core/platforms/android/app/build/outputs/apk/release/app-riscv64-release.apk"
 
 usage() {
 	cat >&2 <<'USAGE'
@@ -48,9 +48,9 @@ options:
   --apk=PATH                riscv64 Eliza APK (defaults to ELIZA_APK_PATH then
                             workspace_root/<default_apk_rel>)
   --serial=SERIAL           adb serial for the live CVD
-  --package=NAME            package name (default: com.elizaos.agent)
+  --package=NAME            package name (default: ai.elizaos.app)
   --service=COMPONENT       foreground-service component
-                            (default: com.elizaos.agent/.AgentForegroundService)
+                            (default: ai.elizaos.app/.ElizaAgentService)
   --llama-model=PATH        GGUF for the llama smoke (required)
   --golden-audio=PATH       golden STT WAV (required)
   --golden-transcript=TEXT  golden STT transcript text (required)
@@ -70,8 +70,8 @@ USAGE
 aosp=${AOSP:-${AOSP_DIR:-}}
 apk=${ELIZA_APK_PATH:-${AOSP_AGENT_APK:-}}
 serial=${AOSP_ADB_SERIAL:-}
-package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}
-service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentForegroundService}
+package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
+service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}
 llama_model=${AOSP_AGENT_LLAMA_MODEL:-}
 golden_audio=${AOSP_AGENT_GOLDEN_AUDIO:-}
 golden_transcript=${AOSP_AGENT_GOLDEN_TRANSCRIPT:-}

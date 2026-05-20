@@ -78,8 +78,8 @@ PASSING_ANDROID_MANIFEST = """{
       "ro.product.device": "eliza-chip",
       "sys.boot_completed": "1",
       "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
-      "home_role": "app.eliza",
-      "foreground_activity": "app.eliza/.MainActivity",
+      "home_role": "ai.elizaos.app",
+      "foreground_activity": "ai.elizaos.app/.MainActivity",
       "agent_service_pid": "present",
       "agent_health": "/api/health 200 ready",
       "logcat_fatal_count": "0",
@@ -110,12 +110,12 @@ PASSING_UMBRELLA_MANIFEST = """{
 
 
 FULL_VALIDATOR_SCRIPT = """#!/usr/bin/env bash
-adb shell pm path app.eliza
+adb shell pm path ai.elizaos.app
 adb shell cmd role holders android.app.role.HOME
 adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
-adb shell dumpsys package app.eliza
+adb shell dumpsys package ai.elizaos.app
 adb shell dumpsys activity activities
-adb shell pidof app.eliza.agent
+adb shell pidof ai.elizaos.app
 adb shell curl http://127.0.0.1:3000/api/health
 adb logcat -d | grep -i fatal
 adb logcat -d | grep -i 'avc: denied'

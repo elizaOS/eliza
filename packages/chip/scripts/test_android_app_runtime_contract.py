@@ -35,25 +35,29 @@ def make_apk(path: Path, entries: list[str]) -> Path:
 class AndroidAppRuntimeContractTests(unittest.TestCase):
     def _patch_paths(self, tmp: Path, apk_entries: list[str]):
         app_gradle = write(
-            tmp / "app/android/app/build.gradle",
-            'android { defaultConfig { applicationId "app.eliza" } }\n',
+            tmp / "app-core/platforms/android/app/build.gradle",
+            'android { defaultConfig { applicationId "ai.elizaos.app" } }\n',
         )
         app_manifest = write(
-            tmp / "app/android/app/src/main/AndroidManifest.xml",
+            tmp / "app-core/platforms/android/app/src/main/AndroidManifest.xml",
             """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
-    <service android:name="app.eliza.ElizaAgentService" />
+    <service android:name=".ElizaAgentService" />
   </application>
 </manifest>
 """,
         )
         service_java = write(
-            tmp / "app/android/app/src/main/java/app/eliza/ElizaAgentService.java",
+            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
             'class ElizaAgentService { static final String HEALTH_URL = "http://127.0.0.1:31337/api/health"; }\n',
         )
         plugin_java = write(
-            tmp / "app/android/app/src/main/java/app/eliza/AgentPlugin.java",
-            'class AgentPlugin { String path = "/api/status"; }\n',
+            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/AgentPlugin.java",
+            'class AgentPlugin { String path = "/api/health"; }\n',
+        )
+        native_bridge_java = write(
+            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaNativeBridge.java",
+            "class ElizaNativeBridge { String getLocalAgentToken() { return null; } }\n",
         )
         apk = make_apk(tmp / "os/android/vendor/eliza/apps/Eliza/Eliza.apk", apk_entries)
         default_permissions = write(
@@ -103,8 +107,9 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             mock.patch.object(gate, "ROOT", tmp / "chip"),
             mock.patch.object(gate, "APP_GRADLE", app_gradle),
             mock.patch.object(gate, "APP_MANIFEST", app_manifest),
+            mock.patch.object(gate, "APP_JAVA_DIR", service_java.parent),
             mock.patch.object(gate, "AGENT_SERVICE_JAVA", service_java),
-            mock.patch.object(gate, "AGENT_PLUGIN_JAVA", plugin_java),
+            mock.patch.object(gate, "NATIVE_BRIDGE_JAVA", native_bridge_java),
             mock.patch.object(gate, "PREBUILT_APK", apk),
             mock.patch.object(
                 gate, "VENDOR_PERMISSION_XMLS", (default_permissions, priv_permissions)
@@ -159,33 +164,33 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             )
             with contextlib_stack(patches):
                 gate.APP_GRADLE.write_text(
-                    'android { defaultConfig { applicationId "app.eliza" } }\n',
+                    'android { defaultConfig { applicationId "ai.elizaos.app" } }\n',
                     encoding="utf-8",
                 )
                 for path in gate.VENDOR_PERMISSION_XMLS:
                     path.write_text(
-                        path.read_text(encoding="utf-8").replace("ai.elizaos.app", "app.eliza"),
+                        path.read_text(encoding="utf-8"),
                         encoding="utf-8",
                     )
                 gate.VENDOR_OVERLAY.write_text(
-                    '<resources><string name="config_defaultAssistant">app.eliza</string></resources>\n',
+                    '<resources><string name="config_defaultAssistant">ai.elizaos.app</string></resources>\n',
                     encoding="utf-8",
                 )
                 gate.VENDOR_COMMON_MK.write_text(
-                    "PRODUCT_SYSTEM_PROPERTIES += ro.elizaos.home=app.eliza\n",
+                    "PRODUCT_SYSTEM_PROPERTIES += ro.elizaos.home=ai.elizaos.app\n",
                     encoding="utf-8",
                 )
                 for path in gate.CHIP_AOSP_SCRIPTS:
                     path.write_text(
-                        "package=${AOSP_AGENT_PACKAGE:-app.eliza}\n"
-                        "service=${AOSP_AGENT_SERVICE:-app.eliza/.ElizaAgentService}\n"
+                        "package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}\n"
+                        "service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}\n"
                         "url=/api/health\n",
                         encoding="utf-8",
                     )
                 payload = gate.run_check(
                     Namespace(
                         apk=None,
-                        apk_package_id="app.eliza",
+                        apk_package_id="ai.elizaos.app",
                         apkanalyzer=None,
                     )
                 )

@@ -6,7 +6,7 @@
 # start-eliza-agent-riscv64.sh + agent-smoke-riscv64.sh (Task 30).
 #
 # Locates the APK from --apk, ELIZA_APK_PATH, or the workspace default of
-# packages/app/android/app/build/outputs/apk/release/app-riscv64-release.apk
+# packages/app-core/platforms/android/app/build/outputs/apk/release/app-riscv64-release.apk
 # under the current repo root. Refuses to install an APK with no
 # lib/riscv64/*.so payload so the operator does not chase a downstream
 # INSTALL_FAILED_NO_MATCHING_ABIS without a clear hint.
@@ -19,7 +19,7 @@ set -euo pipefail
 
 repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
 workspace_root=$(CDPATH=; cd -- "$repo_root/../.." && pwd)
-default_apk_rel="packages/app/android/app/build/outputs/apk/release/app-riscv64-release.apk"
+default_apk_rel="packages/app-core/platforms/android/app/build/outputs/apk/release/app-riscv64-release.apk"
 
 usage() {
 	cat >&2 <<'USAGE'
@@ -31,19 +31,19 @@ APK ships lib/riscv64/*.so jniLibs before invoking adb install -r -g.
 options:
   --apk=PATH              path to the riscv64 APK (defaults to
                           ELIZA_APK_PATH then
-                          packages/app/android/app/build/outputs/apk/release/
+                          packages/app-core/platforms/android/app/build/outputs/apk/release/
                           app-riscv64-release.apk under the workspace root)
   --serial=SERIAL         adb serial (forwarded as `adb -s SERIAL`); if
                           unset, the default device is used
   --package=NAME          expected Android package name to verify after
-                          install (default: com.elizaos.agent)
+                          install (default: ai.elizaos.app)
   --help                  this message
 USAGE
 }
 
 apk=${ELIZA_APK_PATH:-}
 serial=${AOSP_ADB_SERIAL:-}
-package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}
+package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -90,7 +90,7 @@ log "package=$package"
 # riscv64 jniLibs guard.
 if ! unzip -l "$apk" 2>/dev/null | grep -q "lib/riscv64/"; then
 	echo "error: $apk has no lib/riscv64/*.so payload" >&2
-	echo "       check jniLibs/riscv64/ staging in the APK build (packages/app/android)" >&2
+	echo "       check jniLibs/riscv64/ staging in the APK build (packages/app-core/platforms/android)" >&2
 	exit 1
 fi
 log "lib/riscv64/ payload: present"

@@ -28,7 +28,7 @@ def write_json(path: Path, payload: dict) -> Path:
     return write(path, json.dumps(payload, indent=2) + "\n")
 
 
-def passing_payload(package: str = "app.eliza") -> dict:
+def passing_payload(package: str = "ai.elizaos.app") -> dict:
     return {
         "schema": gate.SCHEMA,
         "claim_boundary": gate.CLAIM_BOUNDARY,
@@ -87,12 +87,12 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
                     "claim_boundary": gate.CLAIM_BOUNDARY,
                     "device": {"sys_boot_completed": "0", "cpu_abi": "x86_64"},
                     "app": {
-                        "package_name": "app.eliza",
+                        "package_name": "ai.elizaos.app",
                         "pm_path": "",
                         "role_holders": {},
                         "home_resolve_activity": "com.android.launcher/.Launcher",
                         "foreground_activity": "com.android.launcher/.Launcher",
-                        "service_component": "app.eliza/.ElizaAgentService",
+                        "service_component": "ai.elizaos.app/.ElizaAgentService",
                         "service_pid": 0,
                     },
                     "agent": {

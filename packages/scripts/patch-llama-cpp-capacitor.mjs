@@ -90,7 +90,7 @@ function ensureGradleDflashContract(pkgDir) {
 
   const dflashHelpers =
     `def resolveElizaRepoRoot = { ->\n` +
-    `    return rootProject.projectDir.toPath().resolve('../../..').normalize().toFile().absolutePath\n` +
+    `    return rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile().absolutePath\n` +
     `}\n` +
     `\n` +
     `// Per-ABI resolver for the DFlash cross-compile output produced by\n` +
@@ -140,6 +140,10 @@ function ensureGradleDflashContract(pkgDir) {
   }
 
   next = next
+    .replace(
+      /rootProject\.projectDir\.toPath\(\)\.resolve\('\.\.\/\.\.\/\.\.'\)/g,
+      "rootProject.projectDir.toPath().resolve('../../../..')",
+    )
     .replace(
       /namespace\s+"ai\.annadata\.plugin\.capacitor"/g,
       'namespace = "ai.annadata.plugin.capacitor"',
