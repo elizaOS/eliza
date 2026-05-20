@@ -10,6 +10,7 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import UTC, datetime
+from itertools import product
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -80,6 +81,7 @@ PROVIDER_DUMMY_KEY: dict[str, str] = {
     "vllm": "dummy",
 }
 DEFAULT_STALE_RECOVERY_SECONDS = 6 * 60 * 60
+LATEST_COMPARABLE_SCORE_TOLERANCE = 0.15
 CANONICAL_REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
@@ -1256,7 +1258,7 @@ def _rebuild_latest_result_snapshots(
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     latest_by_signature: dict[tuple[str, str, str], dict[str, Any]] = {}
     latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
-    rows_by_comparison_signature: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, list[dict[str, Any]]]]] = {}
     quarantine_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=None):
@@ -1311,7 +1313,7 @@ def _rebuild_latest_result_snapshots(
         ):
             rows_by_comparison_signature.setdefault(benchmark_id, {}).setdefault(
                 comparison_signature, {}
-            ).setdefault(agent, row)
+            ).setdefault(agent, []).append(row)
 
     _promote_latest_comparable_real_cohorts(
         latest_by_key=latest_by_key,
@@ -1694,7 +1696,7 @@ def _is_stale_compatibility_incompatible_row(
 def _promote_latest_comparable_real_cohorts(
     *,
     latest_by_key: dict[tuple[str, str], dict[str, Any]],
-    rows_by_comparison_signature: dict[str, dict[str, dict[str, dict[str, Any]]]],
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, list[dict[str, Any]]]]],
     adapters: dict[str, BenchmarkAdapter] | None,
 ) -> None:
     """Prefer a complete apples-to-apples real-harness cohort for latest rows.
@@ -1710,6 +1712,7 @@ def _promote_latest_comparable_real_cohorts(
         if len(required_agents) < 2:
             continue
         current_signatures: set[str] = set()
+        current_scores: dict[str, float] = {}
         for agent in required_agents:
             row = latest_by_key.get((benchmark_id, agent))
             if row is None:
@@ -1717,17 +1720,36 @@ def _promote_latest_comparable_real_cohorts(
             current_signatures.add(
                 _comparison_signature_for_row(row, benchmark_id=benchmark_id, agent=agent)
             )
+            score = row.get("score")
+            if isinstance(score, (int, float)) and math.isfinite(float(score)):
+                current_scores[agent] = float(score)
         else:
-            if len(current_signatures) <= 1:
+            if len(current_signatures) <= 1 and _scores_within_latest_tolerance(
+                current_scores,
+                required_agents,
+            ):
                 continue
 
         candidates: list[dict[str, dict[str, Any]]] = []
+        comparable_candidates: list[dict[str, dict[str, Any]]] = []
         for rows_by_agent in rows_by_signature.values():
-            if all(agent in rows_by_agent for agent in required_agents):
-                candidates.append(rows_by_agent)
+            if not all(agent in rows_by_agent for agent in required_agents):
+                continue
+            row_lists = [rows_by_agent[agent][:8] for agent in required_agents]
+            for combo in product(*row_lists):
+                candidate = dict(zip(required_agents, combo, strict=True))
+                candidates.append(candidate)
+                scores = {
+                    agent: float(candidate[agent]["score"])
+                    for agent in required_agents
+                    if isinstance(candidate[agent].get("score"), (int, float))
+                    and math.isfinite(float(candidate[agent]["score"]))
+                }
+                if _scores_within_latest_tolerance(scores, required_agents):
+                    comparable_candidates.append(candidate)
         if not candidates:
             continue
-        best = max(candidates, key=_cohort_recency_key)
+        best = max(comparable_candidates or candidates, key=_cohort_recency_key)
         for agent in required_agents:
             latest_by_key[(benchmark_id, agent)] = best[agent]
 
@@ -1751,6 +1773,22 @@ def _cohort_recency_key(rows_by_agent: dict[str, dict[str, Any]]) -> tuple[str, 
         for row in rows_by_agent.values()
     ]
     return (min(timestamps) if timestamps else "", max(timestamps) if timestamps else "")
+
+
+def _scores_within_latest_tolerance(
+    scores: dict[str, float],
+    required_agents: tuple[str, ...],
+) -> bool:
+    if any(agent not in scores for agent in required_agents):
+        return False
+    values = [scores[agent] for agent in required_agents]
+    baseline = min(values)
+    return math.isclose(
+        max(values),
+        baseline,
+        rel_tol=LATEST_COMPARABLE_SCORE_TOLERANCE,
+        abs_tol=LATEST_COMPARABLE_SCORE_TOLERANCE,
+    )
 
 
 def _repair_current_compatibility_statuses(

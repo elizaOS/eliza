@@ -42,9 +42,7 @@ const loadBlueSkyClient = async (): Promise<{
     service: string;
   }) => {
     authenticate: () => Promise<{ did: string; handle: string }>;
-    getNotifications: (
-      limit: number,
-    ) => Promise<{ notifications: unknown[] }>;
+    getNotifications: (limit: number) => Promise<{ notifications: unknown[] }>;
     getTimeline: (params: { limit: number }) => Promise<{ feed: unknown[] }>;
     sendPost: (params: {
       content: { text: string };

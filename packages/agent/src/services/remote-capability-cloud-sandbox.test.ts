@@ -157,7 +157,10 @@ describe("cloud capability sandbox provisioner", () => {
     const fetchMock = vi.fn(async () => {
       const attempt = fetchMock.mock.calls.length;
       if (attempt === 1) {
-        return jsonResponse({ available: false, capabilities: { plugin: false } });
+        return jsonResponse({
+          available: false,
+          capabilities: { plugin: false },
+        });
       }
       return jsonResponse({ available: true, capabilities: { plugin: true } });
     });
