@@ -194,7 +194,7 @@ async function main() {
     const pairing = wirelessAdb.find((service) => service.type.includes("_adb-tls-pairing"));
     if (pairing) {
       console.log(
-        `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: ADB_PAIR_CODE=<pairing-code> node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
       return;
     }
