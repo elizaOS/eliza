@@ -514,6 +514,7 @@ describe("shellAction", () => {
     });
 
     expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("git grep -n --recurse-submodules");
     expect(result.command).toContain("rg -n");
     expect(result.command).toContain("'Cerebras'");
     expect(result.command).toContain(".");

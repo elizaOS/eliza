@@ -353,6 +353,9 @@ function broadRecursiveGrepPattern(command: string): string | undefined {
 
 function boundedSourceSearchCommand(pattern: string): string {
   const quotedPattern = shellSingleQuote(pattern);
+  const gitExcludes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
+    shellSingleQuote(`:(exclude)${glob.slice(1)}`),
+  ).join(" ");
   const rgGlobs = SOURCE_SEARCH_EXCLUDES.map(
     (glob) => `--glob ${shellSingleQuote(glob)}`,
   ).join(" ");
@@ -362,7 +365,9 @@ function boundedSourceSearchCommand(pattern: string): string {
     .map((dir) => `-path ${shellSingleQuote(dir)}`)
     .join(" -o ");
   return [
-    "if command -v rg >/dev/null 2>&1; then",
+    "if git rev-parse --show-toplevel >/dev/null 2>&1; then",
+    `git grep -n --recurse-submodules -- ${quotedPattern} -- . ${gitExcludes} || true;`,
+    "elif command -v rg >/dev/null 2>&1; then",
     `rg -n --hidden ${rgGlobs} ${quotedPattern} . || true;`,
     "else",
     `find . \\( ${findPrunes} \\) -prune -o -type f -exec grep -n -I -m 20 -- ${quotedPattern} {} + 2>/dev/null || true;`,
