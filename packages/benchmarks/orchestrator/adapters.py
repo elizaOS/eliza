@@ -435,7 +435,20 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
     if not isinstance(manifest_payload, dict):
         return False
     runtime = manifest_payload.get("runtime")
-    if not (isinstance(runtime, dict) and "dflash" in runtime):
+    kernels = manifest_payload.get("kernels")
+    files = manifest_payload.get("files")
+    has_dflash_runtime = isinstance(runtime, dict) and "dflash" in runtime
+    has_dflash_kernel = (
+        isinstance(kernels, dict)
+        and isinstance(kernels.get("required"), list)
+        and "dflash" in {str(item) for item in kernels["required"]}
+    )
+    has_dflash_file = (
+        isinstance(files, dict)
+        and isinstance(files.get("dflash"), list)
+        and any(isinstance(item, dict) and item.get("path") for item in files["dflash"])
+    )
+    if not (has_dflash_runtime or has_dflash_kernel or has_dflash_file):
         return False
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [
