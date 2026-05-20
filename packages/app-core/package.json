@@ -51,6 +51,7 @@
     "sms-gateway:doctor": "node ./scripts/install-android-sms-gateway.mjs --doctor",
     "sms-gateway:homepage": "node ./scripts/check-homepage-public-readiness.mjs",
     "sms-gateway:install": "node ./scripts/install-android-sms-gateway.mjs --wait-device 300 --grant-role --clear-logcat --watch-logs 60",
+    "sms-gateway:pair": "node ./scripts/install-android-sms-gateway.mjs --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
     "sms-gateway:readiness": "node ./scripts/check-sms-gateway-readiness.mjs",
     "sms-gateway:verify:cloud-onboarding": "node ./scripts/verify-cloud-sms-onboarding-flow.mjs",
     "sms-gateway:verify:bluebubbles": "node ./scripts/verify-bluebubbles-gateway-e2e.mjs",

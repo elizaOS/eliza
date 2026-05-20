@@ -7812,10 +7812,10 @@ export const allActionsSpec = {
 		{
 			name: "SMARTGLASSES_CONTROL",
 			description:
-				"Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+				"Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
 			parameters: [],
 			descriptionCompressed:
-				"smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
+				"smartglasses-control: connect, display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
 			similes: [
 				"EVEN_GLASSES_CONTROL",
 				"SMARTGLASSES_SETTINGS",

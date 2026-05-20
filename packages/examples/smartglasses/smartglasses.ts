@@ -16,7 +16,9 @@ service.onRawAudio((audio, sampleRate, side, encoding, sequence) => {
   );
 });
 service.onAudio((pcm, sampleRate, side) => {
-  console.log(`decoded pcm side=${side} sampleRate=${sampleRate} samples=${pcm.length}`);
+  console.log(
+    `decoded pcm side=${side} sampleRate=${sampleRate} samples=${pcm.length}`,
+  );
 });
 
 await service.connect();
@@ -70,6 +72,7 @@ await service.setSilentMode(false);
 await service.setGlassesWearDetection(true);
 await service.scanWifi();
 await service.configureWifi("ExampleNet", "secret");
+await service.requestWifiSetup("Example needs headset Wi-Fi");
 await service.getWifiStatus();
 await service.sendConnectionReady();
 await service.sendConnectionReady("both", "official");

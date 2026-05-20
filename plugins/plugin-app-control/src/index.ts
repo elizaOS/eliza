@@ -100,6 +100,18 @@ export const appControlPlugin: Plugin = {
 		},
 		{
 			id: "views-manager",
+			label: "Views XR",
+			description: "Browse and open available views contributed by plugins",
+			icon: "LayoutGrid",
+			path: "/views",
+			viewType: "xr",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "ViewManagerView",
+			visibleInManager: true,
+			desktopTabEnabled: true,
+		},
+		{
+			id: "views-manager",
 			label: "Views TUI",
 			description:
 				"Terminal view for browsing and opening available plugin views",

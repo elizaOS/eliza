@@ -33,6 +33,14 @@ export type HardwareEvidenceReport = {
     sequence?: number;
     serialNumber?: string;
   }>;
+  lenses: Record<
+    GlassSide,
+    {
+      connected: boolean;
+      name?: string;
+      address?: string;
+    }
+  >;
   audio: Array<{
     at: string;
     side: string;
@@ -91,12 +99,32 @@ export function createHardwareEvidenceReport(options: {
     },
     writes: [],
     events: [],
+    lenses: {
+      left: { connected: false },
+      right: { connected: false },
+    },
     audio: [],
     headsetState: {
       physical: null,
       battery: null,
       device: null,
     },
+  };
+}
+
+export function recordHardwareLens(
+  report: HardwareEvidenceReport,
+  side: GlassSide,
+  lens: {
+    connected?: boolean;
+    name?: string;
+    address?: string;
+  },
+): void {
+  report.lenses[side] = {
+    connected: lens.connected ?? true,
+    name: lens.name,
+    address: lens.address,
   };
 }
 
@@ -193,6 +221,86 @@ export function missingHardwareEvidence(
   return REQUIRED_HARDWARE_EVIDENCE.filter((check) => !report.checks[check]);
 }
 
+export type CompleteHardwareEvidenceOptions = {
+  requireFinishedAt?: boolean;
+};
+
+export function missingCompleteHardwareEvidence(
+  report: HardwareEvidenceReport,
+  options: CompleteHardwareEvidenceOptions = {},
+): string[] {
+  const failures = [...missingHardwareEvidence(report)];
+  if (options.requireFinishedAt && !report.finishedAt)
+    failures.push("missingFinishedAt");
+  if (!report.status?.connected) failures.push("statusNotConnected");
+  if (!report.lenses.left.connected) failures.push("missingLeftLensConnection");
+  if (!report.lenses.right.connected)
+    failures.push("missingRightLensConnection");
+  if (!report.status?.connectedLenses?.left?.connected)
+    failures.push("missingStatusLeftLensConnection");
+  if (!report.status?.connectedLenses?.right?.connected)
+    failures.push("missingStatusRightLensConnection");
+  if (!report.status?.lastSerialNumber) failures.push("missingSerialNumber");
+  if ((report.status?.audioChunksReceived ?? 0) < 1)
+    failures.push("missingStatusAudioChunks");
+  if (report.writes.length === 0) failures.push("missingWrites");
+  if (report.events.length === 0) failures.push("missingEvents");
+  if (report.audio.length === 0) failures.push("missingAudioChunks");
+  if (
+    !report.writes.some(
+      (write) => write.command === "init" || write.command === "right-init",
+    )
+  )
+    failures.push("missingInitWrite");
+  if (!report.writes.some((write) => write.command === "display-result"))
+    failures.push("missingDisplayWrite");
+  if (!report.writes.some((write) => write.command === "get-serial"))
+    failures.push("missingSerialRequestWrite");
+  if (
+    !report.writes.some((write) =>
+      ["brightness", "dashboard", "head-up-angle", "wear-detection"].includes(
+        write.command,
+      ),
+    )
+  )
+    failures.push("missingSettingsWrite");
+  if (!report.events.some((event) => event.type === "serial"))
+    failures.push("missingSerialEvent");
+  if (
+    !report.events.some(
+      (event) => event.label === "single_tap" || event.label === "long_press",
+    )
+  )
+    failures.push("missingMicEnableTapEvent");
+  if (
+    !report.events.some(
+      (event) =>
+        event.label === "double_tap" || event.label === "stop_ai_recording",
+    )
+  )
+    failures.push("missingMicDisableTapEvent");
+  if (!hasRightMicWrite(report, "enable"))
+    failures.push("missingMicEnableWrite");
+  if (!hasRightMicWrite(report, "disable"))
+    failures.push("missingMicDisableWrite");
+  if (!report.audio.some((chunk) => chunk.bytes > 0))
+    failures.push("missingNonEmptyAudioChunk");
+  if (!report.audio.some((chunk) => chunk.side === "right" && chunk.bytes > 0))
+    failures.push("missingRightLensAudioChunk");
+  if (
+    report.headsetState.physical !== "wearing" &&
+    isCradleOrChargingState(
+      report.headsetState.physical,
+      report.headsetState.battery,
+    )
+  ) {
+    failures.push("headsetInCradle");
+  }
+  if (report.headsetState.physical !== "wearing")
+    failures.push("wearingStateNotObserved");
+  return [...new Set(failures)];
+}
+
 export function updateHardwareEvidenceStatus(
   report: HardwareEvidenceReport,
   status: SmartglassesStatus,
@@ -207,8 +315,14 @@ export function updateHardwareEvidenceStatus(
   if (status.deviceState !== null) {
     report.headsetState.device = status.deviceState;
   }
+  if (status.connectedLenses?.left) {
+    recordHardwareLens(report, "left", status.connectedLenses.left);
+  }
+  if (status.connectedLenses?.right) {
+    recordHardwareLens(report, "right", status.connectedLenses.right);
+  }
   report.setupHint = headsetSetupHint(report);
-  report.ok = missingHardwareEvidence(report).length === 0;
+  report.ok = missingCompleteHardwareEvidence(report).length === 0;
 }
 
 export function headsetSetupHint(
@@ -267,4 +381,17 @@ export function hardwareCommandName(data: Uint8Array): string {
 
 function bytesToHex(data: Uint8Array): string {
   return [...data].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function hasRightMicWrite(
+  report: HardwareEvidenceReport,
+  mode: "enable" | "disable",
+): boolean {
+  const suffix = mode === "enable" ? "01" : "00";
+  return report.writes.some(
+    (write) =>
+      write.side === "right" &&
+      write.command === "open-mic" &&
+      write.hex.startsWith(`0e${suffix}`),
+  );
 }

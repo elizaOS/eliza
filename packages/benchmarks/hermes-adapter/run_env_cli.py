@@ -20,6 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from hermes_adapter.env_runner import run_hermes_env
+from hermes_adapter.harness_openai_proxy import HarnessOpenAIProxy
 from hermes_adapter.swe_env_smoke import run_humanevalpack_swe_smoke
 
 
@@ -92,18 +93,32 @@ def main(argv: list[str] | None = None) -> int:
             timeout_s=args.timeout_seconds,
         )
     else:
-        result = run_hermes_env(
-            env_id,
-            output_dir=output_dir,
-            provider=args.provider,
-            model=args.model,
-            base_url=args.base_url,
-            repo_path=repo_path,
-            max_tasks=args.max_tasks,
-            task_filter=args.task_filter,
-            timeout_s=args.timeout_seconds,
-            force=args.force,
-        )
+        proxy = None
+        try:
+            base_url = args.base_url
+            if args.harness in {"eliza", "openclaw"}:
+                proxy = HarnessOpenAIProxy(
+                    harness=args.harness,
+                    provider=args.provider,
+                    model=args.model,
+                    upstream_base_url=args.base_url,
+                ).start()
+                base_url = proxy.base_url
+            result = run_hermes_env(
+                env_id,
+                output_dir=output_dir,
+                provider=args.provider,
+                model=args.model,
+                base_url=base_url,
+                repo_path=repo_path,
+                max_tasks=args.max_tasks,
+                task_filter=args.task_filter,
+                timeout_s=args.timeout_seconds,
+                force=args.force,
+            )
+        finally:
+            if proxy is not None:
+                proxy.stop()
 
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     result_path = output_dir / f"hermes_{env_id}_{ts}.json"

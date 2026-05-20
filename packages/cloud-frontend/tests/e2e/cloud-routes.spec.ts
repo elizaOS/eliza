@@ -1,3 +1,6 @@
+import { readdirSync, statSync } from "node:fs";
+import pathModule from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
@@ -10,6 +13,8 @@ test.skip(
 test.describe.configure({ mode: "serial" });
 
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
+const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
 
 // Console messages we explicitly tolerate. Keep this list short and
 // document each entry — anything that lands here is a regression candidate.
@@ -38,6 +43,36 @@ const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/blog": HOMEPAGE_TITLE_FALLBACK,
   "/sandbox-proxy": HOMEPAGE_TITLE_FALLBACK,
 };
+
+function discoverDocsRoutes(): string[] {
+  const routes: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const fullPath = pathModule.join(dir, entry);
+      const stats = statSync(fullPath);
+      if (stats.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.endsWith(".mdx")) continue;
+      const rel = pathModule
+        .relative(CONTENT_DIR, fullPath)
+        .replace(/\\/g, "/")
+        .replace(/\.mdx$/, "");
+      if (rel === "index") {
+        routes.push("/docs");
+      } else if (rel.endsWith("/index")) {
+        routes.push(`/docs/${rel.slice(0, -"/index".length)}`);
+      } else {
+        routes.push(`/docs/${rel}`);
+      }
+    }
+  };
+  walk(CONTENT_DIR);
+  return [...new Set(routes)].sort();
+}
+
+const docsRoutes = discoverDocsRoutes();
 
 interface CapturedFailures {
   pageErrors: string[];
@@ -106,7 +141,7 @@ const publicRoutes = [
   "/login",
   "/terms-of-service",
   "/privacy-policy",
-  "/docs",
+  ...docsRoutes,
   "/sandbox-proxy",
   "/bsc",
   "/chat/agent_1",
@@ -132,6 +167,7 @@ const dashboardRoutes = [
   "/dashboard/billing/success",
   "/dashboard/agents",
   "/dashboard/agents/agent_1",
+  "/dashboard/agents/agent_1/chat",
   "/dashboard/apps",
   "/dashboard/apps/app_1",
   "/dashboard/my-agents",
@@ -142,6 +178,7 @@ const dashboardRoutes = [
   "/dashboard/earnings",
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
+  "/dashboard/chat",
   "/dashboard/containers",
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
@@ -162,6 +199,14 @@ const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
   ["/dashboard/voices", /\/dashboard\/api-explorer$/],
+];
+
+const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [
+  [
+    "/checkout?collection=elizaos-hardware",
+    "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    "elizaOS checkout",
+  ],
 ];
 
 async function installApiMocks(page: Page) {
@@ -222,6 +267,50 @@ async function installApiMocks(page: Page) {
               avatarUrl: null,
               bio: "A shared test agent.",
               creatorUsername: "tester",
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: "agent_1",
+                agentName: "Test Agent",
+                name: "Test Agent",
+                status: "running",
+                createdAt: now,
+                updatedAt: now,
+                lastHeartbeatAt: now,
+                adminDetails: {
+                  webUiUrl: "https://agent.example.test",
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents/agent_1") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              agentName: "Test Agent",
+              name: "Test Agent",
+              status: "running",
+              createdAt: now,
+              updatedAt: now,
+              lastHeartbeatAt: now,
+              adminDetails: {
+                webUiUrl: "https://agent.example.test",
+              },
             },
           },
         });
@@ -309,6 +398,34 @@ async function installApiMocks(page: Page) {
         return route.fulfill({
           json: {
             redemptions: [],
+          },
+        });
+      }
+
+      if (path === "/api/v1/containers/container_1/deployments") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              deployments: [
+                {
+                  id: "deployment_1",
+                  status: "success",
+                  cost: 1.25,
+                  metadata: {
+                    container_id: "container_1",
+                    container_name: "Test Container",
+                    desired_count: 1,
+                    cpu: 256,
+                    memory: 512,
+                    port: 3000,
+                    image_tag: "test",
+                  },
+                  deployed_at: new Date().toISOString(),
+                  duration_ms: 1200,
+                },
+              ],
+            },
           },
         });
       }
@@ -514,7 +631,9 @@ for (const route of publicRoutes) {
     // the global RootLayout <title> and trip the homepage-leak assertion).
     await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
 
@@ -549,7 +668,9 @@ for (const route of dashboardRoutes) {
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
     assertNoFailures(route, captured);
@@ -572,6 +693,21 @@ for (const [from, toPattern] of dashboardRedirects) {
     await setTestAuth(page);
     await page.goto(from);
     await expect(page).toHaveURL(toPattern);
+  });
+}
+
+for (const [from, to, bodyText] of publicRedirects) {
+  test(`public redirect route: ${from}`, async ({ page }) => {
+    await page.route("https://elizaos.ai/**", (route) =>
+      route.fulfill({
+        body: `<html><body>${bodyText}</body></html>`,
+        contentType: "text/html",
+      }),
+    );
+
+    await page.goto(from);
+    await expect(page).toHaveURL(to);
+    await expect(page.getByText(bodyText)).toBeVisible();
   });
 }
 

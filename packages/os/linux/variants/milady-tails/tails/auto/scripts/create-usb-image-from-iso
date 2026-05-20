@@ -28,7 +28,12 @@ SYSTEM_PARTITION_FLAGS = (
 # EFI System Partition
 ESP_GUID = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
 
-PARTITION_LABEL = "elizaOS"
+# Keep the internal GPT partition name compatible with upstream Tails.
+# Tails Persistent Storage and IUK plumbing check this partition *name*
+# to decide whether the boot device was installed by the supported USB
+# image/cloner path. The user-facing filesystem label and UI strings are
+# branded separately.
+PARTITION_LABEL = "Tails"
 FILESYSTEM_LABEL = "ELIZAOS"
 
 GET_UDISKS_OBJECT_TIMEOUT = 2

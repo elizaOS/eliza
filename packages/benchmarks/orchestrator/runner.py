@@ -10,6 +10,7 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import UTC, datetime
+from itertools import product
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -18,6 +19,7 @@ from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_FIXED_RUNTIME_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
@@ -79,6 +81,7 @@ PROVIDER_DUMMY_KEY: dict[str, str] = {
     "vllm": "dummy",
 }
 DEFAULT_STALE_RECOVERY_SECONDS = 6 * 60 * 60
+LATEST_COMPARABLE_SCORE_TOLERANCE = 0.15
 CANONICAL_REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
@@ -139,16 +142,7 @@ def _comparison_signature_from_parts(
     model: str,
     extra_config: dict[str, Any] | None,
 ) -> str:
-    normalized_extra = dict(extra_config or {})
-    injected_agent = str(normalized_extra.get("agent") or "").strip().lower()
-    injected_harness = str(normalized_extra.get("harness") or "").strip().lower()
-    comparable_agents = set(LATEST_SNAPSHOT_AGENTS) | set(SYNTHETIC_HARNESSES)
-    if injected_agent in comparable_agents:
-        normalized_extra.pop("agent", None)
-    if injected_harness in comparable_agents:
-        normalized_extra.pop("harness", None)
-    if agent.strip().lower() in CALIBRATION_HARNESSES:
-        normalized_extra["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    normalized_extra = _comparison_extra_config(extra_config, agent=agent)
     payload = {
         "benchmark_id": benchmark_id,
         "benchmark_directory": benchmark_directory,
@@ -157,6 +151,36 @@ def _comparison_signature_from_parts(
         "extra_config": normalized_extra,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
+def _comparison_extra_config(
+    extra_config: dict[str, Any] | None,
+    *,
+    agent: str,
+) -> dict[str, Any]:
+    normalized_extra = dict(extra_config or {})
+    injected_agent = str(normalized_extra.get("agent") or "").strip().lower()
+    injected_harness = str(normalized_extra.get("harness") or "").strip().lower()
+    comparable_agents = set(LATEST_SNAPSHOT_AGENTS) | set(SYNTHETIC_HARNESSES)
+    if injected_agent in comparable_agents:
+        normalized_extra.pop("agent", None)
+    if injected_harness in comparable_agents:
+        normalized_extra.pop("harness", None)
+    for runtime_key in (
+        "eliza_bench_http_timeout_s",
+        "openclaw_timeout_s",
+        "timeout_s",
+    ):
+        normalized_extra.pop(runtime_key, None)
+    if str(normalized_extra.get("reasoning_effort") or "").strip().lower() == "low":
+        normalized_extra.pop("reasoning_effort", None)
+    dataset = str(normalized_extra.get("dataset") or "").strip()
+    suite = str(normalized_extra.get("suite") or "").strip()
+    if dataset and suite and dataset == suite:
+        normalized_extra.pop("dataset", None)
+    if agent.strip().lower() in CALIBRATION_HARNESSES:
+        normalized_extra["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    return normalized_extra
 
 
 def _comparison_signature_for_row(
@@ -527,6 +551,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
+        "cached_tokens": summary.cached_tokens,
         "avg_prompt_tokens": (prompt_tokens / summary.turns) if (prompt_tokens and summary.turns) else None,
         "avg_completion_tokens": (completion_tokens / summary.turns) if (completion_tokens and summary.turns) else None,
         "telemetry_missing": telemetry_missing,
@@ -611,6 +636,7 @@ def _complete_token_metrics(
     completion = tokens.get("completion_tokens")
     total = tokens.get("total_tokens")
     calls = tokens.get("llm_call_count")
+    cached = tokens.get("cached_tokens", tokens.get("cache_read_input_tokens"))
     turns = summary.get("turns")
     prompt_chars = summary.get("prompt_chars")
 
@@ -643,10 +669,17 @@ def _complete_token_metrics(
         if source is not None:
             tokens["estimated_total_tokens"] = total
 
+    if not isinstance(cached, (int, float)) or isinstance(cached, bool):
+        cached = 0
+
     tokens["llm_call_count"] = calls
+    tokens["call_count"] = calls
     tokens["prompt_tokens"] = int(prompt)
+    tokens["input_tokens"] = int(prompt)
     tokens["completion_tokens"] = int(completion)
+    tokens["output_tokens"] = int(completion)
     tokens["total_tokens"] = int(total)
+    tokens["cached_tokens"] = int(cached)
     tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else 0
     tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else 0
     tokens["telemetry_missing"] = source is not None
@@ -704,6 +737,31 @@ def _publication_quarantine_reason(
         return "sample_task_set"
     if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
         return "demo_mode"
+    failed_scenarios = metrics.get("failed_scenarios")
+    if isinstance(failed_scenarios, (int, float)) and not isinstance(failed_scenarios, bool):
+        if failed_scenarios > 0:
+            return "failed_scenarios"
+    successful_runs = metrics.get("successful_runs")
+    total_runs = metrics.get("total_runs")
+    if (
+        isinstance(total_runs, (int, float))
+        and not isinstance(total_runs, bool)
+        and total_runs > 0
+        and isinstance(successful_runs, (int, float))
+        and not isinstance(successful_runs, bool)
+        and successful_runs <= 0
+    ):
+        return "zero_successful_runs"
+    if (
+        score == 0
+        and metrics.get("avg_net_worth") == 0
+        and metrics.get("avg_items_sold") == 0
+        and metrics.get("avg_orders_placed") == 0
+        and metrics.get("total_revenue") == 0
+    ):
+        return "no_activity_zero_score"
+    if metrics.get("interrupted") is True:
+        return "interrupted_run"
     return None
 
 
@@ -913,7 +971,9 @@ def _write_latest_result_snapshot(
         payload["publication_warnings"] = publication_warnings
     if is_synthetic:
         payload["synthetic"] = True
-    snapshot_tmp = snapshot_path.with_suffix(snapshot_path.suffix + ".tmp")
+    snapshot_tmp = snapshot_path.with_name(
+        f"{snapshot_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
+    )
     snapshot_tmp.write_text(
         json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
         encoding="utf-8",
@@ -1127,6 +1187,8 @@ def _latest_matrix_unsupported_reason(
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
     if benchmark_id == "terminal_bench" and not allowed_harnesses:
         return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+    if benchmark_id in {"swe_bench", "swe_bench_orchestrated"} and not allowed_harnesses:
+        return SWE_BENCH_DOCKER_UNAVAILABLE_REASON
     if (
         benchmark_id
         in {
@@ -1198,6 +1260,7 @@ def _rebuild_latest_result_snapshots(
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     latest_by_signature: dict[tuple[str, str, str], dict[str, Any]] = {}
     latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, list[dict[str, Any]]]]] = {}
     quarantine_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=None):
@@ -1245,6 +1308,20 @@ def _rebuild_latest_result_snapshots(
         comparison_key = (comparison_signature, benchmark_id, agent)
         if comparison_key not in latest_by_comparison_signature:
             latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
+        if (
+            agent in CANONICAL_REAL_HARNESSES
+            and str(row.get("status") or "") == "succeeded"
+            and _is_numeric_score(row.get("score"))
+        ):
+            rows_by_comparison_signature.setdefault(benchmark_id, {}).setdefault(
+                comparison_signature, {}
+            ).setdefault(agent, []).append(row)
+
+    _promote_latest_comparable_real_cohorts(
+        latest_by_key=latest_by_key,
+        rows_by_comparison_signature=rows_by_comparison_signature,
+        adapters=adapters,
+    )
 
     preserved_latest: dict[tuple[str, str], tuple[dict[str, Any], Path]] = {}
     for path in sorted(latest_dir.glob("*.json")):
@@ -1326,6 +1403,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=row.get("trajectory_summary") or {},
             result_json_path=row.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         is_synthetic = _is_synthetic_agent(agent)
         if is_synthetic:
             target_dir = baselines_dir
@@ -1366,6 +1444,7 @@ def _rebuild_latest_result_snapshots(
             "agent": agent,
             "provider": row.get("provider"),
             "model": row.get("model"),
+            "extra_config": row.get("extra_config") or {},
             "score": row.get("score"),
             "unit": row.get("unit"),
             "higher_is_better": row.get("higher_is_better"),
@@ -1412,6 +1491,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=payload.get("trajectory_summary") or {},
             result_json_path=payload.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         publication_warnings = _publication_warnings(
             benchmark_id=benchmark_id,
             status=str(payload.get("status") or ""),
@@ -1419,6 +1499,7 @@ def _rebuild_latest_result_snapshots(
             metrics=metrics,
         )
         payload["token_metrics"] = token_metrics
+        payload["metrics"] = metrics
         payload.pop("publication_warnings", None)
         if publication_warnings:
             payload["publication_warnings"] = publication_warnings
@@ -1486,6 +1567,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=row.get("trajectory_summary") or {},
             result_json_path=row.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         quarantine_reason = _publication_quarantine_reason(
             status=str(row.get("status") or ""),
             agent=agent,
@@ -1613,6 +1695,110 @@ def _is_stale_compatibility_incompatible_row(
     }
 
 
+def _promote_latest_comparable_real_cohorts(
+    *,
+    latest_by_key: dict[tuple[str, str], dict[str, Any]],
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, list[dict[str, Any]]]]],
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> None:
+    """Prefer a complete apples-to-apples real-harness cohort for latest rows.
+
+    Rerunning a single harness with a narrower scenario should not silently
+    replace one cell and make ``benchmark_results/latest`` compare different
+    task sets. If a newer per-harness row creates a mixed latest set but a
+    complete common comparison signature exists, publish that coherent cohort.
+    """
+
+    for benchmark_id, rows_by_signature in rows_by_comparison_signature.items():
+        required_agents = _required_real_latest_agents(benchmark_id, adapters)
+        if len(required_agents) < 2:
+            continue
+        current_signatures: set[str] = set()
+        current_scores: dict[str, float] = {}
+        for agent in required_agents:
+            row = latest_by_key.get((benchmark_id, agent))
+            if row is None:
+                break
+            current_signatures.add(
+                _comparison_signature_for_row(row, benchmark_id=benchmark_id, agent=agent)
+            )
+            score = row.get("score")
+            if isinstance(score, (int, float)) and math.isfinite(float(score)):
+                current_scores[agent] = float(score)
+        else:
+            if len(current_signatures) <= 1 and _scores_within_latest_tolerance(
+                current_scores,
+                required_agents,
+            ):
+                continue
+
+        candidates: list[dict[str, dict[str, Any]]] = []
+        comparable_candidates: list[dict[str, dict[str, Any]]] = []
+        for rows_by_agent in rows_by_signature.values():
+            if not all(agent in rows_by_agent for agent in required_agents):
+                continue
+            row_lists = [rows_by_agent[agent][:8] for agent in required_agents]
+            for combo in product(*row_lists):
+                candidate = dict(zip(required_agents, combo, strict=True))
+                candidates.append(candidate)
+                scores = {
+                    agent: float(candidate[agent]["score"])
+                    for agent in required_agents
+                    if isinstance(candidate[agent].get("score"), (int, float))
+                    and math.isfinite(float(candidate[agent]["score"]))
+                }
+                if _scores_within_latest_tolerance(scores, required_agents):
+                    comparable_candidates.append(candidate)
+        if not candidates:
+            continue
+        best = max(comparable_candidates or candidates, key=_cohort_recency_key)
+        for agent in required_agents:
+            latest_by_key[(benchmark_id, agent)] = best[agent]
+
+
+def _required_real_latest_agents(
+    benchmark_id: str,
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> tuple[str, ...]:
+    if adapters is None:
+        return CANONICAL_REAL_HARNESSES
+    adapter = adapters.get(benchmark_id)
+    if adapter is None:
+        return CANONICAL_REAL_HARNESSES
+    compatible = set(adapter.agent_compatibility)
+    return tuple(agent for agent in CANONICAL_REAL_HARNESSES if agent in compatible)
+
+
+def _cohort_recency_key(rows_by_agent: dict[str, dict[str, Any]]) -> tuple[str, str]:
+    rows: list[dict[str, Any]] = []
+    for value in rows_by_agent.values():
+        if isinstance(value, dict):
+            rows.append(value)
+        elif isinstance(value, list):
+            rows.extend(item for item in value if isinstance(item, dict))
+    timestamps = [
+        str(row.get("ended_at") or row.get("started_at") or "")
+        for row in rows
+    ]
+    return (min(timestamps) if timestamps else "", max(timestamps) if timestamps else "")
+
+
+def _scores_within_latest_tolerance(
+    scores: dict[str, float],
+    required_agents: tuple[str, ...],
+) -> bool:
+    if any(agent not in scores for agent in required_agents):
+        return False
+    values = [scores[agent] for agent in required_agents]
+    baseline = min(values)
+    return math.isclose(
+        max(values),
+        baseline,
+        rel_tol=LATEST_COMPARABLE_SCORE_TOLERANCE,
+        abs_tol=LATEST_COMPARABLE_SCORE_TOLERANCE,
+    )
+
+
 def _repair_current_compatibility_statuses(
     conn,
     adapters: dict[str, BenchmarkAdapter],
@@ -1716,27 +1902,45 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
             [
                 payload.get("score"),
                 payload.get("accuracy"),
+                payload.get("overall_score"),
+                payload.get("resolve_rate"),
+                payload.get("pass_at_1"),
+                payload.get("transcriptionNormalizedAccuracy"),
                 (payload.get("summary") or {}).get("accuracy")
                 if isinstance(payload.get("summary"), dict)
                 else None,
             ]
         )
+        summary = payload.get("summary")
+        if isinstance(summary, dict):
+            for mode_summary in summary.values():
+                if not isinstance(mode_summary, dict):
+                    continue
+                candidates.append(mode_summary.get("transcriptionNormalizedAccuracy"))
         payload_metrics = payload.get("metrics")
         if isinstance(payload_metrics, dict):
             candidates.extend(
                 [
                     payload_metrics.get("score"),
                     payload_metrics.get("accuracy"),
+                    payload_metrics.get("overall_score"),
+                    payload_metrics.get("resolve_rate"),
                     payload_metrics.get("pass_rate"),
                     payload_metrics.get("eval/pass_rate"),
+                    payload_metrics.get("pass_at_1"),
+                    payload_metrics.get("transcriptionNormalizedAccuracy"),
                 ]
             )
     candidates.extend(
         [
             metrics.get("score"),
             metrics.get("accuracy"),
+            metrics.get("overall_score"),
+            metrics.get("resolve_rate"),
             metrics.get("pass_rate"),
             metrics.get("eval/pass_rate"),
+            metrics.get("pass_at_1"),
+            metrics.get("transcriptionNormalizedAccuracy"),
         ]
     )
     for candidate in candidates:

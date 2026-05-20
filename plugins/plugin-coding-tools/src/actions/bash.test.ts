@@ -166,6 +166,27 @@ describe("shellAction", () => {
     }
   });
 
+  it("resets a stale session cwd before running a command", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-444444444444";
+    const stale = path.join(process.cwd(), `.tmp-shell-stale-${Date.now()}`);
+    const { runtime, session } = await makeRuntime();
+    session.setCwd(roomId, stale);
+
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(roomId),
+      undefined,
+      { command: "pwd" },
+    );
+
+    const defaultCwd = path.resolve(process.cwd());
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(defaultCwd);
+    expect(session.getCwd(roomId)).toBe(defaultCwd);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.cwd).toBe(defaultCwd);
+  });
+
   it("quotes bare URLs with shell metacharacters before execution", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(

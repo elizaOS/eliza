@@ -27,6 +27,8 @@
     "lint": "bunx @biomejs/biome check src",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
+    "verify:app": "../../node_modules/.bin/vitest --root ../.. run packages/app-core/src/registry/smartglasses-registry.test.ts packages/app/src/plugin-registrations.test.ts",
+    "verify:software": "bun run lint && bun run typecheck && bun run test && bun run build && bun run verify:app && bun run --cwd ../../packages/examples/smartglasses verify:software",
     "clean": "rm -rf dist tsconfig.tsbuildinfo .turbo node_modules/.vite node_modules/.vite-temp",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
@@ -70,8 +72,7 @@
     },
     "app": {
       "displayName": "Smartglasses",
-      "category": "hardware",
-      "heroImage": "assets/hero.png"
+      "category": "hardware"
     }
   },
   "agentConfig": {

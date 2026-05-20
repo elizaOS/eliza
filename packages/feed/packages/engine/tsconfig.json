@@ -1,0 +1,30 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["bun-types"],
+    // Disable unused locals check - engine has some batch methods reserved for future optimization
+    "noUnusedLocals": false,
+    "baseUrl": ".",
+    "paths": {
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"],
+      "@feed/core": ["../core/markets/index.ts"],
+      "@feed/core/*": ["../core/*"],
+      "@feed/pack-default": ["../pack-default/src/index.ts"],
+      "@feed/pack-default/*": ["../pack-default/src/*"]
+    }
+  },
+  "include": ["src/**/*", "src/**/*.json"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**/*"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../db" },
+    { "path": "../core" },
+    { "path": "../pack-default" }
+  ]
+}

@@ -133,7 +133,7 @@ const systemApkStaging = resolveSystemApkStagingDir();
 const elizaOsApkDir = systemApkStaging.apkDir;
 const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
-const nativePluginsDir = path.join(packagesRoot, "native-plugins");
+const nativePluginsDir = path.join(packagesRoot, "native", "plugins");
 const androidAgentSpikeDir = path.join(
   repoRoot,
   "scripts",

@@ -73,11 +73,8 @@ describe("TASKS:spawn_agent", () => {
       cb,
     );
     expect(result?.success).toBe(true);
-    // Spawn is fire-and-forget. The orchestrator's progress hook owns the
-    // user-visible 🚀 / ✅ / ❌ flow on the main channel; the action itself
-    // emits no text so it doesn't duplicate that message or surface the
-    // planner's hallucinated messageToUser via the bootstrap REPLY path.
     expect(result?.text).toBe("");
+    expect(cb).not.toHaveBeenCalled();
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       agentType: "codex",

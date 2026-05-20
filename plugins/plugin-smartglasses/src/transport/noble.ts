@@ -7,7 +7,10 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+} from "./types.js";
 
 type NobleState =
   | "unknown"
@@ -109,10 +112,15 @@ export class NobleG1Transport implements SmartglassesTransport {
   async connect(): Promise<void> {
     await this.waitForPoweredOn();
     const found = await this.scanForPair();
-    await Promise.all([
-      this.connectPeripheral("left", found.left),
-      this.connectPeripheral("right", found.right),
-    ]);
+    try {
+      await Promise.all([
+        this.connectPeripheral("left", found.left),
+        this.connectPeripheral("right", found.right),
+      ]);
+    } catch (error) {
+      await this.disconnect();
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -128,6 +136,18 @@ export class NobleG1Transport implements SmartglassesTransport {
 
   isConnected(): boolean {
     return this.sides.size === 2;
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    const lenses: SmartglassesConnectedLenses = {};
+    for (const [side, connection] of this.sides) {
+      lenses[side] = {
+        connected: true,
+        name: connection.peripheral.advertisement?.localName,
+        address: connection.peripheral.address ?? connection.peripheral.id,
+      };
+    }
+    return lenses;
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {

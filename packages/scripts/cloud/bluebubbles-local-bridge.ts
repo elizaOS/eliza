@@ -20,13 +20,12 @@
 
 import { Database } from "bun:sqlite";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -122,6 +121,11 @@ type ShortcutsDiagnostics = {
   shortcutCount?: number;
   shortcuts?: string[];
   error?: string;
+  validation?: {
+    required: boolean;
+    validated: boolean;
+    detail?: string;
+  };
 };
 
 type RetryPendingRepliesResult = {
@@ -129,6 +133,21 @@ type RetryPendingRepliesResult = {
   remaining: number;
   failed: Array<{ id: string; error: string }>;
   skipped?: string;
+};
+
+type OutboundValidationRecord = {
+  validatedAt: string;
+  method: BlueBubblesSendMethod;
+  shortcutName?: string;
+  recipient: string;
+  messagePreview: string;
+};
+
+type ValidateOutboundRequest = {
+  recipient?: string;
+  chatGuid?: string;
+  message?: string;
+  method?: BlueBubblesSendMethod;
 };
 
 const port = Number.parseInt(process.env.BLUEBUBBLES_BRIDGE_PORT ?? "8795", 10);
@@ -154,6 +173,14 @@ const blueBubblesSendTimeoutMs = Number.parseInt(
 const shortcutsSendShortcutName = (
   process.env.BLUEBUBBLES_SHORTCUT_NAME ?? "Eliza Cloud Send Message Ready"
 ).trim();
+const shortcutsInputDir =
+  process.env.BLUEBUBBLES_SHORTCUT_INPUT_DIR ??
+  join(process.cwd(), ".eliza-local/bluebubbles-shortcut-inputs");
+const outboundValidationPath =
+  process.env.BLUEBUBBLES_OUTBOUND_VALIDATION_PATH ??
+  join(process.cwd(), ".eliza-local/bluebubbles-outbound-validation.json");
+const outboundValidationRequired =
+  process.env.BLUEBUBBLES_OUTBOUND_VALIDATION_REQUIRED !== "false";
 const pendingReplyRetryEnabled =
   process.env.BLUEBUBBLES_PENDING_RETRY_ENABLED === "true";
 const pendingReplyRetryIntervalMs = Number.parseInt(
@@ -182,7 +209,7 @@ const shortcutsInputContract = {
   requiredKeys: ["recipient", "message"],
   optionalKeys: ["chatGuid", "gatewayPhoneNumber", "gatewayPhoneLabel"],
   description:
-    "Read Shortcut Input as a file, parse JSON, send message to recipient, and finish without prompting.",
+    "Read Shortcut Input as a JSON file, parse JSON, send message to recipient, and finish without prompting.",
 };
 
 function readSendMethod(): BlueBubblesSendMethod {
@@ -330,6 +357,18 @@ async function readAppleEventsDiagnostics(): Promise<AppleEventsProbe[]> {
 async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
   const nativeCliPath = "/usr/bin/shortcuts";
   const homebrewCliPath = "/opt/homebrew/bin/shortcuts";
+  const validationRecord = await readOutboundValidation();
+  const validation = {
+    required: outboundValidationRequired,
+    validated: Boolean(
+      validationRecord &&
+        validationRecord.method === "shortcuts" &&
+        validationRecord.shortcutName === shortcutsSendShortcutName,
+    ),
+    detail: validationRecord
+      ? `last ${validationRecord.method} validation at ${validationRecord.validatedAt}`
+      : "no successful validation send recorded",
+  };
 
   try {
     const { stdout } = await execFileAsync(nativeCliPath, ["list"], {
@@ -345,6 +384,7 @@ async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
       available: true,
       shortcutCount: shortcuts.length,
       shortcuts,
+      validation,
     };
   } catch (error) {
     const message =
@@ -358,6 +398,7 @@ async function readShortcutsDiagnostics(): Promise<ShortcutsDiagnostics> {
       homebrewCliPath,
       available: false,
       error: message,
+      validation,
     };
   }
 }
@@ -429,6 +470,28 @@ async function readPendingReplies(): Promise<PendingReply[]> {
     }
     throw error;
   }
+}
+
+async function readOutboundValidation(): Promise<OutboundValidationRecord | null> {
+  try {
+    return JSON.parse(
+      await readFile(outboundValidationPath, "utf8"),
+    ) as OutboundValidationRecord;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeOutboundValidation(
+  record: OutboundValidationRecord,
+): Promise<void> {
+  await mkdir(dirname(outboundValidationPath), { recursive: true });
+  await writeFile(outboundValidationPath, `${JSON.stringify(record, null, 2)}\n`, {
+    mode: 0o600,
+  });
 }
 
 async function writePendingReplies(replies: PendingReply[]): Promise<void> {
@@ -580,6 +643,8 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       sendTimeoutMs: blueBubblesSendTimeoutMs,
       shortcutsSendShortcutName,
       shortcutsInputContract,
+      shortcutsInputDir,
+      outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
       pendingRepliesPath,
@@ -646,6 +711,7 @@ async function gatewayDoctor(): Promise<{
   };
   const macos = (diagnostics.macos ?? {}) as {
     sipStatus?: string;
+    appleEvents?: AppleEventsProbe[];
     shortcuts?: ShortcutsDiagnostics;
   };
 
@@ -721,9 +787,26 @@ async function gatewayDoctor(): Promise<{
     } else if (blueBubblesSendMethod === "private-api") {
       next.push("Connect the BlueBubbles private API helper and disable SIP for private-api mode.");
     } else if (blueBubblesSendMethod === "shortcuts") {
-      next.push(
-        `Install a Shortcut named "${shortcutsSendShortcutName}" that reads JSON input keys ${shortcutsInputContract.requiredKeys.join(", ")} and sends without prompting.`,
+      const shortcutInstalled = macos.shortcuts?.shortcuts?.includes(
+        shortcutsSendShortcutName,
       );
+      if (!shortcutInstalled) {
+        next.push(
+          `Install a Shortcut named "${shortcutsSendShortcutName}" that reads JSON input keys ${shortcutsInputContract.requiredKeys.join(", ")} and sends without prompting.`,
+        );
+      } else {
+        next.push(
+          `Run POST /outbound/validate successfully; Shortcut "${shortcutsSendShortcutName}" is installed but has not completed a real send validation.`,
+        );
+      }
+      const messagesProbe = macos.appleEvents?.find(
+        (probe) => probe.target === "Messages",
+      );
+      if (messagesProbe && !messagesProbe.ok) {
+        next.push(
+          `Messages automation is currently unavailable: ${messagesProbe.error ?? "unknown error"}`,
+        );
+      }
     }
   }
   if ((bridge.pendingReplyCount ?? 0) > 0) {
@@ -805,10 +888,14 @@ function replyTextForCloudReply(
 async function sendBlueBubblesReply(
   chatGuid: string,
   text: string,
+  method: BlueBubblesSendMethod = blueBubblesSendMethod,
 ): Promise<void> {
-  if (blueBubblesSendMethod === "shortcuts") {
+  if (method === "shortcuts") {
     await sendShortcutsReply(chatGuid, text);
     return;
+  }
+  if (!blueBubblesPassword) {
+    throw new Error("BlueBubbles password is not configured");
   }
 
   const url = new URL("/api/v1/message/text", blueBubblesServerUrl);
@@ -827,7 +914,7 @@ async function sendBlueBubblesReply(
       body: JSON.stringify({
         chatGuid,
         message: text,
-        method: blueBubblesSendMethod,
+        method,
         tempGuid: `eliza-cloud-${crypto.randomUUID()}`,
       }),
       signal: controller.signal,
@@ -835,7 +922,7 @@ async function sendBlueBubblesReply(
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
-        `BlueBubbles send timed out after ${blueBubblesSendTimeoutMs}ms using ${blueBubblesSendMethod}`,
+        `BlueBubbles send timed out after ${blueBubblesSendTimeoutMs}ms using ${method}`,
       );
     }
     throw error;
@@ -851,8 +938,11 @@ async function sendBlueBubblesReply(
 }
 
 async function sendShortcutsReply(chatGuid: string, text: string): Promise<void> {
-  const tempDir = await mkdtemp(join(tmpdir(), "eliza-cloud-shortcut-"));
-  const inputPath = join(tempDir, "message.json");
+  await mkdir(shortcutsInputDir, { recursive: true });
+  const inputPath = join(
+    shortcutsInputDir,
+    `message-${Date.now()}-${crypto.randomUUID()}.json`,
+  );
   try {
     await writeFile(
       inputPath,
@@ -871,18 +961,35 @@ async function sendShortcutsReply(chatGuid: string, text: string): Promise<void>
       { timeout: blueBubblesSendTimeoutMs },
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : error && typeof error === "object" && "message" in error
-          ? String((error as { message?: unknown }).message)
-          : String(error);
     throw new Error(
-      `Shortcuts send failed using "${shortcutsSendShortcutName}": ${message}`,
+      `Shortcuts send failed using "${shortcutsSendShortcutName}": ${commandErrorMessage(error)}`,
     );
   } finally {
-    await rm(tempDir, { recursive: true, force: true });
+    await rm(inputPath, { force: true });
   }
+}
+
+function commandErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return String(error);
+  }
+
+  const base =
+    error instanceof Error
+      ? error.message
+      : "message" in error
+        ? String((error as { message?: unknown }).message)
+        : String(error);
+  const details: string[] = [];
+  for (const key of ["code", "signal", "stdout", "stderr"] as const) {
+    if (key in error) {
+      const value = (error as Record<string, unknown>)[key];
+      if (value !== undefined && value !== null && String(value).trim()) {
+        details.push(`${key}=${String(value).trim()}`);
+      }
+    }
+  }
+  return details.length > 0 ? `${base}; ${details.join("; ")}` : base;
 }
 
 async function forwardToCloud(
@@ -984,6 +1091,51 @@ async function handleWebhook(
   });
 }
 
+function chatGuidForOutboundValidation(input: ValidateOutboundRequest): string {
+  const chatGuid = input.chatGuid?.trim();
+  if (chatGuid) return chatGuid;
+
+  const recipient = input.recipient?.trim();
+  if (!recipient) {
+    throw new Error("recipient or chatGuid is required");
+  }
+
+  const service = recipient.includes("@") ? "iMessage" : "SMS";
+  return `${service};-;${recipient}`;
+}
+
+async function validateOutboundSend(
+  input: ValidateOutboundRequest,
+): Promise<OutboundValidationRecord> {
+  const message = input.message?.trim();
+  if (!message) {
+    throw new Error("message is required");
+  }
+
+  const chatGuid = chatGuidForOutboundValidation(input);
+  const recipient = recipientFromChatGuid(chatGuid) ?? input.recipient?.trim();
+  if (!recipient) {
+    throw new Error("recipient could not be derived from chatGuid");
+  }
+
+  const method = input.method ?? blueBubblesSendMethod;
+  if (!(["apple-script", "private-api", "shortcuts"] as const).includes(method)) {
+    throw new Error(`unsupported outbound validation method: ${method}`);
+  }
+
+  await sendBlueBubblesReply(chatGuid, message, method);
+  const record: OutboundValidationRecord = {
+    validatedAt: new Date().toISOString(),
+    method,
+    shortcutName: method === "shortcuts" ? shortcutsSendShortcutName : undefined,
+    recipient,
+    messagePreview:
+      message.length > 160 ? `${message.slice(0, 157)}...` : message,
+  };
+  await writeOutboundValidation(record);
+  return record;
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -1011,6 +1163,8 @@ async function handleRequest(
       sendTimeoutMs: blueBubblesSendTimeoutMs,
       shortcutsSendShortcutName,
       shortcutsInputContract,
+      shortcutsInputDir,
+      outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
       pendingRepliesPath,
@@ -1067,6 +1221,12 @@ async function handleRequest(
   if (req.method === "POST" && url.pathname === "/pending-replies/retry") {
     const limit = Number.parseInt(url.searchParams.get("limit") ?? "10", 10);
     json(res, 200, await retryPendingReplies(limit, "manual"));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/outbound/validate") {
+    const input = JSON.parse(await readBody(req)) as ValidateOutboundRequest;
+    json(res, 200, { ok: true, validation: await validateOutboundSend(input) });
     return;
   }
 

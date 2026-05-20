@@ -504,6 +504,27 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _terminalbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="terminal-bench-*.json")
 
+    def _gaia_dataset_args(extra: Mapping[str, JSONValue]) -> list[str]:
+        dataset = extra.get("dataset")
+        dataset_path = extra.get("dataset_path")
+        env_dataset_path = os.environ.get("GAIA_DATASET_PATH")
+        if not (isinstance(dataset_path, str) and dataset_path.strip()):
+            dataset_path = env_dataset_path
+
+        has_dataset_path = isinstance(dataset_path, str) and bool(dataset_path.strip())
+
+        if has_dataset_path and dataset != "sample":
+            dataset_source = "jsonl"
+        elif isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
+            dataset_source = dataset
+        else:
+            dataset_source = "gaia"
+
+        args = ["--dataset", dataset_source]
+        if has_dataset_path:
+            args.extend(["--dataset-path", dataset_path])
+        return args
+
     def _gaia_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
             python,
@@ -534,14 +555,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--model", model.model])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
-        dataset = extra.get("dataset")
-        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
-            args.extend(["--dataset", dataset])
-        else:
-            args.extend(["--dataset", "gaia"])
-        dataset_path = extra.get("dataset_path")
-        if isinstance(dataset_path, str) and dataset_path.strip():
-            args.extend(["--dataset-path", dataset_path])
+        args.extend(_gaia_dataset_args(extra))
         max_q = extra.get("max_questions")
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])
@@ -572,11 +586,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         if model.model:
             args.extend(["--model", model.model])
-        dataset = extra.get("dataset")
-        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
-            args.extend(["--dataset", dataset])
-        else:
-            args.extend(["--dataset", "gaia"])
+        args.extend(_gaia_dataset_args(extra))
         max_q = extra.get("max_questions")
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])

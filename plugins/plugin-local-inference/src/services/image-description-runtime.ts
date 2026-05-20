@@ -9,6 +9,7 @@ interface BundleManifestFile {
 }
 
 interface BundleManifest {
+	id?: string;
 	files?: {
 		text?: BundleManifestFile[];
 		vision?: BundleManifestFile[];
@@ -38,6 +39,7 @@ export async function createImageDescriptionRuntime(
 	const mmprojPath = resolveVisionModelPath(bundleRoot, manifest, args.tier);
 	const loadArgs: LocalInferenceLoadArgs = {
 		modelPath: textModelPath,
+		modelId: manifest.id || args.tier,
 		mmprojPath,
 		contextSize: 4096,
 	};

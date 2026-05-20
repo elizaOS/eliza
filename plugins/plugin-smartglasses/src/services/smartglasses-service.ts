@@ -54,6 +54,7 @@ import {
 import { getGlobalEvenBridgeTransport } from "../transport/even-bridge.js";
 import { getNobleG1Transport } from "../transport/noble.js";
 import type {
+  SmartglassesConnectedLenses,
   SmartglassesTransport,
   SmartglassesWifiResult,
 } from "../transport/types.js";
@@ -98,6 +99,7 @@ export interface SmartglassesStatus {
   batteryState: string | null;
   deviceState: string | null;
   lastSerialNumber: string | null;
+  connectedLenses: SmartglassesConnectedLenses;
   wifiAvailable: boolean;
   lastWifiStatus: SmartglassesWifiResult | null;
 }
@@ -235,6 +237,13 @@ export class SmartglassesService extends Service {
         }),
       );
     }
+    if (this.transport.onWifiStatus) {
+      this.disposers.push(
+        this.transport.onWifiStatus((status) => {
+          this.lastWifiStatus = status;
+        }),
+      );
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -267,6 +276,7 @@ export class SmartglassesService extends Service {
       batteryState: this.batteryState,
       deviceState: this.deviceState,
       lastSerialNumber: this.lastSerialNumber,
+      connectedLenses: this.transport?.getConnectedLenses?.() ?? {},
       wifiAvailable: this.isWifiAvailable(),
       lastWifiStatus: this.lastWifiStatus,
     };
@@ -531,6 +541,13 @@ export class SmartglassesService extends Service {
     if (!ssid.trim()) throw new Error("Wi-Fi SSID is required");
     const wifi = this.requireWifiCapability("configureWifi");
     const result = await wifi.configureWifi(ssid.trim(), password);
+    this.lastWifiStatus = result;
+    return result;
+  }
+
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    const wifi = this.requireWifiCapability("requestWifiSetup");
+    const result = await wifi.requestWifiSetup(reason);
     this.lastWifiStatus = result;
     return result;
   }
@@ -834,7 +851,11 @@ export class SmartglassesService extends Service {
   }
 
   private requireWifiCapability<
-    K extends "scanWifi" | "getWifiStatus" | "configureWifi",
+    K extends
+      | "scanWifi"
+      | "getWifiStatus"
+      | "configureWifi"
+      | "requestWifiSetup",
   >(
     method: K,
   ): SmartglassesTransport & Required<Pick<SmartglassesTransport, K>> {
@@ -855,7 +876,8 @@ export class SmartglassesService extends Service {
     return Boolean(
       this.transport.scanWifi ||
         this.transport.getWifiStatus ||
-        this.transport.configureWifi,
+        this.transport.configureWifi ||
+        this.transport.requestWifiSetup,
     );
   }
 

@@ -463,6 +463,25 @@ describe("SmartglassesService", () => {
     await expect(service.scanWifi()).rejects.toThrow(/Wi-Fi/);
   });
 
+  it("tracks pushed bridge Wi-Fi status in service status", async () => {
+    const transport = new MockSmartglassesTransport();
+    const service = new SmartglassesService();
+    service.setTransport(transport);
+    await service.connect();
+
+    transport.emitWifiStatus({
+      available: true,
+      status: "connected to LabNet",
+      networks: ["LabNet"],
+    });
+
+    expect(service.getStatus().lastWifiStatus).toMatchObject({
+      available: true,
+      status: "connected to LabNet",
+      networks: ["LabNet"],
+    });
+  });
+
   it("emits raw LC3 metadata for direct G1 microphone chunks", async () => {
     const transport = new MockSmartglassesTransport();
     const service = new SmartglassesService();

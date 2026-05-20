@@ -166,35 +166,35 @@ export async function handleRemoteCapabilityRoutes(
     return true;
   }
 
-  const unloadMissing =
-    typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
-  const persist = typeof body.persist === "boolean" ? body.persist : true;
-  const allowedModuleIds = parseOptionalStringArray(
-    body.allowedModuleIds,
-    "allowedModuleIds",
-  );
-  const trustPolicy = parseOptionalEndpointTrustPolicy(
-    body.trustPolicy,
-    "trustPolicy",
-  );
-  const requestTimeoutMs = optionalPositiveInteger(
-    body.requestTimeoutMs,
-    "requestTimeoutMs",
-  );
-  if (requestTimeoutMs instanceof Error) {
-    error(res, requestTimeoutMs.message, 400);
-    return true;
-  }
-  if (body.endpoint !== undefined && body.cloud !== undefined) {
-    error(
-      res,
-      "Request body must include only one of 'endpoint' or 'cloud'.",
-      400,
-    );
-    return true;
-  }
-
   try {
+    const unloadMissing =
+      typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
+    const persist = typeof body.persist === "boolean" ? body.persist : true;
+    const allowedModuleIds = parseOptionalStringArray(
+      body.allowedModuleIds,
+      "allowedModuleIds",
+    );
+    const trustPolicy = parseOptionalEndpointTrustPolicy(
+      body.trustPolicy,
+      "trustPolicy",
+    );
+    const requestTimeoutMs = optionalPositiveInteger(
+      body.requestTimeoutMs,
+      "requestTimeoutMs",
+    );
+    if (requestTimeoutMs instanceof Error) {
+      error(res, requestTimeoutMs.message, 400);
+      return true;
+    }
+    if (body.endpoint !== undefined && body.cloud !== undefined) {
+      error(
+        res,
+        "Request body must include only one of 'endpoint' or 'cloud'.",
+        400,
+      );
+      return true;
+    }
+
     if (body.endpoint !== undefined) {
       const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
@@ -805,6 +805,10 @@ function parseCloudOptions(
     body.allowedModuleIds,
     "cloud.allowedModuleIds",
   );
+  const trustPolicy = parseOptionalEndpointTrustPolicy(
+    body.trustPolicy,
+    "cloud.trustPolicy",
+  );
   const endpointId = optionalNonEmptyString(
     body.endpointId,
     "cloud.endpointId",
@@ -825,6 +829,7 @@ function parseCloudOptions(
     ...(endpointId === undefined ? {} : { endpointId }),
     ...optionalToken(body.token, "cloud.token"),
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    ...(trustPolicy === undefined ? {} : { trustPolicy }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };

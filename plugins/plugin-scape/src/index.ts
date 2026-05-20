@@ -62,6 +62,20 @@ export function createAppScapePlugin(): Plugin {
       },
       {
         id: "scape",
+        label: "'scape XR",
+        description:
+          "RuneScape-alike agent — operator controls and game journal",
+        icon: "Gamepad2",
+        path: "/scape",
+        viewType: "xr",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ScapeOperatorSurface",
+        tags: ["game", "scape", "runescape"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
+      {
+        id: "scape",
         label: "'scape TUI",
         description: "Terminal RuneScape-alike operator controls and journal",
         icon: "Gamepad2",

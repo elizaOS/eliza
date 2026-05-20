@@ -6,8 +6,11 @@ Full-stack mock-backed Playwright E2E for the cloud-api + cloud-frontend.
 
 1. **PGlite TCP bridge** (via `packages/scripts/cloud/admin/dev/pglite-server.ts`)
 2. **Hetzner mock** in-process (`@elizaos/cloud-test-mocks/hetzner`)
-3. **Control-plane mock** in-process, wired to the Hetzner mock
-4. **cloud-api worker** subprocess via `packages/scripts/cloud/admin/dev/cloud-api-dev.mjs` (wrangler dev)
+3. **Real container-control-plane sidecar** with the explicit
+   `ELIZA_TEST_SANDBOX_PROVIDER=memory` test provider
+4. **cloud-api worker** subprocess via
+   `packages/scripts/cloud/admin/dev/cloud-api-e2e-server.mjs`, a Node-hosted
+   Worker fetch adapter
 5. **cloud-frontend** subprocess via `vite dev`
 
 Each subprocess streams stdout/stderr into `packages/test/cloud-e2e/.logs/`.
@@ -24,7 +27,7 @@ Per-test the harness:
 
 - seeds a fresh org + user + API key via cloud-shared repositories
 - injects an `eliza-test-session` cookie signed with `PLAYWRIGHT_TEST_AUTH_SECRET`
-- exposes `stack.mocks.hetzner.store` / `stack.mocks.controlPlane.store` for assertions
+- exposes `stack.mocks.hetzner.store` and `stack.urls.controlPlane` for assertions
 
 ## Specs
 
@@ -38,7 +41,12 @@ Per-test the harness:
 ## Notes
 
 - The mocks live at `packages/test/cloud-mocks`; the harness imports from
-  `@elizaos/cloud-test-mocks/{hetzner,control-plane}`.
+  `@elizaos/cloud-test-mocks/hetzner`.
+- The memory sandbox provider is guarded by `NODE_ENV=test` or `CLOUD_E2E=1`;
+  it is not selectable in production.
+- The cloud-api adapter avoids Wrangler in CI while still exercising the real
+  generated router, Worker entrypoint, container-control-plane forwarder, and
+  DB-backed provisioning queue.
 - No real cloud creds are needed; everything is local.
 - Do not modify cloud-api / cloud-frontend source from inside this package.
   When a test exposes a real bug, surface it as a follow-up.

@@ -13,12 +13,23 @@ import {
   Input,
 } from "@elizaos/ui";
 import { Gift } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
-import { DirectCryptoCreditCard } from "../../dashboard/billing/_components/direct-crypto-credit-card";
 import { useUserProfile } from "../../lib/data/user";
+
+const LazyStewardWalletProviders = lazy(async () => {
+  const mod = await import("../login/steward-wallet-providers");
+  return { default: mod.StewardWalletProviders };
+});
+
+const LazyDirectCryptoCreditCard = lazy(async () => {
+  const mod = await import(
+    "../../dashboard/billing/_components/direct-crypto-credit-card"
+  );
+  return { default: mod.DirectCryptoCreditCard };
+});
 
 export default function BscPromoPage() {
   const { user, isReady, isAuthenticated, isLoading, isError, error } =
@@ -36,8 +47,8 @@ export default function BscPromoPage() {
   }, []);
 
   useEffect(() => {
-    fetchCryptoStatus();
-  }, [fetchCryptoStatus]);
+    if (isAuthenticated && user) fetchCryptoStatus();
+  }, [fetchCryptoStatus, isAuthenticated, user]);
 
   const parsed = Number.parseFloat(amount);
   const amountValue = Number.isFinite(parsed) ? parsed : null;
@@ -167,15 +178,23 @@ export default function BscPromoPage() {
                       </div>
                     </CardContent>
                   </Card>
-                  <DirectCryptoCreditCard
-                    amount={amountValue}
-                    promoCode="bsc"
-                    status={status}
-                    accountWalletAddress={user.wallet_address ?? null}
-                    surface="cloud"
-                    lockedNetwork="bsc"
-                    onSuccess={() => undefined}
-                  />
+                  <Suspense
+                    fallback={
+                      <DashboardLoadingState label="Loading wallet checkout" />
+                    }
+                  >
+                    <LazyStewardWalletProviders>
+                      <LazyDirectCryptoCreditCard
+                        amount={amountValue}
+                        promoCode="bsc"
+                        status={status}
+                        accountWalletAddress={user.wallet_address ?? null}
+                        surface="cloud"
+                        lockedNetwork="bsc"
+                        onSuccess={() => undefined}
+                      />
+                    </LazyStewardWalletProviders>
+                  </Suspense>
                 </>
               )}
             </div>

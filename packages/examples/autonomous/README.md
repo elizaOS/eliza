@@ -1,6 +1,6 @@
 # Autonomous (Local) Example
 
-This folder contains **three** minimal, sandboxed “always-on” autonomous loop examples (TypeScript, Python, Rust) that all follow the same pattern:
+This folder contains a minimal, sandboxed TypeScript “always-on” autonomous loop example:
 
 1. **Think** using `plugin-local-ai` (local GGUF inference)
 2. **Optionally act** using `plugin-shell` (restricted directory)
@@ -29,17 +29,16 @@ export MODELS_DIR="$HOME/.eliza/models"
 export LOCAL_SMALL_MODEL="eliza-1-2b-32k.gguf"
 ```
 
-Notes:
-
-- The TypeScript `plugin-local-ai` implementation can auto-download its **default** models. For this example, pre-download the Eliza-1 mobile GGUF and set `LOCAL_SMALL_MODEL` to the exact filename.
-- Python and Rust examples expect the GGUF file to already exist (no auto-download).
+Note: the TypeScript `plugin-local-ai` implementation can auto-download its
+**default** models. For this example, pre-download the Eliza-1 mobile GGUF and
+set `LOCAL_SMALL_MODEL` to the exact filename.
 
 ## Shell sandbox setup
 
-Pick a safe directory (example below uses this repo’s `examples/autonomous/sandbox`):
+Pick a safe directory (example below uses this repo’s `packages/examples/autonomous/sandbox`):
 
 ```bash
-export SHELL_ALLOWED_DIRECTORY="$(pwd)/examples/autonomous/sandbox"
+export SHELL_ALLOWED_DIRECTORY="$(pwd)/packages/examples/autonomous/sandbox"
 export SHELL_TIMEOUT=30000
 
 # Recommended extra restrictions (network/process control, etc.)
@@ -54,29 +53,8 @@ mkdir -p "$SHELL_ALLOWED_DIRECTORY"
 
 ## Run
 
-### TypeScript
-
 ```bash
-cd examples/autonomous
+cd packages/examples/autonomous
 bun install
 bun run start
-```
-
-### Python
-
-```bash
-cd examples/autonomous/python
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python autonomous.py
-```
-
-### Rust
-
-> **Note**: The Rust example requires `elizaos-plugin-local-ai` with the `llm` feature enabled for actual inference. This feature depends on a vendored `llama_cpp_rs` crate that is not yet included in the repository. The example will compile but exit early with an error message until the vendor is added. See the plugin's `Cargo.toml` for details.
-
-```bash
-cd examples/autonomous/rust/autonomous
-cargo run --release
 ```

@@ -1,0 +1,38 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../../../",
+    "strict": false,
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/plugin-smartglasses": [
+        "../../../plugins/plugin-smartglasses/src/index.ts"
+      ],
+      "@elizaos/plugin-smartglasses/register": [
+        "../../../plugins/plugin-smartglasses/src/register.ts"
+      ],
+      "@elizaos/plugin-smartglasses/*": [
+        "../../../plugins/plugin-smartglasses/src/*"
+      ]
+    }
+  },
+  "include": [
+    "declarations.d.ts",
+    "eliza-runtime-smoke.ts",
+    "evenhub-smoke.ts",
+    "hardware-evidence.ts",
+    "hardware-report-status.ts",
+    "hardware-smoke.ts",
+    "noble-hardware-smoke.ts",
+    "package-smoke.ts",
+    "simulator-automation-smoke.ts",
+    "validate-hardware-report.ts",
+    "../../../plugins/plugin-smartglasses/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

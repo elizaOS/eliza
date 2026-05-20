@@ -1,8 +1,62 @@
+import { readFile } from "node:fs/promises";
 import {
   type HardwareEvidenceReport,
-  missingHardwareEvidence,
+  missingCompleteHardwareEvidence,
 } from "./hardware-evidence.js";
-import { readFile } from "node:fs/promises";
+
+const VALIDATION_FAILURE_DESCRIPTIONS: Record<string, string> = {
+  connected: "Both lenses must be connected as one headset.",
+  connectionReadySent: "Connection-ready init packet must be sent.",
+  displayPacketsSent: "At least one display packet must be sent.",
+  serialRequested: "Serial-number request packet must be sent.",
+  serialObserved: "Serial-number response must be observed.",
+  settingsSent:
+    "At least one settings packet must be sent: brightness, dashboard, head-up angle, or wear detection.",
+  tapObserved: "A side-tap or long-press event must be observed.",
+  microphoneEnabledByTap:
+    "A single tap or long press must enable microphone input.",
+  microphoneDisabledByTap:
+    "A double tap or stop-recording event must disable microphone input.",
+  audioObserved: "A microphone audio chunk must be received from the glasses.",
+  missingFinishedAt: "The report was not finalized.",
+  missingLeftLensConnection: "The left lens was not recorded as connected.",
+  missingRightLensConnection: "The right lens was not recorded as connected.",
+  missingStatusLeftLensConnection:
+    "The final service status did not include a connected left lens.",
+  missingStatusRightLensConnection:
+    "The final service status did not include a connected right lens.",
+  missingSerialNumber:
+    "The final service status did not include the serial number.",
+  missingStatusAudioChunks:
+    "The final service status did not count any microphone audio chunks.",
+  missingWrites: "No outgoing G1 packet writes were recorded.",
+  missingEvents: "No incoming G1 events were recorded.",
+  missingAudioChunks: "No microphone audio chunks were recorded.",
+  missingInitWrite: "No connection-ready init write was recorded.",
+  missingDisplayWrite: "No display-result write was recorded.",
+  missingSerialRequestWrite: "No serial-number request write was recorded.",
+  missingSettingsWrite:
+    "No settings write was recorded: brightness, dashboard, head-up angle, or wear detection.",
+  missingSerialEvent: "No serial-number event was observed.",
+  missingMicEnableTapEvent:
+    "No single-tap or long-press event was observed for microphone enable.",
+  missingMicDisableTapEvent:
+    "No double-tap or stop-recording event was observed for microphone disable.",
+  missingMicEnableWrite: "No right-lens microphone-enable write was recorded.",
+  missingMicDisableWrite:
+    "No right-lens microphone-disable write was recorded.",
+  missingNonEmptyAudioChunk:
+    "No non-empty microphone audio chunk was recorded.",
+  missingRightLensAudioChunk:
+    "No non-empty microphone audio chunk was recorded from the right lens.",
+  headsetInCradle: "The headset is still reporting cradle or charging state.",
+  wearingStateNotObserved:
+    "The headset never reported physical state 'wearing'.",
+  reportNotMarkedOk:
+    "The report did not satisfy the required hardware evidence checklist.",
+  statusNotConnected:
+    "The final service status did not report a connected headset.",
+};
 
 if ((import.meta as { main?: boolean }).main) {
   const reportPath = process.argv[2] ?? process.env.SMARTGLASSES_REPORT_PATH;
@@ -25,13 +79,18 @@ if ((import.meta as { main?: boolean }).main) {
           ok: false,
           reportPath,
           failures,
-        checks: report.checks,
-        status: report.status,
-        headsetState: report.headsetState,
-        setupHint: report.setupHint,
-      },
-      null,
-      2,
+          failureDetails: failures.map((failure) => ({
+            failure,
+            description: describeValidationFailure(failure),
+          })),
+          checks: report.checks,
+          lenses: report.lenses,
+          status: report.status,
+          headsetState: report.headsetState,
+          setupHint: report.setupHint,
+        },
+        null,
+        2,
       ),
     );
     process.exit(1);
@@ -61,77 +120,13 @@ if ((import.meta as { main?: boolean }).main) {
 export function validateHardwareReport(
   report: HardwareEvidenceReport,
 ): string[] {
-  const failures = [...missingHardwareEvidence(report)];
-  const headsetState = report.headsetState ?? {
-    physical: report.status?.physicalState ?? null,
-    battery: report.status?.batteryState ?? null,
-    device: report.status?.deviceState ?? null,
-  };
-  const physical = headsetState.physical;
-  const battery = headsetState.battery;
-  const physicalCradleStates = new Set([
-    "cradle_open",
-    "cradle_closed",
-    "charged_in_cradle",
-  ]);
-  const batteryCradleStates = new Set([
-    "glasses_fully_charged",
-    "cradle_charging_cable_changed",
-    "cradle_fully_charged",
-  ]);
-  if (
-    physical !== "wearing" &&
-    ((physical && physicalCradleStates.has(physical)) ||
-      (battery && batteryCradleStates.has(battery)))
-  ) {
-    failures.push("headsetInCradle");
-  }
-  if (physical !== "wearing") failures.push("wearingStateNotObserved");
+  const failures = [
+    ...missingCompleteHardwareEvidence(report, { requireFinishedAt: true }),
+  ];
   if (!report.ok) failures.push("reportNotMarkedOk");
-  if (!report.finishedAt) failures.push("missingFinishedAt");
-  if (!report.status?.connected) failures.push("statusNotConnected");
-  if (!report.status?.lastSerialNumber) failures.push("missingSerialNumber");
-  if ((report.status?.audioChunksReceived ?? 0) < 1)
-    failures.push("missingStatusAudioChunks");
-  if (report.writes.length === 0) failures.push("missingWrites");
-  if (report.events.length === 0) failures.push("missingEvents");
-  if (report.audio.length === 0) failures.push("missingAudioChunks");
-  if (
-    !report.writes.some(
-      (write) => write.command === "init" || write.command === "right-init",
-    )
-  )
-    failures.push("missingInitWrite");
-  if (!report.writes.some((write) => write.command === "display-result"))
-    failures.push("missingDisplayWrite");
-  if (!report.writes.some((write) => write.command === "get-serial"))
-    failures.push("missingSerialRequestWrite");
-  if (
-    !report.writes.some((write) =>
-      ["brightness", "dashboard", "head-up-angle", "wear-detection"].includes(
-        write.command,
-      ),
-    )
-  )
-    failures.push("missingSettingsWrite");
-  if (!report.events.some((event) => event.type === "serial"))
-    failures.push("missingSerialEvent");
-  if (
-    !report.events.some(
-      (event) => event.label === "single_tap" || event.label === "long_press",
-    )
-  )
-    failures.push("missingMicEnableTapEvent");
-  if (
-    !report.events.some(
-      (event) =>
-        event.label === "double_tap" || event.label === "stop_ai_recording",
-    )
-  )
-    failures.push("missingMicDisableTapEvent");
-  if (!report.audio.some((chunk) => chunk.bytes > 0))
-    failures.push("missingNonEmptyAudioChunk");
-  if (!report.audio.some((chunk) => chunk.side === "right" && chunk.bytes > 0))
-    failures.push("missingRightLensAudioChunk");
   return [...new Set(failures)];
+}
+
+export function describeValidationFailure(failure: string): string {
+  return VALIDATION_FAILURE_DESCRIPTIONS[failure] ?? failure;
 }

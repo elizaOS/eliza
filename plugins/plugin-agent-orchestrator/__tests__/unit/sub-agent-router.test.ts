@@ -305,6 +305,7 @@ describe("SubAgentRouter", () => {
       },
       expect.objectContaining({
         text: "done",
+        source: "sub_agent_complete",
         inReplyTo: CONNECTOR_MSG,
       }),
     );

@@ -37,7 +37,7 @@ export AWS_REGION="us-east-1"  # or your preferred region
 ### 2. Test Locally
 
 ```bash
-cd examples/aws
+cd packages/examples/aws
 bun install
 bun run test                # Automated tests
 bun run start               # Local HTTP server on port 3000
@@ -46,7 +46,7 @@ bun run start               # Local HTTP server on port 3000
 ### 3. Deploy
 
 ```bash
-cd examples/aws
+cd packages/examples/aws
 bun install
 sam build
 sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
@@ -61,7 +61,7 @@ curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/prod/chat \
   -H 'Content-Type: application/json' \
   -d '{"message": "Hello, Eliza!"}'
 
-cd examples/aws
+cd packages/examples/aws
 bun install
 bun run test-client.ts --endpoint https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/prod/chat
 ```

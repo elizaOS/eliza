@@ -28,6 +28,20 @@ const rawRs2004scapePlugin: Plugin = {
     },
     {
       id: "2004scape",
+      label: "2004scape XR",
+      description:
+        "2004scape game operator surface — agent controls and session management",
+      icon: "Gamepad2",
+      path: "/2004scape",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+      tags: ["game", "runescape", "2004scape"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "2004scape",
       label: "2004scape TUI",
       description: "Terminal 2004scape operator surface",
       icon: "Gamepad2",

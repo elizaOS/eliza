@@ -45,7 +45,7 @@
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bunx vitest run --config vitest.config.ts",
     "test:remote-capabilities": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts packages/agent/src/services/remote-capability-router.test.ts packages/agent/src/services/remote-capability-endpoint-provider.test.ts packages/agent/src/services/remote-capability-endpoint-conformance.test.ts packages/agent/src/services/remote-capability-cloud-sandbox.test.ts packages/agent/src/services/remote-capability-live-report.test.ts packages/agent/src/api/remote-capability-routes.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/core/src/capabilities/index.test.ts --coverage.enabled=false",
     "test:remote-capabilities:source-build": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"builds a remote plugin from source|loads a built remote plugin from a separate capability server process\" --coverage.enabled=false",
     "test:remote-capabilities:docker": "cd ../.. && ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"Docker container capability server\" --coverage.enabled=false",
@@ -315,6 +315,7 @@
     "jsdom": "^29.0.0",
     "json5": "^2.2.3",
     "minimisted": "^2.0.0",
+    "onnxruntime-web": "1.26.0",
     "pako": "^1.0.10",
     "pg": "^8.16.3",
     "pify": "^4.0.1",
@@ -325,6 +326,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
     "@types/bun": "^1.3.12",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.2.0",

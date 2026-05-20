@@ -1449,6 +1449,33 @@ function isEliza1TierCatalogId(id: string): boolean {
 	return ELIZA_1_PLACEHOLDER_IDS.has(id);
 }
 
+async function synthesizeInstalledTarget(
+	plan: BackendPlan,
+	catalog: CatalogModel,
+): Promise<InstalledModel | null> {
+	const bundleRoot = plan.overrides?.bundleRoot;
+	if (!bundleRoot) return null;
+	try {
+		const modelStat = await fs.promises.stat(plan.modelPath);
+		if (!modelStat.isFile()) return null;
+		return {
+			id: catalog.id,
+			displayName: catalog.displayName,
+			path: plan.modelPath,
+			sizeBytes: modelStat.size,
+			bundleRoot,
+			manifestPath: plan.overrides?.manifestPath,
+			hfRepo: catalog.hfRepo,
+			installedAt: new Date(modelStat.mtimeMs).toISOString(),
+			lastUsedAt: null,
+			source: "eliza-download",
+			runtimeRole: "chat",
+		};
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Resolve the KV-cache spill plan for a llama-server launch.
  *
@@ -3234,7 +3261,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		const installed = await listInstalledModels();
 		const target =
 			installed.find((m) => m.path === plan.modelPath) ??
-			installed.find((m) => m.id === plan.modelId);
+			installed.find((m) => m.id === plan.modelId) ??
+			(await synthesizeInstalledTarget(plan, catalog));
 		if (!target) {
 			throw new Error(
 				`[dflash] No installed model matched plan path/id (${plan.modelPath}; ${plan.modelId ?? "no id"}).`,

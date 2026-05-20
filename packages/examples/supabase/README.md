@@ -1,6 +1,8 @@
-# Supabase Edge Functions elizaOS Worker Examples
+# Supabase Edge Functions elizaOS Worker Example
 
-Deploy AI chat agents as serverless Supabase Edge Functions. These examples show how to run an elizaOS agent as a stateless worker that processes chat messages via HTTP.
+Deploy an AI chat agent as a serverless Supabase Edge Function. This example
+shows how to run an elizaOS agent as a stateless worker that processes chat
+messages via HTTP.
 
 All handlers use the full **elizaOS runtime** with OpenAI as the LLM provider, providing the same capabilities as the AWS Lambda and chat demo examples.
 
@@ -23,16 +25,16 @@ All handlers use the full **elizaOS runtime** with OpenAI as the LLM provider, p
 | Language   | Support Level    | Notes                                    |
 | ---------- | ---------------- | ---------------------------------------- |
 | TypeScript | ✅ Native        | Full Deno runtime support                |
-| Rust       | ✅ via WASM      | Compile to WebAssembly                   |
 | Python     | ❌ Not supported | Supabase Edge Functions use Deno runtime |
 
-> **Note**: Unlike AWS Lambda, Supabase Edge Functions run on the Deno runtime, which only natively supports TypeScript/JavaScript. Python is not supported. Rust can be used via WebAssembly compilation.
+> **Note**: Unlike AWS Lambda, Supabase Edge Functions run on the Deno runtime,
+> which only natively supports TypeScript/JavaScript in this example. Python is
+> not supported by this runtime.
 
 ## Prerequisites
 
 - [Supabase CLI](https://supabase.com/docs/guides/cli) installed
 - [Deno](https://deno.land/) 1.40+ (for local development)
-- [Rust + wasm-pack](https://rustwasm.github.io/wasm-pack/) (for Rust WASM)
 - Supabase project with Edge Functions enabled
 - OpenAI API key
 
@@ -57,7 +59,7 @@ supabase secrets set OPENAI_API_KEY=your-openai-api-key
 supabase init
 
 # Copy edge functions to your project
-cp -r examples/supabase/functions/* supabase/functions/
+cp -r packages/examples/supabase/functions/* supabase/functions/
 ```
 
 ### 3. Test Locally First
@@ -99,7 +101,7 @@ curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/eliza-chat \
 ## Project Structure
 
 ```
-examples/supabase/
+packages/examples/supabase/
 ├── README.md                       # This file
 ├── functions/
 │   ├── eliza-chat/                 # TypeScript Edge Function
@@ -108,15 +110,8 @@ examples/supabase/
 │   │   │   ├── runtime.ts          # elizaOS runtime manager
 │   │   │   └── types.ts            # Type definitions
 │   │   └── deno.json               # Deno configuration
-│   └── eliza-chat-wasm/            # Rust WASM Edge Function
-│       ├── index.ts                # Deno wrapper
-│       └── wasm/                   # Compiled WASM module
-├── rust/                           # Rust source for WASM
-│   ├── Cargo.toml
-│   └── src/
-│       └── lib.rs
 ├── scripts/
-│   ├── build-wasm.sh               # Build Rust to WASM
+│   ├── build-wasm.sh               # Reserved helper for WASM experiments
 │   └── test-local.sh               # Local testing script
 ├── test-client.ts                  # Interactive test client
 └── config.toml                     # Supabase config
@@ -214,19 +209,6 @@ serve(async (req: Request): Promise<Response> => {
 
   return new Response("Method not allowed", { status: 405 });
 });
-```
-
-## Rust WASM Implementation
-
-For performance-critical operations, you can use Rust compiled to WebAssembly:
-
-```bash
-# Build WASM module
-cd examples/supabase/rust
-wasm-pack build --target web --out-dir ../functions/eliza-chat-wasm/wasm
-
-# Deploy
-supabase functions deploy eliza-chat-wasm
 ```
 
 ## Performance
@@ -327,6 +309,4 @@ supabase secrets unset OPENAI_API_KEY
 - [Supabase Edge Functions Docs](https://supabase.com/docs/guides/functions)
 - [Deno Documentation](https://deno.land/manual)
 - [AWS Lambda Example](../aws/README.md) - Same pattern for AWS
-
-
 

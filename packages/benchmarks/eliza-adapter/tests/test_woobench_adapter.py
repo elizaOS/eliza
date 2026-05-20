@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 
 from eliza_adapter.client import MessageResponse
-from eliza_adapter.woobench import _WOOBENCH_SYSTEM_HINT, build_eliza_bridge_agent_fn
+from eliza_adapter.woobench import (
+    _WOOBENCH_SYSTEM_HINT,
+    _with_inferred_payment_action,
+    build_eliza_bridge_agent_fn,
+)
 
 
 class _FakeClient:
@@ -61,7 +65,8 @@ def test_woobench_adapter_forwards_system_message_and_payment_actions() -> None:
     asyncio.run(agent_fn([{"role": "user", "content": "read my cards"}]))
 
     context = client.last_context
-    assert context["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert context["system_prompt"] == _WOOBENCH_SYSTEM_HINT
+    assert context["messages"] == [{"role": "user", "content": "read my cards"}]
     assert context["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
     assert context["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
     assert context["tools"][0]["function"]["name"] == "CREATE_APP_CHARGE"
@@ -96,6 +101,22 @@ def test_woobench_adapter_synthesizes_visible_payment_text() -> None:
 
     assert "full reading after $10.00" in result.text
     assert result.actions == ["BENCHMARK_ACTION"]
+
+
+def test_woobench_adapter_infers_payment_action_from_visible_charge_text() -> None:
+    response = MessageResponse(
+        text="I can continue once the $15 payment is created.",
+        thought=None,
+        actions=[],
+        params={},
+        metadata={},
+    )
+
+    result = _with_inferred_payment_action(response)
+
+    assert result.actions == ["BENCHMARK_ACTION"]
+    assert result.params["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+    assert result.params["BENCHMARK_ACTION"]["amount_usd"] == 15.0
 
 
 def test_woobench_adapter_removes_payment_tools_after_payment_check() -> None:

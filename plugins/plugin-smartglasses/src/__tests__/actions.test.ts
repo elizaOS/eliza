@@ -282,6 +282,67 @@ describe("smartglasses actions", () => {
       [G1Command.RightInit, 0x01],
     ]);
 
+    const disconnectResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"disconnect_headset"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(disconnectResult);
+    expect(disconnectResult.success).toBe(true);
+    expect(service.getStatus().connected).toBe(false);
+    expect(disconnectResult.values?.operationResult).toMatchObject({
+      connected: false,
+      setup: {
+        wholeHeadsetConnected: false,
+        wearingReady: false,
+        physicalBlocker: "disconnected",
+      },
+    });
+
+    const pairResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"pair_headset"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(pairResult);
+    expect(pairResult.success).toBe(true);
+    expect(service.getStatus().connected).toBe(true);
+    expect(pairResult.values?.operationResult).toMatchObject({
+      connected: true,
+      setup: {
+        wholeHeadsetConnected: true,
+        wearingReady: false,
+        physicalBlocker: "wearing_state_missing",
+      },
+    });
+    expect(
+      transport.writes.slice(-2).map((write) => Array.from(write.data)),
+    ).toEqual([
+      [G1Command.Init, 0x01],
+      [G1Command.RightInit, 0x01],
+    ]);
+
+    const quietReconnectResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"connect","init":false}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(quietReconnectResult);
+    expect(quietReconnectResult.success).toBe(true);
+    expect(service.getStatus().connected).toBe(true);
+    expect(
+      transport.writes.slice(-2).map((write) => Array.from(write.data)),
+    ).toEqual([
+      [G1Command.Init, 0x01],
+      [G1Command.RightInit, 0x01],
+    ]);
+
     const serialResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"get_serial","side":"right"}'),
@@ -362,6 +423,23 @@ describe("smartglasses actions", () => {
     expect(service.getStatus().lastWifiStatus?.status).toBe(
       "mock credentials sent for Home",
     );
+
+    const wifiSetupResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wifi_setup","reason":"Eliza needs headset Wi-Fi"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wifiSetupResult);
+    expect(wifiSetupResult.success).toBe(true);
+    expect(wifiSetupResult.values?.operationResult).toMatchObject({
+      status: "mock Wi-Fi setup requested",
+    });
+    expect(transport.wifiRequests.at(-1)).toEqual({
+      op: "setup",
+      reason: "Eliza needs headset Wi-Fi",
+    });
 
     const wifiStatusResult = await smartglassesControlAction.handler(
       runtime,
@@ -778,6 +856,22 @@ describe("smartglasses actions", () => {
     expectResult(statusResult);
     expect(statusResult.success).toBe(true);
     expect(statusResult.text).toContain("connected: true");
+    expect(statusResult.text).toContain(
+      "connectedLenses: left=connected (Mock Even G1 Left), right=connected (Mock Even G1 Right)",
+    );
+    expect(statusResult.text).toContain(
+      "setupHint: Tap and microphone validation requires the glasses to report wearing; current state is no wearing state observed.",
+    );
+    expect(statusResult.text).toContain("wholeHeadsetConnected: true");
+    expect(statusResult.text).toContain("wearingReady: false");
+    expect(statusResult.text).toContain(
+      "physicalBlocker: wearing_state_missing",
+    );
+    expect(statusResult.values?.setup).toMatchObject({
+      wholeHeadsetConnected: true,
+      wearingReady: false,
+      physicalBlocker: "wearing_state_missing",
+    });
     expect(statusResult.text).toContain("lastTranscript: status transcript");
     expect(callbackTexts).toContain("Smartglasses microphone enabled.");
   });

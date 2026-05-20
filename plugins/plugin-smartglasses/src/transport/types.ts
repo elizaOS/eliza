@@ -29,13 +29,16 @@ export interface SmartglassesTransport {
       metadata?: Record<string, unknown>,
     ) => void,
   ): () => void;
+  onWifiStatus?(callback: (status: SmartglassesWifiResult) => void): () => void;
   scanWifi?(): Promise<SmartglassesWifiResult>;
   getWifiStatus?(): Promise<SmartglassesWifiResult>;
   configureWifi?(
     ssid: string,
     password: string,
   ): Promise<SmartglassesWifiResult>;
+  requestWifiSetup?(reason?: string): Promise<SmartglassesWifiResult>;
   supportsWifi?(): boolean;
+  getConnectedLenses?(): SmartglassesConnectedLenses;
 }
 
 export interface SmartglassesTransportFactory {
@@ -48,3 +51,13 @@ export interface SmartglassesWifiResult {
   networks: string[];
   raw?: unknown;
 }
+
+export interface SmartglassesLensConnection {
+  connected: boolean;
+  name?: string;
+  address?: string;
+}
+
+export type SmartglassesConnectedLenses = Partial<
+  Record<GlassSide, SmartglassesLensConnection>
+>;

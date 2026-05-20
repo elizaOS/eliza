@@ -81,6 +81,25 @@ function listAdbDevices() {
     .map((line) => line.split(/\s+/)[0]);
 }
 
+function listWirelessAdbServices() {
+  const result = run(adbPath, ["mdns", "services"]);
+  if (result.status !== 0) return [];
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("List of discovered"))
+    .map((line) => {
+      const parts = line.split(/\s+/);
+      return {
+        name: parts[0] ?? "",
+        type: parts[1] ?? "",
+        endpoint: parts[2] ?? "",
+      };
+    })
+    .filter((service) => service.name && service.type && service.endpoint);
+}
+
 function listHostUsbDevices() {
   if (process.platform !== "darwin") return [];
   const result = run("ioreg", ["-p", "IOUSB", "-l", "-w", "0"]);
@@ -98,7 +117,13 @@ function listHostUsbDevices() {
     }
     if (!devices.includes(trimmed)) devices.push(trimmed);
   }
-  return devices.slice(0, 10);
+  return devices
+    .filter((name) =>
+      /\b(Android|ADB|MTP|Pixel|Samsung|Galaxy|Motorola|Moto|OnePlus|Xiaomi|Redmi|OPPO|Vivo|Nothing|Nokia|Sony|LG|HTC|Huawei|iPhone)\b/i.test(
+        name,
+      ),
+    )
+    .slice(0, 10);
 }
 
 function readBridgeDoctor() {
@@ -145,6 +170,7 @@ async function main() {
 
   while (Date.now() <= deadline) {
     const devices = listAdbDevices();
+    const wirelessAdb = listWirelessAdbServices();
     const hostUsbDevices = listHostUsbDevices();
     const bridgeDoctor = readBridgeDoctor();
     const bridgeReady = bridgeOutboundReady(bridgeDoctor);
@@ -165,6 +191,14 @@ async function main() {
       return;
     }
 
+    const pairing = wirelessAdb.find((service) => service.type.includes("_adb-tls-pairing"));
+    if (pairing) {
+      console.log(
+        `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+      );
+      return;
+    }
+
     if (bridgeReady) {
       console.log("[sms-gateway-watch] BlueBubbles outbound is ready.");
       console.log(
@@ -178,7 +212,7 @@ async function main() {
       .map((check) => `${check.name}: ${check.detail}`)
       .join(" | ");
     console.log(
-      `[sms-gateway-watch] waiting: adb devices=0; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
+      `[sms-gateway-watch] waiting: adb devices=0; wireless=${wirelessAdb.map((service) => `${service.type}:${service.endpoint}`).join(", ") || "none"}; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
     );
     await sleep(Math.max(1, args.intervalSeconds) * 1000);
   }

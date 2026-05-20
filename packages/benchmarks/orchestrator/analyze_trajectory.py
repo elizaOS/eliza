@@ -425,6 +425,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                     cached=cached,
                     cache_creation=cache_creation,
                     has_cached=has_cached,
+                    llm_calls=sum(1 for c in calls if isinstance(c, dict)),
                 )
 
     # Shape 3: adhdbench-like flat fields.

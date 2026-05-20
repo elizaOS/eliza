@@ -254,11 +254,10 @@ export class ApiKeysService {
 
   async revokeForAgent(agentSandboxId: string): Promise<void> {
     const name = ApiKeysService.agentApiKeyName(agentSandboxId);
-    const keys = await apiKeysRepository.findByName(name);
+    const keys = await apiKeysRepository.deleteByName(name);
     for (const key of keys) {
       await this.invalidateCache(key.key_hash);
     }
-    await apiKeysRepository.deleteByName(name);
   }
 }
 

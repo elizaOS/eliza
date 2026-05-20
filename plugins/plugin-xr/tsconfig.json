@@ -20,5 +20,10 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts"]
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

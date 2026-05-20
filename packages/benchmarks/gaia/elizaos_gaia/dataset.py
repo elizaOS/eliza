@@ -36,6 +36,33 @@ DATASET_PARQUET_FILES = {
 }
 
 
+def find_cached_official_metadata(
+    *,
+    cache_dir: str | Path = ".cache/gaia",
+    split: str = "validation",
+) -> Path | None:
+    """Return cached official GAIA metadata when a HF snapshot is present."""
+    if split not in ("validation", "test"):
+        return None
+    roots = [
+        Path(cache_dir),
+        Path.home() / ".cache" / "huggingface" / "hub",
+    ]
+    seen: set[Path] = set()
+    for root in roots:
+        dataset_root = root / "datasets--gaia-benchmark--GAIA" / "snapshots"
+        if dataset_root in seen:
+            continue
+        seen.add(dataset_root)
+        if not dataset_root.exists():
+            continue
+        for suffix in ("parquet", "jsonl"):
+            for path in sorted(dataset_root.glob(f"*/2023/{split}/metadata.{suffix}")):
+                if path.is_file():
+                    return path
+    return None
+
+
 class DatasetAccessError(RuntimeError):
     """Raised when the GAIA dataset cannot be accessed (e.g., gated/403)."""
 
@@ -108,6 +135,20 @@ class GAIADataset:
 
         logger.info(f"Loading GAIA dataset ({split} split) from HuggingFace...")
 
+        if not hf_token:
+            cached_metadata = find_cached_official_metadata(
+                cache_dir=self.cache_dir,
+                split=split,
+            )
+            if cached_metadata is not None:
+                logger.info("Loading cached official GAIA metadata: %s", cached_metadata)
+                questions = await self._parse_official_metadata_file(cached_metadata)
+                if split == "validation":
+                    self.validation_set = questions
+                else:
+                    self.test_set = questions
+                return questions
+
         try:
             # Try to use huggingface_hub for downloading
             from huggingface_hub import snapshot_download
@@ -127,13 +168,10 @@ class GAIADataset:
             # metadata.jsonl path for older cached snapshots.
             parquet_path = self._files_dir / "metadata.parquet"
             jsonl_path = self._files_dir / "metadata.jsonl"
-            if parquet_path.exists():
-                questions = await self._parse_metadata_parquet(parquet_path)
-            elif jsonl_path.exists():
-                logger.info(
-                    "Loading legacy JSONL metadata (parquet not found in snapshot)"
+            if parquet_path.exists() or jsonl_path.exists():
+                questions = await self._parse_official_metadata_file(
+                    parquet_path if parquet_path.exists() else jsonl_path
                 )
-                questions = await self._parse_metadata(jsonl_path)
             else:
                 raise FileNotFoundError(
                     f"Metadata file not found: tried {parquet_path} and {jsonl_path}"
@@ -165,6 +203,14 @@ class GAIADataset:
                     is_gated=True,
                 ) from e
             raise
+
+    async def _parse_official_metadata_file(self, metadata_path: Path) -> list[GAIAQuestion]:
+        """Parse current parquet or legacy JSONL official GAIA metadata."""
+        self._files_dir = metadata_path.parent
+        if metadata_path.suffix == ".parquet":
+            return await self._parse_metadata_parquet(metadata_path)
+        logger.info("Loading legacy JSONL metadata (parquet not found in snapshot)")
+        return await self._parse_metadata(metadata_path)
 
     async def _load_from_jsonl(self, path: Path) -> list[GAIAQuestion]:
         """Load questions from a local JSONL file."""
@@ -449,6 +495,18 @@ class GAIADataset:
 
     async def _load_from_cache(self, split: str) -> list[GAIAQuestion]:
         """Load from local cache if HuggingFace download fails."""
+        cached_metadata = find_cached_official_metadata(
+            cache_dir=self.cache_dir,
+            split=split,
+        )
+        if cached_metadata is not None:
+            questions = await self._parse_official_metadata_file(cached_metadata)
+            if split == "validation":
+                self.validation_set = questions
+            else:
+                self.test_set = questions
+            return questions
+
         cache_file = self.cache_dir / f"{split}_questions.json"
 
         if not cache_file.exists():

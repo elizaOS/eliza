@@ -140,8 +140,12 @@ function parseArgs(argv) {
       process.env.ELIZA_DFLASH_BENCH_CONTEXT || "2048",
       10,
     ),
+    benchPrompt:
+      process.env.ELIZA_DFLASH_BENCH_PROMPT ||
+      "Write a short paragraph about speculative decoding.",
     benchDraftMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_MIN || "2",
     benchDraftMax: process.env.ELIZA_DFLASH_BENCH_DRAFT_MAX || "6",
+    benchDraftPMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_P_MIN || "0.1",
     benchTimeoutMs: Number.parseInt(
       process.env.ELIZA_DFLASH_BENCH_TIMEOUT_MS || "600000",
       10,
@@ -180,8 +184,10 @@ function parseArgs(argv) {
       args.benchTokens = Number.parseInt(next(), 10);
     else if (arg === "--bench-context")
       args.benchContext = Number.parseInt(next(), 10);
+    else if (arg === "--bench-prompt") args.benchPrompt = next();
     else if (arg === "--bench-draft-n-min") args.benchDraftMin = next();
     else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
+    else if (arg === "--bench-draft-p-min") args.benchDraftPMin = next();
     else if (arg === "--bench-timeout-ms")
       args.benchTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
@@ -211,8 +217,10 @@ function parseArgs(argv) {
           "                                 record tok/s + DFlash acceptance rate to a speedup report",
           "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
           "  --bench-context <N>            Context for bench runs (default: 2048)",
+          "  --bench-prompt <text>          Prompt for bench runs (default: speculative decoding paragraph)",
           "  --bench-draft-n-min <N>        Draft min for with-drafter bench pass (default: 2)",
           "  --bench-draft-n-max <N>        Draft max for with-drafter bench pass (default: 6)",
+          "  --bench-draft-p-min <N>        Draft probability floor for with-drafter bench pass (default: 0.1)",
           "  --bench-timeout-ms <N>         Timeout per bench pass (default: 600000)",
           "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
         ].join("\n"),
@@ -1189,13 +1197,14 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
   const context = String(options.benchContext > 0 ? options.benchContext : 2048);
   const draftMin = withDrafter ? String(options.benchDraftMin ?? "2") : "0";
   const draftMax = withDrafter ? String(options.benchDraftMax ?? "6") : "0";
+  const draftPMin = withDrafter ? String(options.benchDraftPMin ?? "0.1") : "1";
   const args = [
     "-m",
     targetModel,
     "-md",
     drafterModel,
     "-p",
-    "Write a short paragraph about speculative decoding.",
+    options.benchPrompt,
     "-n",
     n,
     "-c",
@@ -1217,6 +1226,13 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     skippedCliFlags,
     options.cliFeatures,
     draftMax,
+  );
+  pushOptionalFlag(
+    args,
+    skippedCliFlags,
+    options.cliFeatures,
+    "--spec-draft-p-min",
+    draftPMin,
   );
   if (options.deviceNone) {
     pushOptionalFlag(

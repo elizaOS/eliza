@@ -434,7 +434,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
 
   if (!requiresLogin && session.userId && session.organizationId) {
     provisioning =
-      userMessage && preferredNameCaptured
+      (userMessage || input.authenticatedUser) && preferredNameCaptured
         ? await ensureElizaAppProvisioning({
             userId: session.userId,
             organizationId: session.organizationId,

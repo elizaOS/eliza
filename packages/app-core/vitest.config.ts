@@ -10,12 +10,17 @@ const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
+const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
 const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
+);
+const pluginAppManagerSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-app-manager/src",
 );
 const appCompanionSrc = path.join(monorepoRoot, "plugins/plugin-companion/src");
 const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet-ui/src");
@@ -31,6 +36,15 @@ const pluginBrowserBridgeSrc = path.join(
 const pluginCapacitorBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-capacitor-bridge/src",
+);
+const pluginAnthropicRoot = path.join(monorepoRoot, "plugins/plugin-anthropic");
+const pluginBackgroundRunnerSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-background-runner/src",
+);
+const pluginCommandsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-commands/src",
 );
 const pluginComputerUseSrc = path.join(
   monorepoRoot,
@@ -56,13 +70,22 @@ const pluginLocalInferenceSrc = path.join(
   "plugins/plugin-local-inference/src",
 );
 const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
+const pluginMlxRoot = path.join(monorepoRoot, "plugins/plugin-mlx");
+const pluginOllamaRoot = path.join(monorepoRoot, "plugins/plugin-ollama");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
+const pluginRegistrySrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-registry/src",
+);
 const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
+const pluginShellRoot = path.join(monorepoRoot, "plugins/plugin-shell");
 const pluginStreamingSrc = path.join(
   monorepoRoot,
   "plugins/plugin-streaming/src",
 );
+const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
+const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
 const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
@@ -118,6 +141,8 @@ export default defineConfig({
       "scripts/run-mobile-build-android-app-actions.test.mjs",
       "scripts/aosp/compile-libllama-fused.test.mjs",
       "scripts/mas-smoke.test.mjs",
+      // Uses Node.js built-in test runner (node:test), not vitest.
+      "scripts/android-sms-gateway-template.test.mjs",
       // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
       // separately under Node via vitest.node-sqlite.config.ts with
       // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).
@@ -172,6 +197,14 @@ export default defineConfig({
         replacement: path.join(coreSrc, "index.node.ts"),
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(vaultSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault\/(.+)$/,
+        replacement: path.join(vaultSrc, "$1"),
+      },
       {
         find: /^@elizaos\/cloud-routing$/,
         replacement: path.join(cloudRoutingSrc, "index.ts"),
@@ -248,8 +281,32 @@ export default defineConfig({
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-anthropic$/,
+        replacement: path.join(pluginAnthropicRoot, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-anthropic\/(.+)$/,
+        replacement: path.join(pluginAnthropicRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-manager$/,
+        replacement: path.join(pluginAppManagerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-manager\/(.+)$/,
+        replacement: path.join(pluginAppManagerSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-capacitor-bridge$/,
         replacement: path.join(pluginCapacitorBridgeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-background-runner$/,
+        replacement: path.join(pluginBackgroundRunnerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-commands$/,
+        replacement: path.join(pluginCommandsSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-computeruse$/,
@@ -312,6 +369,22 @@ export default defineConfig({
         replacement: path.join(pluginMcpSrc, "index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-mlx$/,
+        replacement: path.join(pluginMlxRoot, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-mlx\/(.+)$/,
+        replacement: path.join(pluginMlxRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-ollama$/,
+        replacement: path.join(pluginOllamaRoot, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-ollama\/(.+)$/,
+        replacement: path.join(pluginOllamaRoot, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-pdf$/,
         replacement: path.join(pluginPdfSrc, "index.node.ts"),
       },
@@ -320,12 +393,40 @@ export default defineConfig({
         replacement: path.join(pluginPdfSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-registry$/,
+        replacement: path.join(pluginRegistrySrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-registry\/(.+)$/,
+        replacement: path.join(pluginRegistrySrc, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-signal$/,
         replacement: path.join(pluginSignalSrc, "index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-shell$/,
+        replacement: path.join(pluginShellRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-shell\/(.+)$/,
+        replacement: path.join(pluginShellRoot, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-streaming$/,
         replacement: path.join(pluginStreamingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-video$/,
+        replacement: path.join(pluginVideoSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-wallet$/,
+        replacement: path.join(pluginWalletSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-wallet\/(.+)$/,
+        replacement: path.join(pluginWalletSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-whatsapp$/,
@@ -388,6 +489,10 @@ export default defineConfig({
       {
         find: "react-dom/client",
         replacement: path.join(reactDomPkg, "client.js"),
+      },
+      {
+        find: "node-llama-cpp",
+        replacement: path.join(fileDir, "test-stubs/node-llama-cpp.ts"),
       },
     ],
   },

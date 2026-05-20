@@ -6,7 +6,7 @@ A browser-based demo of the **full elizaOS AgentRuntime** using:
 - **@elizaos/plugin-localdb** - localStorage persistence (no SQL needed)
 - **@elizaos/plugin-eliza-classic** - Classic ELIZA pattern matching (no API keys needed)
 
-This demo mirrors the structure of `examples/chat/chat.ts` exactly, but runs in the browser.
+This demo mirrors the structure of `packages/examples/chat/chat.ts` exactly, but runs in the browser.
 
 ## Architecture
 

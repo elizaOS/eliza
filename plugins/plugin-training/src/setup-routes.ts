@@ -338,6 +338,21 @@ export const trainingPlugin: Plugin = {
     },
     {
       id: "training",
+      label: "Training XR",
+      description:
+        "Fine-tuning jobs, datasets, trained models, and trajectory management",
+      icon: "BrainCircuit",
+      path: "/training",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "FineTuningView",
+      tags: ["training", "fine-tuning", "models", "trajectories"],
+      developerOnly: true,
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "training",
       label: "Training TUI",
       description:
         "Terminal fine-tuning jobs, datasets, trained models, and trajectory management",

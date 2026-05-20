@@ -5,15 +5,20 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+  SmartglassesWifiResult,
+} from "./types.js";
 
 export class MockSmartglassesTransport implements SmartglassesTransport {
   readonly name = "mock-smartglasses";
   readonly writes: Array<{ side: GlassSide; data: Uint8Array }> = [];
   readonly wifiRequests: Array<{
-    op: "scan" | "status" | "configure";
+    op: "scan" | "status" | "configure" | "setup";
     ssid?: string;
     password?: string;
+    reason?: string;
   }> = [];
   wifiResult: SmartglassesWifiResult = {
     available: true,
@@ -34,6 +39,7 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
   private transcriptCallbacks = new Set<
     (text: string, isFinal: boolean, metadata?: Record<string, unknown>) => void
   >();
+  private wifiCallbacks = new Set<(status: SmartglassesWifiResult) => void>();
 
   async connect(): Promise<void> {
     this.connected = true;
@@ -45,6 +51,22 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    if (!this.connected) return {};
+    return {
+      left: {
+        connected: true,
+        name: "Mock Even G1 Left",
+        address: "mock-left",
+      },
+      right: {
+        connected: true,
+        name: "Mock Even G1 Right",
+        address: "mock-right",
+      },
+    };
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {
@@ -90,6 +112,11 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
     return () => this.transcriptCallbacks.delete(callback);
   }
 
+  onWifiStatus(callback: (status: SmartglassesWifiResult) => void): () => void {
+    this.wifiCallbacks.add(callback);
+    return () => this.wifiCallbacks.delete(callback);
+  }
+
   emitRaw(side: GlassSide, data: Uint8Array): void {
     const event = parseG1Notification(side, data);
     this.emitEvent(event);
@@ -119,6 +146,10 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
       callback(text, isFinal, metadata);
   }
 
+  emitWifiStatus(status: SmartglassesWifiResult): void {
+    for (const callback of this.wifiCallbacks) callback(status);
+  }
+
   async scanWifi(): Promise<SmartglassesWifiResult> {
     this.wifiRequests.push({ op: "scan" });
     return this.wifiResult;
@@ -137,6 +168,14 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
     return {
       ...this.wifiResult,
       status: `mock credentials sent for ${ssid}`,
+    };
+  }
+
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    this.wifiRequests.push({ op: "setup", reason });
+    return {
+      ...this.wifiResult,
+      status: "mock Wi-Fi setup requested",
     };
   }
 

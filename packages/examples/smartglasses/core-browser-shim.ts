@@ -9,12 +9,12 @@ export class Service {
   static serviceType = "service";
   capabilityDescription = "";
 
-  constructor(_runtime?: unknown) {}
-
   async stop(): Promise<void> {}
 }
 
-export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
+export function parseJSONObjectFromText(
+  text: string,
+): Record<string, unknown> | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
   try {

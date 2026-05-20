@@ -84,6 +84,7 @@ export default defineConfig({
         "@elizaos/plugin-auto-trader",
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-trajectory-logger",
+        "@uniswap/v3-sdk",
       ],
       output: {
         codeSplitting: {

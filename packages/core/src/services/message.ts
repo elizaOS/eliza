@@ -905,6 +905,14 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
+	const benchmark = (content.metadata as Record<string, unknown> | undefined)
+		?.benchmark;
+	if (
+		typeof benchmark === "string" &&
+		benchmark.trim().toLowerCase() === "vending-bench"
+	) {
+		return false;
+	}
 	if (content.source === "benchmark") return true;
 	const contentMetadata = content.metadata as
 		| Record<string, unknown>

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const defaultRepoRoot = path.resolve(here, "../..");
+const defaultRepoRoot = path.resolve(here, "../../..");
 const MARKDOWN_LINK_RE = /!?\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const HTML_LINK_RE = /<(?:a|img)\b[^>]*(?:href|src)=["']([^"']+)["'][^>]*>/gi;
 const BUN_RUN_RE =

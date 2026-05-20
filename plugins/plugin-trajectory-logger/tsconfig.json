@@ -44,6 +44,10 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

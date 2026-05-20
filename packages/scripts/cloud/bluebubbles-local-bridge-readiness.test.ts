@@ -22,6 +22,10 @@ const readyAppleEvents = [
 const readyShortcuts = {
   available: true,
   shortcuts: ["Eliza Cloud Send Message Ready"],
+  validation: {
+    required: true,
+    validated: true,
+  },
 };
 
 const base = {
@@ -88,6 +92,29 @@ describe("BlueBubbles local bridge readiness", () => {
         ],
       }),
     ).toEqual({ method: "shortcuts", ready: true, reasons: [] });
+  });
+
+  it("requires a successful Shortcuts validation send when configured", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        shortcuts: {
+          ...readyShortcuts,
+          validation: {
+            required: true,
+            validated: false,
+            detail: "no successful validation send recorded",
+          },
+        },
+      }),
+    ).toEqual({
+      method: "shortcuts",
+      ready: false,
+      reasons: [
+        "Shortcut outbound validation missing: no successful validation send recorded",
+      ],
+    });
   });
 
   it("explains missing ready Shortcuts setup", () => {

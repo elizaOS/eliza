@@ -9,12 +9,14 @@ import {
 import {
   createHardwareEvidenceReport,
   hardwareCommandName,
+  missingCompleteHardwareEvidence,
   missingHardwareEvidence,
   recordHardwareAudio,
   recordHardwareEvent,
   recordHardwareWrite,
   updateHardwareEvidenceStatus,
 } from "./hardware-evidence.js";
+import { createHardwareReportStatus } from "./hardware-report-status.js";
 import { validateHardwareReport } from "./validate-hardware-report.js";
 
 test("smartglasses example packet path", async () => {
@@ -73,6 +75,7 @@ test("smartglasses example packet path", async () => {
   await service.sendTranslateText("translated", "bonjour", 3);
   await service.scanWifi();
   await service.configureWifi("TestNet", "secret");
+  await service.requestWifiSetup("Test needs headset Wi-Fi");
   await service.getWifiStatus();
   await service.sendConnectionReady();
   await service.sendConnectionReady("both", "official");
@@ -117,7 +120,9 @@ test("smartglasses example packet path", async () => {
     transport.writes.some((write) => write.data[0] === G1Command.Navigation),
   ).toBe(true);
   expect(
-    transport.writes.some((write) => write.data[0] === G1Command.TranslateSetup),
+    transport.writes.some(
+      (write) => write.data[0] === G1Command.TranslateSetup,
+    ),
   ).toBe(true);
   expect(
     transport.writes.some(
@@ -241,6 +246,7 @@ test("smartglasses example packet path", async () => {
   expect(transport.wifiRequests).toEqual([
     { op: "scan" },
     { op: "configure", ssid: "TestNet", password: "secret" },
+    { op: "setup", reason: "Test needs headset Wi-Fi" },
     { op: "status" },
   ]);
 });
@@ -255,6 +261,10 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     available: true,
     connected: true,
     transport: "mock",
+    connectedLenses: {
+      left: { connected: true, name: "Even G1_51_L_TEST" },
+      right: { connected: true, name: "Even G1_51_R_TEST" },
+    },
     microphoneEnabled: false,
     heartbeatRunning: false,
     heartbeatIntervalMs: null,
@@ -276,6 +286,8 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
   recordHardwareWrite(report, "both", Uint8Array.from([G1Command.GetSerial]));
   recordHardwareWrite(report, "both", Uint8Array.from([G1Command.SendResult]));
   recordHardwareWrite(report, "both", Uint8Array.from([G1Command.Brightness]));
+  recordHardwareWrite(report, "right", Uint8Array.from([G1Command.OpenMic, 1]));
+  recordHardwareWrite(report, "right", Uint8Array.from([G1Command.OpenMic, 0]));
   recordHardwareEvent(report, {
     side: "right",
     raw: Uint8Array.from([G1Command.GetSerial, 0xc9]),
@@ -312,7 +324,13 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     9,
   );
   updateHardwareEvidenceStatus(report, status);
+
+  expect(report.ok).toBe(true);
+  expect(missingCompleteHardwareEvidence(report)).toEqual([]);
+  expect(validateHardwareReport(report)).toContain("missingFinishedAt");
+
   report.finishedAt = new Date().toISOString();
+  updateHardwareEvidenceStatus(report, status);
 
   expect(report.ok).toBe(true);
   expect(missingHardwareEvidence(report)).toEqual([]);
@@ -322,6 +340,8 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     "get-serial",
     "display-result",
     "brightness",
+    "open-mic",
+    "open-mic",
   ]);
   expect(report.audio).toEqual([
     expect.objectContaining({
@@ -333,6 +353,102 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     }),
   ]);
   expect(hardwareCommandName(Uint8Array.from([0xab]))).toBe("0xab");
+});
+
+test("hardware report status exposes whole-headset and wearing readiness", () => {
+  const report = createHardwareEvidenceReport({
+    initMode: "lens-specific",
+  });
+
+  updateHardwareEvidenceStatus(report, {
+    available: true,
+    connected: true,
+    transport: "mock",
+    connectedLenses: {
+      left: { connected: true, name: "Even G1_51_L_TEST" },
+      right: { connected: true, name: "Even G1_51_R_TEST" },
+    },
+    microphoneEnabled: false,
+    heartbeatRunning: false,
+    heartbeatIntervalMs: null,
+    lastHeartbeatAt: null,
+    lastEvent: null,
+    lastTranscript: null,
+    audioChunksReceived: 0,
+    lastAudioEncoding: null,
+    lastAudioSequence: null,
+    audioSequenceGaps: 0,
+    physicalState: "charged_in_cradle",
+    batteryState: "cradle_fully_charged",
+    deviceState: "connected",
+    lastSerialNumber: "G1RIGHTSERIAL001",
+  });
+
+  expect(createHardwareReportStatus("/tmp/report.json", report)).toMatchObject({
+    wholeHeadsetConnected: true,
+    wearingReady: false,
+    physicalBlocker: "in_charging_base",
+    setupHint:
+      "Glasses are reporting charged_in_cradle / cradle_fully_charged; remove them from the charging base and wear them before tap or microphone validation.",
+    nextAction:
+      "Remove both lenses from the charging base, wear the glasses, single tap, speak, then double tap.",
+  });
+});
+
+test("hardware report status prioritizes whole-headset setup hints", () => {
+  const disconnectedReport = createHardwareEvidenceReport({
+    initMode: "lens-specific",
+  });
+
+  expect(
+    createHardwareReportStatus("/tmp/disconnected.json", disconnectedReport),
+  ).toMatchObject({
+    wholeHeadsetConnected: false,
+    wearingReady: false,
+    physicalBlocker: "disconnected",
+    setupHint:
+      "Connect both lenses as one headset before running hardware validation.",
+    nextAction:
+      "Connect both lenses as one headset before running hardware validation.",
+  });
+
+  const partialReport = createHardwareEvidenceReport({
+    initMode: "lens-specific",
+  });
+  updateHardwareEvidenceStatus(partialReport, {
+    available: true,
+    connected: true,
+    transport: "mock",
+    connectedLenses: {
+      left: { connected: true, name: "Even G1_51_L_TEST" },
+    },
+    microphoneEnabled: false,
+    heartbeatRunning: false,
+    heartbeatIntervalMs: null,
+    lastHeartbeatAt: null,
+    lastEvent: null,
+    lastTranscript: null,
+    audioChunksReceived: 0,
+    lastAudioEncoding: null,
+    lastAudioSequence: null,
+    audioSequenceGaps: 0,
+    physicalState: "wearing",
+    batteryState: null,
+    deviceState: "connected",
+    lastSerialNumber: null,
+  });
+
+  expect(
+    createHardwareReportStatus("/tmp/partial.json", partialReport),
+  ).toMatchObject({
+    wholeHeadsetConnected: false,
+    wearingReady: false,
+    physicalBlocker: "partial_headset",
+    setupHint:
+      "Reconnect the whole headset so both left and right lenses are present.",
+    nextAction:
+      "Reconnect the whole headset so both left and right lenses are present.",
+  });
 });
 
 test("hardware report validator rejects incomplete reports", () => {
@@ -367,6 +483,8 @@ test("hardware report validator rejects incomplete reports", () => {
       "missingSerialEvent",
       "missingMicEnableTapEvent",
       "missingMicDisableTapEvent",
+      "missingMicEnableWrite",
+      "missingMicDisableWrite",
       "missingNonEmptyAudioChunk",
       "missingRightLensAudioChunk",
       "wearingStateNotObserved",
@@ -464,5 +582,7 @@ test("hardware evidence status updates replace stale cradle state with wearing s
 
   expect(report.headsetState.physical).toBe("wearing");
   expect(validateHardwareReport(report)).not.toContain("headsetInCradle");
-  expect(validateHardwareReport(report)).not.toContain("wearingStateNotObserved");
+  expect(validateHardwareReport(report)).not.toContain(
+    "wearingStateNotObserved",
+  );
 });
