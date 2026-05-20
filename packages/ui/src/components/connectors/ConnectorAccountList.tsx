@@ -5,7 +5,10 @@ import type {
   ConnectorAccountRecord,
   ConnectorAccountRole,
 } from "../../api/client-agent";
-import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+import {
+  useConnectorAccounts,
+  type UseConnectorAccountsResult,
+} from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -32,6 +35,17 @@ export interface ConnectorAccountListProps {
    * "single flat list of accounts" behavior is preserved.
    */
   accountRole?: ConnectorAccountRole;
+  /**
+   * Optional pre-built `useConnectorAccounts` result. When provided, the
+   * component reuses this external hook state instead of instantiating its
+   * own — used by `OwnerAgentConnectorSetupPanel` to share a single polling
+   * instance across the OWNER and AGENT sections. The list still filters
+   * the shared `accounts` array by `accountRole` locally.
+   *
+   * When omitted, the list calls `useConnectorAccounts` internally as
+   * before, preserving the legacy single-list behavior.
+   */
+  externalAccounts?: UseConnectorAccountsResult;
 }
 
 function sortConnectorAccounts(
@@ -84,11 +98,17 @@ export function ConnectorAccountList({
   onSelectedAccountIdChange,
   onAddAccount,
   accountRole,
+  externalAccounts,
 }: ConnectorAccountListProps) {
-  const connectorAccounts = useConnectorAccounts(provider, connectorId, {
+  // When the caller hoists the accounts hook (e.g. `OwnerAgentConnectorSetupPanel`),
+  // skip the internal polling instance — Rules of Hooks require the call
+  // unconditionally, but `enabled: false` disables the network fetch + interval.
+  const internalAccounts = useConnectorAccounts(provider, connectorId, {
     pollMs,
     initialSelectedAccountId: selectedAccountId,
+    enabled: !externalAccounts,
   });
+  const connectorAccounts = externalAccounts ?? internalAccounts;
   const setConnectorSelectedAccountId = connectorAccounts.setSelectedAccountId;
   const effectiveTitle = title ?? defaultTitleForRole(accountRole);
 
