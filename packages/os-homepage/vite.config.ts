@@ -74,6 +74,22 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router", "react-router-dom", "zod"],
     alias: {
       "@": path.resolve(packageDir, "./src"),
+      "@elizaos/shared/brand": path.resolve(
+        packageDir,
+        "../shared/src/brand/index.ts",
+      ),
+      "@elizaos/shared/checkout": path.resolve(
+        packageDir,
+        "../shared/src/checkout/index.ts",
+      ),
+      "@elizaos/shared/hardware-catalog": path.resolve(
+        packageDir,
+        "../shared/src/hardware-catalog/index.ts",
+      ),
+      "@elizaos/shared/steward-session-client": path.resolve(
+        packageDir,
+        "../shared/src/steward-session-client/index.ts",
+      ),
       "@elizaos/ui": path.resolve(
         packageDir,
         "../ui/src/backgrounds/CloudVideoBackground.tsx",

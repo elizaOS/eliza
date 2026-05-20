@@ -89,6 +89,16 @@ describe("resolveRuntime", () => {
     });
     expect(runtime.id).toBe("missing-real-tier-stub");
   });
+
+  it("requires an explicit multimodal model for Hermes/OpenClaw runtimes", async () => {
+    await expect(
+      resolveRuntime({
+        tier: "eliza-1-9b",
+        forceStub: false,
+        harness: "hermes",
+      }),
+    ).rejects.toThrow(/requires --model or VISION_LANGUAGE_MODEL/);
+  });
 });
 
 describe("lookupBaseline", () => {

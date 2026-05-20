@@ -50,6 +50,17 @@ describe("WS3 backend-selector", () => {
 		]);
 	});
 
+	it("required CUDA accelerator does not fall back to CPU", () => {
+		expect(
+			ids({
+				platform: "linux",
+				arch: "x64",
+				gpu: "nvidia",
+				requiredAccelerator: "cuda",
+			}),
+		).toEqual(["sd-cpp:cuda"]);
+	});
+
 	it("Linux NVIDIA with sd-cpp CUDA proof → sd-cpp CUDA then CPU", () => {
 		expect(
 			ids({
@@ -69,6 +80,17 @@ describe("WS3 backend-selector", () => {
 			"sd-cpp:vulkan",
 			"sd-cpp:cpu",
 		]);
+	});
+
+	it("required Vulkan accelerator does not fall back to CPU", () => {
+		expect(
+			ids({
+				platform: "linux",
+				arch: "x64",
+				gpu: "amd",
+				requiredAccelerator: "vulkan",
+			}),
+		).toEqual(["sd-cpp:vulkan"]);
 	});
 
 	it("Linux Intel iGPU → sd-cpp Vulkan then CPU", () => {

@@ -318,17 +318,21 @@ async function assertBinaryAvailable(
 			{ cause: err },
 		);
 	}
-	if (accelerator === "cuda") {
+	if (
+		accelerator === "cuda" ||
+		accelerator === "vulkan" ||
+		accelerator === "metal"
+	) {
 		const capabilities = await probeSdCppCapabilitiesFromBinary(
 			binary,
 			version,
 			spawnImpl,
 		);
-		if (!capabilities.accelerators.includes("cuda")) {
+		if (!capabilities.accelerators.includes(accelerator)) {
 			throw new ImageGenBackendUnavailableError(
 				"sd-cpp",
-				"cuda_binary_missing",
-				`[imagegen/sd-cpp] '${binary}' is available but does not prove CUDA support via manifest, --help, or --version. Falling back from sd-cpp CUDA; install a stable-diffusion.cpp CUDA build or set SD_CPP_BIN to one.`,
+				`${accelerator}_binary_missing`,
+				`[imagegen/sd-cpp] '${binary}' is available but does not prove ${accelerator.toUpperCase()} support via manifest, --help, or --version. Falling back from sd-cpp ${accelerator}; install a stable-diffusion.cpp ${accelerator.toUpperCase()} build or set SD_CPP_BIN to one.`,
 			);
 		}
 	}

@@ -9,8 +9,10 @@ from typing import Any
 
 from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
-    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
@@ -205,11 +207,35 @@ def _unsupported_real_reasons(
             agent: HYPERLIQUID_LIVE_UNAVAILABLE_REASON
             for agent in unsupported_real_harnesses
         }
+    if (
+        benchmark_id == "terminal_bench"
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id
+        in {
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: HERMES_SANDBOX_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
     if benchmark_id == "vision_language" and unsupported_real_harnesses:
         reason = (
             VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
             if not supported_real_harnesses
-            else VISION_LANGUAGE_FIXED_RUNTIME_REASON
+            else VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
         )
         return {
             agent: reason

@@ -3,8 +3,13 @@ import { readFileSync } from "node:fs";
 const workflowPath = ".github/workflows/test.yml";
 const rootPackagePath = "package.json";
 const agentPackagePath = "packages/agent/package.json";
+const coreCapabilitiesPath = "packages/core/src/capabilities/index.ts";
 const endpointConformancePath =
   "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+const remoteCapabilityRoutesPath =
+  "packages/agent/src/api/remote-capability-routes.ts";
+const remotePluginAdapterTestPath =
+  "packages/agent/src/services/remote-plugin-adapter.test.ts";
 const liveReportWriterPath =
   "packages/agent/src/services/remote-capability-live-report.ts";
 const providerSmokePath =
@@ -13,17 +18,26 @@ const liveReportValidatorPath =
   "packages/scripts/validate-capability-router-live-reports.ts";
 const liveReportValidatorSelfTestPath =
   "packages/scripts/validate-capability-router-live-reports.self-test.ts";
+const githubLiveArtifactValidatorPath =
+  "packages/scripts/validate-capability-router-github-live-artifacts.ts";
+const githubLiveArtifactValidatorSelfTestPath =
+  "packages/scripts/validate-capability-router-github-live-artifacts.self-test.ts";
 
 type Check = {
   name: string;
   pattern: RegExp;
   source?:
     | "agent-package"
+    | "core-capabilities"
     | "endpoint-conformance"
+    | "github-live-artifact-validator"
+    | "github-live-artifact-validator-self-test"
     | "live-report-validator"
     | "live-report-validator-self-test"
     | "live-report-writer"
     | "provider-smoke"
+    | "remote-capability-routes"
+    | "remote-plugin-adapter-test"
     | "root-package"
     | "workflow";
   message: string;
@@ -61,6 +75,13 @@ export const checks: Check[] = [
       /Remote capability GitHub live evidence self-test[\s\S]*test:remote-capabilities:github-live-evidence:self-test/,
     message:
       "server CI must run the GitHub live evidence validator self-test.",
+  },
+  {
+    name: "GitHub live artifact validator self-test is a CI gate",
+    pattern:
+      /Remote capability GitHub live artifact self-test[\s\S]*test:remote-capabilities:github-live-artifacts:self-test/,
+    message:
+      "server CI must run the GitHub live artifact validator self-test.",
   },
   {
     name: "live report validator self-test script exists",
@@ -116,12 +137,44 @@ export const checks: Check[] = [
       "root package scripts must expose the GitHub live evidence validator self-test.",
   },
   {
+    name: "GitHub live artifact validator self-test script exists",
+    pattern:
+      /"test:remote-capabilities:github-live-artifacts:self-test"\s*:\s*"bun packages\/scripts\/validate-capability-router-github-live-artifacts\.self-test\.ts"/,
+    source: "root-package",
+    message:
+      "root package scripts must expose the GitHub live artifact validator self-test.",
+  },
+  {
     name: "GitHub live artifact validator downloads and validates reports",
     pattern:
-      /gh[\s\S]*run[\s\S]*download[\s\S]*remote-capability-cloud-live-report[\s\S]*remote-capability-provider-live-report[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*cloud[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*provider[\s\S]*--require-providers[\s\S]*e2b,home-machine,mobile-companion/,
+      /(?=[\s\S]*remote-capability-cloud-live-report)(?=[\s\S]*remote-capability-provider-live-report)(?=[\s\S]*"gh"[\s\S]*"run"[\s\S]*"download")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"cloud")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"provider")(?=[\s\S]*"--require-providers"[\s\S]*"e2b,home-machine,mobile-companion")/,
     source: "github-live-artifact-validator",
     message:
       "GitHub live artifact validation must download both artifacts and validate Cloud plus required provider report contents.",
+  },
+  {
+    name: "GitHub live artifact validator self-test covers downloaded reports",
+    pattern:
+      /(?=[\s\S]*assertCommand\("downloads both named artifacts")(?=[\s\S]*remote-capability-cloud-live-report)(?=[\s\S]*remote-capability-provider-live-report)(?=[\s\S]*assertCommandIncludes\("validates cloud report artifact")(?=[\s\S]*assertCommandIncludes\("validates provider report artifact")/,
+    source: "github-live-artifact-validator-self-test",
+    message:
+      "GitHub live artifact validator self-test must cover both downloaded artifact validators.",
+  },
+  {
+    name: "GitHub live artifact validator self-test covers provider requirements",
+    pattern:
+      /(?=[\s\S]*"--allowed-providers")(?=[\s\S]*"e2b,home-machine,mobile-companion,desktop-companion")(?=[\s\S]*"--require-providers")(?=[\s\S]*"e2b,home-machine,mobile-companion")/,
+    source: "github-live-artifact-validator-self-test",
+    message:
+      "GitHub live artifact validator self-test must cover the canonical provider allow/require lists.",
+  },
+  {
+    name: "GitHub live artifact validator self-test rejects push runs before download",
+    pattern:
+      /(?=[\s\S]*assertFailsBeforeDownload)(?=[\s\S]*push run is rejected before artifact download)(?=[\s\S]*run event must be workflow_dispatch or schedule)(?=[\s\S]*downloaded artifacts after rejected run metadata)/,
+    source: "github-live-artifact-validator-self-test",
+    message:
+      "GitHub live artifact validator self-test must reject unobserved push runs before downloading artifacts.",
   },
   {
     name: "canonical remote capability suite covers live report writer",
@@ -130,6 +183,54 @@ export const checks: Check[] = [
     source: "agent-package",
     message:
       "test:remote-capabilities must include the live report writer safety test.",
+  },
+  {
+    name: "core capability protocol includes signed module provenance",
+    pattern:
+      /(?=[\s\S]*export type RemotePluginModuleProvenance)(?=[\s\S]*issuer:\s*string)(?=[\s\S]*digestSha256:\s*string)(?=[\s\S]*signatureAlgorithm:\s*string)(?=[\s\S]*signature:\s*string)(?=[\s\S]*provenance\?:\s*RemotePluginModuleProvenance)(?=[\s\S]*requireRemotePluginModuleProvenance)(?=[\s\S]*digestSha256 must be a SHA-256 hex digest)/,
+    source: "core-capabilities",
+    message:
+      "core capability protocol must include typed signed module provenance with SHA-256 digest validation.",
+  },
+  {
+    name: "remote adapter test covers endpoint-scoped stale unload",
+    pattern:
+      /scopes stale unloads to the selected endpoint so another device remains loaded[\s\S]*capabilityEndpointId:\s*"device-a"[\s\S]*capabilityEndpointId:\s*"device-b"[\s\S]*unloadMissingEndpointIds:\s*\["device-a"\][\s\S]*unloaded:\s*\["@remote\/device-a"\][\s\S]*"@remote\/device-b"[\s\S]*device-a\.view[\s\S]*toBeUndefined[\s\S]*device-b\.view[\s\S]*toMatchObject/,
+    source: "remote-plugin-adapter-test",
+    message:
+      "remote adapter tests must prove endpoint-scoped stale unload preserves another connected device.",
+  },
+  {
+    name: "product connect persists redacted trust audit records",
+    pattern:
+      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*appendTrustAuditRecord)(?=[\s\S]*readTrustAuditRecords)(?=[\s\S]*redactEndpoint\(audit\.endpoint\))(?=[\s\S]*trustDecisions:\s*audit\.sync\.trustDecisions)/,
+    source: "remote-capability-routes",
+    message:
+      "product connect persistence must record redacted capability-router trust-audit records.",
+  },
+  {
+    name: "remote adapter test covers redacted product trust audit records",
+    pattern:
+      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*provider:\s*"direct")(?=[\s\S]*allowedModuleIds:\s*\["remote-demo"\])(?=[\s\S]*trustDecisions:[\s\S]*trusted:\s*true)(?=[\s\S]*JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\))/,
+    source: "remote-plugin-adapter-test",
+    message:
+      "remote adapter tests must prove product connect persists trust audit records without bearer tokens.",
+  },
+  {
+    name: "remote adapter test covers Cloud provision restart reopened view",
+    pattern:
+      /(?=[\s\S]*reopens a persisted Cloud-provisioned remote view after restart)(?=[\s\S]*connectCloudSandbox:[\s\S]*mockResolvedValue)(?=[\s\S]*cloud-product-token)(?=[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\))(?=[\s\S]*getView\("cloud\.restart\.view"\))(?=[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js)(?=[\s\S]*plugin\.asset\.get)(?=[\s\S]*Bearer cloud-product-token)/,
+    source: "remote-plugin-adapter-test",
+    message:
+      "remote adapter tests must prove Cloud provision persistence can restart, reopen the remote view, and fetch its bundle with the persisted token.",
+  },
+  {
+    name: "remote adapter test covers signed provenance trust policy",
+    pattern:
+      /(?=[\s\S]*requireSignedProvenance:\s*true)(?=[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\])(?=[\s\S]*provenanceIssuer:\s*"eliza-cloud-build")(?=[\s\S]*reason:\s*"missing-provenance")(?=[\s\S]*reason:\s*"provenance-issuer-not-allowed")(?=[\s\S]*requireVerifiedProvenance:\s*true)(?=[\s\S]*trustedProvenancePublicKeys)(?=[\s\S]*reason:\s*"invalid-provenance-signature")(?=[\s\S]*reason:\s*"missing-provenance-public-key")(?=[\s\S]*requireProvenanceDigestMatch:\s*true)(?=[\s\S]*reason:\s*"invalid-provenance-digest")/,
+    source: "remote-plugin-adapter-test",
+    message:
+      "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
   },
   {
     name: "live report writer records runtime module surface counts",
@@ -313,6 +414,13 @@ export const checks: Check[] = [
       "cloud live smoke must run on workflow_dispatch or schedule events.",
   },
   {
+    name: "cloud live credentials are required on observed runs",
+    pattern:
+      /No Eliza Cloud API key configured for observed cloud live E2E\."\s*\n\s*exit 1/,
+    message:
+      "observed cloud live runs must fail instead of skipping when Cloud credentials are absent.",
+  },
+  {
     name: "cloud live report validation is strict",
     pattern:
       /test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports\/remote-capabilities\/cloud/,
@@ -332,6 +440,20 @@ export const checks: Check[] = [
       /missing_required=\(\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_E2B_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL"\)/,
     message:
       "provider live smoke must require E2B, home-machine, and mobile-companion endpoints for observed runs.",
+  },
+  {
+    name: "provider live endpoints are required on observed runs",
+    pattern:
+      /No remote capability provider endpoints configured for observed provider live E2E\."\s*\n\s*exit 1/,
+    message:
+      "observed provider live runs must fail instead of skipping when all endpoint secrets are absent.",
+  },
+  {
+    name: "provider live primary endpoints are required on observed runs",
+    pattern:
+      /echo "::error::\$\{message\}"\s*\n\s*exit 1/,
+    message:
+      "observed provider live runs must fail instead of skipping when any primary endpoint secret is absent.",
   },
   {
     name: "provider live smoke is observed only on manual or scheduled runs",
@@ -381,9 +503,14 @@ export function validateCapabilityRouterLiveCi(
   workflow: string,
   options: {
     agentPackageJson?: string;
+    coreCapabilitiesSource?: string;
     endpointConformanceSource?: string;
+    githubLiveArtifactValidatorSource?: string;
+    githubLiveArtifactValidatorSelfTestSource?: string;
     liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
+    remoteCapabilityRoutesSource?: string;
+    remotePluginAdapterTestSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
     liveReportWriterSource?: string;
@@ -409,17 +536,31 @@ function getCheckContent(
   workflow: string,
   options: {
     agentPackageJson?: string;
+    coreCapabilitiesSource?: string;
     endpointConformanceSource?: string;
+    githubLiveArtifactValidatorSource?: string;
+    githubLiveArtifactValidatorSelfTestSource?: string;
     liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
+    remoteCapabilityRoutesSource?: string;
+    remotePluginAdapterTestSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
     liveReportWriterSource?: string;
   },
 ): string {
   if (check.source === "agent-package") return options.agentPackageJson ?? "";
+  if (check.source === "core-capabilities") {
+    return options.coreCapabilitiesSource ?? "";
+  }
   if (check.source === "endpoint-conformance") {
     return options.endpointConformanceSource ?? "";
+  }
+  if (check.source === "github-live-artifact-validator") {
+    return options.githubLiveArtifactValidatorSource ?? "";
+  }
+  if (check.source === "github-live-artifact-validator-self-test") {
+    return options.githubLiveArtifactValidatorSelfTestSource ?? "";
   }
   if (check.source === "live-report-validator") {
     return options.liveReportValidatorSource ?? "";
@@ -433,19 +574,38 @@ function getCheckContent(
   if (check.source === "provider-smoke") {
     return options.providerSmokeSource ?? "";
   }
+  if (check.source === "remote-capability-routes") {
+    return options.remoteCapabilityRoutesSource ?? "";
+  }
+  if (check.source === "remote-plugin-adapter-test") {
+    return options.remotePluginAdapterTestSource ?? "";
+  }
   if (check.source === "root-package") return options.rootPackageJson ?? "";
   return workflow;
 }
 
 function getCheckSourcePath(check: Check, workflowPath: string): string {
   if (check.source === "agent-package") return agentPackagePath;
+  if (check.source === "core-capabilities") return coreCapabilitiesPath;
   if (check.source === "endpoint-conformance") return endpointConformancePath;
+  if (check.source === "github-live-artifact-validator") {
+    return githubLiveArtifactValidatorPath;
+  }
+  if (check.source === "github-live-artifact-validator-self-test") {
+    return githubLiveArtifactValidatorSelfTestPath;
+  }
   if (check.source === "live-report-validator") return liveReportValidatorPath;
   if (check.source === "live-report-validator-self-test") {
     return liveReportValidatorSelfTestPath;
   }
   if (check.source === "live-report-writer") return liveReportWriterPath;
   if (check.source === "provider-smoke") return providerSmokePath;
+  if (check.source === "remote-capability-routes") {
+    return remoteCapabilityRoutesPath;
+  }
+  if (check.source === "remote-plugin-adapter-test") {
+    return remotePluginAdapterTestPath;
+  }
   if (check.source === "root-package") return rootPackagePath;
   return workflowPath;
 }
@@ -454,6 +614,7 @@ if (import.meta.main) {
   const workflow = readFileSync(workflowPath, "utf8");
   const rootPackageJson = readFileSync(rootPackagePath, "utf8");
   const agentPackageJson = readFileSync(agentPackagePath, "utf8");
+  const coreCapabilitiesSource = readFileSync(coreCapabilitiesPath, "utf8");
   const endpointConformanceSource = readFileSync(
     endpointConformancePath,
     "utf8",
@@ -463,15 +624,36 @@ if (import.meta.main) {
     liveReportValidatorSelfTestPath,
     "utf8",
   );
+  const githubLiveArtifactValidatorSource = readFileSync(
+    githubLiveArtifactValidatorPath,
+    "utf8",
+  );
+  const githubLiveArtifactValidatorSelfTestSource = readFileSync(
+    githubLiveArtifactValidatorSelfTestPath,
+    "utf8",
+  );
   const liveReportWriterSource = readFileSync(liveReportWriterPath, "utf8");
   const providerSmokeSource = readFileSync(providerSmokePath, "utf8");
+  const remoteCapabilityRoutesSource = readFileSync(
+    remoteCapabilityRoutesPath,
+    "utf8",
+  );
+  const remotePluginAdapterTestSource = readFileSync(
+    remotePluginAdapterTestPath,
+    "utf8",
+  );
   const failures = validateCapabilityRouterLiveCi(workflow, {
     agentPackageJson,
+    coreCapabilitiesSource,
     endpointConformanceSource,
+    githubLiveArtifactValidatorSource,
+    githubLiveArtifactValidatorSelfTestSource,
     liveReportValidatorSelfTestSource,
     liveReportValidatorSource,
     liveReportWriterSource,
     providerSmokeSource,
+    remoteCapabilityRoutesSource,
+    remotePluginAdapterTestSource,
     rootPackageJson,
     workflowPath,
   });

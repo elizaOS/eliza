@@ -343,6 +343,41 @@ Viewer supports:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator export-viewer-data
 ```
 
+## Validate latest benchmark readiness
+
+Use these gates before treating `benchmark_results/latest/` as publishable.
+They are intentionally stricter than `export-viewer-data`: latest rows must be
+real successful runs with numeric scores, no sample/demo/mock/stub markers, and
+comparable real-harness scores.
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-matrix
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-runtime-gates
+/opt/miniconda3/bin/python -m benchmarks.orchestrator calibration-report --tolerance 0.08
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-publishability
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-comparability --tolerance 0.08
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
+```
+
+`validate-latest-readiness` is the completion gate. It fails unless every
+Eliza/Hermes/OpenClaw cell required by the latest matrix is present,
+successful, scored, publishable, and comparable. Unsupported cells include
+their reason in `latest/index.json` under `matrix_contract.benchmarks`.
+`validate-runtime-gates` probes the current host for the external services and
+credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
+
+Expected real-runtime gates:
+
+- GAIA rows require official dataset access via `HF_TOKEN`,
+  `HUGGINGFACE_HUB_TOKEN`, `GAIA_DATASET_PATH`, or a pre-cached official
+  `gaia-benchmark/GAIA` dataset. Sample GAIA rows are not publishable.
+- Hyperliquid rows require `HL_PRIVATE_KEY` and live execution with demo mode
+  disabled.
+- Terminal-Bench and Hermes sandbox-family rows require either a reachable
+  Docker daemon or, where supported, Modal credentials.
+- Vision-language Hermes/OpenClaw rows require `VISION_LANGUAGE_MODEL` plus
+  provider credentials for a multimodal OpenAI-compatible model.
+
 ## Recover stale/interrupted runs
 
 If an orchestrator process is interrupted, rows can remain in `running` state.

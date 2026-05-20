@@ -42,8 +42,8 @@ const image: ElizaOsImage = {
   buildId: "build",
   publishedAt: "2026-01-01T00:00:00Z",
   url: "https://example.com/x.iso",
-  // zeroed -> verifyChecksum step skipped by default
-  checksumSha256: "0".repeat(64),
+  checksumSha256:
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   sizeBytes: IMAGE_SIZE,
   minUsbSizeBytes: IMAGE_SIZE,
   manifestVersion: 1,

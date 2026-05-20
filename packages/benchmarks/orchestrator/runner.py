@@ -14,7 +14,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .adapters import discover_adapters
+from .adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+    discover_adapters,
+)
 from .db import (
     connect_database,
     create_run_group,
@@ -1039,7 +1048,8 @@ def _build_latest_matrix_contract(
     }
     benchmarks: dict[str, Any] = {}
     for benchmark_id, adapter in sorted(adapters.items()):
-        supported = set(adapter.agent_compatibility)
+        allowed_harnesses = tuple(adapter.agent_compatibility)
+        supported = set(allowed_harnesses)
         required_count = 0
         complete = True
         cells: dict[str, dict[str, Any]] = {}
@@ -1052,6 +1062,11 @@ def _build_latest_matrix_contract(
                     "status": "unsupported",
                     "score": None,
                     "run_id": None,
+                    "reason": _latest_matrix_unsupported_reason(
+                        benchmark_id,
+                        harness,
+                        allowed_harnesses,
+                    ),
                 }
                 continue
 
@@ -1081,6 +1096,7 @@ def _build_latest_matrix_contract(
 
         if required_count == 0:
             summary["no_required_real_harness_benchmarks"] += 1
+            complete = False
         if complete:
             summary["complete_benchmarks"] += 1
         else:
@@ -1098,6 +1114,38 @@ def _build_latest_matrix_contract(
         "summary": summary,
         "benchmarks": benchmarks,
     }
+
+
+def _latest_matrix_unsupported_reason(
+    benchmark_id: str,
+    harness: str,
+    allowed_harnesses: tuple[str, ...],
+) -> str:
+    if benchmark_id in {"gaia", "gaia_orchestrated"} and not allowed_harnesses:
+        return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+    if benchmark_id == "hyperliquid_bench" and not allowed_harnesses:
+        return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+    if benchmark_id == "terminal_bench" and not allowed_harnesses:
+        return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+    if (
+        benchmark_id
+        in {
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }
+        and not allowed_harnesses
+    ):
+        return HERMES_SANDBOX_UNAVAILABLE_REASON
+    if benchmark_id == "vision_language":
+        if not allowed_harnesses:
+            return VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+        if harness in {"hermes", "openclaw"}:
+            return VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
+        return VISION_LANGUAGE_FIXED_RUNTIME_REASON
+    allowed = ", ".join(allowed_harnesses) or "none"
+    return f"harness '{harness}' not in adapter compatibility ({allowed})"
 
 
 def _rebuild_latest_result_snapshots(

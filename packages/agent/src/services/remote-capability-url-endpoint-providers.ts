@@ -14,12 +14,12 @@ export type UrlRemoteCapabilityEndpointProviderOptions = {
 };
 
 export type UrlRemoteCapabilityEndpointProviderDefaults = {
-  endpointId: string;
+  endpointId?: string;
 };
 
 export function urlRemoteCapabilityEndpointProvider(
   providerId: RemoteCapabilityEndpointProviderId,
-  defaults: UrlRemoteCapabilityEndpointProviderDefaults,
+  defaults: UrlRemoteCapabilityEndpointProviderDefaults = {},
 ): RemoteCapabilityEndpointProvider<UrlRemoteCapabilityEndpointProviderOptions> {
   return {
     id: providerId,
@@ -29,24 +29,16 @@ export function urlRemoteCapabilityEndpointProvider(
 }
 
 export const e2bCapabilityEndpointProvider =
-  urlRemoteCapabilityEndpointProvider("e2b", {
-    endpointId: "e2b-capability",
-  });
+  urlRemoteCapabilityEndpointProvider("e2b");
 
 export const homeMachineCapabilityEndpointProvider =
-  urlRemoteCapabilityEndpointProvider("home-machine", {
-    endpointId: "home-machine-capability",
-  });
+  urlRemoteCapabilityEndpointProvider("home-machine");
 
 export const mobileCompanionCapabilityEndpointProvider =
-  urlRemoteCapabilityEndpointProvider("mobile-companion", {
-    endpointId: "mobile-companion-capability",
-  });
+  urlRemoteCapabilityEndpointProvider("mobile-companion");
 
 export const desktopCompanionCapabilityEndpointProvider =
-  urlRemoteCapabilityEndpointProvider("desktop-companion", {
-    endpointId: "desktop-companion-capability",
-  });
+  urlRemoteCapabilityEndpointProvider("desktop-companion");
 
 function provisionUrlRemoteCapabilityEndpoint(
   providerId: RemoteCapabilityEndpointProviderId,
@@ -54,16 +46,16 @@ function provisionUrlRemoteCapabilityEndpoint(
   options: UrlRemoteCapabilityEndpointProviderOptions,
 ): ProvisionedRemoteCapabilityEndpoint {
   const endpoint: RemoteCapabilityEndpointConfig = {
-    id: normalizeEndpointId(options.endpointId ?? defaults.endpointId),
+    id: normalizeEndpointId(
+      options.endpointId ?? defaults.endpointId ?? providerId,
+    ),
     baseUrl: normalizeEndpointBaseUrl(options.baseUrl),
-    ...(options.token === undefined ? {} : { token: options.token }),
+    ...optionalToken(options.token),
   };
   return {
     providerId,
     endpoint,
-    ...(options.allowedModuleIds === undefined
-      ? {}
-      : { allowedModuleIds: options.allowedModuleIds }),
+    ...allowedModuleIdsResult(options.allowedModuleIds),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   };
 }
@@ -111,4 +103,19 @@ function normalizeEndpointBaseUrl(value: string): string {
   url.hash = "";
   url.search = "";
   return url.toString().replace(/\/+$/, "");
+}
+
+function optionalToken(token: string | undefined): { token?: string } {
+  const normalized = token?.trim();
+  return normalized ? { token: normalized } : {};
+}
+
+function allowedModuleIdsResult(
+  value: string[] | undefined,
+): Partial<Pick<ProvisionedRemoteCapabilityEndpoint, "allowedModuleIds">> {
+  if (value === undefined) return {};
+  const allowedModuleIds = [
+    ...new Set(value.map((item) => item.trim())),
+  ].filter(Boolean);
+  return allowedModuleIds.length === 0 ? {} : { allowedModuleIds };
 }

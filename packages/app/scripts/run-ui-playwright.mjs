@@ -75,6 +75,16 @@ const bunBinDir = path.dirname(env.BUN);
 const pathDelimiter = process.platform === "win32" ? ";" : ":";
 env.PATH = env.PATH ? `${bunBinDir}${pathDelimiter}${env.PATH}` : bunBinDir;
 
+async function getDistinctFreePort(excludedPorts = new Set()) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const port = Number(await getFreePort());
+    if (!excludedPorts.has(port)) {
+      return port;
+    }
+  }
+  throw new Error("Could not allocate a distinct free port for UI smoke.");
+}
+
 if (
   playwrightArgs.includes("--config") &&
   playwrightArgs.some((value) =>
@@ -82,15 +92,17 @@ if (
   )
 ) {
   env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
+  const reservedPorts = new Set();
 
   if (!env.ELIZA_UI_SMOKE_API_PORT) {
-    const apiPort = await getFreePort();
+    const apiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
     env.ELIZA_API_PORT = env.ELIZA_API_PORT || String(apiPort);
   }
+  reservedPorts.add(Number(env.ELIZA_UI_SMOKE_API_PORT));
 
   if (!env.ELIZA_UI_SMOKE_PORT) {
-    const uiPort = await getFreePort();
+    const uiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_PORT = String(uiPort);
     env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
   }

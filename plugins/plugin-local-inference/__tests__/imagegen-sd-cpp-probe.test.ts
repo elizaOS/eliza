@@ -23,7 +23,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +48,7 @@ interface ProbeResult {
 	supportedModels?: string[];
 	accelerators?: string[];
 	evidence?: string[];
+	requiredAccelerator?: string;
 	reason?: string;
 	hint?: string;
 }
@@ -55,14 +56,12 @@ interface ProbeResult {
 function runProbe(env: Record<string, string | undefined>): ProbeResult {
 	const nodeBin = process.env.NODE_BIN ?? process.env.NODE ?? "node";
 	const mergedEnv = { ...process.env, ...env };
-	const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-out-"));
-	const outPath = join(dir, "probe.json");
 	const result =
 		typeof Bun !== "undefined"
 			? Bun.spawnSync({
 					cmd: [nodeBin, PROBE_SCRIPT, "--json"],
 					env: mergedEnv as Record<string, string>,
-					stdout: Bun.file(outPath),
+					stdout: "pipe",
 					stderr: "pipe",
 				})
 			: spawnSync(nodeBin, [PROBE_SCRIPT, "--json"], {
@@ -72,11 +71,9 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 				});
 	const status = "exitCode" in result ? result.exitCode : result.status;
 	const stdout =
-		typeof Bun !== "undefined"
-			? readFileSync(outPath, "utf8")
-			: typeof result.stdout === "string"
-				? result.stdout
-				: new TextDecoder().decode(result.stdout ?? new Uint8Array());
+		typeof result.stdout === "string"
+			? result.stdout
+			: new TextDecoder().decode(result.stdout ?? new Uint8Array());
 	const stderr =
 		typeof result.stderr === "string"
 			? result.stderr
@@ -172,6 +169,55 @@ describe("WS3 sd-cpp probe — onboarding script", () => {
 		expect(probe.evidence).toContain("help_or_version");
 	});
 
+	it("fails closed when ELIZA_IMAGEGEN_ACCELERATOR is not supported", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd");
+		writeFileSync(
+			fakeBin,
+			"#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp test-build-001'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo 'stable-diffusion.cpp help'; exit 0; fi\nexit 2\n",
+		);
+		chmodSync(fakeBin, 0o755);
+		const probe = runProbe({
+			SD_CPP_BIN: fakeBin,
+			ELIZA_IMAGEGEN_ACCELERATOR: "vulkan",
+		});
+		expect(probe.available).toBe(false);
+		expect(probe.binary).toBe(fakeBin);
+		expect(probe.requiredAccelerator).toBe("vulkan");
+		expect(probe.reason).toBe("vulkan_missing");
+		expect(probe.accelerators).toContain("cpu");
+		expect(probe.accelerators).not.toContain("vulkan");
+		expect(probe.hint).toMatch(/vulkan support/i);
+	});
+
+	it("passes when ELIZA_IMAGEGEN_ACCELERATOR is supported", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-vulkan");
+		writeFileSync(
+			join(dir, "sd-cpp.manifest.json"),
+			JSON.stringify({ accelerators: ["vulkan"] }),
+		);
+		writeFileSync(
+			fakeBin,
+			[
+				"#!/usr/bin/env bash",
+				"if [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp Vulkan'; exit 0; fi",
+				"if [ \"$1\" = \"--help\" ]; then echo 'backend: Vulkan'; exit 0; fi",
+				"exit 2",
+				"",
+			].join("\n"),
+		);
+		chmodSync(fakeBin, 0o755);
+		const probe = runProbe({
+			SD_CPP_BIN: fakeBin,
+			ELIZA_IMAGEGEN_ACCELERATOR: "vulkan",
+		});
+		expect(probe.available).toBe(true);
+		expect(probe.requiredAccelerator).toBe("vulkan");
+		expect(probe.accelerators).toContain("vulkan");
+		expect(probe.reason).toBeUndefined();
+	});
+
 	it("reports binary_version_mismatch when the binary exits non-zero on --version", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-broken");
@@ -246,6 +292,58 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
+	it("rejects Vulkan load when the sd-cpp binary is CPU-only", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-cpu");
+		writeFileSync(
+			fakeBin,
+			"#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp cpu-only'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo 'stable-diffusion.cpp help'; exit 0; fi\nexit 2\n",
+		);
+		chmodSync(fakeBin, 0o755);
+		try {
+			await loadSdCppImageGenBackend({
+				modelKey: "imagegen-sd-1_5-q5_0",
+				loadArgs: {
+					modelPath: "/tmp/this-model-does-not-exist.gguf",
+					accelerator: "vulkan",
+				},
+				binaryPath: fakeBin,
+			});
+			expect.fail("loadSdCppImageGenBackend should have thrown");
+		} catch (err) {
+			if (!(err instanceof ImageGenBackendUnavailableError)) throw err;
+			expect(err.backendId).toBe("sd-cpp");
+			expect(err.reason).toBe("vulkan_binary_missing");
+			expect(err.message).toMatch(/VULKAN support/);
+		}
+	});
+
+	it("rejects Metal load when the sd-cpp binary is CPU-only", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-cpu");
+		writeFileSync(
+			fakeBin,
+			"#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp cpu-only'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo 'stable-diffusion.cpp help'; exit 0; fi\nexit 2\n",
+		);
+		chmodSync(fakeBin, 0o755);
+		try {
+			await loadSdCppImageGenBackend({
+				modelKey: "imagegen-sd-1_5-q5_0",
+				loadArgs: {
+					modelPath: "/tmp/this-model-does-not-exist.gguf",
+					accelerator: "metal",
+				},
+				binaryPath: fakeBin,
+			});
+			expect.fail("loadSdCppImageGenBackend should have thrown");
+		} catch (err) {
+			if (!(err instanceof ImageGenBackendUnavailableError)) throw err;
+			expect(err.backendId).toBe("sd-cpp");
+			expect(err.reason).toBe("metal_binary_missing");
+			expect(err.message).toMatch(/METAL support/);
+		}
+	});
+
 	it("accepts CUDA load when sidecar manifest proves CUDA support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cuda");
@@ -269,6 +367,35 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		const backend = await loadSdCppImageGenBackend({
 			modelKey: "imagegen-sd-1_5-q5_0",
 			loadArgs: { modelPath: fakeModel, accelerator: "cuda" },
+			binaryPath: fakeBin,
+		});
+		expect(backend.id).toBe("sd-cpp");
+		await backend.dispose();
+	});
+
+	it("accepts Vulkan load when sidecar manifest proves Vulkan support", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-vulkan");
+		const fakeModel = join(dir, "model.gguf");
+		writeFileSync(fakeModel, "fake model");
+		writeFileSync(
+			join(dir, "sd-cpp.manifest.json"),
+			JSON.stringify({ accelerators: ["vulkan"] }),
+		);
+		writeFileSync(
+			fakeBin,
+			[
+				"#!/usr/bin/env bash",
+				"if [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp Vulkan'; exit 0; fi",
+				"if [ \"$1\" = \"--help\" ]; then echo 'backend: Vulkan'; exit 0; fi",
+				"exit 2",
+				"",
+			].join("\n"),
+		);
+		chmodSync(fakeBin, 0o755);
+		const backend = await loadSdCppImageGenBackend({
+			modelKey: "imagegen-sd-1_5-q5_0",
+			loadArgs: { modelPath: fakeModel, accelerator: "vulkan" },
 			binaryPath: fakeBin,
 		});
 		expect(backend.id).toBe("sd-cpp");

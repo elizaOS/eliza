@@ -866,7 +866,19 @@ export function createStreamingTranscriber(
 	const tryWhisperCpp = (): StreamingTranscriber | null => {
 		const runtime = resolveWhisperCppRuntime();
 		if (!runtime) return null;
-		const { decoder, dispose } = makeWhisperCppDecoder(runtime);
+		let decoder: StreamingPcmDecoder;
+		let dispose: () => void;
+		try {
+			const worker = makeWhisperCppDecoder(runtime);
+			decoder = worker.decoder;
+			dispose = worker.dispose;
+		} catch (err) {
+			throw new AsrUnavailableError(
+				`[asr] whisper.cpp decoder unavailable: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
 		try {
 			return new WhisperCppStreamingTranscriber({
 				vad: opts.vad,

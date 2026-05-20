@@ -14,6 +14,7 @@
  * CLAUDE.md / Task 15 spec.
  */
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,15 @@ import type {
 } from "./types.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
+const PACKAGE_ROOT = path.join(HERE, "..");
+
+export interface RuntimeResolveArgs {
+  tier: Eliza1TierId | string;
+  forceStub: boolean;
+  harness?: "eliza" | "hermes" | "openclaw";
+  provider?: string;
+  model?: string;
+}
 
 interface AppCoreVisionLike {
   /** Plugin-local-inference's IMAGE_DESCRIPTION handler factory. */
@@ -175,6 +185,76 @@ export function createStubRuntime(tier: string = "stub"): VisionRuntime {
   };
 }
 
+function createHarnessRuntime(args: {
+  harness: "hermes" | "openclaw";
+  provider: string;
+  model: string;
+}): VisionRuntime {
+  const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
+  const script = path.join(PACKAGE_ROOT, "scripts", "vision_harness_runtime.py");
+
+  async function askHarness({
+    imagePath,
+    question,
+    maxTokens,
+  }: {
+    imagePath: string;
+    question: string;
+    maxTokens?: number;
+  }): Promise<string> {
+    const child = spawnSync(
+      python,
+      [script],
+      {
+        input: JSON.stringify({
+          harness: args.harness,
+          provider: args.provider,
+          model: args.model,
+          imagePath,
+          question,
+          maxTokens,
+        }),
+        encoding: "utf8",
+        env: process.env,
+        maxBuffer: 16 * 1024 * 1024,
+      },
+    );
+    if (child.error) throw child.error;
+    if (child.status !== 0) {
+      throw new Error(
+        `${args.harness} vision runtime failed rc=${child.status}: ${child.stderr || child.stdout}`,
+      );
+    }
+    const output = (child.stdout || "").trim().split("\n").at(-1) || "";
+    const parsed = JSON.parse(output) as { text?: unknown };
+    return typeof parsed.text === "string" ? parsed.text : "";
+  }
+
+  return {
+    id: `${args.harness}:${args.provider}/${args.model}`,
+    ask: askHarness,
+    async ground({ imagePath, instruction }): Promise<Point | null> {
+      const text = await askHarness({
+        imagePath,
+        question: [
+          "You are a UI grounding model. Output the click coordinate as `x, y` in pixel space.",
+          `Instruction: ${instruction}`,
+        ].join("\n"),
+        maxTokens: 32,
+      });
+      return parseClickFromText(text);
+    },
+    async runActionLoop({ instruction, initialScreenshotPath, maxSteps }): Promise<PredictedAction[]> {
+      const text = await askHarness({
+        imagePath: initialScreenshotPath,
+        question: actionListPrompt(instruction),
+        maxTokens: 256,
+      });
+      return parseActionList(text).slice(0, maxSteps);
+    },
+  };
+}
+
 function inferStubAnswer(question: string): string {
   const q = question.toLowerCase();
   if (q.includes("time")) return "3:15";
@@ -195,12 +275,23 @@ function inferStubAnswer(question: string): string {
   return "unknown";
 }
 
-export async function resolveRuntime(args: {
-  tier: Eliza1TierId | string;
-  forceStub: boolean;
-}): Promise<VisionRuntime> {
+export async function resolveRuntime(args: RuntimeResolveArgs): Promise<VisionRuntime> {
   if (args.forceStub) return createStubRuntime(args.tier);
   if (args.tier === "stub") return createStubRuntime();
+  const harness = args.harness ?? "eliza";
+  if (harness === "hermes" || harness === "openclaw") {
+    const model = (args.model ?? process.env.VISION_LANGUAGE_MODEL ?? "").trim();
+    if (!model) {
+      throw new Error(
+        `vision-language ${harness} runtime requires --model or VISION_LANGUAGE_MODEL`,
+      );
+    }
+    return createHarnessRuntime({
+      harness,
+      provider: (args.provider ?? process.env.VISION_LANGUAGE_PROVIDER ?? "openai").trim() || "openai",
+      model,
+    });
+  }
   const plugin = await tryLoadPluginVision(args.tier as Eliza1TierId);
   if (plugin) return plugin;
   throw new Error(

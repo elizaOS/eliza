@@ -30,13 +30,13 @@ const MODELS_ROOT = path.join(
 );
 const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_8b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-64k.gguf"),
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-32k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-256k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-128k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
   path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_8b.gguf"),
 );
-const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set(["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]);
 const TOKENIZER_COMPATIBILITY_KEYS = [
   "tokenizer.ggml.model",
   "tokenizer.ggml.pre",
@@ -1295,6 +1295,13 @@ function blockedBenchPass(binary, options, withDrafter, reason) {
   };
 }
 
+function requiresTrueDflashDraftingForShape({
+  upstreamShapeOk,
+  plainArShapeOk,
+}) {
+  return Boolean(upstreamShapeOk || plainArShapeOk);
+}
+
 /**
  * Bench DFlash speedup: run the spec binary with and without the drafter,
  * compute the tok/s ratio + acceptance rate, and write a report JSON.
@@ -1493,10 +1500,30 @@ function makeTokenizerSelfTestSummary(overrides = {}) {
 }
 
 function runSelfTest() {
-  assert.equal(DFLASH_TIERS.has("0_8b"), false);
-  for (const tier of ["2b", "4b", "9b", "27b", "27b-256k"]) {
+  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]) {
     assert.equal(DFLASH_TIERS.has(tier), true);
   }
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: false,
+      plainArShapeOk: true,
+    }),
+    true,
+  );
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: true,
+      plainArShapeOk: false,
+    }),
+    true,
+  );
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: false,
+      plainArShapeOk: false,
+    }),
+    false,
+  );
 
   assert.equal(
     compareTokenizers(
@@ -1768,12 +1795,17 @@ function main() {
     (tensorNames.has("token_embd.weight") ||
       (tensorNames.has("blk.0.attn_q.weight") &&
         tensorNames.has("blk.0.attn_k.weight")));
-  const requiresTrueDflashDrafting = upstreamShapeOk;
+  const requiresTrueDflashDrafting = requiresTrueDflashDraftingForShape({
+    upstreamShapeOk,
+    plainArShapeOk,
+  });
   report.runtimePolicy = {
     requiresTrueDflashDrafting,
     reason: requiresTrueDflashDrafting
-      ? "upstream dflash-draft drafter"
-      : "plain autoregressive drafter smoke",
+      ? isUpstreamDflashArch
+        ? "upstream dflash-draft drafter"
+        : "plain autoregressive drafter smoke"
+      : "drafter metadata did not match a loadable speculative shape",
   };
 
   report.checks = {

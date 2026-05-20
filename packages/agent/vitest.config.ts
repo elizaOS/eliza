@@ -42,6 +42,14 @@ export default defineConfig({
         find: "@elizaos/ui",
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/$1"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,

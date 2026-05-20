@@ -996,11 +996,19 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "vision-language-results.json"),
         ]
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", agent])
+        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        if provider_name:
+            args.extend(["--model-provider", provider_name])
+        model_name = str(extra.get("model") or model.model or "").strip()
+        if model_name:
+            args.extend(["--model", model_name])
         if extra.get("smoke") is True:
             args.append("--smoke")
         if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
             args.append("--stub")
-        _ = model
         return args
 
     def _vision_language_result(output_dir: Path) -> Path:

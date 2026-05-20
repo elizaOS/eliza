@@ -42,6 +42,13 @@ jobs:
           bun run --cwd packages/os/usb-installer typecheck
           bun run --cwd packages/os/usb-installer test
           bun run --cwd packages/os/usb-installer build
+          bunx playwright install --with-deps chromium
+          bun run --cwd packages/os/usb-installer test:e2e
+          if modinfo scsi_debug >/dev/null 2>&1; then
+            bun run --cwd packages/os/usb-installer test:linux-virtual-usb
+          else
+            echo "::notice::scsi_debug kernel module is unavailable on this runner; skipping virtual block-device USB proof."
+          fi
 
       - name: Validate Android installer
         run: |

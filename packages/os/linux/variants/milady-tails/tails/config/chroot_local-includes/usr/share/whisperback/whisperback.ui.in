@@ -223,7 +223,7 @@
   <object class="GtkWindow" id="windowMain">
     <property name="can-focus">False</property>
     <property name="border-width">10</property>
-    <property name="title" translatable="yes">WhisperBack</property>
+    <property name="title" translatable="yes">elizaOS Feedback</property>
     <signal name="delete-event" handler="cb_close_application" swapped="no"/>
     <child>
       <object class="GtkBox" id="vboxMain">

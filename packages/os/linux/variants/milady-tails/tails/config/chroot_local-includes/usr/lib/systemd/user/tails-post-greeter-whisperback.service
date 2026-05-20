@@ -1,6 +1,6 @@
 [Unit]
 Description=Report errors detected at the Welcome Screen
-Documentation=https://tails.net/doc/first_steps/whisperback/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 ConditionPathExists=/var/lib/gdm3/post-greeter-whisperback.json
 

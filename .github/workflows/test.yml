@@ -122,6 +122,9 @@ jobs:
       - name: Remote capability GitHub live evidence self-test
         run: bun run test:remote-capabilities:github-live-evidence:self-test
 
+      - name: Remote capability GitHub live artifact self-test
+        run: bun run test:remote-capabilities:github-live-artifacts:self-test
+
       - name: Remote capability Docker smoke
         run: bun run test:remote-capabilities:docker
 
@@ -548,6 +551,7 @@ jobs:
       - desktop-contract
       - cloud-live-e2e
       - provider-live-e2e
+      - github-live-artifacts
     runs-on: ubuntu-24.04
     steps:
       - name: Check test results
@@ -561,6 +565,7 @@ jobs:
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
           echo "provider-live-e2e:${{ needs.provider-live-e2e.result }}"
+          echo "github-live-artifacts:${{ needs.github-live-artifacts.result }}"
           echo "==================================="
           strict_results="${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
@@ -570,7 +575,8 @@ jobs:
             "plugin-tests:${{ needs.plugin-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
             "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}" \
-            "provider-live-e2e:${{ needs.provider-live-e2e.result }}"; do
+            "provider-live-e2e:${{ needs.provider-live-e2e.result }}" \
+            "github-live-artifacts:${{ needs.github-live-artifacts.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then

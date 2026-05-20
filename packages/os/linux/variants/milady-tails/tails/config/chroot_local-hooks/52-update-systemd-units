@@ -102,7 +102,6 @@ systemctl --global enable tails-post-greeter-docs.service
 systemctl --global enable tails-post-greeter-whisperback.service
 systemctl --global enable elizaos-agent.service
 systemctl --global enable elizaos-renderer.service
-systemctl --global enable elizaos-pill.service
 systemctl --global enable milady.service
 
 # This causes the proxies to run during the whole session, instead of

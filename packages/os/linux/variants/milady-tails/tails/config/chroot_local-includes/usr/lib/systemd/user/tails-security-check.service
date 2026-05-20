@@ -1,6 +1,6 @@
 [Unit]
-Description=Check Tails known, unfixed security issues
-Documentation=https://tails.net/contribute/design/
+Description=Check elizaOS known, unfixed security issues
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 After=tails-wait-until-tor-has-bootstrapped.service
 
 [Service]

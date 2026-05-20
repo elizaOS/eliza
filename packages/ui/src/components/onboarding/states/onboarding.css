@@ -150,7 +150,7 @@
 .eliza-ob-chip {
   border-radius: 999px;
   padding: 4px 8px;
-  background: #ff8a24;
+  background: #0b35f1;
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
@@ -249,8 +249,8 @@
 }
 
 .eliza-ob-btn.orange {
-  background: #ff8a24;
-  color: #fff7ee;
+  background: #0b35f1;
+  color: #ffffff;
 }
 
 .eliza-ob-btn.text-only {
@@ -345,7 +345,7 @@
 .eliza-ob-mini-pill {
   border-radius: 999px;
   padding: 4px 8px;
-  background: #ff8a24;
+  background: #0b35f1;
   color: #ffffff;
   font-size: 10px;
 }

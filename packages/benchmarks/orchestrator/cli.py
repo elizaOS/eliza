@@ -20,9 +20,13 @@ from .db import (
     repair_nonzero_returncode_statuses,
     tag_run_with_comparison,
 )
+from .latest_comparability import print_comparability_report, validate_latest_comparability
+from .latest_publishability import print_publishability_report, validate_latest_publishability
+from .latest_readiness import print_readiness_report, validate_latest_readiness
 from .random_baseline_runner import CALIBRATION_HARNESSES, SYNTHETIC_HARNESSES
 from .runner import _rebuild_latest_result_snapshots, _repair_current_compatibility_statuses, run_benchmarks
 from .matrix_validation import build_cross_matrix_report, report_to_json, report_to_markdown
+from .runtime_gates import build_runtime_gate_report, print_runtime_gate_report
 from .types import RunRequest
 from .viewer_server import serve_viewer
 from .viewer_data import build_viewer_dataset
@@ -355,6 +359,52 @@ def _cmd_calibration_report(args: argparse.Namespace) -> int:
             if str(row.get("real_pattern") or "").endswith("_mixed_config"):
                 return 1
     return 0
+
+
+def _cmd_validate_latest_publishability(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = validate_latest_publishability(workspace_root)
+    if args.json:
+        print(report.to_json())
+    else:
+        print_publishability_report(report)
+    return 0 if report.ok else 1
+
+
+def _cmd_validate_latest_comparability(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = validate_latest_comparability(
+        workspace_root,
+        tolerance=float(args.tolerance),
+    )
+    if args.json:
+        print(report.to_json())
+    else:
+        print_comparability_report(report)
+    return 0 if report.ok else 1
+
+
+def _cmd_validate_latest_readiness(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = validate_latest_readiness(
+        workspace_root,
+        tolerance=float(args.tolerance),
+    )
+    if args.json:
+        print(report.to_json())
+    else:
+        print_readiness_report(report)
+    return 0 if report.ok else 1
+
+
+def _cmd_validate_runtime_gates(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = build_runtime_gate_report(workspace_root)
+    if args.json:
+        print(report.to_json())
+    else:
+        print_runtime_gate_report(report)
+    return 0 if report.ok else 1
 
 
 def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
@@ -816,6 +866,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit nonzero if calibration is missing/mismatched or real harnesses tie exactly",
     )
     p_calibration.set_defaults(func=_cmd_calibration_report)
+
+    p_publishability = sub.add_parser(
+        "validate-latest-publishability",
+        help="Fail if published latest benchmark rows contain sample/demo/mock/stub markers",
+    )
+    p_publishability.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_publishability.set_defaults(func=_cmd_validate_latest_publishability)
+
+    p_latest_comparability = sub.add_parser(
+        "validate-latest-comparability",
+        help="Fail if required latest real harness scores are missing, mixed-config, or outside tolerance",
+    )
+    p_latest_comparability.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.08,
+        help="Allowed absolute score spread across required real harnesses",
+    )
+    p_latest_comparability.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_latest_comparability.set_defaults(func=_cmd_validate_latest_comparability)
+
+    p_latest_readiness = sub.add_parser(
+        "validate-latest-readiness",
+        help="Fail unless latest rows prove the full real harness matrix is complete, publishable, and comparable",
+    )
+    p_latest_readiness.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.08,
+        help="Allowed absolute/relative score spread across required real harnesses",
+    )
+    p_latest_readiness.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_latest_readiness.set_defaults(func=_cmd_validate_latest_readiness)
+
+    p_runtime_gates = sub.add_parser(
+        "validate-runtime-gates",
+        help="Probe external runtime prerequisites for benchmarks that cannot use sample/demo fallbacks",
+    )
+    p_runtime_gates.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_runtime_gates.set_defaults(func=_cmd_validate_runtime_gates)
 
     p_serve = sub.add_parser("serve-viewer", help="Serve benchmarks/viewer with live API data")
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
