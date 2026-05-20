@@ -119,6 +119,12 @@ def _good_manifest(
                     "notes": "GRUB EFI boot captured.",
                 },
                 {
+                    "id": "elizaos-agent-live",
+                    "status": "collected",
+                    "path": "evidence/elizaos_agent_live.json",
+                    "notes": "Agent service active and health endpoint responded.",
+                },
+                {
                     "id": "u-boot-extlinux-boot",
                     "status": "not-required",
                     "path": None,

@@ -52,7 +52,7 @@ cd packages/app-core/scripts/bun-riscv64
 ./run-build.sh --shell        # drop into the toolchain image for poking
 ./run-build.sh --image-only   # just build the image
 ./run-build.sh --no-cache     # rebuild the image from scratch
-./run-build.sh --c-loop       # fallback: build with ENABLE_C_LOOP=ON
+./run-build.sh --baseline-jit # experimental: requires realized WebKit patches
 ./run-build.sh --jobs 4       # cap parallel build jobs
 ```
 
@@ -86,10 +86,11 @@ dist/bun-linux-riscv64-musl.zip.sha256
 dist/build-log.txt
 ```
 
-## C_LOOP fallback
+## C_LOOP artifact contract
 
-If the Baseline JIT bringup fails (typically inside `offlineasm` or LLInt
-prologue), retry with the portable C interpreter:
+The publishable riscv64 artifact is C_LOOP-only until the WebKit recipe
+chain is checked in as patch files and validated. The bundled runner uses
+the portable C interpreter by default:
 
 ```bash
 docker run --rm \
@@ -102,9 +103,9 @@ docker run --rm \
     milady/bun-riscv64-builder
 ```
 
-The resulting binary is slower (no JIT at all) but guaranteed to build on
-any LP64D RISC-V target. `build-log.txt` records that C_LOOP was used so
-downstream consumers know a Baseline rebuild is desirable.
+The resulting binary is slower (no JIT at all) but is the reproducible
+contract both Android and Debian consume. `build-log.txt` records that
+C_LOOP was used.
 
 ## Hosting the artifact + wiring into Android staging
 
@@ -125,8 +126,9 @@ export MILADY_BUN_RISCV64_URL='https://example.com/.../bun-linux-riscv64-musl.zi
 bun run mobile:build  # or the equivalent android assemble path
 ```
 
-`stage-android-agent.mjs` will fetch, verify (zip integrity), extract,
-and stage `bun` into the APK's `assets/agent/riscv64/` directory alongside
+`stage-android-agent.mjs` requires `MILADY_BUN_RISCV64_SHA256` (or
+`ELIZA_BUN_RISCV64_SHA256`), verifies the downloaded zip digest, extracts,
+and stages `bun` into the APK's `assets/agent/riscv64/` directory alongside
 the matching musl loader and libstdc++ pulled from Alpine v3.21.
 
 ## What's pinned and why
@@ -151,13 +153,13 @@ failures inside Bun. Bump them together.
 | Tier         | State                       | Source |
 |--------------|-----------------------------|--------|
 | LLInt        | Upstream                    | WebKit #229035 (closed r281757 2021-08-30) |
-| Baseline JIT | Upstream                    | WebKit #239708 (closed r293316 2022-04-24) |
+| Baseline JIT | Optional, recipe-only locally | WebKit #239708 (closed r293316 2022-04-24) |
 | DFG JIT      | **Not implemented** (NEW)   | WebKit #238006 |
 | FTL JIT      | **Not implemented** (NEW)   | WebKit #239707 |
 
-`build.sh` enables LLInt + Baseline and disables DFG + FTL. Acceptable
-for the Android agent runtime, which is bottlenecked on native llama.cpp
-inference and network I/O, not JS hot loops.
+`build.sh` defaults to C_LOOP for the publishable artifact. A Baseline
+experiment must pass `BUN_RISCV64_FORCE_CLOOP=0` and must first convert
+the recipe files under `webkit-patches/` into checked patch files.
 
 ## Limitations
 

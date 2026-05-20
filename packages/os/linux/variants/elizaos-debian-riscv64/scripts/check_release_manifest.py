@@ -50,6 +50,7 @@ RELEASE_SCHEMA = (
 REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
     "qemu-virt-boot",
     "grub-efi-riscv64-boot",
+    "elizaos-agent-live",
 )
 
 # Promoted artifact statuses require every evidence row to be ``collected``;

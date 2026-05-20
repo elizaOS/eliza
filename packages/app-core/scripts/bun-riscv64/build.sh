@@ -13,11 +13,11 @@
 # Inputs (env vars, all optional):
 #   BUN_TAG                 override bun.tag from bun-version.json
 #   WEBKIT_COMMIT           override webkit.fork_commit from bun-version.json
-#   BUN_RISCV64_FORCE_CLOOP=1
-#                           skip Baseline JIT, build with ENABLE_C_LOOP=ON
-#                           (use if Baseline build fails on the picked
-#                           WebKit commit; documents the regression in the
-#                           build log).
+#   BUN_RISCV64_FORCE_CLOOP=0
+#                           opt into the experimental Baseline-JIT path.
+#                           The production artifact defaults to C_LOOP until
+#                           the WebKit recipe chain is checked in as real
+#                           patch files.
 #   JOBS                    parallel build jobs. Defaults to nproc.
 #
 # Output (under /artifact):
@@ -25,10 +25,10 @@
 #   bun-linux-riscv64-musl.zip.sha256
 #   build-log.txt                   transcript + sha256s + qemu --version run
 #
-# Failure model: every step is `set -euo pipefail`. The build does NOT
-# fall back to ENABLE_C_LOOP automatically — operator decides by setting
-# BUN_RISCV64_FORCE_CLOOP=1 on a retry. Silent fallback would hide whether
-# Baseline JIT works for a given WebKit commit.
+# Failure model: every step is `set -euo pipefail`. The production artifact
+# defaults to ENABLE_C_LOOP=ON. Baseline-JIT attempts require the operator to
+# set BUN_RISCV64_FORCE_CLOOP=0 and must fail while recipe files remain
+# unrealized.
 
 set -euo pipefail
 
@@ -75,7 +75,7 @@ log "  Alpine branch   : $ALPINE_BRANCH"
 JOBS="${JOBS:-$(nproc)}"
 log "  Build jobs      : $JOBS"
 
-FORCE_CLOOP="${BUN_RISCV64_FORCE_CLOOP:-0}"
+FORCE_CLOOP="${BUN_RISCV64_FORCE_CLOOP:-1}"
 if [ "$FORCE_CLOOP" = "1" ]; then
     log "  JIT mode        : C_LOOP (BUN_RISCV64_FORCE_CLOOP=1)"
 else

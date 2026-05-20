@@ -12,9 +12,9 @@
     "fork": "oven-sh/WebKit",
     "fork_commit": "4d5e75ebd84a14edbc7ae264245dcd77fe597c10",
     "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@bun-v1.3.13 (verified 2026-05-19)",
-    "rationale": "Bun's WebKit fork has zero riscv64 patches. We checkout this commit, then rebase the WebKit-side riscv64 enablement series (webkit-patches/) onto it. If rebase fails, fall back to upstream WebKit/WebKit at the matching git-svn revision and re-apply Bun's JavaScriptCore touch-ups manually — see webkit-patches/README.md.",
-    "jit_tier": "baseline",
-    "jit_rationale": "Upstream WebKit ships LLInt + Baseline JIT for riscv64 (WebKit bugs #229035 r281757 2021-08-30 and #239708 r293316 2022-04-25). DFG/FTL are still NEW (bugs #238006, #239707). On-device agent runtime is dominated by native llama.cpp + network IO, so the missing tiers cost us little. Build sets ENABLE_BASELINE_JIT=ON, ENABLE_DFG_JIT=OFF, ENABLE_FTL_JIT=OFF, ENABLE_C_LOOP=OFF. If Baseline build fails on the picked WebKit commit, retry with ENABLE_C_LOOP=ON + Baseline=OFF — build.sh exposes BUN_RISCV64_FORCE_CLOOP=1 for that path.",
+    "rationale": "Bun's WebKit fork has zero riscv64 patches. We checkout this commit, apply the checked WebKit-side patch files, and build the production artifact with the portable C_LOOP interpreter until the LLInt/Baseline cherry-pick recipes are realized as actual patch files.",
+    "jit_tier": "c_loop",
+    "jit_rationale": "The production riscv64-linux-musl artifact is C_LOOP-only: build.sh defaults to ENABLE_C_LOOP=ON, ENABLE_JIT=OFF, ENABLE_DFG_JIT=OFF, and ENABLE_FTL_JIT=OFF. Upstream WebKit has LLInt + Baseline support for riscv64, but the local cherry-pick chain is still represented by recipe files rather than checked patch files. Operators may set BUN_RISCV64_FORCE_CLOOP=0 to test the experimental Baseline path after realizing those recipes; that is not the publishable artifact contract.",
     "cherry_pick_targets": {
       "llint_landing_sha": "d9b48eb602eb0269030f018afddd16c560d0b501",
       "llint_landing_date": "2021-08-30",
@@ -106,6 +106,6 @@
       "0001-cherry-pick-llint-riscv64.recipe": "8017bed5bf3f6fc22585b802c0016734ab48f0f70ddc675613c9b6930b8ea6b6",
       "0002-cherry-pick-baseline-jit-riscv64.recipe": "4ee6709e6e30ccbdc1b50641dd924835fb1b28fd3d5b874625307fb699dc39b4"
     },
-    "webkit_recipes_status": "Recipe files document the cherry-pick chain that an operator with two WebKit clones must realize into actual `*.patch` files before the Baseline-JIT build path is testable. Until realized, build.sh proceeds with C_LOOP fallback when BUN_RISCV64_FORCE_CLOOP=1 is set."
+    "webkit_recipes_status": "Recipe files document the optional LLInt/Baseline cherry-pick chain. The publishable riscv64 artifact contract is C_LOOP-only until that chain is checked in as patch files and validated."
   }
 }

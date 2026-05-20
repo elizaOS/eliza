@@ -1,31 +1,15 @@
 #!/bin/sh
-# elizaOS RV64 variant userland-bootstrap (Wave 2B / first-boot scaffold)
-#
-# Stages the systemd units + first-boot script that came in via
-# includes.chroot, re-asserts file modes (live-build does not always
-# preserve executable bits on shipped scripts), enables the one-shot
-# first-boot service in the live root, and writes a fail-closed
-# STATUS_LATER marker so the qemu boot transcript can distinguish:
-#
-#   * "boot fine, agent binary missing"  →  /opt/elizaos/STATUS_LATER_AGENT_BINARY
-#                                           exists, first-boot succeeds,
-#                                           elizaos-agent.service fails
-#                                           with `executable not found`.
-#   * "boot broken"                      →  systemd never reaches the
-#                                           first-boot unit; no ready
-#                                           marker on serial console.
-#
-# This hook does NOT install the elizaOS agent binary itself — that lands
-# when the build pipeline can pull a real elizaOS release artifact.
 set -eu
 
 UNIT_DIR="/etc/systemd/system"
 AGENT_UNIT="${UNIT_DIR}/elizaos-agent.service"
 FIRST_BOOT_UNIT="${UNIT_DIR}/elizaos-first-boot.service"
 FIRST_BOOT_SCRIPT="/usr/lib/elizaos/first-boot.sh"
-INSTALL_ROOT="/opt/elizaos"
+HEALTH_SCRIPT="/usr/lib/elizaos/wait-agent-health.sh"
+AGENT_BIN="/opt/elizaos/bin/elizaos"
+BUN_BIN="/opt/elizaos/runtime/bun-linux-riscv64-musl/bun"
 
-echo "[0030-elizaos-userland] re-staging systemd units"
+echo "[0030-elizaos-userland] validating systemd units and runtime payload"
 
 for unit in "${AGENT_UNIT}" "${FIRST_BOOT_UNIT}"; do
     if [ ! -f "${unit}" ]; then
@@ -36,53 +20,26 @@ for unit in "${AGENT_UNIT}" "${FIRST_BOOT_UNIT}"; do
     chmod 0644 "${unit}"
 done
 
-if [ ! -x "${FIRST_BOOT_SCRIPT}" ]; then
-    if [ ! -f "${FIRST_BOOT_SCRIPT}" ]; then
-        echo "[0030-elizaos-userland] ERROR: missing first-boot script ${FIRST_BOOT_SCRIPT}" >&2
+for script in "${FIRST_BOOT_SCRIPT}" "${HEALTH_SCRIPT}"; do
+    if [ ! -f "${script}" ]; then
+        echo "[0030-elizaos-userland] ERROR: missing script ${script}" >&2
         exit 1
     fi
-    chmod 0755 "${FIRST_BOOT_SCRIPT}"
+    chown root:root "${script}"
+    chmod 0755 "${script}"
+done
+
+if [ ! -x "${AGENT_BIN}" ]; then
+    echo "[0030-elizaos-userland] ERROR: missing executable ${AGENT_BIN}" >&2
+    exit 1
 fi
-chown root:root "${FIRST_BOOT_SCRIPT}"
+
+if [ ! -x "${BUN_BIN}" ]; then
+    echo "[0030-elizaos-userland] ERROR: missing executable ${BUN_BIN}" >&2
+    exit 1
+fi
 
 echo "[0030-elizaos-userland] enabling elizaos-first-boot.service in live root"
 systemctl enable elizaos-first-boot.service
 
-# ── STATUS_LATER: agent binary install ────────────────────────────────
-# The real elizaOS agent binary install is deferred until the build
-# pipeline can pull a signed release artifact. We deliberately do NOT:
-#   * download from the network at chroot time (no upstream URL yet,
-#     and a chroot stage must be reproducible).
-#   * ship a stub /opt/elizaos/bin/elizaos shim that pretends to work
-#     (that would mask the gap from the qemu transcript).
-#
-# Instead, leave /opt/elizaos/bin empty and drop a marker file. The
-# elizaos-agent.service will fail with "executable not found" at first
-# boot, which is the *intended* failure mode at this wave: it proves the
-# OS reached multi-user.target, the unit was wired, and the user
-# accounts were created.
-mkdir -p "${INSTALL_ROOT}/bin"
-
-cat > "${INSTALL_ROOT}/STATUS_LATER_AGENT_BINARY" <<'STATUS'
-elizaOS RV64 variant — agent binary STATUS_LATER
-
-This file is intentionally present. It marks that the live image was
-built with the userland bootstrap (systemd units + first-boot script +
-elizaos user/group) but WITHOUT a real /opt/elizaos/bin/elizaos binary.
-
-Expected behaviour on first boot:
-  * elizaos-first-boot.service        — succeeds
-  * /etc/elizaos/instance-id          — present
-  * `elizaos-ready instance=<uuid>`   — visible on serial console
-  * elizaos-agent.service             — fails with ExecStart not found
-
-When the build pipeline learns to fetch a real elizaOS release artifact,
-the hook that installs the agent binary must DELETE this marker file
-as the last step. The qemu-virt harness treats the presence of this
-file as "boot fine, agent missing"; its absence + a healthy agent unit
-means "boot fine, agent live".
-STATUS
-chmod 0644 "${INSTALL_ROOT}/STATUS_LATER_AGENT_BINARY"
-
-echo "[0030-elizaos-userland] STATUS_LATER marker written: ${INSTALL_ROOT}/STATUS_LATER_AGENT_BINARY"
 echo "[0030-elizaos-userland] done"

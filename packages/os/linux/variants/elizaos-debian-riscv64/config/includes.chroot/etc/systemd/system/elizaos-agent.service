@@ -9,6 +9,7 @@ Type=simple
 WorkingDirectory=/opt/elizaos
 Environment=ELIZA_STATE_DIR=/var/lib/elizaos
 ExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337
+ExecStartPost=/usr/lib/elizaos/wait-agent-health.sh http://127.0.0.1:31337/api/health
 Restart=on-failure
 RestartSec=5
 User=elizaos
