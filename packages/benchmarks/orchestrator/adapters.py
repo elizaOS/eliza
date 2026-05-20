@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -250,22 +251,29 @@ def _has_terminal_bench_docker_backend() -> bool:
     global _TERMINAL_BENCH_DOCKER_AVAILABLE
     if _TERMINAL_BENCH_DOCKER_AVAILABLE is not None:
         return _TERMINAL_BENCH_DOCKER_AVAILABLE
+    _TERMINAL_BENCH_DOCKER_AVAILABLE = _docker_info_available()
+    return _TERMINAL_BENCH_DOCKER_AVAILABLE
+
+
+def _docker_info_available(*, attempts: int = 2, timeout_s: float = 8.0) -> bool:
     if not shutil.which("docker"):
-        _TERMINAL_BENCH_DOCKER_AVAILABLE = False
         return False
-    try:
-        completed = subprocess.run(
-            ["docker", "info", "--format", "{{.ServerVersion}}"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-            check=False,
-        )
-        _TERMINAL_BENCH_DOCKER_AVAILABLE = completed.returncode == 0
-        return _TERMINAL_BENCH_DOCKER_AVAILABLE
-    except (OSError, subprocess.TimeoutExpired):
-        _TERMINAL_BENCH_DOCKER_AVAILABLE = False
-        return False
+    for attempt in range(max(attempts, 1)):
+        try:
+            completed = subprocess.run(
+                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout_s,
+                check=False,
+            )
+            if completed.returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if attempt < attempts - 1:
+            time.sleep(0.25)
+    return False
 
 
 _SWE_BENCH_DOCKER_AVAILABLE: bool | None = None
@@ -287,21 +295,8 @@ def _has_hermes_sandbox_backend() -> bool:
     if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
         _HERMES_SANDBOX_BACKEND_AVAILABLE = True
         return True
-    if shutil.which("docker"):
-        try:
-            completed = subprocess.run(
-                ["docker", "info"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2,
-                check=False,
-            )
-            _HERMES_SANDBOX_BACKEND_AVAILABLE = completed.returncode == 0
-            return _HERMES_SANDBOX_BACKEND_AVAILABLE
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    _HERMES_SANDBOX_BACKEND_AVAILABLE = False
-    return False
+    _HERMES_SANDBOX_BACKEND_AVAILABLE = _docker_info_available()
+    return _HERMES_SANDBOX_BACKEND_AVAILABLE
 
 
 _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE: bool | None = None

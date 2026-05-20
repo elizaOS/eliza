@@ -1883,6 +1883,7 @@
         "@feed/a2a": "workspace:*",
         "@feed/db": "workspace:*",
         "@feed/shared": "workspace:*",
+        "@vercel/blob": "2.3.2",
         "ai": "6.0.174",
         "js-tiktoken": "^1.0.21",
         "posthog-node": "^5.17.0",

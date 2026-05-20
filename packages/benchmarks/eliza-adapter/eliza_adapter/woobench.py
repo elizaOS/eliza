@@ -295,7 +295,7 @@ def build_eliza_bridge_agent_fn(
                 "content": turn["content"],
             }
             for turn in recent_history
-            if turn["role"] in {"system", "user", "assistant", "agent"}
+            if turn["role"] in {"user", "assistant", "agent"}
             and str(turn["content"]).strip() != system_hint
         )
 

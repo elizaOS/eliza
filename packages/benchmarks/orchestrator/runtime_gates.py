@@ -93,9 +93,9 @@ def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGat
         ),
         RuntimeGate(
             id="vision_language_real_inputs",
-            ok=adapter_module._has_textvqa_real_inputs(),
+            ok=adapter_module._has_vision_language_real_inputs(),
             reason=None
-            if adapter_module._has_textvqa_real_inputs()
+            if adapter_module._has_vision_language_real_inputs()
             else VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
             benchmarks=("vision_language",),
         ),

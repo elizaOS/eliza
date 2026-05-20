@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const defaultRepoRoot = path.resolve(here, "../..");
+const defaultRepoRoot = path.resolve(here, "../../..");
 
 const SKIP_DIRS = new Set([
   ".git",

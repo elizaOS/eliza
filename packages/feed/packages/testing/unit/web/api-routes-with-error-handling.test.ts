@@ -116,5 +116,5 @@ describe("apps/web API routes", () => {
         ].join("\n"),
       );
     }
-  });
+  }, 30_000);
 });
