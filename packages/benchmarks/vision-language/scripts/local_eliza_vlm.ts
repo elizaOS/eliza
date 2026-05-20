@@ -32,7 +32,9 @@ function resolveModelPath(tier: string): string {
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
-  throw new Error(`no local Eliza-1 bundle found for tier '${tier}' under ${root}`);
+  throw new Error(
+    `no local Eliza-1 bundle found for tier '${tier}' under ${root}`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -48,10 +50,7 @@ async function main(): Promise<void> {
     "../../../../plugins/plugin-local-inference/src/services/index.ts"
   );
   const createImageDescriptionRuntime = mod.createImageDescriptionRuntime as
-    | ((args: {
-        tier: string;
-        modelPath: string;
-      }) => Promise<{
+    | ((args: { tier: string; modelPath: string }) => Promise<{
         describe(args: {
           imagePath: string;
           prompt: string;
@@ -61,7 +60,9 @@ async function main(): Promise<void> {
       }>)
     | undefined;
   if (typeof createImageDescriptionRuntime !== "function") {
-    throw new Error("plugin-local-inference image-description runtime unavailable");
+    throw new Error(
+      "plugin-local-inference image-description runtime unavailable",
+    );
   }
 
   const runtime = await createImageDescriptionRuntime({
@@ -74,13 +75,15 @@ async function main(): Promise<void> {
       prompt: question,
       maxTokens: payload.maxTokens,
     });
-    process.stdout.write(JSON.stringify({ text }) + "\n");
+    process.stdout.write(`${JSON.stringify({ text })}\n`);
   } finally {
     await runtime.cleanup?.();
   }
 }
 
 main().catch((err) => {
-  process.stderr.write(`${err instanceof Error ? err.stack || err.message : String(err)}\n`);
+  process.stderr.write(
+    `${err instanceof Error ? err.stack || err.message : String(err)}\n`,
+  );
   process.exit(1);
 });
