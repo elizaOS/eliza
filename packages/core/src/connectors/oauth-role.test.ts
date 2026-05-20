@@ -43,6 +43,15 @@ describe("readRequestedConnectorRole", () => {
     );
   });
 
+  it("returns OWNER for empty string and does NOT trigger the debug log", () => {
+    // Empty string is an absent-but-valid state, not a misconfiguration —
+    // the helper treats it the same as `undefined` to avoid noise in
+    // development logs.
+    expect(readRequestedConnectorRole({ requestedRole: "" }, src)).toBe(
+      "OWNER",
+    );
+  });
+
   it("falls back to OWNER for non-string requestedRole values", () => {
     expect(readRequestedConnectorRole({ requestedRole: 42 }, src)).toBe(
       "OWNER",

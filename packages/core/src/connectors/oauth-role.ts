@@ -39,7 +39,14 @@ export function readRequestedConnectorRole(
   ) {
     return requestedRoleRaw as ConnectorAccountRole;
   }
-  if (requestedRoleRaw !== undefined && requestedRoleRaw !== null) {
+  // Only surface a diagnostic when something meaningful was supplied but
+  // couldn't be matched. Skip `undefined`, `null`, and empty strings — those
+  // are absent-but-valid states that callers shouldn't have to debug.
+  if (
+    requestedRoleRaw !== undefined &&
+    requestedRoleRaw !== null &&
+    requestedRoleRaw !== ""
+  ) {
     logger.debug(
       { src, requestedRoleRaw },
       "Unrecognised requestedRole in OAuth flow metadata; defaulting to OWNER",
