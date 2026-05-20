@@ -14,6 +14,7 @@ import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 function makeClient(overrides?: Partial<VoiceProfilesClient>) {

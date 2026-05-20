@@ -452,10 +452,16 @@ export class FileSessionStore extends InMemorySessionStore {
     const deadline = Date.now() + FILE_LOCK_ACQUIRE_TIMEOUT_MS;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     while (!handle) {
+      let pending: Awaited<ReturnType<typeof open>> | undefined;
       try {
-        handle = await open(this.lockFile, "wx");
-        await handle.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
+        pending = await open(this.lockFile, "wx");
+        await pending.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
+        handle = pending;
       } catch (error) {
+        if (pending) {
+          await pending.close().catch(() => {});
+          await rm(this.lockFile, { force: true }).catch(() => {});
+        }
         const code =
           isRecord(error) && typeof error.code === "string"
             ? error.code
