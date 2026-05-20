@@ -5537,6 +5537,9 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
+// Sub-agent completions emit follow-up evaluators (URL verification, attachment
+// routing, transcript stripping) that legitimately take >5s; 30s gives them
+// room without indefinitely blocking response finalization.
 const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 
 function clearLatestResponseId(
@@ -6332,7 +6335,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 			normalized,
 		);
 	const asksRepoStateQuestion =
-		/\b(?:is|are|what|which|where)\b[\s\S]{0,140}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
+		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
 			normalized,
 		) &&
 		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(

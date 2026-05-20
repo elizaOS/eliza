@@ -37,7 +37,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
 | Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, and `form` passed targeted reruns after the last fixes. |
-| Static docs | `packages/examples/setup-guide.html` is linked from `packages/examples/README.md` and covers Roblox, Minecraft, cloud, social, hardware, and wallet setup links. |
+| Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
 
 ## Example Matrix
 
@@ -47,7 +47,11 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `a2a` | `typecheck`, `test`, `build` | `OPENAI_API_KEY` for model-backed mode. |
 | `agent-console` | `typecheck` | Browser session plus one provider key to inspect live SSE telemetry. |
 | `app/capacitor` | Parent skip scripts plus backend/frontend package checks | Native Capacitor device/simulator testing and provider keys. |
+| `app/capacitor/backend` | `typecheck`, `test`, `build` | Provider key and device/simulator flow through the Capacitor shell. |
+| `app/capacitor/frontend` | `typecheck`, `build` | Browser and native WebView smoke test against a configured backend. |
 | `app/electron` | Parent skip scripts plus backend/frontend package checks | Desktop Electron launch and provider-key chat flow. |
+| `app/electron/backend` | `typecheck`, `test`, `build` | Provider-key chat flow from the packaged Electron shell. |
+| `app/electron/frontend` | `typecheck`, `build` | Renderer smoke test in Electron and browser dev-server mode. |
 | `autonomous` | `typecheck`, `build` | Optional local model and shell sandbox configuration. |
 | `avatar` | `typecheck`, `build` | Browser microphone/audio flow, selected model key, optional ElevenLabs key. |
 | `aws` | `typecheck`, `test`, `build` | AWS account, SAM deployment, and Lambda invocation with `OPENAI_API_KEY`. |

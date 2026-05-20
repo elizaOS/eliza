@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-gateway",
-  "version": "2.0.1",
+  "version": "2.0.1-beta.0",
   "description": "Connects the app to an Eliza Gateway with discovery, RPC, and realtime events.",
   "keywords": [
     "gateway",
