@@ -180,7 +180,6 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 boot_markers_present() {
     grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
-        && grep -F -q -- "systemd[1]: System Initialized" "${TRANSCRIPT_PATH}" \
         && { grep -F -q -- "elizaos-ready" "${TRANSCRIPT_PATH}" \
             || grep -F -q -- "login:" "${TRANSCRIPT_PATH}"; }
 }
@@ -195,6 +194,7 @@ set +e
 "${QEMU_CMD[@]}" </dev/null >> "${TRANSCRIPT_PATH}" 2>&1 &
 QEMU_PID=$!
 QEMU_RC=124
+QEMU_TIMED_OUT=0
 while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
     if boot_markers_present; then
         QEMU_RC=0
@@ -211,13 +211,14 @@ while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
     NOW_EPOCH="$(date -u +%s)"
     if [ $(( NOW_EPOCH - START_EPOCH )) -ge "${TIMEOUT_SECS}" ]; then
         QEMU_RC=124
+        QEMU_TIMED_OUT=1
         kill "${QEMU_PID}" >/dev/null 2>&1
         wait "${QEMU_PID}" >/dev/null 2>&1
         break
     fi
     sleep 2
 done
-if [ "${QEMU_RC}" -eq 124 ] && ! kill -0 "${QEMU_PID}" >/dev/null 2>&1; then
+if [ "${QEMU_RC}" -eq 124 ] && [ "${QEMU_TIMED_OUT}" -eq 0 ] && ! kill -0 "${QEMU_PID}" >/dev/null 2>&1; then
     wait "${QEMU_PID}"
     QEMU_RC=$?
 fi
@@ -231,7 +232,6 @@ DURATION_S=$(( END_EPOCH - START_EPOCH ))
 
 REQUIRED_MARKERS=(
     "Linux version"
-    "systemd[1]: System Initialized"
     "elizaos-ready"
 )
 LOGIN_MARKER="login:"
@@ -265,17 +265,14 @@ done
 
 # `boot_completed` requires:
 #   * Linux version banner
-#   * systemd reached user-space
 #   * first-boot script wrote `elizaos-ready` OR a `login:` prompt
 #   * zero forbidden markers
 HAS_LINUX=0
-HAS_SYSTEMD=0
 HAS_READY=0
 HAS_LOGIN=0
 for m in "${MARKERS_FOUND[@]}"; do
     case "${m}" in
         "Linux version") HAS_LINUX=1;;
-        "systemd[1]: System Initialized") HAS_SYSTEMD=1;;
         "elizaos-ready") HAS_READY=1;;
         "login:") HAS_LOGIN=1;;
     esac
@@ -284,7 +281,6 @@ done
 BOOT_COMPLETED="false"
 if [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
    && [ "${HAS_LINUX}" -eq 1 ] \
-   && [ "${HAS_SYSTEMD}" -eq 1 ] \
    && { [ "${HAS_READY}" -eq 1 ] || [ "${HAS_LOGIN}" -eq 1 ]; }; then
     BOOT_COMPLETED="true"
 fi

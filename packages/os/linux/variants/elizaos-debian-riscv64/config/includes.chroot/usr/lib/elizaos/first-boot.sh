@@ -11,7 +11,7 @@
 #   4. Emit a single `elizaos-ready instance=<uuid>` line on the serial
 #      console (/dev/ttyS0) so the qemu-virt harness can detect boot
 #      completion deterministically.
-#   5. Enable + start elizaos-agent.service.
+#   5. Enable elizaos-agent.service and start it when the agent binary exists.
 #   6. Disable this first-boot service so it does not run again.
 #
 # Fail-closed: any step that cannot complete returns non-zero so the
@@ -25,6 +25,7 @@ CONFIG_DIR="/etc/elizaos"
 INSTANCE_ID_FILE="${CONFIG_DIR}/instance-id"
 FIRST_BOOT_MARKER="${STATE_DIR}/.first-boot-complete"
 SERIAL_CONSOLE="/dev/ttyS0"
+AGENT_BIN="/opt/elizaos/bin/elizaos"
 
 log() {
     printf '[elizaos-first-boot] %s\n' "$*"
@@ -91,13 +92,19 @@ else
 fi
 log "${READY_LINE}"
 
-# 5. Enable and start the agent.
+# 5. Enable the agent. Early RISC-V images intentionally ship with a
+#    STATUS_LATER placeholder until the agent binary is packaged, so do not
+#    block first boot on starting a unit whose ExecStart target is absent.
 log "enabling elizaos-agent.service"
 systemctl enable elizaos-agent.service
-log "starting elizaos-agent.service"
-systemctl start elizaos-agent.service || {
-    log "WARN: elizaos-agent.service failed to start (likely STATUS_LATER agent binary missing)"
-}
+if [ -x "${AGENT_BIN}" ]; then
+    log "starting elizaos-agent.service"
+    timeout 10s systemctl start --no-block elizaos-agent.service || {
+        log "WARN: elizaos-agent.service failed to queue"
+    }
+else
+    log "agent binary missing at ${AGENT_BIN}; leaving elizaos-agent.service enabled but not started"
+fi
 
 # 6. Mark first-boot complete and disable this unit.
 install -o elizaos -g elizaos -m 0640 /dev/null "${FIRST_BOOT_MARKER}"

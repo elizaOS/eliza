@@ -12,9 +12,10 @@ BUILD := build
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
 .PHONY: rail-plan-check upf-check pdn-workload-signoff pmic-procurement-gate cocotb-droop cocotb-clock-stretcher cocotb-avfs cocotb-pmc cocotb-power fw-pmc-build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
-.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test
+.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status
+.PHONY: sota-parity-audit sota-parity-audit-strict sota-parity-audit-test
 
-.PHONY: venv tools lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check product-feature-gates-check product-check product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check linux-bsp-check linux-scaffold-check linux-import-check aosp-bsp-check aosp-scaffold-check aosp-import-check aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-external-preflight software-bsp-evidence-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
+.PHONY: venv tools lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test linux-bsp-check linux-scaffold-check linux-import-check aosp-bsp-check aosp-scaffold-check aosp-import-check aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-scope-test software-bsp-external-preflight software-bsp-evidence-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
 
 venv:
 	@$(PYTHON) -m venv $(VENV)
@@ -94,20 +95,43 @@ cpu-npu-14a-process-eval: cpu-npu-aosp-governor-trace process-14a-effects-check
 cpu-npu-competitive-envelope: cpu-npu-14a-process-eval
 	@$(PYTHON) scripts/check_cpu_npu_competitive_envelope.py
 
-cpu-npu-tapeout-readiness-audit: cpu-npu-competitive-envelope benchmarks-dry-run
+cpu-npu-tapeout-readiness-audit: cpu-npu-competitive-envelope benchmarks-dry-run npu-context-queue-sim-check memory-iommu-qos-sim-check
 	@$(PYTHON) scripts/check_cpu_npu_tapeout_readiness_audit.py
 
 cpu-npu-tapeout-readiness-audit-test:
 	@$(PYTHON) scripts/test_cpu_npu_tapeout_readiness_audit.py
 
-tapeout-readiness:
+sota-parity-audit:
+	@$(PYTHON) scripts/check_sota_parity_audit.py
+
+sota-parity-audit-strict:
+	@$(PYTHON) scripts/check_sota_parity_audit.py --strict
+
+sota-parity-audit-test:
+	@$(PYTHON) scripts/test_sota_parity_audit.py
+
+tapeout-readiness: manufacturing-tapeout-scope-check
 	@$(PYTHON) scripts/aggregate_tapeout_readiness.py
 
-tapeout-readiness-strict:
+tapeout-readiness-strict: manufacturing-tapeout-scope-check
 	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict
 
 tapeout-readiness-test:
 	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
+
+# Unified chip + OS RV64 bring-up dashboard. The aggregator already
+# carries the OS gates under subsystem=os_rv64; this target is just a
+# friendly entry point that names the cross-package view explicitly so
+# operators can spot it next to ``tapeout-readiness``. It is view-only
+# and preserves the same ``claim_boundary`` as the chip aggregator.
+chip-os-bring-up-status:
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py
+
+manufacturing-tapeout-scope-check:
+	@$(PYTHON) scripts/check_manufacturing_tapeout_scope.py
+
+manufacturing-tapeout-scope-test:
+	@$(PYTHON) scripts/test_manufacturing_tapeout_scope.py
 
 cpu-npu-design-space-frontier: soc-optimization
 	@$(PYTHON) scripts/check_cpu_npu_design_space_frontier.py
@@ -129,6 +153,12 @@ benchmark-calibration-test:
 
 benchmark-parser-test:
 	@$(PYTHON) scripts/test_benchmark_parsers.py
+
+benchmark-efficiency-scope-check:
+	@$(PYTHON) scripts/check_benchmark_efficiency_scope.py
+
+benchmark-efficiency-scope-test:
+	@$(PYTHON) scripts/test_benchmark_efficiency_scope.py
 
 soc-thermal-sweep:
 	@$(PYTHON) scripts/check_soc_thermal_sweep.py
@@ -157,7 +187,13 @@ cpu-npu-manual-review: cpu-npu-2028-readiness-scorecard
 cpu-npu-manual-review-test:
 	@$(PYTHON) scripts/test_cpu_npu_manual_review.py
 
-power-thermal-evidence-check:
+power-thermal-scope-check:
+	@$(PYTHON) scripts/check_power_thermal_scope.py
+
+power-thermal-scope-test:
+	@$(PYTHON) scripts/test_power_thermal_scope.py
+
+power-thermal-evidence-check: power-thermal-scope-check
 	@$(PYTHON) benchmarks/power/scripts/check_sustained_run_evidence.py benchmarks/power/manifests/e1-npu-sustained-capture.template.json --allow-blocked
 
 power-thermal-evidence-test:
@@ -172,7 +208,7 @@ process-14a-effects-test:
 e1-npu-nnapi-proof-check:
 	@$(PYTHON) scripts/check_e1_npu_nnapi_proof.py --probe-adb
 
-benchmarks:
+benchmarks: benchmark-efficiency-scope-check
 	@PATH="$(CURDIR)/$(VENV)/bin:$$PATH" $(BENCH_PYTHON) benchmarks/run_benchmarks.py
 
 mvp-status:
@@ -281,6 +317,12 @@ chipyard-verilator-stale-path-repair:
 cpu-ap-scaffold-check:
 	@$(PYTHON) scripts/check_cpu_ap_evidence.py
 
+cpu-ap-scope-check:
+	@$(PYTHON) scripts/check_cpu_ap_scope.py
+
+cpu-ap-scope-test:
+	@$(PYTHON) scripts/test_cpu_ap_scope.py
+
 cpu-ap-capture-plan:
 	@$(PYTHON) scripts/capture_cpu_ap_evidence.py plan all --format text
 
@@ -299,13 +341,14 @@ cpu-ap-capture-preflight:
 cpu-ap-dts-audit:
 	@$(PYTHON) scripts/capture_cpu_ap_evidence.py dts-audit --run-dtc
 
-cpu-ap-evidence-check:
+cpu-ap-evidence-check: cpu-ap-scope-check
 	@$(PYTHON) scripts/check_cpu_ap_evidence.py --require-evidence
 
 cpu-ap-evidence-test:
 	@$(PYTHON) scripts/test_cpu_ap_evidence.py
+	@$(PYTHON) scripts/test_cpu_ap_scope.py
 
-cpu-ap-completion-gate:
+cpu-ap-completion-gate: cpu-ap-scope-check
 	@$(PYTHON) scripts/check_cpu_ap_completion_gate.py
 
 .PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-smoke-long linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
@@ -459,6 +502,12 @@ cpu-2028-target-check:
 memory-2028-target-check:
 	@$(PYTHON) scripts/check_memory_2028_target.py
 
+memory-iommu-qos-sim-check:
+	@$(PYTHON) scripts/check_memory_iommu_qos_sim.py
+
+memory-iommu-qos-sim-test:
+	@$(PYTHON) scripts/test_memory_iommu_qos_sim.py
+
 security-2028-target-check:
 	@$(PYTHON) scripts/check_security_2028_target.py
 
@@ -492,6 +541,12 @@ npu-open-scale-model-check:
 npu-scale-sim-check:
 	@$(PYTHON) scripts/check_npu_scale_sim.py
 
+npu-context-queue-sim-check:
+	@$(PYTHON) scripts/check_npu_context_queue_sim.py
+
+npu-context-queue-sim-test:
+	@$(PYTHON) scripts/test_npu_context_queue_sim.py
+
 scale-feasibility-gate:
 	@$(PYTHON) scripts/check_scale_feasibility_gate.py
 
@@ -516,10 +571,22 @@ project-plan-check:
 prototype-status-dashboard-check:
 	@$(PYTHON) scripts/check_prototype_status_dashboard.py
 
-phone-soc-claim-check:
+phone-soc-claim-check: phone-media-pipeline-scope-check
 	@$(PYTHON) scripts/check_phone_soc_claims.py
 
-product-feature-gates-check:
+phone-media-pipeline-scope-check:
+	@$(PYTHON) scripts/check_phone_media_pipeline_scope.py
+
+phone-media-pipeline-scope-test:
+	@$(PYTHON) scripts/test_phone_media_pipeline_scope.py
+
+security-lifecycle-scope-check:
+	@$(PYTHON) scripts/check_security_lifecycle_scope.py
+
+security-lifecycle-scope-test:
+	@$(PYTHON) scripts/test_security_lifecycle_scope.py
+
+product-feature-gates-check: security-lifecycle-scope-check
 	@$(PYTHON) scripts/check_product_feature_gates.py
 
 pinout-check:
@@ -606,7 +673,13 @@ fpga-artifacts-check:
 physical-gates-test:
 	@$(PYTHON) scripts/test_physical_gates.py
 
-real-world-gates-check:
+radio-sensor-pmic-scope-check:
+	@$(PYTHON) scripts/check_radio_sensor_pmic_scope.py
+
+radio-sensor-pmic-scope-test:
+	@$(PYTHON) scripts/test_radio_sensor_pmic_scope.py
+
+real-world-gates-check: radio-sensor-pmic-scope-check
 	@$(PYTHON) scripts/check_real_world_gates.py
 
 antenna-metadata-check:
@@ -994,6 +1067,12 @@ buildroot-import-check:
 	fi; \
 	sw/buildroot/scripts/import-buildroot-external.sh --check "$$BUILDROOT_TREE"
 
+buildroot-qemu-virt-smoke:
+	@sw/buildroot/scripts/capture-buildroot-qemu-virt-smoke.sh
+
+buildroot-qemu-virt-smoke-test:
+	@$(PYTHON) -m unittest sw.buildroot.scripts.test_capture_buildroot_qemu_virt_smoke
+
 linux-bsp-check:
 	@$(PYTHON) scripts/check_software_bsp.py linux
 
@@ -1054,17 +1133,24 @@ software-bsp-check:
 software-bsp-scaffold-check:
 	@$(PYTHON) scripts/check_software_bsp.py all --scaffold-only
 
+software-bsp-scope-check:
+	@$(PYTHON) scripts/check_software_bsp_scope.py
+
+software-bsp-scope-test:
+	@$(PYTHON) scripts/test_software_bsp_scope.py
+
 software-bsp-external-preflight:
 	@$(PYTHON) scripts/check_software_bsp.py external-preflight all --write-report
 
-software-bsp-evidence-check:
+software-bsp-evidence-check: software-bsp-scope-check
 	@$(PYTHON) scripts/check_software_bsp.py all --require-evidence
 
 software-bsp-test:
 	@$(PYTHON) scripts/test_software_bsp_checks.py
 	@$(PYTHON) scripts/test_software_bsp_evidence.py
+	@$(PYTHON) scripts/test_software_bsp_scope.py
 
-evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
+evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
 .PHONY: ai-eda-source-inventory-check

@@ -8,11 +8,11 @@
     "hypervisor": null,
     "firmware": null
   },
-  "filename": "@@FILENAME@@",
-  "downloadUrl": "https://download.elizaos.ai/os/linux/@@FILENAME@@",
-  "status": "planned",
-  "sizeBytes": @@SIZE_BYTES@@,
-  "sha256": "@@SHA256@@",
+  "filename": "elizaos-debian-riscv64-20260519T232700Z.iso",
+  "downloadUrl": "https://download.elizaos.ai/os/linux/elizaos-debian-riscv64-20260519T232700Z.iso",
+  "status": "candidate",
+  "sizeBytes": 456570880,
+  "sha256": "65d8e24382a428489dff2ef14aa134c2c5cf5bedc5d095207da0a79495007b3c",
   "signature": {
     "status": "pending",
     "url": null
@@ -25,21 +25,21 @@
     "evidence": [
       {
         "id": "qemu-virt-boot",
-        "status": "missing",
-        "path": null,
-        "notes": "qemu-system-riscv64 -M virt boot transcript not yet collected. provenance: scaffolding."
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "qemu-system-riscv64 -M virt boot transcript captured. This is emulator evidence only, not silicon or physical-board proof."
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "collected",
+        "path": "evidence/grub_efi_riscv64_boot.json",
+        "notes": "GRUB EFI RISC-V menu and kernel handoff captured in the qemu-virt serial transcript."
       },
       {
         "id": "u-boot-extlinux-boot",
         "status": "not-required",
         "path": null,
         "notes": "Not required for this GRUB EFI qemu-virt artifact. config/includes.binary/extlinux/extlinux.conf remains staged for distroboot follow-up evidence."
-      },
-      {
-        "id": "grub-efi-riscv64-boot",
-        "status": "missing",
-        "path": null,
-        "notes": "config/hooks/normal/0020-grub-efi-riscv64.hook.binary stages BOOTRISCV64.EFI + grub.cfg. Boot transcript not yet captured. provenance: scaffolding."
       },
       {
         "id": "hardware-board-boot",
@@ -49,5 +49,5 @@
       }
     ]
   },
-  "notes": "Wave 4 live-build artifact. provenance: scaffolding until a real build replaces the @@-prefixed placeholders. build_ts=@@BUILD_TIMESTAMP@@ arch=@@ARCH@@ kernel_flavour=@@KERNEL_FLAVOUR@@."
+  "notes": "Wave 4 live-build artifact. build_ts=20260519T232700Z arch=riscv64 kernel_flavour=riscv64. Evidence scope is qemu-virt emulator boot through RISC-V EDK2 + GRUB EFI only."
 }

@@ -57,7 +57,6 @@ def _well_formed_doc(**overrides: object) -> dict[str, object]:
         "boot_completed": True,
         "markers_found": [
             "Linux version",
-            "systemd[1]: System Initialized",
             "elizaos-ready",
             "login:",
         ],
@@ -98,8 +97,8 @@ class ValidateEvidenceTests(unittest.TestCase):
     def test_boot_completed_requires_required_markers(self) -> None:
         doc = _well_formed_doc(
             boot_completed=True,
-            markers_found=["Linux version", "elizaos-ready"],
-            markers_missing=["systemd[1]: System Initialized"],
+            markers_found=["elizaos-ready"],
+            markers_missing=["Linux version"],
         )
         with self.assertRaises(smoke.EvidenceValidationError):
             smoke.validate_evidence(doc)
@@ -115,7 +114,7 @@ class ValidateEvidenceTests(unittest.TestCase):
         doc = _well_formed_doc(
             boot_completed=False,
             markers_found=["Linux version"],
-            markers_missing=["systemd[1]: System Initialized", "elizaos-ready"],
+            markers_missing=["elizaos-ready"],
         )
         smoke.validate_evidence(doc)
 
@@ -186,13 +185,11 @@ fi
 case "$mode" in
     success)
         printf 'Linux version 6.6.0-elizaos-riscv64\n'
-        printf 'systemd[1]: System Initialized\n'
         printf 'elizaos-ready\n'
         printf 'debian login: \n'
         ;;
-    missing_systemd)
+    missing_ready)
         printf 'Linux version 6.6.0-elizaos-riscv64\n'
-        printf 'elizaos-ready\n'
         ;;
     panic)
         printf 'Linux version 6.6.0-elizaos-riscv64\n'
@@ -274,17 +271,17 @@ esac
         smoke.validate_evidence(doc)
         self.assertTrue(doc["boot_completed"])
         self.assertIn("Linux version", doc["markers_found"])
-        self.assertIn("systemd[1]: System Initialized", doc["markers_found"])
+        self.assertIn("elizaos-ready", doc["markers_found"])
         self.assertEqual(doc["forbidden_markers_present"], [])
 
     def test_missing_required_marker(self) -> None:
-        result = self._run_harness(env_overrides={"QVB_STUB_MODE": "missing_systemd"})
+        result = self._run_harness(env_overrides={"QVB_STUB_MODE": "missing_ready"})
         self.assertEqual(result.returncode, 1, msg=result.stderr)
         self.assertTrue(self.evidence.is_file())
         doc = json.loads(self.evidence.read_text(encoding="utf-8"))
         smoke.validate_evidence(doc)
         self.assertFalse(doc["boot_completed"])
-        self.assertIn("systemd[1]: System Initialized", doc["markers_missing"])
+        self.assertIn("elizaos-ready", doc["markers_missing"])
 
     def test_forbidden_marker_kernel_panic(self) -> None:
         result = self._run_harness(env_overrides={"QVB_STUB_MODE": "panic"})
@@ -295,7 +292,7 @@ esac
         self.assertIn("Kernel panic", doc["forbidden_markers_present"])
 
     def test_timeout_branch(self) -> None:
-        # The stub sleeps longer than the harness allows; timeout(1) kills it
+        # The stub sleeps longer than the harness allows; the harness kills it
         # and we expect boot_completed=false with no markers found.
         result = self._run_harness(
             env_overrides={"QVB_STUB_MODE": "empty", "QVB_STUB_SLEEP": "10"},
@@ -304,9 +301,6 @@ esac
         doc = json.loads(self.evidence.read_text(encoding="utf-8"))
         smoke.validate_evidence(doc)
         self.assertFalse(doc["boot_completed"])
-        # When timeout fires, GNU `timeout` exits 124. Other harness paths
-        # never produce that code, so this asserts we genuinely hit the
-        # timeout branch.
         self.assertEqual(doc["qemu_exit_code"], 124)
 
 

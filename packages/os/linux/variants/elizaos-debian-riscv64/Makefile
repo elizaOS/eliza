@@ -29,10 +29,12 @@ TIMEOUT ?= 600
 IMAGE_TAG ?= elizaos-debian-riscv64-builder
 
 CHECK_SCRIPT := $(SCRIPTS)/check_release_manifest.py
+BRING_UP_STATUS_SCRIPT := $(SCRIPTS)/bring_up_status.py
 
 .PHONY: help build-image build \
         qemu-boot qemu-virt-boot qemu-virt-boot-docker qemu-virt-boot-evidence qemu-virt-boot-test \
-        release-check release-check-strict release-check-test
+        release-check release-check-strict release-check-test \
+        bring-up-status
 
 help:
 	@echo "elizaOS Debian RISC-V 64 — make targets"
@@ -47,6 +49,7 @@ help:
 	@echo "  release-check          Fail-closed release-manifest gate (BLOCKED is informational)."
 	@echo "  release-check-strict   Same as release-check but BLOCKED counts as FAIL."
 	@echo "  release-check-test     Run the release-manifest gate's unit + Hypothesis tests."
+	@echo "  bring-up-status        Unified chip + OS RV64 bring-up dashboard (view-only)."
 	@echo
 	@echo "Variables (override with make VAR=value):"
 	@echo "  DOCKER=$(DOCKER)"
@@ -142,3 +145,12 @@ release-check-strict:
 
 release-check-test:
 	@cd $(SCRIPTS) && $(PYTHON) -m unittest test_check_release_manifest -v
+
+# Unified chip + OS RV64 bring-up dashboard. Thin wrapper around the chip
+# aggregator (``packages/chip/scripts/aggregate_tapeout_readiness.py``)
+# that already carries this variant's gates under subsystem=os_rv64. We
+# expose it from the OS side too so an operator working in this variant
+# can see both halves of the promotion contract without leaving the
+# directory. View-only; never promotes any claim.
+bring-up-status:
+	$(PYTHON) $(BRING_UP_STATUS_SCRIPT)
