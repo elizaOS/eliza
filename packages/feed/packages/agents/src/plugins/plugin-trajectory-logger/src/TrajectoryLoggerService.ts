@@ -6,7 +6,7 @@
 
 import { db, llmCallLogs, trajectories } from '@feed/db';
 import type { JsonValue } from '@feed/shared';
-import type { TrajectoryStep as TrainingTrajectoryStep } from '@feed/training';
+import type { TrajectoryStep as TrainingTrajectoryStep } from '../../../training';
 import { type IAgentRuntime, Service, type UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../../shared/logger';
@@ -619,7 +619,7 @@ export class TrajectoryLoggerService extends Service {
     // closing the gap between data collection and reward computation.
     try {
       const { computeDeterministicRewardJudgment, upsertRewardJudgment } =
-        await import('@feed/training');
+        await import('../../../training');
       // The plugin's TrajectoryStep type and the training package's TrajectoryStep
       // are structurally compatible but declared separately. Use unknown bridge.
       const trainingSteps =

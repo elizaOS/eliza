@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { getModelTokenLimit, truncateToTokenLimitSync } from '@feed/api';
-import { getRLModelConfig } from '@feed/training';
+import { getRLModelConfig } from '../training';
 
 describe('RL Training System', () => {
   describe('Configuration', () => {
@@ -122,7 +122,7 @@ describe('RL Training System', () => {
       expect(trajectoryLogger.TrajectoryLoggerService).toBeDefined();
 
       // 2. RL Model config
-      const config = await import('@feed/training');
+      const config = await import('../training');
       expect(config.getRLModelConfig).toBeDefined();
 
       // 3. Agent runtime

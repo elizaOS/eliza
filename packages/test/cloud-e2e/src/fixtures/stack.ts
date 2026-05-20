@@ -374,11 +374,16 @@ export async function startCloudStack(
       NEXT_PUBLIC_API_BASE_URL: apiUrl,
     };
     procs.push(
-      spawnLogged("cloud-frontend", "bun", ["run", "dev"], {
-        env: frontendEnv,
-        cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
-        logFile: join(LOG_DIR, "cloud-frontend.log"),
-      }),
+      spawnLogged(
+        "cloud-frontend",
+        "bun",
+        ["run", "dev", "--", "--host", "127.0.0.1"],
+        {
+          env: frontendEnv,
+          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
+          logFile: join(LOG_DIR, "cloud-frontend.log"),
+        },
+      ),
     );
 
     const frontendUrl = `http://127.0.0.1:${frontendPort}`;

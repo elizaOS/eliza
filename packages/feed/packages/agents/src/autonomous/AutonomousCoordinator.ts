@@ -24,7 +24,7 @@ import {
 } from '@feed/db';
 import { StaticDataRegistry } from '@feed/engine';
 import type { JsonValue } from '@feed/shared';
-import { trajectoryRecorder } from '@feed/training';
+import { trajectoryRecorder } from '../training';
 import type { IAgentRuntime } from '@elizaos/core';
 import {
   clearTrajectoryContext,
