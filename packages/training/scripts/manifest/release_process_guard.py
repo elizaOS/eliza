@@ -41,7 +41,10 @@ def find_blocked_processes(ps_output: str, *, current_pid: int) -> list[str]:
             continue
         if pid == current_pid:
             continue
+        comm = parts[3]
         command = parts[4]
+        if comm == "rg":
+            continue
         if "release_process_guard.py" in command:
             continue
         if any(pattern in command for pattern in BLOCKED_PATTERNS):

@@ -31,6 +31,7 @@ SRC_DIR="$ROOT_DIR/src"
 SHIM_DIR="$ROOT_DIR/shim"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_ROOT="$ROOT_DIR/build"
+BUILD_LOCK_DIR="$BUILD_ROOT/.build-ios.lock"
 
 cmd="${1:-all}"
 
@@ -48,6 +49,19 @@ clean_all() {
   rm -rf "$DIST_DIR" "$BUILD_ROOT"
 }
 
+acquire_build_lock() {
+  mkdir -p "$BUILD_ROOT"
+  local waited=0
+  until mkdir "$BUILD_LOCK_DIR" 2>/dev/null; do
+    waited=$((waited + 1))
+    if (( waited % 30 == 0 )); then
+      log "Waiting for another iOS llama.cpp build to finish..."
+    fi
+    sleep 1
+  done
+  trap 'rm -rf "$BUILD_LOCK_DIR"' EXIT
+}
+
 xcframework_is_present() {
   [[ -f "$DIST_DIR/LlamaCpp.xcframework/Info.plist" ]]
 }
@@ -61,6 +75,8 @@ if [[ "$cmd" == "all" && "${MILADY_LLAMA_FORCE_REBUILD:-0}" != "1" ]] && xcframe
   log "Reusing existing $DIST_DIR/LlamaCpp.xcframework (set MILADY_LLAMA_FORCE_REBUILD=1 to rebuild)"
   exit 0
 fi
+
+acquire_build_lock
 
 # iOS cross-builds require a macOS host with Xcode (xcodebuild + xcrun).
 # When invoked on a non-Darwin host (Linux CI, Linux dev box) this build is
@@ -197,7 +213,7 @@ build_slice() {
   # generated iOS project can race inside Xcode's shared build database even
   # with `-jobs 1`, so invoke xcodebuild directly and serialize target builds.
   xcodebuild \
-    -project llama.cpp.xcodeproj \
+    -project "$build_dir/llama.cpp.xcodeproj" \
     build \
     -target llama-common \
     -configuration Release \
