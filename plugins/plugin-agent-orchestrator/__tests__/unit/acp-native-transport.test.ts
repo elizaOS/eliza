@@ -257,6 +257,11 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
       params: { sessionId: "session-1" },
     });
 
+    // Attach rejection handler before firing the timer so the rejection is
+    // never unhandled between the timeout fire and our assertion.
+    const checkTimeout = expect(prompted).rejects.toThrow(
+      "ACP request timed out: session/prompt",
+    );
     await vi.advanceTimersByTimeAsync(10);
     await waitForWrites(p, 3);
     expect(writeAt(p, 2)).toEqual({
@@ -265,9 +270,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
       method: "session/cancel",
       params: { sessionId: "session-1" },
     });
-    await expect(prompted).rejects.toThrow(
-      "ACP request timed out: session/prompt",
-    );
+    await checkTimeout;
     emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
