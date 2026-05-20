@@ -7,10 +7,10 @@
 //   CLOUD_E2E_LIVE_URL=https://www.elizacloud.ai \
 //     bunx playwright test --config tests/e2e -g "live:"
 
-import { expect, type Page, test } from "@playwright/test";
 import { readdirSync, statSync } from "node:fs";
 import pathModule from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect, type Page, test } from "@playwright/test";
 
 const LIVE_URL = process.env.CLOUD_E2E_LIVE_URL;
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;

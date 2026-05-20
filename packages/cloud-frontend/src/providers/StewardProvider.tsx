@@ -194,11 +194,6 @@ export function tokenIsExpired(token: string): boolean {
  * auth state (which can be slow/flaky to initialize from storage during
  * hydration) by reading localStorage directly.
  */
-/** How often to check token expiry and trigger refresh (ms) */
-const REFRESH_CHECK_INTERVAL_MS = 60_000; // 1 min
-/** Refresh when fewer than this many seconds remain */
-const REFRESH_AHEAD_SECS = 120;
-
 export function tokenSecsRemaining(token: string): number | null {
   try {
     const parts = token.split(".");
@@ -305,7 +300,7 @@ export function StewardAuthProvider({
   }
 
   return (
-    <Suspense fallback={<>{children}</>}>
+    <Suspense fallback={children}>
       <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
         {children}
       </StewardAuthRuntimeProvider>
