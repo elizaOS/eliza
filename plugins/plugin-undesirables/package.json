@@ -1,6 +1,6 @@
 {
   "name": "plugin-undesirables",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "ElizaOS plugin: Persistent personality via NFT soul workspaces. 4,444 unique AI agents on Ethereum with Big Five psychology, market analysis, Business Pilot, Meme Machine, and 24 skills.",
   "main": "dist/index.js",
   "module": "dist/index.js",
