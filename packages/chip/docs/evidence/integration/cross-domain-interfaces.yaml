@@ -51,6 +51,8 @@ edges:
       - test_cva6_executes_four_instructions
       - test_cva6_dram_store
       - test_cva6_dram_load
+      - test_cva6_boots_through_soc_slot0
+      - test_cva6_executes_store_load_in_soc
       - single_beat_64_to_128_write_then_read
       - single_beat_high_lane_address_uses_strb_offset
       - multi_beat_write_burst_increments_lane
@@ -60,6 +62,28 @@ edges:
       - back_to_back_writes_single_inflight
       - reset_quiesces_outputs
     status: WIRED
+    in_band_soc_verified: true
+    in_band_soc_verified_by:
+      adapter: rtl/top/adapters/e1_axi4_width_converter.sv
+      memory_model: rtl/top/e1_soc_integrated.sv (slot0_rom / slot0_dram
+        under `+define+E1_CLUSTER_SLOT0_CVA6`)
+      cocotb_module: verify/cocotb/integration/test_cva6_boots_in_soc.py
+      cocotb_makefile: verify/cocotb/integration/Makefile.cva6-soc
+      cocotb_target: cocotb-cva6-soc
+      tests_pass: 2
+      tests_fail: 0
+      proof: |
+        Under `+define+E1_HAVE_CVA6 +define+E1_CLUSTER_SLOT0_CVA6` the
+        `u_soc.u_cva6_slot0` instance drives a 64-bit AXI4 master through
+        `e1_axi4_width_converter` into a 128-bit slot-0 memory model that
+        serves ROM @ 0x1_0000 and DRAM @ 0x8000_0000 (the same contract
+        as the standalone `e1_cva6_unit_tb`).  Two cocotb tests assert:
+          - CVA6 issues an AR + receives an R beat at the downstream
+            (128-bit) side after reset, proving the wrapper→adapter→
+            converter→memory chain propagates a fetch end-to-end.
+          - CVA6 retires the 6-instruction store/load program: ≥1 AW,
+            ≥1 W, ≥1 B handshake (the SD instruction) and ≥2 AR + ≥2 R
+            beats (initial fetch line + the LD instruction).
     width_converter:
       adapter: rtl/top/adapters/e1_axi4_width_converter.sv
       cocotb_module: verify/cocotb/axi4/test_width_converter.py

@@ -23,6 +23,7 @@ BUILD := build
 .PHONY: e1-phone-audio-acoustic
 .PHONY: e1-phone-routed-release-plan
 .PHONY: e1-phone-manufacturing-artifacts-check
+.PHONY: cdc-rdc-intent-check
 
 .PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
 
@@ -551,7 +552,7 @@ cocotb-iommu:
 	  COCOTB_TOPLEVEL=e1_iommu_tb COCOTB_DIR=verify/cocotb/iommu \
 	  scripts/run_cocotb.sh
 
-.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain soc-integration-check cocotb-cva6-cpu cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram
+.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain soc-integration-check cocotb-cva6-cpu cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram cocotb-cva6-soc
 
 cocotb-soc-boot-smoke:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_soc_boot_smoke \
@@ -598,6 +599,23 @@ cocotb-cva6-cpu-dram:
 
 cocotb-cva6-cpu: cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram
 	@echo "cocotb-cva6-cpu complete (local btb V3Delayed patch applied via scripts/apply_cva6_patches.sh)"
+
+# In-band CVA6 SoC boot test.  Compiles `e1_soc_integrated` with
+# `+define+E1_HAVE_CVA6 +define+E1_CLUSTER_SLOT0_CVA6` so the
+# `u_cva6_slot0` wrapper inside the SoC top instantiates the real CVA6
+# v5.3.0 core and the slot-0 memory model serves the boot-ROM + DRAM
+# traffic through the 64↔128 AXI4 width converter.  Exercises the
+# integrated cluster_to_fabric edge end-to-end (vs. the standalone
+# wrapper TB).
+cocotb-cva6-soc:
+	@scripts/apply_cva6_patches.sh
+	@PYTHON=$(COCOTB_PYTHON) \
+	  CVA6_VERILATOR_FULL_OK=1 \
+	  COCOTB_MODULE=test_cva6_boots_in_soc \
+	  COCOTB_TOPLEVEL=e1_soc_integrated_tb \
+	  COCOTB_DIR=verify/cocotb/integration \
+	  COCOTB_MAKEFILE=Makefile.cva6-soc \
+	  scripts/run_cocotb.sh
 
 stream-bench:
 	@$(MAKE) -C benchmarks/memory/stream run \
@@ -890,6 +908,9 @@ openlane-orchestration-test:
 
 bootrom-check:
 	@$(PYTHON) fw/boot-rom/check_boot_rom.py
+
+cdc-rdc-intent-check:
+	@$(PYTHON) scripts/check_cdc_rdc_intent.py
 
 rtl-check:
 	@scripts/run_rtl_check.sh
