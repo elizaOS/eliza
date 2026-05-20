@@ -1895,6 +1895,11 @@ def test_rebuild_latest_preserves_transient_runtime_gate_successes(
         ("run_vision_success",),
     ).fetchone()
     assert row["status"] == "succeeded"
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    cells = index["matrix_contract"]["benchmarks"]["vision_language"]["cells"]
+    assert cells["eliza"]["state"] == "succeeded"
+    assert cells["eliza"]["required"] is True
+    assert cells["eliza"]["transient_runtime_gate_preserved"] is True
 
 
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(

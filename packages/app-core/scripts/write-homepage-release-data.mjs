@@ -549,7 +549,18 @@ function buildStaticOsArtifacts(channel, version) {
   ];
 }
 
-async function buildOsArtifacts() {
+function pickAndroidApkAsset(release) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return (
+    assets.find(
+      (a) =>
+        /^elizaos-android-.*-release\.apk$/i.test(a.name) ||
+        /^Eliza-.*\.apk$/i.test(a.name),
+    ) ?? null
+  );
+}
+
+async function buildOsArtifacts(release) {
   let manifest = null;
   try {
     const raw = await readFile(OS_MANIFEST_PATH, "utf8");
@@ -568,6 +579,18 @@ async function buildOsArtifacts() {
   // Deduplicate: static artifacts use well-known IDs not found in the manifest.
   // Manifest artifacts use their own IDs. Merge with static list appended.
   const staticArtifacts = buildStaticOsArtifacts(channel, version);
+
+  // Populate the elizaos-android-apk entry from the published release APK if present.
+  const apkAsset = pickAndroidApkAsset(release);
+  if (apkAsset) {
+    const apkEntry = staticArtifacts.find(
+      (a) => a.id === "elizaos-android-apk",
+    );
+    if (apkEntry) {
+      apkEntry.downloadUrl = apkAsset.browser_download_url;
+      apkEntry.sizeBytes = apkAsset.size ?? null;
+    }
+  }
 
   // Remove any static artifact whose ID is already supplied by the manifest.
   const manifestIds = new Set(fromManifest.map((a) => a.id));
@@ -738,13 +761,15 @@ async function writePayload(payload) {
 }
 
 async function main() {
-  const osArtifacts = await buildOsArtifacts();
   try {
     const releases = await fetchReleases();
     const stableRelease = pickStableRelease(releases);
     const canaryRelease = pickCanaryRelease(releases);
     // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
+    // Prefer canary for android-apk lookup since it consistently ships APK assets.
+    const apkSourceRelease = canaryRelease ?? primaryRelease;
+    const osArtifacts = await buildOsArtifacts(apkSourceRelease);
     await writePayload(
       buildPayload(primaryRelease, canaryRelease, stableRelease, osArtifacts),
     );
@@ -761,7 +786,8 @@ async function main() {
       return;
     }
 
-    await writePayload(buildPayload(null, null, null, osArtifacts));
+    const fallbackOsArtifacts = await buildOsArtifacts(null);
+    await writePayload(buildPayload(null, null, null, fallbackOsArtifacts));
     console.warn(
       `homepage release data refresh failed, wrote fallback file: ${error instanceof Error ? error.message : String(error)}`,
     );

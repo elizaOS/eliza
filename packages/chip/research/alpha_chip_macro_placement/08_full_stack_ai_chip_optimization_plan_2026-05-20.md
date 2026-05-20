@@ -397,11 +397,24 @@ Implemented schema foundation:
 - `scripts/ai_eda/convert_external_fixture_corpora.py` converts those fixtures
   into internal `eda.*.v1` records and revalidates them through
   `check_internal_dataset_schemas.py --records-dir`.
+- `scripts/ai_eda/convert_e1_openlane_to_internal_records.py` converts the
+  checked-in E1 SKY130 OpenLane config into real local `eda.design_bundle.v1`,
+  `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current
+  conversion captures 16 existing RTL files and one fixed SRAM macro placement,
+  but records `BLOCKED_NO_OPENLANE_RUN_ARTIFACTS` until deterministic OpenLane
+  reports are available.
+- `scripts/ai_eda/check_candidate_manifests.py` validates generated
+  `eda.e1_candidate.v1` manifests and refuses accepted candidates unless every
+  required gate is completed.
 - `make ai-eda-internal-schemas-check` and `make ai-eda-internal-fixtures`
   provide local schema/materialization gates. `make ai-eda-fixture-placement-train`
   proves the train -> infer -> candidate-manifest plumbing locally.
   `make ai-eda-external-fixture-convert` proves the external-format fixture ->
   internal-schema conversion plumbing locally.
+  `make ai-eda-e1-openlane-convert` proves checked-in E1 OpenLane conversion
+  and schema validation locally.
+  `make ai-eda-candidate-manifests-check` validates the fixture-generated
+  candidate manifest.
   `make docs-check` depends on the schema checker.
 
 Converters to add or complete:
@@ -974,15 +987,19 @@ not as:
 - [x] Convert tiny MacroPlacement/Bookshelf fixture and one E1-style softmacro case.
 - [x] Convert tiny ChiPBench-D-style metadata and one sample case.
 - [x] Convert tiny CircuitNet-style graph sample.
+- [x] Convert checked-in E1 OpenLane SKY130 config into internal
+  `eda.design_bundle.v1`, `eda.placement_case.v1`, and blocked
+  `eda.flow_run.v1` records.
 - [ ] Convert real MacroPlacement Ariane and one generated E1 softmacro case after external fetch/pin.
 - [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
 - [ ] Convert one real CircuitNet/iDATA graph sample after license/storage review.
-- [ ] Export latest E1 OpenLane/OpenROAD run into `eda.flow_run.v1`.
+- [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
+  `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Train/run first macro-placement baselines on E1 4x4.
 - [ ] Replay baseline candidates through OpenLane/OpenROAD.
-- [ ] Add model-card template for placement policies.
-- [ ] Add dataset-card template for converted corpora.
-- [ ] Add candidate manifest schema and checker.
+- [x] Add model-card template for placement policies.
+- [x] Add dataset-card template for converted corpora.
+- [x] Add candidate manifest schema and checker.
 - [ ] Add logic-synthesis recipe corpus generator.
 - [ ] Add OpenABC-D/ABC/Yosys policy baseline.
 - [ ] Add PD surrogate training/eval scripts.

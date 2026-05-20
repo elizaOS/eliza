@@ -13,7 +13,8 @@ import {
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   buildFullPhoneNumber,
   PhoneNumberInput,
@@ -248,6 +249,20 @@ export default function ConnectedPage() {
       className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
       style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
     >
+      <header
+        className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between"
+      >
+        <Link
+          to="/"
+          aria-label={t("homepage_eliza.common.brandHomeAria", {
+            defaultValue: "Eliza home",
+          })}
+          className="inline-flex items-center"
+        >
+          <ElizaLogo className="h-8" />
+        </Link>
+        <div />
+      </header>
       <div className="absolute top-4 right-4 flex items-center gap-3">
         <div className="bg-black text-white border border-black px-4 py-2.5 flex items-center gap-2">
           <span className="text-xs opacity-60">

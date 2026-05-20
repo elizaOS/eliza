@@ -13,7 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "pd/openlane/config.sky130.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/e1_openlane_conversion"
-CLAIM_BOUNDARY = "e1_openlane_conversion_only_no_training_inference_or_ppa_claim"
+CLAIM_BOUNDARY = "e1_openlane_conversion_only_no_training_inference_ppa_or_release_claim"
 
 
 def sha256(path: Path) -> str | None:
@@ -239,11 +239,12 @@ def main() -> int:
     config_path = args.config.resolve()
     records = build_records(config_path, args.run_id)
     out_dir = args.out_root / args.run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    records_dir = out_dir / "records"
+    records_dir.mkdir(parents=True, exist_ok=True)
     paths = {
-        "design_bundle": out_dir / "design-bundle.json",
-        "placement_case": out_dir / "placement-case.json",
-        "flow_run": out_dir / "flow-run.json",
+        "design_bundle": records_dir / "design-bundle.json",
+        "placement_case": records_dir / "placement-case.json",
+        "flow_run": records_dir / "flow-run.json",
     }
     for key, path in paths.items():
         path.write_text(json.dumps(records[key], indent=2, sort_keys=True) + "\n")

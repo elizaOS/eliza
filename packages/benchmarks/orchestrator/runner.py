@@ -1131,7 +1131,32 @@ def _build_latest_matrix_contract(
         complete = True
         cells: dict[str, dict[str, Any]] = {}
         for harness in CANONICAL_REAL_HARNESSES:
+            row = latest_by_key.get((benchmark_id, harness))
+            quarantine_row = quarantine_by_key.get((benchmark_id, harness))
+            transient_success = (
+                harness not in supported
+                and _is_transient_runtime_gate_incompatibility(
+                    benchmark_id,
+                    allowed_harnesses,
+                )
+                and row is not None
+                and row.get("status") == "succeeded"
+                and isinstance(row.get("score"), (int, float))
+            )
             if harness not in supported:
+                if transient_success:
+                    required_count += 1
+                    summary["required_real_cells"] += 1
+                    summary["succeeded_required_real_cells"] += 1
+                    cells[harness] = {
+                        "required": True,
+                        "state": "succeeded",
+                        "status": row.get("status"),
+                        "score": row.get("score"),
+                        "run_id": row.get("run_id"),
+                        "transient_runtime_gate_preserved": True,
+                    }
+                    continue
                 summary["unsupported_real_cells"] += 1
                 cell = {
                     "required": False,
@@ -1156,8 +1181,6 @@ def _build_latest_matrix_contract(
 
             required_count += 1
             summary["required_real_cells"] += 1
-            row = latest_by_key.get((benchmark_id, harness))
-            quarantine_row = quarantine_by_key.get((benchmark_id, harness))
             source = row or quarantine_row
             if row and row.get("status") == "succeeded" and isinstance(row.get("score"), (int, float)):
                 state = "succeeded"

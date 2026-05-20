@@ -36,6 +36,7 @@ BASE_INCLUDE = (
     "research/alpha_chip_macro_placement/08_full_stack_ai_chip_optimization_plan_2026-05-20.md",
     "research/alpha_chip_macro_placement/03_datasets/training_and_reference_inputs_2026-05-19.md",
     "scripts/ai_eda/check_external_asset_manifests.py",
+    "scripts/ai_eda/check_candidate_manifests.py",
     "scripts/ai_eda/check_internal_dataset_schemas.py",
     "scripts/ai_eda/convert_e1_openlane_to_internal_records.py",
     "scripts/ai_eda/convert_external_fixture_corpora.py",
