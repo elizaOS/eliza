@@ -616,29 +616,29 @@ const BASELINE_PROMPTS: Record<string, string> = {
 Respond (YES):
 - The message directly addresses or mentions you
 - The message asks a question or makes a request you can address
-- The message is a general call for help with no specific addressee
+- The message is a general request for assistance or information with no specific addressee
 
 Do not respond (NO):
 - The message is addressed to someone else
 - The message is purely gratitude, agreement, or acknowledgment with no request
 - The message is only an emoji, punctuation, or ambient reaction
+- The message is a social question not directed at you (e.g., "Anyone going to the party?")
 - No response is expected or needed
 
-Output ONLY the word YES or NO — no spaces, line breaks, or other characters.`,
+Output exactly one token: either YES or NO, with no surrounding whitespace.`,
 
   action_planner: `Select the next action based on the conversation context.
 
 Actions:
-- REPLY: Send a text response (greetings, factual answers, questions, requests for information)
-- SEARCH: Look up information online (current events, product details, unknown facts)
-- SCHEDULE: Create a calendar event (meetings, appointments, time blocks)
-- REMIND: Set a reminder (future tasks, time-based alerts, medication)
-- NOTES: Save information (ideas, lists, things to remember)
+- REPLY: Send a text response (greetings, factual answers, questions, general chat)
+- SEARCH: Look up information online (current events, product details, facts not in training)
+- SCHEDULE: Create a calendar event — use when the user says "schedule", "book", "block", "meeting", "appointment", or "add to calendar"
+- REMIND: Set a time-based alert — use when the user says "remind me", "reminder", or "alert me at [time]"
+- NOTES: Save information for later — use when the user says "note", "jot down", "remember", or captures an idea
 - NONE: No response needed
 
-Use NONE when the message is: emoji-only, single punctuation, pure reaction with no question or request, or acknowledgment that needs no answer.
-Examples of NONE: "👍", "...", ".", "lol", "ok cool" (no follow-up ask), "👌", "🎉"
-Default to REPLY when uncertain.
+NONE applies when the message is: emoji-only, single punctuation, pure reaction ("lol", "ok", "👍", "..."), or acknowledgment with no follow-up request.
+Default to REPLY when no other action clearly fits.
 
 Return ONLY this JSON (no extra whitespace):
 {"toolCalls":[{"name":"ACTION_NAME","args":{}}]}
@@ -656,15 +656,11 @@ Rules:
 - Zero padding: never start with "Sure!", "Great question!", "Absolutely!" or end with "I hope this helps!" / "Let me know if..."
 - If genuinely uncertain, say so in one phrase — do not hedge on things you know`,
 
-  media_description: `Describe the media file (image, audio, or video).
+  media_description: `Describe the media file (image, audio, or video) in a single concise paragraph.
 
-Include:
-- What is shown/heard
-- Key visual elements, people, objects, or sounds
-- Any text or labels visible
-- The overall context or setting
+Include: what is shown or heard, key visual elements (people, objects, text, labels), and the overall context or setting.
 
-Be objective and factual. Do not make assumptions beyond what is clearly present.`,
+Be objective and factual. Do not make assumptions beyond what is clearly present. Do not use headings, bullet points, markdown, or any formatting — output only raw prose.`,
 
   // Real runtime prompt from elizaOS — shouldRespondTemplate (improved with ordered rules)
   should_respond_runtime: `Decide whether the agent should respond to the latest message.
@@ -679,27 +675,28 @@ Rules (apply in order):
 
 Output ONLY one of: YES (respond) or NO (ignore/stop)`,
 
-  // FACT_EXTRACTION_TEMPLATE baseline — clean schema, no ellipsis, no structured_fields
+  // FACT_EXTRACTION_TEMPLATE baseline — clean schema, matches example outputs exactly
   fact_extraction: `Classify and extract facts from this message. Manage two fact stores:
 
 durable — stable claims that matter in a year
-  Categories: identity, health, relationship, life_event, business_role, preference, goal
+  Categories: identity (who they are), health, relationship, life_event, business_role, preference (likes/dislikes), goal
 
-current — time-bound state about now or near future
+current — time-bound state (stale within weeks)
   Categories: feeling, physical_state, working_on, going_through, schedule_context
 
 Rules:
-- Use current if a claim would be stale or surprising to retrieve in a year
-- Before adding, check if an equivalent fact already exists — if so, emit strengthen instead
-- Paraphrases count as duplicates (match meaning, not surface form)
-- Return {"ops":[]} for small talk, questions, or claim-free messages
+- If a claim already exists in Known facts, emit strengthen (not add)
+- "strengthen" means the same fact is reaffirmed without new information
+- "contradict" means new information conflicts with an existing fact
+- Paraphrases count as duplicates — match meaning, not exact words
+- Return {"ops":[]} for questions, small talk, or messages with no factual claims about the user
 
 Ops schema — each op is a flat JSON object:
 {"op":"add_durable","claim":"string","category":"string","keywords":["string"]}
 {"op":"add_current","claim":"string","category":"string","keywords":["string"]}
-{"op":"strengthen","factId":"string","reason":"string"}
+{"op":"strengthen","factId":"string"}
 {"op":"decay","factId":"string","reason":"string"}
-{"op":"contradict","factId":"string","reason":"string","proposedText":"string"}
+{"op":"contradict","factId":"string","proposedText":"string","reason":"string"}
 
 keywords: 3–8 lowercase retrieval terms per add op.
 
@@ -707,39 +704,34 @@ Output: {"ops":[...]}
 JSON only. No prose, fences, markdown, or thinking.`,
 
   // INITIAL_SUMMARIZATION_TEMPLATE baseline
-  conversation_summary: `# Task: Summarize Conversation
+  conversation_summary: `Summarize the conversation into a concise JSON object.
 
-Create a concise summary capturing key points, topics, and details.
+The summary must:
+- Cover all main topics and key information
+- Note decisions, commitments, and open questions
+- Stay under 200 words in the text field
+- Be readable as a standalone reference
 
-# Instructions
-Generate a summary that:
-1. Captures main topics
-2. Highlights key information
-3. Notes decisions and questions
-4. Maintains context for future reference
-5. Is concise but comprehensive
+Return a JSON object with exactly these fields:
+{"text":"concise prose summary","topics":["topic1","topic2"],"keyPoints":["key point 1","key point 2"]}
 
-Also extract:
-- topics: main topics (array)
-- keyPoints: important facts or decisions (array)
+topics: main subjects discussed (array of short strings).
+keyPoints: important facts, decisions, or action items (array of short strings).
 
-JSON:
-text: Your comprehensive summary here
-topics: [topic1, topic2]
-keyPoints: [First key point, Second key point]
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. No prose, fences, thinking, or markdown.`,
 
   // AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE baseline
-  autonomy_decision: `Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list.
-- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
-- If you cannot act, explain what is missing inside thought and take no action.
-- Keep the response concise, focused on the next action.
+  autonomy_decision: `Reflect on the context and decide what to do next. This is an internal loop — do not speak out loud.
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Output a JSON object with exactly two fields:
+- "thought": a single concise sentence (no more than 20 words) describing your reasoning about the current state and the next concrete step.
+- "actions": an array of objects of the form {"name":"ACTION_NAME"} to execute, or an empty array [] if no action is needed.
+
+Rules:
+- Use an action only when it directly advances the goal; otherwise output [].
+- The "thought" must be brief and limited to one sentence; do not add extra commentary.
+- Always include both fields; if you determine no action is required, ensure "actions":[] is present.
+- The output must be valid JSON with no additional text, markdown, or fences.`,
 
   // EXTRACT_ACTION_PARAMS_TEMPLATE baseline
   extract_action_params: `Extract missing parameter values for an action from the conversation context.
@@ -756,7 +748,7 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 Write a natural, helpful reply to the user's message. Be direct and conversational, using only short phrasing.
 
 JSON:
-thought: A brief label (≤3 words) summarizing your reasoning
+thought: One short phrase summarizing your reasoning
 text: A concise reply (1–2 sentences, no filler phrases or extra politeness)
 
 Return exactly one JSON object with only these two fields. No prose, fences, or additional markup.`,
@@ -785,6 +777,8 @@ JSON only. Return one JSON object with an "answer" field. No prose, fences, thin
   // CHOOSE_OPTION_TEMPLATE baseline
   choose_option: `Select the most appropriate option from the available choices based on context.
 
+When the user mentions a related background (e.g., a CS degree) but provides no specific experience, prioritize the next-higher level (e.g. INTERMEDIATE rather than BEGINNER).
+
 Provide reasoning and the selected option ID.
 
 JSON:
@@ -794,56 +788,50 @@ selected_id: The ID of the selected option
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // REFLECTION_TEMPLATE baseline
-  reflection: `Analyze recent agent behavior and interactions.
+  reflection: `Analyze the agent's recent responses and identify patterns.
 
-Consider:
-1. Communication clarity and helpfulness
-2. Context appropriateness
-3. Mistakes made
-4. Improvements possible
+Review the actual conversation content and assess:
+1. Did responses directly address what was asked?
+2. Was the tone and length appropriate?
+3. Were there any factual errors, missed context, or unhelpful replies?
+4. What specific improvement would have the most impact?
 
-JSON:
-thought: Your detailed analysis
-quality_score: Score 0-100
-strengths: What went well
-improvements: What could be improved
-learnings: Key takeaways
+Return a JSON object with exactly these fields (all values are strings):
+{"thought":"detailed analysis of the specific interactions","quality_score":0-100,"strengths":"what the agent did well","improvements":"what should change and why","learnings":"key takeaway for future responses"}
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+quality_score: 90-100=excellent, 70-89=good, 50-69=acceptable but flawed, <50=poor.
+All fields except quality_score must be non-empty strings.
+
+JSON only. No prose, fences, thinking, or markdown.`,
 
   // UPDATE_SUMMARIZATION_TEMPLATE baseline
-  update_summarization: `Update and condense the existing conversation summary with new messages.
+  update_summarization: `Update the existing conversation summary with new message content.
 
-Merge existing summary + new message insights. Remove redundant details. Keep important context.
-Keep the updated summary under 2500 tokens.
+Merge the old summary with new insights. Remove redundant information but preserve decisions, commitments, and open questions.
+Keep the updated text field under 400 words.
 
-JSON:
-text: Your updated summary
-topics: [topic1, topic2]
-keyPoints: [key point 1, key point 2]
+Return **only** a valid JSON object with exactly these keys:
+{"text":"updated prose summary","topics":["topic1","topic2"],"keyPoints":["key point 1","key point 2"]}
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Output only the JSON object. No surrounding text, markdown, fences, thinking, or explanations.`,
 
   // LONG_TERM_EXTRACTION_TEMPLATE baseline
   long_term_extraction: `Extract long-term memory items from this conversation.
 
-Only extract critical, persistent user info using these categories:
+Only extract critical, persistent user information using these categories:
 - EPISODIC: specific events with temporal context (who did what, when/where)
-- SEMANTIC: stable facts about the user (role, expertise, identity)
-- PROCEDURAL: skills and workflows demonstrated 3+ times or explicitly stated
+- SEMANTIC: stable facts about the user (role, expertise, identity) that are stated definitively or corroborated by multiple mentions
+- PROCEDURAL: skills or workflows the user explicitly states they do repeatedly (≥3 times) or declares as a core practice — not one-off or tentative mentions
 
-STRICT criteria: default to NOT extracting. Require overwhelming evidence.
-Single mentions, casual conversation, temporary state → do NOT extract.
+STRICT: default to NOT extracting. Single casual mentions, temporary states, and hypotheticals are not long-term memories.
 
-Return memories array or empty array if nothing qualifies.
+Return a JSON object:
+{"memories":[{"category":"semantic|episodic|procedural","content":"the specific fact","confidence":0.85-1.0}]}
 
-JSON:
-memories[0]:
-  category: semantic|episodic|procedural
-  content: The fact
-  confidence: 0.85-1.0
+If nothing qualifies, return {"memories":[]}.
+confidence: 0.95-1.0 for definitive statements, 0.85-0.94 for strong inference.
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. No prose, fences, thinking, or markdown.`,
 
   // IMAGE_GENERATION_TEMPLATE baseline
   image_generation: `Generate an image prompt based on the conversation context.
@@ -860,32 +848,37 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
   post_creation: `Create a social media post about the given topic.
 
 Requirements:
-- 1-3 sentences (random length)
-- No questions. Brief, concise statements only.
-- Total character count under 280
+- 1–3 sentences (vary length naturally — not always 3)
+- Statements only — no questions
+- First-person perspective
 - No emojis
-- Write in first-person perspective
+- The "post" field must be ≤280 characters — do not truncate or add ellipsis
 
 JSON:
 thought: What you're thinking about
-post: The post text
+post: The post text (≤280 chars)
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // CUSTOM_ACTION_GENERATE_TEMPLATE baseline
   custom_action_generate: `Generate a custom action definition from the user's description.
 
-Return a JSON object with exactly these fields:
-- name: UPPER_SNAKE_CASE action name (e.g. HTTP_GET, SLACK_WEBHOOK)
-- description: concise description of what the action does
-- handlerType: "http", "shell", or "code"
-- handler: object — MUST include "type" field equal to handlerType, plus type-specific fields:
-  - http handler needs: type, url, method (GET/POST/PUT/DELETE), headers (object)
-  - shell handler needs: type, command (bash string)
-  - code handler needs: type, script (JS/TS string)
-- parameters: array of objects, each with: name, description, required (boolean)
+Return **exactly one** JSON object with **only** the following fields (no extra keys):
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+- **name**: UPPER_SNAKE_CASE action name (e.g. HTTP_GET, SLACK_WEBHOOK)
+- **description**: concise description of what the action does
+- **handlerType**: one of \`"http"\`, \`"shell"\`, or \`"code"\`
+- **handler**: an object that **must** contain a \`"type"\` field equal to \`handlerType\` and **only** the fields required for that type:
+  - If \`handlerType\` is \`"http"\`: include \`"type"\`, \`"url"\` (use placeholders like \`{{url}}\`), \`"method"\` (GET, POST, PUT, DELETE), and \`"headers"\` (object with placeholder values if needed). No other fields are allowed.
+  - If \`handlerType\` is \`"shell"\`: include \`"type"\` and \`"command"\` (bash string, may contain placeholders like \`{{command}}\`). No other fields are allowed.
+  - If \`handlerType\` is \`"code"\`: include \`"type"\` and \`"code"\` (JS/TS string, may contain placeholders like \`{{code}}\`). No other fields are allowed.
+- **parameters**: array of objects, each with exactly three fields: \`"name"\` (placeholder), \`"description"\` (placeholder), and \`"required"\` (boolean).
+
+**Strict rules**:
+- Do **not** add any fields beyond those listed.
+- Use the exact key names specified (\`"code"\` for code handlers, not \`"script"\`).
+- Use placeholder syntax \`{{placeholder}}\` exactly as shown.
+- Output only the JSON object—no prose, no markdown, no fences, no explanations.`,
 
   // SHOULD_FOLLOW_ROOM_TEMPLATE baseline
   should_follow_room: `Decide whether the agent should follow this room.
@@ -958,12 +951,15 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
 Identify who to follow up with, when, why, and at what priority.
 
-JSON:
-contactName: Who to follow up with
-scheduledAt: ISO datetime (or null if unclear)
-reason: Why following up
-priority: high|medium|low
-message: Specific message to include (if requested)
+Return a JSON object:
+{"contactName":"string","scheduledAt":"ISO8601 datetime or null","reason":"string or null","priority":"high|medium|low","message":"string or null"}
+
+scheduledAt rules:
+- Resolve relative dates ("next Monday", "tomorrow at 3pm") to ISO 8601 UTC using any datetime context provided
+- When only a day is given with no time, default to 09:00 UTC
+- Use null when the time is genuinely vague ("sometime", "in a few weeks", "eventually")
+- priority defaults to "medium" when not specified
+- message and reason are null when not mentioned
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
@@ -972,31 +968,40 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
 Operations:
 - get: Retrieve a secret value
-- set: Store a new secret
-- delete: Remove a secret
-- list: Show all secrets
-- check: Check if a secret exists
+- set: Store a new secret (requires key + value)
+- delete: Remove a secret (requires key)
+- list: Show all secrets (no key needed)
+- check: Check if a secret exists (requires key)
 
-JSON:
-operation: get|set|delete|list|check
-key: SECRET_KEY_NAME (if applicable)
-value: secret_value (for set only)
+Infer the key name in UPPER_SNAKE_CASE from context (e.g., "OpenAI key" → OPENAI_API_KEY, "Discord token" → DISCORD_BOT_TOKEN).
+
+Return a JSON object — include only the fields that apply:
+- list operation: {"operation":"list"}
+- get/delete/check: {"operation":"get","key":"KEY_NAME"}
+- set: {"operation":"set","key":"KEY_NAME","value":"the_value"}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // EXTRACT_SECRETS_TEMPLATE baseline
   extract_secrets: `Extract secret/configuration values from the user's message.
 
-Identify the secret key name (UPPERCASE_WITH_UNDERSCORES) and value.
-Infer key name from context if not explicitly stated.
+Identify each secret's key name (UPPERCASE_WITH_UNDERSCORES) and value. Infer key names from context using standard mappings:
+- OpenAI → OPENAI_API_KEY (type: api_key)
+- Anthropic → ANTHROPIC_API_KEY (type: api_key)
+- Discord → DISCORD_BOT_TOKEN (type: credential)
+- GitHub → GITHUB_TOKEN (type: credential)
+- AWS access key → AWS_ACCESS_KEY_ID (type: credential)
+- database/postgres URL → DATABASE_URL (type: url)
+- Stripe → STRIPE_API_KEY (type: api_key)
+- Telegram → TELEGRAM_BOT_TOKEN (type: credential)
+- Unknown service → construct KEY_NAME from service name, type: api_key
 
-JSON:
-secrets[0]:
-  key: SECRET_KEY_NAME
-  value: the_value
-  type: api_key|secret|credential|url|config
+Return a JSON object:
+{"secrets":[{"key":"KEY_NAME","value":"value","type":"api_key|credential|url|secret|config"}]}
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Return {"secrets":[]} if no secrets are present.
+
+JSON only. No prose, fences, thinking, or markdown.`,
 
   // OPTION_EXTRACTION_TEMPLATE baseline
   option_extraction: `Extract the selected task and option from the user's message.
@@ -1013,15 +1018,21 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
   // UPDATE_ROLE_TEMPLATE baseline
   update_role: `Extract the role change request from the user's message.
 
-Normalize new_role to: OWNER, ADMIN, MEMBER, GUEST, or NONE.
-Only identify single entity whose role changes.
+Normalize new_role to one of: OWNER, ADMIN, MEMBER, GUEST, NONE.
 
-JSON:
-thought: Brief description of the change
-entity_id: UUID or null
-new_role: OWNER|ADMIN|MEMBER|GUEST|NONE
+Role guidance:
+- OWNER: highest privilege, full control
+- ADMIN: elevated privilege, management access
+- MEMBER: standard authenticated access (default non-elevated role)
+- GUEST: limited/view-only access
+- NONE: remove the person from the team entirely (e.g., "kick", "remove", "revoke all access")
+- When "downgrade" or "remove [elevated] access" is requested without a target role, use MEMBER
+- Only one entity changes role per request
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Return a JSON object:
+{"thought":"brief description of the change","entity_id":"UUID or null","new_role":"OWNER|ADMIN|MEMBER|GUEST|NONE"}
+
+JSON only. No prose, fences, thinking, or markdown.`,
 };
 
 // ── Synthetic training examples ───────────────────────────────────────────────
@@ -1063,14 +1074,14 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
     { id: "ap-9", input: { user: "User is asking who won the Super Bowl last year." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
     { id: "ap-10", input: { user: "User says 'block off 2-3pm Thursday for a team sync'." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
     { id: "ap-11", input: { user: "User wants to jot down that they need to pick up milk and eggs." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
-    { id: "ap-12", input: { user: "User just sent a thumbs up emoji." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    { id: "ap-12", input: { user: "User just sent a thumbs up emoji." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
     // Extended coverage — edge cases and ambiguous scenarios
-    { id: "ap-13", input: { user: "User typed '...' with no other text." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    { id: "ap-13", input: { user: "User typed '...' with no other text." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
     { id: "ap-14", input: { user: "User wants to look up today's top news headlines." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
     { id: "ap-15", input: { user: "User says 'note to self: buy birthday card for mom before Saturday'." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
     { id: "ap-16", input: { user: "User asks 'what time is it?'" }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
     { id: "ap-17", input: { user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
-    { id: "ap-18", input: { user: "User typed a single period '.' with nothing else." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    { id: "ap-18", input: { user: "User typed a single period '.' with nothing else." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 1 },
     { id: "ap-19", input: { user: "User wants to search for the best TypeScript ORM libraries in 2025." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
     { id: "ap-20", input: { user: "User wants a reminder in 30 minutes to take their medication." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
   ],
