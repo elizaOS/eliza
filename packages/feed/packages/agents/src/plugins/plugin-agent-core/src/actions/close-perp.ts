@@ -4,13 +4,13 @@
  * (Same pattern as AutonomousTradingService)
  */
 
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
-import { and, db, eq, isNull, perpPositions } from '@babylon/db';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+import { and, db, eq, isNull, perpPositions } from '@feed/db';
 import {
   createPerpPriceImpactPort,
   FEE_CONFIG,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type {
   Action,
   ActionResult,

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import {
   defaultConfig,
-  defineBabylonConfig,
-  loadBabylonConfig,
+  defineFeedConfig,
+  loadFeedConfig,
 } from '../core/config';
 
-describe('defineBabylonConfig', () => {
+describe('defineFeedConfig', () => {
   it('returns the config object unchanged', () => {
     const input = { systemsDir: './custom', budgetMs: 30_000 };
-    const result = defineBabylonConfig(input);
+    const result = defineFeedConfig(input);
     expect(result).toBe(input);
   });
 });
@@ -22,15 +22,15 @@ describe('defaultConfig', () => {
   });
 });
 
-describe('loadBabylonConfig', () => {
+describe('loadFeedConfig', () => {
   it('returns config with defaults applied', async () => {
-    const { config } = await loadBabylonConfig();
+    const { config } = await loadFeedConfig();
     expect(config.systemsDir).toBe('./systems');
     expect(config.budgetMs).toBe(60_000);
   });
 
   it('accepts a cwd parameter', async () => {
-    const { config } = await loadBabylonConfig('/tmp');
+    const { config } = await loadFeedConfig('/tmp');
     expect(config).toBeDefined();
     expect(config.systemsDir).toBe('./systems');
   });

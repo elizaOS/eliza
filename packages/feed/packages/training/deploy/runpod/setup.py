@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Babylon Training & Benchmark - RunPod Deployment
+Feed Training & Benchmark - RunPod Deployment
 
 Simple script to spin up training and benchmark pods on RunPod.
 
 Usage:
     # Training (using env file)
-    python setup.py train --gpu h100 --image user/babylon-training:latest --env-file ../.env
+    python setup.py train --gpu h100 --image user/feed-training:latest --env-file ../.env
     
     # Benchmark with HuggingFace model
     python setup.py benchmark --gpu h100 --hf-model elizaos/ishtar-v0.1
@@ -250,7 +250,7 @@ def cmd_train(args):
         docker_cmd.extend(["--hf-dataset", hf_dataset])
     
     pod = api("POST", "/pods", {
-        "name": args.name or f"babylon-{args.gpu}",
+        "name": args.name or f"feed-{args.gpu}",
         "imageName": args.image,
         "gpuTypeIds": [gpu_id],
         "gpuCount": args.gpus,
@@ -265,7 +265,7 @@ def cmd_train(args):
     })
     
     print(f"\n✓ Created pod: {pod['id']}")
-    print(f"  Name: {args.name or f'babylon-{args.gpu}'}")
+    print(f"  Name: {args.name or f'feed-{args.gpu}'}")
     print(f"  GPU: {gpu_id}")
     print(f"  GPU count: {args.gpus}")
     print(f"  Profile: {profile}")
@@ -294,7 +294,7 @@ def cmd_shell(args):
     container_disk_gb = args.container_disk_gb or container_disk_gb
 
     pod = api("POST", "/pods", {
-        "name": args.name or f"babylon-shell-{args.gpu}",
+        "name": args.name or f"feed-shell-{args.gpu}",
         "imageName": args.image,
         "gpuTypeIds": [gpu_id],
         "gpuCount": args.gpus,
@@ -309,7 +309,7 @@ def cmd_shell(args):
     })
 
     print(f"\n✓ Created shell pod: {pod['id']}")
-    print(f"  Name: {args.name or f'babylon-shell-{args.gpu}'}")
+    print(f"  Name: {args.name or f'feed-shell-{args.gpu}'}")
     print(f"  GPU: {gpu_id}")
     print(f"  GPU count: {args.gpus}")
     print(f"  Suggested profile: {profile}")
@@ -393,13 +393,13 @@ def cmd_benchmark(args):
         sys.exit("Either --hf-model or --model is required for benchmarking.")
     
     # Determine image
-    image = args.image or f"{os.environ.get('DOCKER_REGISTRY', 'revlentless')}/babylon-benchmark:latest"
+    image = args.image or f"{os.environ.get('DOCKER_REGISTRY', 'revlentless')}/feed-benchmark:latest"
     
     # Build docker command (entrypoint handles the rest via env vars)
     docker_cmd = []  # Use image's default entrypoint
     
     pod = api("POST", "/pods", {
-        "name": args.name or f"babylon-bench-{args.gpu}",
+        "name": args.name or f"feed-bench-{args.gpu}",
         "imageName": image,
         "gpuTypeIds": [gpu_id],
         "gpuCount": 1,  # Benchmark typically needs 1 GPU
@@ -414,7 +414,7 @@ def cmd_benchmark(args):
     })
     
     print(f"\n✓ Created benchmark pod: {pod['id']}")
-    print(f"  Name: {args.name or f'babylon-bench-{args.gpu}'}")
+    print(f"  Name: {args.name or f'feed-bench-{args.gpu}'}")
     print(f"  GPU: {gpu_id}")
     if args.hf_model:
         print(f"  HF Model: {args.hf_model}")
@@ -431,18 +431,18 @@ def cmd_benchmark(args):
 
 def main():
     p = argparse.ArgumentParser(
-        description="Babylon RunPod Training & Benchmarking",
+        description="Feed RunPod Training & Benchmarking",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Training Examples:
   # Using HuggingFace dataset (recommended for RunPod)
-  python setup.py train --gpu h100 --image user/babylon-training:latest --env-file ../.env --hf-dataset elizaos/enkidu-trajectories-raw
+  python setup.py train --gpu h100 --image user/feed-training:latest --env-file ../.env --hf-dataset elizaos/enkidu-trajectories-raw
   
   # Using database URL (requires network access to DB)
-  python setup.py train --gpu h100 --image user/babylon-training:latest --db "postgresql://..."
+  python setup.py train --gpu h100 --image user/feed-training:latest --db "postgresql://..."
   
   # Spot instance (cheaper)
-  python setup.py train --gpu 4090 --image user/babylon-training:latest --env-file .env --hf-dataset org/dataset --spot
+  python setup.py train --gpu 4090 --image user/feed-training:latest --env-file .env --hf-dataset org/dataset --spot
 
 Benchmark Examples:
   # Benchmark HuggingFace model
@@ -450,10 +450,10 @@ Benchmark Examples:
 
 Shell Pod Examples:
   # Provision a 2x H100 box for a manual canonical pipeline run
-  python setup.py shell --gpu h100 --gpus 2 --image user/babylon-training:latest --env-file ../.env
+  python setup.py shell --gpu h100 --gpus 2 --image user/feed-training:latest --env-file ../.env
   
   # Provision a single H200 shell pod for co-hosted 7B-9B training + inference
-  python setup.py shell --gpu h200 --image user/babylon-training:latest --env-file ../.env
+  python setup.py shell --gpu h200 --image user/feed-training:latest --env-file ../.env
   
   # Specific scenario
   python setup.py benchmark --gpu 4090 --hf-model elizaos/ishtar-v0.1 --base-model Qwen/Qwen2.5-0.5B-Instruct --scenario bear-market
@@ -469,7 +469,7 @@ Shell Pod Examples:
     t.add_argument("--gpu", required=True, choices=GPUS.keys(), help="GPU type")
     t.add_argument("--image", required=True, help="Docker image")
     t.add_argument("--env-file", help="Path to .env file (recommended)")
-    t.add_argument("--name", help="Pod name (default: babylon-<gpu>)")
+    t.add_argument("--name", help="Pod name (default: feed-<gpu>)")
     t.add_argument("--gpus", type=int, default=1, help="GPU count")
     t.add_argument("--steps", type=int, help="Training steps (default: from env or 1000)")
     t.add_argument("--profile", help="Training profile (default: auto from GPU)")
@@ -487,7 +487,7 @@ Shell Pod Examples:
     sh.add_argument("--gpu", required=True, choices=GPUS.keys(), help="GPU type")
     sh.add_argument("--image", required=True, help="Docker image")
     sh.add_argument("--env-file", help="Path to .env file (recommended)")
-    sh.add_argument("--name", help="Pod name (default: babylon-shell-<gpu>)")
+    sh.add_argument("--name", help="Pod name (default: feed-shell-<gpu>)")
     sh.add_argument("--gpus", type=int, default=1, help="GPU count")
     sh.add_argument("--profile", help="Suggested training profile (default: auto from GPU)")
     sh.add_argument("--volume-gb", type=int, help="Persistent volume size in GB (default: auto from GPU)")
@@ -514,12 +514,12 @@ Shell Pod Examples:
     # benchmark
     b = sub.add_parser("benchmark", help="Start a benchmark pod")
     b.add_argument("--gpu", required=True, choices=GPUS.keys(), help="GPU type")
-    b.add_argument("--image", help="Docker image (default: revlentless/babylon-benchmark:latest)")
+    b.add_argument("--image", help="Docker image (default: revlentless/feed-benchmark:latest)")
     b.add_argument("--hf-model", help="HuggingFace model ID to benchmark")
     b.add_argument("--base-model", help="Base model for vLLM inside the benchmark container")
     b.add_argument("--model", help="Path to model inside container")
     b.add_argument("--env-file", help="Path to .env file")
-    b.add_argument("--name", help="Pod name (default: babylon-bench-<gpu>)")
+    b.add_argument("--name", help="Pod name (default: feed-bench-<gpu>)")
     b.add_argument("--hf-token", help="HF_TOKEN for private models")
     b.add_argument("--quick", action="store_true", help="Quick mode (7-day scenarios)")
     b.add_argument("--scenario", help="Specific scenario to run")

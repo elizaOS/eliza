@@ -877,7 +877,7 @@ class TestEnhancedCompositeRewardCodePaths:
         inputs = self._make_inputs()
 
         # Test that enhanced_composite_reward works with the default profile
-        # (profile selection happens at a higher level in babylon_env)
+        # (profile selection happens at a higher level in feed_env)
         reward = enhanced_composite_reward(
             inputs=inputs,
             archetype="trader",

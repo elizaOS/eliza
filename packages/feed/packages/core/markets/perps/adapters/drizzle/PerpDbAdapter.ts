@@ -5,8 +5,8 @@ import {
   perpMarketSnapshots,
   perpPositions,
   type Transaction,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import type { InferInsertModel } from 'drizzle-orm';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import type {
@@ -324,7 +324,7 @@ export class PerpDbAdapter implements PerpDbPort {
 
     if (existing.length === 0) {
       // Snapshot must be seeded separately - this method only updates existing snapshots
-      // Use init-snapshots script in @babylon/engine to seed from static organization data
+      // Use init-snapshots script in @feed/engine to seed from static organization data
       throw new Error(
         `Cannot update market snapshot for ${ticker}: snapshot not found. ` +
           'Run perp market seeding to create snapshots from static organization data.'

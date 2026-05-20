@@ -64,9 +64,9 @@ import {
   successResponse,
   TradingLeaderboardService,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, follows, inArray } from '@babylon/db';
-import { type LeaderboardMetric, logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, follows, inArray } from '@feed/db';
+import { type LeaderboardMetric, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { sanitizeForJson } from '@/lib/json/sanitize';
 import { parseLeaderboardQuery } from './query';

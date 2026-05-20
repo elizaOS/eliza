@@ -62,12 +62,12 @@ export function resolveUserIdentifierKind(
     return 'privyId';
   }
 
-  // Check 2b: Unique index - Steward ID (UUID v4 that isn't a Babylon PK)
+  // Check 2b: Unique index - Steward ID (UUID v4 that isn't a Feed PK)
   // Steward issues standard UUID v4 tokens: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
   // The UUID regex above already returns 'id' for valid UUID-format IDs.
-  // Steward IDs are NOT stored as Babylon PKs — Babylon uses snowflake IDs.
+  // Steward IDs are NOT stored as Feed PKs — Feed uses snowflake IDs.
   // So if we reach here with a UUID-like string, re-check: it won't have been
-  // caught above since Babylon PKs are snowflakes, not UUIDs. No change needed.
+  // caught above since Feed PKs are snowflakes, not UUIDs. No change needed.
   // (UUID-format Steward IDs ARE caught by the uuidRegex above and return 'id',
   // but auth-middleware looks up by stewardId explicitly, not via this function.)
 

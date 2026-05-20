@@ -1,16 +1,16 @@
 # Migrating from executeGameTick
 
-The existing game tick in `@babylon/engine` is a single ~900-line function that manually wires 17 subsystems. `@babylon/sim` lets you break that apart into individual systems, one at a time, without any big-bang rewrite.
+The existing game tick in `@feed/engine` is a single ~900-line function that manually wires 17 subsystems. `@feed/sim` lets you break that apart into individual systems, one at a time, without any big-bang rewrite.
 
 ## The bridge system
 
 `createLegacyGameTickSystem()` wraps the entire `executeGameTick()` function as a single system:
 
 ```ts
-import { BabylonEngine } from '@babylon/sim';
-import { createLegacyGameTickSystem } from '@babylon/sim';
+import { FeedEngine } from '@feed/sim';
+import { createLegacyGameTickSystem } from '@feed/sim';
 
-const engine = new BabylonEngine();
+const engine = new FeedEngine();
 engine.use(createLegacyGameTickSystem());
 await engine.boot();
 await engine.tick();

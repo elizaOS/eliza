@@ -75,18 +75,18 @@ import {
   JsonRpcTransportHandler,
 } from '@a2a-js/sdk/server';
 import {
-  BabylonAgentExecutor,
+  FeedAgentExecutor,
   ErrorCode,
   generateAgentCardSync,
   type JsonRpcRequest,
   type ListTasksParams,
   PersistentTaskStore,
   RateLimiter,
-} from '@babylon/a2a';
-import { getAgentConfig } from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/a2a';
+import { getAgentConfig } from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -176,7 +176,7 @@ async function getAgentJsonRpcHandler(
       // Use PersistentTaskStore for Redis-backed persistence across instances
       const taskStore = new PersistentTaskStore();
       // Create executor scoped to this agent
-      const executor = new BabylonAgentExecutor();
+      const executor = new FeedAgentExecutor();
       const eventBusManager = new DefaultExecutionEventBusManager();
 
       // Get agent data for card generation

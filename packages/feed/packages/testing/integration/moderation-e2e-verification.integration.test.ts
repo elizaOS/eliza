@@ -12,7 +12,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { User } from '@babylon/db';
+import type { User } from '@feed/db';
 import {
   db,
   getBlockedByUserIds,
@@ -20,7 +20,7 @@ import {
   getMutedUserIds,
   hasBlocked,
   hasMuted,
-} from '@babylon/db';
+} from '@feed/db';
 import { nanoid } from 'nanoid';
 
 let testUser1: User;

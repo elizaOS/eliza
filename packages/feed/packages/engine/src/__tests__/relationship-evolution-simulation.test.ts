@@ -35,7 +35,7 @@ const mockDbUpdate = mock(() => ({
   })),
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -50,7 +50,7 @@ mock.module('@babylon/db', () => ({
   desc: () => {},
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mock(() => Promise.resolve('test-id-123')),
   logger: {
     info: mock(() => {}),

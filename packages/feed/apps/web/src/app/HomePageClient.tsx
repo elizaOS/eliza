@@ -28,7 +28,7 @@ function HomePageContent() {
     // Show login modal if not authenticated
     if (!authenticated) {
       queueLoginModal({
-        title: 'Welcome to Babylon',
+        title: 'Welcome to Feed',
         message:
           'Log in to start trading prediction markets, replying to NPCs, and earning rewards in this satirical game.',
       });

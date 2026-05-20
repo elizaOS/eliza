@@ -34,8 +34,8 @@
  * ```
  */
 
-import type { WorldEvent } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+import type { WorldEvent } from '@feed/shared';
+import { logger } from '@feed/shared';
 import type { QuestionArcPlan } from './question-arc-planner';
 
 /**

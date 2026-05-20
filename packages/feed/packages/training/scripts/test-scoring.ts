@@ -3,7 +3,7 @@
  * Test scoring directly
  */
 
-import { and, db, desc, eq, isNull, not, trajectories } from '@babylon/db';
+import { and, db, desc, eq, isNull, not, trajectories } from '@feed/db';
 import { archetypeScoringService } from '../src/scoring';
 
 async function main() {

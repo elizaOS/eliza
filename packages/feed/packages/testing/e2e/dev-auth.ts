@@ -1,14 +1,14 @@
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import type { Page } from '@playwright/test';
 import { createHash } from 'crypto';
 
 const PLAYWRIGHT_DEV_USERNAME = 'playwright-dev-admin';
 const PLAYWRIGHT_DEV_DISPLAY_NAME = 'Playwright Dev Admin';
 const PRIVY_TOKEN_COOKIE_NAME = 'privy-token';
-const DEV_USER_ID_COOKIE_NAME = 'babylon-dev-user-id';
-const DEV_ADMIN_TOKEN_COOKIE_NAME = 'babylon-dev-admin-token';
-export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'babylon-playwright-dev-auth';
+const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
+const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
+export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'feed-playwright-dev-auth';
 const DEV_ADMIN_USER_ID = 'dev-admin-local';
 
 export interface BrowserDevAuthSession {
@@ -24,7 +24,7 @@ function createPlaywrightTestPrivyToken(userId: string): string {
 
 function deriveSecret(seed: string, purpose: string): string {
   const hash = createHash('sha256')
-    .update(`babylon-dev:${seed}:${purpose}`)
+    .update(`feed-dev:${seed}:${purpose}`)
     .digest('hex');
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }

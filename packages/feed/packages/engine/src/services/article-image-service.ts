@@ -12,7 +12,7 @@
  * via ArticleGenerator's character mapping. No additional name sanitization needed here.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { fal } from '@fal-ai/client';
 import { articleCover, getRandomTwist, renderPrompt } from '../prompts';
 import { formatError } from '../utils/error-utils';

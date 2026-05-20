@@ -999,7 +999,7 @@ export class SimulationA2AInterface {
     return true;
   }
 
-  // ===== Wrapper methods to match BabylonA2AClient interface =====
+  // ===== Wrapper methods to match FeedA2AClient interface =====
 
   /**
    * Buy shares in prediction market

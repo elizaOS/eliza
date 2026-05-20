@@ -655,7 +655,7 @@ export class StakeholderReportGenerator {
     </div>
 
     <div class="footer">
-      <p>Babylon RL Training Pipeline | Benchmark Suite v1.0</p>
+      <p>Feed RL Training Pipeline | Benchmark Suite v1.0</p>
     </div>
   </div>
 </body>

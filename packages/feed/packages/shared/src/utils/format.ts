@@ -30,7 +30,7 @@ export function toISOOrNull(
   return toISO(val);
 }
 
-import { BABYLON_POINTS_SYMBOL } from '../constants/currency';
+import { FEED_POINTS_SYMBOL } from '../constants/currency';
 
 /**
  * Clamp number between min and max values
@@ -229,8 +229,8 @@ interface FormatCurrencyOptions {
 /**
  * Format number as currency
  *
- * @description Formats a number as Babylon points currency with specified decimal places.
- * Uses the configured symbol (default `$`) for Babylon points — not real USD.
+ * @description Formats a number as Feed points currency with specified decimal places.
+ * Uses the configured symbol (default `$`) for Feed points — not real USD.
  * Optionally includes thousands separators for better readability of large values.
  *
  * @param {number} amount - Amount to format
@@ -264,16 +264,16 @@ export function formatCurrency(
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
-    return `${sign}${BABYLON_POINTS_SYMBOL}${formatted}`;
+    return `${sign}${FEED_POINTS_SYMBOL}${formatted}`;
   }
 
-  return `${sign}${BABYLON_POINTS_SYMBOL}${absoluteAmount.toFixed(decimals)}`;
+  return `${sign}${FEED_POINTS_SYMBOL}${absoluteAmount.toFixed(decimals)}`;
 }
 
 /**
  * Format number as compact currency with K/M/B suffixes
  *
- * @description Formats a number as Babylon points currency with K/M/B suffixes
+ * @description Formats a number as Feed points currency with K/M/B suffixes
  * for large values. Uses the configured symbol. Handles non-finite values gracefully.
  *
  * @param {number} value - Amount to format
@@ -293,7 +293,7 @@ export function formatCurrency(
 export function formatCompactCurrency(value: number, decimals = 2): string {
   // Handle non-finite values (uses toFixed to avoid trailing dot when decimals=0)
   if (!Number.isFinite(value)) {
-    return `${BABYLON_POINTS_SYMBOL}${(0).toFixed(decimals)}`;
+    return `${FEED_POINTS_SYMBOL}${(0).toFixed(decimals)}`;
   }
 
   // Handle negative numbers: sign should come before the symbol
@@ -302,16 +302,16 @@ export function formatCompactCurrency(value: number, decimals = 2): string {
   const sign = isNegative ? '-' : '';
 
   if (abs >= 1_000_000_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000_000_000).toFixed(decimals)}B`;
+    return `${sign}${FEED_POINTS_SYMBOL}${(abs / 1_000_000_000).toFixed(decimals)}B`;
   }
   if (abs >= 1_000_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000_000).toFixed(decimals)}M`;
+    return `${sign}${FEED_POINTS_SYMBOL}${(abs / 1_000_000).toFixed(decimals)}M`;
   }
   if (abs >= 1_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000).toFixed(decimals)}K`;
+    return `${sign}${FEED_POINTS_SYMBOL}${(abs / 1_000).toFixed(decimals)}K`;
   }
 
-  return `${sign}${BABYLON_POINTS_SYMBOL}${abs.toFixed(decimals)}`;
+  return `${sign}${FEED_POINTS_SYMBOL}${abs.toFixed(decimals)}`;
 }
 
 /**

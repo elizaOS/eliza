@@ -5,8 +5,8 @@
  * Similar to X/Twitter trending topics
  */
 
-import { db, desc, trendingTags } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, desc, trendingTags } from '@feed/db';
+import { logger } from '@feed/shared';
 import {
   getRelatedTags,
   getTagStatistics,
@@ -248,7 +248,7 @@ async function getTagDetails(
   }
 
   // Import tags table dynamically to avoid circular imports
-  const { tags, inArray } = await import('@babylon/db');
+  const { tags, inArray } = await import('@feed/db');
 
   const tagRows = await db
     .select({

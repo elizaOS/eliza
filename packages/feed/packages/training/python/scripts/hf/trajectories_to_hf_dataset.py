@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Export Babylon Trajectories to HuggingFace Datasets
+Export Feed Trajectories to HuggingFace Datasets
 
 Converts trajectory data from PostgreSQL into HuggingFace-compatible datasets for
 GRPO-style ranking, supervised fine-tuning, and public release.
@@ -16,7 +16,7 @@ Usage:
     python scripts/hf/trajectories_to_hf_dataset.py --output ./hf_dataset
 
     # Export and push to HuggingFace Hub
-    python scripts/hf/trajectories_to_hf_dataset.py --push-to-hub babylonlabs/babylon-trading-v1
+    python scripts/hf/trajectories_to_hf_dataset.py --push-to-hub feedlabs/feed-trading-v1
 
     # Export ranked groups for GRPO-style training
     python scripts/hf/trajectories_to_hf_dataset.py --format rankings --output ./rankings
@@ -56,7 +56,7 @@ class ExportConfig:
     database_url: str = ""
     source_dir: str | None = None
     output_dir: str = "./hf_export"
-    push_to_hub: str | None = None  # e.g., "babylonlabs/babylon-trading-v1"
+    push_to_hub: str | None = None  # e.g., "feedlabs/feed-trading-v1"
 
     # Data selection
     lookback_hours: int = 720  # 30 days
@@ -671,7 +671,7 @@ def conversation_to_text(messages: list[dict[str, str]]) -> tuple[str, str]:
 
 
 async def fetch_trajectories(config: ExportConfig) -> list[TrajectoryData]:
-    """Fetch trajectories from PostgreSQL or a local Babylon export."""
+    """Fetch trajectories from PostgreSQL or a local Feed export."""
     if config.source_dir:
         return fetch_trajectories_from_local_export(config)
 
@@ -1408,15 +1408,15 @@ tags:
   - rlhf
   - grpo
   - preference-learning
-  - babylon
-pretty_name: Babylon Trading Trajectories
+  - feed
+pretty_name: Feed Trading Trajectories
 size_categories:
   - 1K<n<10K
 ---
 
-# Babylon Trading Trajectories
+# Feed Trading Trajectories
 
-AI trading agent trajectories from the Babylon simulation environment.
+AI trading agent trajectories from the Feed simulation environment.
 
 ## Dataset Description
 
@@ -1487,9 +1487,9 @@ MIT License
 ## Citation
 
 ```bibtex
-@misc{{babylon-trading-2025,
-  author = {{Babylon Labs}},
-  title = {{Babylon Trading Trajectories}},
+@misc{{feed-trading-2025,
+  author = {{Feed Labs}},
+  title = {{Feed Trading Trajectories}},
   year = {{2025}},
   publisher = {{HuggingFace}},
   url = {{https://huggingface.co/datasets/{repo_id}}}
@@ -1521,11 +1521,11 @@ MIT License
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Export Babylon trajectories to HuggingFace")
+    parser = argparse.ArgumentParser(description="Export Feed trajectories to HuggingFace")
     parser.add_argument("--output", "-o", default="./hf_export", help="Output directory")
     parser.add_argument(
         "--source-dir",
-        help="Local Babylon export directory containing trajectories.jsonl or JSON trajectory files",
+        help="Local Feed export directory containing trajectories.jsonl or JSON trajectory files",
     )
     parser.add_argument(
         "--push-to-hub", help="HuggingFace repo ID to push to (e.g., 'org/dataset-name')"

@@ -16,8 +16,8 @@ import {
   eq,
   type NpcMemory,
   type RelationshipState,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { first } from '../utils/array-utils';
 import { getGameDayNumber } from '../utils/date-utils';
 import { formatError } from '../utils/error-utils';

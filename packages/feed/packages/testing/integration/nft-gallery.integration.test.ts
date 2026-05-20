@@ -28,8 +28,8 @@ import {
   nftOwnership,
   nftSnapshot,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 
 const BASE_URL =
   process.env.TEST_API_URL ||
@@ -89,7 +89,7 @@ async function createTestNft(tokenId: number): Promise<void> {
     storyTitle: `The Tale of NFT #${tokenId}`,
     storyContent: `This is the story of NFT #${tokenId}, a unique digital collectible.`,
     attributes: [
-      { trait_type: 'Collection', value: 'Babylon Top 100' },
+      { trait_type: 'Collection', value: 'Feed Top 100' },
       { trait_type: 'Token Number', value: tokenId },
     ],
     contractAddress: '0x0000000000000000000000000000000000000000',

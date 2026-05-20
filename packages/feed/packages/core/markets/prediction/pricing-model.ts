@@ -1,7 +1,7 @@
 /**
  * Prediction Market Pricing Model Interface
  *
- * Abstracts pricing calculation for Babylon's offchain prediction markets.
+ * Abstracts pricing calculation for Feed's offchain prediction markets.
  *
  * Implementations:
  * - PredictionPricing (CPMM) — algebraic market maker used by the product

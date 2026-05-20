@@ -16,9 +16,9 @@ import {
   ensureMinimalUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { calculatePortfolioBreakdown } from '@babylon/engine';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { calculatePortfolioBreakdown } from '@feed/engine';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(

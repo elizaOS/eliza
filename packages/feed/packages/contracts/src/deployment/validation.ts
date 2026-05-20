@@ -5,7 +5,7 @@
  * This file contains only browser-compatible code.
  *
  * @remarks For Node.js file system operations (saveDeployment, updateEnvFile),
- * import from '@babylon/contracts/deployment/validation-node'.
+ * import from '@feed/contracts/deployment/validation-node'.
  */
 
 import { ethers } from 'ethers';
@@ -38,8 +38,8 @@ export interface ContractAddresses {
   identityRegistry: string;
   /** ERC-8004 Reputation System address */
   reputationSystem: string;
-  /** Babylon Game Oracle address (optional) */
-  babylonOracle?: string;
+  /** Feed Game Oracle address (optional) */
+  feedOracle?: string;
   /** Ban Manager address (optional) */
   banManager?: string;
   /** Chainlink Oracle mock address (testnet only) */

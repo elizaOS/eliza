@@ -13,7 +13,7 @@ describe('JsonStorageProvider', () => {
   beforeEach(async () => {
     provider = new JsonStorageProvider({
       mode: 'json',
-      jsonBasePath: '/tmp/babylon-test-' + Date.now(),
+      jsonBasePath: '/tmp/feed-test-' + Date.now(),
       persistOnChange: false, // Don't persist in tests
     });
     await provider.initialize();

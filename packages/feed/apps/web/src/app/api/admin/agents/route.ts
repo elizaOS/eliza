@@ -67,13 +67,13 @@ import {
   AgentType,
   agentRegistry,
   getExternalAgentAdapter,
-} from '@babylon/agents';
+} from '@feed/agents';
 import {
   getClientIp,
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   agentLogs,
   and,
@@ -84,7 +84,7 @@ import {
   gte,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

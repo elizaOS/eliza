@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import * as actualApi from '@babylon/api';
-import * as actualShared from '@babylon/shared';
+import * as actualApi from '@feed/api';
+import * as actualShared from '@feed/shared';
 
 const positionsTable = {
   marketId: 'positions.marketId',
@@ -50,14 +50,14 @@ const mockCreateNotification = mock(async () => ({ created: true }));
 const mockBroadcastToChannel = mock(async () => undefined);
 const mockSendNotificationEmail = mock(async () => undefined);
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   ...actualApi,
   broadcastToChannel: mockBroadcastToChannel,
   createNotification: mockCreateNotification,
   sendNotificationEmail: mockSendNotificationEmail,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   ...actualShared,
   logger: {
     info: mock(),
@@ -67,7 +67,7 @@ mock.module('@babylon/shared', () => ({
   },
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   and: (...conditions: Condition[]) => ({ op: 'and', conditions }),
   db: {
     select: mock(() => ({

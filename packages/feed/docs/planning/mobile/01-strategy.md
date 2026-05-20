@@ -2,7 +2,7 @@
 
 ## Goal
 
-Ship Babylon (`apps/web`) — a Next.js 16 full-stack prediction market app — as native iOS and Android apps via the App Store and Google Play, **without** an 80% React Native rewrite.
+Ship Feed (`apps/web`) — a Next.js 16 full-stack prediction market app — as native iOS and Android apps via the App Store and Google Play, **without** an 80% React Native rewrite.
 
 ## Approach
 
@@ -10,7 +10,7 @@ Ship Babylon (`apps/web`) — a Next.js 16 full-stack prediction market app — 
 
 ### Why This Works
 
-- The Babylon frontend is ~70% client components (28/40 page files are `'use client'`). The server-side footprint in the _page layer_ is limited to 12 pages, most of which are thin param-unwrapping wrappers.
+- The Feed frontend is ~70% client components (28/40 page files are `'use client'`). The server-side footprint in the _page layer_ is limited to 12 pages, most of which are thin param-unwrapping wrappers.
 - The heavy server logic (315 API route files, 15 cron jobs, Redis SSE, database queries) is already architecturally separated behind `/api/*` routes. The client talks to the server via HTTP fetch — a REST-over-HTTP pattern, not tight coupling.
 - Capacitor runs your static HTML/CSS/JS inside a native WebView with access to native APIs via plugins. Your React + Tailwind + Radix UI components work as-is.
 

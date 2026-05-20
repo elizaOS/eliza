@@ -11,8 +11,8 @@ import {
   DailyLoginService,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { toISOOrNull } from '@babylon/shared';
+} from '@feed/api';
+import { toISOOrNull } from '@feed/shared';
 
 import type { NextRequest } from 'next/server';
 

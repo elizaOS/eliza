@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { ContentQualityGate } from '@babylon/engine';
+import { ContentQualityGate } from '@feed/engine';
 
 describe('ContentQualityGate.validateParody', () => {
   test('grounded parody passes', async () => {

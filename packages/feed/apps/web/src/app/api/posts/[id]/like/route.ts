@@ -64,14 +64,14 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, count, db, eq, posts, reactions } from '@babylon/db';
-import { NPCInteractionTracker, parsePostId } from '@babylon/engine';
+} from '@feed/api';
+import { and, count, db, eq, posts, reactions } from '@feed/db';
+import { NPCInteractionTracker, parsePostId } from '@feed/engine';
 import {
   generateSnowflakeId,
   logger,
   PostIdParamSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 

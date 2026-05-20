@@ -1,4 +1,4 @@
-import type { OrgCorrelation } from '@babylon/shared';
+import type { OrgCorrelation } from '@feed/shared';
 
 /**
  * Inter-organization correlations for the 30 Under 30 pack.

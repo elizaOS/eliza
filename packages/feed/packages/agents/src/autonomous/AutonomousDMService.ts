@@ -14,7 +14,7 @@ import {
   messages,
   ne,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type { IAgentRuntime } from '@elizaos/core';
 import { callGroqDirect } from '../llm/direct-groq';
 import { getAgentConfig } from '../shared/agent-config';
@@ -123,7 +123,7 @@ export class AutonomousDMService {
       if (!latestMessage) continue;
 
       // Generate response
-      const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Babylon.'}
+      const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
 
 You are ${agentDisplayName} in a direct message conversation.
 

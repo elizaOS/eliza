@@ -51,7 +51,7 @@ export class JsonStorageProvider implements IStorageProvider {
   readonly users: UserPort;
 
   constructor(config: StorageProviderConfig) {
-    this.basePath = config.jsonBasePath ?? './babylon-data';
+    this.basePath = config.jsonBasePath ?? './feed-data';
     this.autoSave = config.persistOnChange ?? true;
     this.state = createEmptyState();
     this.idGenerator = new JsonIdGenerator('sim');

@@ -1,4 +1,4 @@
-import type { LeaderboardMetric, LeaderboardScope } from '@babylon/shared';
+import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
 
 export interface LeaderboardUser {
   id: string;

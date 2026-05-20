@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { ActorStateRow } from '@babylon/db';
-import { ACTOR_TIERS } from '@babylon/shared';
+import type { ActorStateRow } from '@feed/db';
+import { ACTOR_TIERS } from '@feed/shared';
 import { NPC_POSTING_CONFIG } from '../config/npc-activity';
 import {
   calculatePostingProbability,

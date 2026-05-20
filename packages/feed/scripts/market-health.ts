@@ -13,12 +13,12 @@
  */
 
 import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@babylon/db';
+import { getRawDrizzle } from '@feed/db';
 import {
   markets,
   perpMarketSnapshots,
   predictionPriceHistories,
-} from '@babylon/db/schema';
+} from '@feed/db/schema';
 import { and, desc, eq, gte } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------

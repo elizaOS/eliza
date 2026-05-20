@@ -6,7 +6,7 @@
 
 /**
  * Agent profile for monitoring (subset of full AgentProfile)
- * Full AgentProfile available from @babylon/a2a
+ * Full AgentProfile available from @feed/a2a
  */
 export interface MonitoringAgentProfile {
   tokenId: number;
@@ -18,7 +18,7 @@ export interface MonitoringAgentProfile {
 
 /**
  * Agent reputation for monitoring (subset of full AgentReputation)
- * Full AgentReputation available from @babylon/a2a
+ * Full AgentReputation available from @feed/a2a
  */
 export interface MonitoringAgentReputation {
   totalBets: number;

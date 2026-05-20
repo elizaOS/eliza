@@ -7,7 +7,7 @@
  * @public
  */
 
-import { JsonValueSchema } from '@babylon/shared';
+import { JsonValueSchema } from '@feed/shared';
 import { z } from 'zod';
 
 // Pagination defaults and limits

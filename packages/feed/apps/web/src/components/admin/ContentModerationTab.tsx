@@ -18,7 +18,7 @@
  */
 'use client';
 
-import { cn, formatDateTime } from '@babylon/shared';
+import { cn, formatDateTime } from '@feed/shared';
 import {
   AlertTriangle,
   Check,

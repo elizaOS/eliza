@@ -4,7 +4,7 @@
  * This file is loaded before all unit tests to set up the test environment.
  * It mocks external dependencies like Redis connections.
  *
- * NOTE: Database (@babylon/db) is NOT mocked here - tests should mock it themselves
+ * NOTE: Database (@feed/db) is NOT mocked here - tests should mock it themselves
  * because the db module has many exports that tests need to control individually.
  */
 
@@ -23,8 +23,8 @@ const actualReact = await import('react');
 // Many tests mock modules with incomplete stubs (missing logger, POINTS,
 // DAILY_LOGIN, zod re-exports, etc.), which breaks unrelated tests that import
 // the real module. Restoring after each test ensures a clean slate.
-const actualShared = await import('@babylon/shared');
-const actualDb = await import('@babylon/db');
+const actualShared = await import('@feed/shared');
+const actualDb = await import('@feed/db');
 const actualZod = await import('zod');
 
 // These modules are also frequently mocked incompletely across test files.
@@ -32,16 +32,16 @@ const actualZod = await import('zod');
 // them here ensures we can restore them if they were mocked by a previous test.
 let actualApi: Record<string, unknown> | null = null;
 try {
-  actualApi = await import('@babylon/api');
+  actualApi = await import('@feed/api');
 } catch {
-  // @babylon/api may fail to import in some environments; skip restoration
+  // @feed/api may fail to import in some environments; skip restoration
 }
 
 let actualEngine: Record<string, unknown> | null = null;
 try {
-  actualEngine = await import('@babylon/engine');
+  actualEngine = await import('@feed/engine');
 } catch {
-  // @babylon/engine may fail to import in some environments; skip restoration
+  // @feed/engine may fail to import in some environments; skip restoration
 }
 
 let actualNextServer: Record<string, unknown> | null = null;
@@ -56,22 +56,22 @@ function _restoreAllModules() {
     ...actualReact,
     default: actualReact.default ?? actualReact,
   }));
-  mock.module('@babylon/shared', () => ({
+  mock.module('@feed/shared', () => ({
     ...actualShared,
   }));
-  mock.module('@babylon/db', () => ({
+  mock.module('@feed/db', () => ({
     ...actualDb,
   }));
   mock.module('zod', () => ({
     ...actualZod,
   }));
   if (actualApi) {
-    mock.module('@babylon/api', () => ({
+    mock.module('@feed/api', () => ({
       ...actualApi,
     }));
   }
   if (actualEngine) {
-    mock.module('@babylon/engine', () => ({
+    mock.module('@feed/engine', () => ({
       ...actualEngine,
     }));
   }
@@ -83,7 +83,7 @@ function _restoreAllModules() {
 }
 
 // Only restore modules that DON'T typically need test-specific mocking.
-// @babylon/db, @babylon/api, @babylon/engine, next/server are commonly mocked
+// @feed/db, @feed/api, @feed/engine, next/server are commonly mocked
 // with test-specific behavior (mock DB selects, mock auth, etc.) that must
 // survive between tests. Only restore them in afterEach (after test completes).
 function restoreSafeModules() {
@@ -91,7 +91,7 @@ function restoreSafeModules() {
     ...actualReact,
     default: actualReact.default ?? actualReact,
   }));
-  mock.module('@babylon/shared', () => ({
+  mock.module('@feed/shared', () => ({
     ...actualShared,
   }));
   mock.module('zod', () => ({
@@ -105,7 +105,7 @@ function restoreSafeModules() {
 }
 
 // Restore commonly-polluted modules between tests. We do NOT restore
-// @babylon/db, @babylon/api, or @babylon/engine here because:
+// @feed/db, @feed/api, or @feed/engine here because:
 // 1. Tests that mock them do so at the file top level for dynamic imports
 // 2. Re-mocking them resets in-memory state (rate-limit Maps, session stores)
 // 3. Tests that need the real modules capture them before their own mocks
@@ -242,16 +242,16 @@ mock.module('ioredis', () => {
 // Note: Logger is NOT mocked - it's a simple console wrapper with no side effects
 // Keeping real logger helps debug failing tests
 
-// Note: @babylon/db is NOT mocked here - individual tests should mock it as needed
+// Note: @feed/db is NOT mocked here - individual tests should mock it as needed
 // This is because:
 // 1. The db module has many named exports (tables, operators) that tests need
 // 2. Tests may need to control mock return values differently
 // 3. Mocking everything globally makes it hard to test specific behaviors
 
-// Pre-import commonly used modules so they capture the real @babylon/shared
+// Pre-import commonly used modules so they capture the real @feed/shared
 // (including logger) before any test file's mock.module can pollute it.
 // This is critical for modules like user-rate-limiter.ts that capture `logger`
-// at module evaluation time via static `import { logger } from '@babylon/shared'`.
+// at module evaluation time via static `import { logger } from '@feed/shared'`.
 try {
   await import('../../api/src/rate-limiting/user-rate-limiter');
 } catch {

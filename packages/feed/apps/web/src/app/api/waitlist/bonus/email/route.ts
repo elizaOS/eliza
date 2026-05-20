@@ -65,8 +65,8 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@babylon/api';
-import { logger, POINTS } from '@babylon/shared';
+} from '@feed/api';
+import { logger, POINTS } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

@@ -19,8 +19,8 @@ import {
   expect,
   test,
 } from 'bun:test';
-import { db } from '@babylon/db';
-import { GROUP_CONFIG, generateSnowflakeId } from '@babylon/shared';
+import { db } from '@feed/db';
+import { GROUP_CONFIG, generateSnowflakeId } from '@feed/shared';
 
 // Base URL for API calls
 const BASE_URL =

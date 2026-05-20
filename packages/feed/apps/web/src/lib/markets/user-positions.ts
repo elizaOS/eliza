@@ -1,9 +1,9 @@
 import 'server-only';
 
-import { findUserByIdentifier } from '@babylon/api';
-import { asPublic, asUser, db, eq, users } from '@babylon/db';
-import { FEE_CONFIG } from '@babylon/engine/config/fees';
-import { toISO, toISOOrNull } from '@babylon/shared';
+import { findUserByIdentifier } from '@feed/api';
+import { asPublic, asUser, db, eq, users } from '@feed/db';
+import { FEE_CONFIG } from '@feed/engine/config/fees';
+import { toISO, toISOOrNull } from '@feed/shared';
 import { calculatePredictionPositionSnapshot } from '@/lib/wallet/predictionPositionSnapshot';
 import type {
   UserPerpPositionSnapshot,

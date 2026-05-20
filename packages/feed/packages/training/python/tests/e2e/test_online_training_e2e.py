@@ -289,9 +289,9 @@ class TestHybridEnv:
 
     def test_hybrid_config_online_ratio(self):
         """Test that hybrid config accepts online_ratio"""
-        from src.training.hybrid_env import BabylonHybridEnvConfig
+        from src.training.hybrid_env import FeedHybridEnvConfig
 
-        config = BabylonHybridEnvConfig(
+        config = FeedHybridEnvConfig(
             tokenizer_name="test-model",
             online_ratio=0.3,
         )
@@ -300,9 +300,9 @@ class TestHybridEnv:
 
     def test_hybrid_config_defaults(self):
         """Test hybrid config default values"""
-        from src.training.hybrid_env import BabylonHybridEnvConfig
+        from src.training.hybrid_env import FeedHybridEnvConfig
 
-        config = BabylonHybridEnvConfig(tokenizer_name="test-model")
+        config = FeedHybridEnvConfig(tokenizer_name="test-model")
 
         assert config.online_ratio == 0.2
         assert config.use_simulation_bridge is False  # Default from parent

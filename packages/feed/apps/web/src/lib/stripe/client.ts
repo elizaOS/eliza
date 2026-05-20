@@ -5,7 +5,7 @@
  * Uses the publishable key for client-to-Stripe communication.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 
 let stripePromise: Promise<Stripe | null> | null = null;

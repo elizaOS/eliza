@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
-import { db, eq, games, generateSnowflakeId } from '@babylon/db';
+import { db, eq, games, generateSnowflakeId } from '@feed/db';
 
 // Test game creation/auto-start logic directly on games table
 describe('Game Auto-Start Logic', () => {
@@ -194,7 +194,7 @@ describe('NPC User Provisioning', () => {
   afterEach(async () => {
     // Clean up created NPC User records to avoid side effects
     if (createdNpcUserIds.length > 0) {
-      const { users, inArray } = await import('@babylon/db');
+      const { users, inArray } = await import('@feed/db');
       await db.delete(users).where(inArray(users.id, createdNpcUserIds));
       createdNpcUserIds.length = 0;
     }
@@ -205,7 +205,7 @@ describe('NPC User Provisioning', () => {
     const { GameBootstrapService } = await import(
       '../services/game-bootstrap-service'
     );
-    const { users, inArray } = await import('@babylon/db');
+    const { users, inArray } = await import('@feed/db');
 
     // Get static actors (NPCs)
     const staticActors = GameBootstrapService.getStaticActors();

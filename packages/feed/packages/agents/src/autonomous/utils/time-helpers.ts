@@ -2,7 +2,7 @@
  * Time formatting utilities for autonomous agents
  */
 
-export { getTimeAgo } from '@babylon/shared';
+export { getTimeAgo } from '@feed/shared';
 
 /**
  * Format time held in human-readable format

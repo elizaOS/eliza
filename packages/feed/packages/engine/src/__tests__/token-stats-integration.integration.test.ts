@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { BabylonLLMClient } from '../llm/openai-client';
+import { FeedLLMClient } from '../llm/openai-client';
 import { tokenStatsService } from '../services/token-stats-service';
 
 // Skip if no API key is available
@@ -31,7 +31,7 @@ describe.skipIf(!hasApiKey)('Token Stats Integration - Real API Calls', () => {
     expect(tickId).toBe('integration-test-1');
 
     // Create LLM client
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
 
     // Make a simple API call
     const result = await llm.generateJSON<{ message: string }>(
@@ -94,7 +94,7 @@ describe.skipIf(!hasApiKey)('Token Stats Integration - Real API Calls', () => {
   test('tracks multiple LLM calls with different prompt types', async () => {
     tokenStatsService.startTick('integration-test-2');
 
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
 
     // Call 1: Simple greeting
     await llm.generateJSON<{ greeting: string }>(
@@ -146,7 +146,7 @@ describe.skipIf(!hasApiKey)('Token Stats Integration - Real API Calls', () => {
   test('validates token counts are reasonable', async () => {
     tokenStatsService.startTick('integration-test-3');
 
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
 
     // Short prompt, short response
     const shortPrompt = 'Return {"ok":true}';
@@ -211,7 +211,7 @@ Be creative but keep responses short.`;
   test('summary includes cost estimates', async () => {
     // Run two ticks
     tokenStatsService.startTick('cost-test-1');
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
     await llm.generateJSON<{ x: number }>(
       'Return {"x":1}',
       { properties: { x: { type: 'number' } }, required: ['x'] },

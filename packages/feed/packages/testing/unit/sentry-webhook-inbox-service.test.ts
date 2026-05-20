@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { createHmac } from 'node:crypto';
 
-const _actualShared = await import('@babylon/shared');
-const _actualDb = await import('@babylon/db');
+const _actualShared = await import('@feed/shared');
+const _actualDb = await import('@feed/db');
 
 const insertReturningMock = mock(async () => [{ id: 'inbox-123' }]);
 const insertOnConflictMock = mock(() => ({
@@ -38,7 +38,7 @@ function toTimestampDate(timestamp: string): Date {
 
 describe('ingestSentryWebhook signature compatibility', () => {
   beforeAll(async () => {
-    mock.module('@babylon/db', () => ({
+    mock.module('@feed/db', () => ({
       ..._actualDb,
       db: {
         insert: insertMock,
@@ -50,7 +50,7 @@ describe('ingestSentryWebhook signature compatibility', () => {
       },
     }));
 
-    mock.module('@babylon/shared', () => ({
+    mock.module('@feed/shared', () => ({
       ..._actualShared,
       logger: {
         debug: () => {},
@@ -77,7 +77,7 @@ describe('ingestSentryWebhook signature compatibility', () => {
     const rawBody = JSON.stringify({
       action: 'assigned',
       data: {
-        project: { slug: 'babylon' },
+        project: { slug: 'feed' },
         issue: { id: '123', shortId: 'BAB-123', title: 'Test issue' },
       },
     });
@@ -110,7 +110,7 @@ describe('ingestSentryWebhook signature compatibility', () => {
     const rawBody = JSON.stringify({
       action: 'assigned',
       data: {
-        project: { slug: 'babylon' },
+        project: { slug: 'feed' },
         issue: { id: '456', shortId: 'BAB-456', title: 'Body-only signature' },
       },
     });
@@ -139,7 +139,7 @@ describe('ingestSentryWebhook signature compatibility', () => {
     const rawBody = JSON.stringify({
       action: 'assigned',
       data: {
-        project: { slug: 'babylon' },
+        project: { slug: 'feed' },
         issue: { id: '789', shortId: 'BAB-789', title: 'Bad signature' },
       },
     });

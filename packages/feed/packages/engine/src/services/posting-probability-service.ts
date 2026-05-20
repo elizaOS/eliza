@@ -15,8 +15,8 @@ import {
   gte,
   inArray,
   worldEvents,
-} from '@babylon/db';
-import { type ActorTier } from '@babylon/shared';
+} from '@feed/db';
+import { type ActorTier } from '@feed/shared';
 import { NPC_POSTING_CONFIG } from '../config/npc-activity';
 import { secureRandom } from '../utils/entropy';
 import { StaticDataRegistry } from './static-data-registry';

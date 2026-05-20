@@ -28,18 +28,18 @@ export const MODEL_TIER_POINTS_COST = {
  * Keep these centralized to avoid diverging URLs between states/pages.
  */
 export const EXTERNAL_LINKS = {
-  docs: 'https://docs.babylon.market',
+  docs: 'https://docs.feed.market',
   blog:
-    process.env.NEXT_PUBLIC_BLOG_URL?.trim() || 'https://blog.babylon.market',
-  github: 'https://github.com/BabylonSocial/babylon',
-  website: 'https://babylon.market',
-  xProfile: 'https://x.com/PlayBabylon',
-  xFollowIntent: 'https://x.com/intent/follow?screen_name=PlayBabylon',
+    process.env.NEXT_PUBLIC_BLOG_URL?.trim() || 'https://blog.feed.market',
+  github: 'https://github.com/FeedSocial/feed',
+  website: 'https://feed.market',
+  xProfile: 'https://x.com/PlayFeed',
+  xFollowIntent: 'https://x.com/intent/follow?screen_name=PlayFeed',
   discordInvite:
     process.env.NEXT_PUBLIC_DISCORD_INVITE_URL?.trim() ||
     'https://discord.gg/ukKRJtYQ7q',
-  farcasterProfile: 'https://warpcast.com/playbabylon',
+  farcasterProfile: 'https://warpcast.com/playfeed',
   farcaster: 'https://farcaster.xyz',
-  privacyPolicy: 'https://docs.babylon.market/legal/privacy-policy/',
-  termsOfService: 'https://docs.babylon.market/legal/terms-of-service/',
+  privacyPolicy: 'https://docs.feed.market/legal/privacy-policy/',
+  termsOfService: 'https://docs.feed.market/legal/terms-of-service/',
 } as const;

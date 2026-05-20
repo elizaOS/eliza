@@ -9,13 +9,13 @@ import {
   mock,
 } from 'bun:test';
 
-const _actualShared = await import('@babylon/shared');
+const _actualShared = await import('@feed/shared');
 const _actualZod = await import('zod');
 
 import {
   isValidDeliveryChannel,
   isValidDigestFrequency,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 type ErrorHandlerModule = typeof import('../../../api/src/error-handler');
 
@@ -38,13 +38,13 @@ function createRequest(): import('next/server').NextRequest {
 
 describe('withErrorHandling + default Sentry capture', () => {
   beforeAll(async () => {
-    mock.module('@babylon/db', () => ({
+    mock.module('@feed/db', () => ({
       DatabaseError: class DatabaseError extends Error {
         code?: string;
       },
     }));
 
-    mock.module('@babylon/shared', () => ({
+    mock.module('@feed/shared', () => ({
       ..._actualShared,
       logger: {
         debug: () => {},
@@ -100,7 +100,7 @@ describe('withErrorHandling + default Sentry capture', () => {
 
   beforeEach(async () => {
     // Load a fresh module instance so this suite is immune to cross-file mock.module
-    // overrides of @babylon/api exports (including withErrorHandling).
+    // overrides of @feed/api exports (including withErrorHandling).
     const freshModule = (await import(
       `../../../api/src/error-handler.ts?isolation=${Date.now()}-${Math.random()}`
     )) as ErrorHandlerModule;

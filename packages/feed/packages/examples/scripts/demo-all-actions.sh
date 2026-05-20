@@ -5,7 +5,7 @@ set -e
 # This proves the examples are NOT larp - they actually work!
 
 echo ""
-echo "🎭 Babylon A2A Demo - Proving It's NOT LARP!"
+echo "🎭 Feed A2A Demo - Proving It's NOT LARP!"
 echo "=============================================="
 echo ""
 

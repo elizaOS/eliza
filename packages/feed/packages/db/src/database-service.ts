@@ -7,13 +7,13 @@
  *
  * @usage
  * ```typescript
- * import { getDbInstance } from '@babylon/db'
+ * import { getDbInstance } from '@feed/db'
  * await getDbInstance().createPost({...})
  * const posts = await getDbInstance().getRecentPosts(100)
  * ```
  */
 
-import { generateSnowflakeId } from '@babylon/shared';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   and,
   count,
@@ -648,7 +648,7 @@ class DatabaseService {
   /**
    * Upsert organization state (dynamic data only).
    * For static organization data (name, description, type, etc.),
-   * use StaticDataRegistry from @babylon/engine.
+   * use StaticDataRegistry from @feed/engine.
    *
    * @param id - Organization ID
    * @param currentPrice - Current price value
@@ -956,7 +956,7 @@ class DatabaseService {
 
   // ========== ACTOR STATE ==========
   // For static actor data (name, description, tier, etc.), use StaticDataRegistry
-  // from @babylon/engine. This table only stores dynamic runtime state.
+  // from @feed/engine. This table only stores dynamic runtime state.
 
   /**
    * Upsert actor state: create if it doesn't exist, update if it does.

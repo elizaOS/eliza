@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 
 const PLAYWRIGHT_DEV_USERNAME = 'synpress-dev-trader';
 const PLAYWRIGHT_DEV_DISPLAY_NAME = 'Synpress Dev Trader';
@@ -21,7 +21,7 @@ function createPlaywrightTestPrivyToken(userId: string): string {
 
 function deriveSecret(seed: string, purpose: string): string {
   const hash = createHash('sha256')
-    .update(`babylon-dev:${seed}:${purpose}`)
+    .update(`feed-dev:${seed}:${purpose}`)
     .digest('hex');
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }

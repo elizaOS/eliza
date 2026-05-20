@@ -219,8 +219,8 @@ async function main(): Promise<void> {
     throw new Error('No eligible autonomous agents found');
   }
 
-  const dbMod = await import('@babylon/db');
-  const agentsMod = await import('@babylon/agents');
+  const dbMod = await import('@feed/db');
+  const agentsMod = await import('@feed/agents');
 
   const summaries: CollectedTrajectorySummary[] = [];
 

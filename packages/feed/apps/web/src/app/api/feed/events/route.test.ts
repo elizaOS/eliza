@@ -9,7 +9,7 @@ const checkRateLimitAsyncMock = mock(() =>
   Promise.resolve({ allowed: true, retryAfter: 0 })
 );
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   addPublicReadHeaders: () => {},
   checkRateLimitAsync: checkRateLimitAsyncMock,
   rateLimitError: (retryAfter: number) =>
@@ -57,14 +57,14 @@ mock.module('@babylon/api', () => ({
     handler,
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     insert: insertMock,
   },
   feedEvents: { _table: 'FeedEvent' },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: generateSnowflakeIdMock,
 }));
 

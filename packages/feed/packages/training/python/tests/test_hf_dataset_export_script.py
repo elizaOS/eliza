@@ -81,7 +81,7 @@ def make_llm_trade_step(
             {
                 "purpose": "action",
                 "model": "qwen/test",
-                "systemPrompt": "You are a Babylon trust agent. Output the next action in a structured way.",
+                "systemPrompt": "You are a Feed trust agent. Output the next action in a structured way.",
                 "userPrompt": (
                     f"You are testing market {market_id}.\n"
                     f"Step {index + 1}: decide the next trade using the live market context."

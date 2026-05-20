@@ -32,7 +32,7 @@ import {
   type User,
   users,
   withTransaction,
-} from '@babylon/db';
+} from '@feed/db';
 import { logger } from '../shared/logger';
 
 /** Constants for Agents */

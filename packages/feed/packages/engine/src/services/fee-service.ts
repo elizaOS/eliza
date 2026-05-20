@@ -23,8 +23,8 @@ import {
   tradingFees,
   users,
   withTransaction,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { SQL } from 'drizzle-orm';
 import { FEE_CONFIG, type FeeType } from '../config/fees';
 import { FeeRedistributionService } from './fee-redistribution-service';

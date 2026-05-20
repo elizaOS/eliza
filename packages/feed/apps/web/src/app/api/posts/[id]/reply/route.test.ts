@@ -6,7 +6,7 @@ const mockEnsureEngineServices = mock();
 const mockCreateCommentPOST = mock();
 const mockParsePostId = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticate: mockAuthenticate,
   BusinessLogicError: class BusinessLogicError extends Error {},
   ensureUserForAuth: mock(),
@@ -21,7 +21,7 @@ mock.module('@babylon/api', () => ({
   checkProgress: async () => ({ completed: true }),
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   comments: {},
   db: {},
   eq: mock(),
@@ -29,7 +29,7 @@ mock.module('@babylon/db', () => ({
   users: {},
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   FollowingMechanics: {},
   GroupChatService: {},
   MessageQualityChecker: {},
@@ -37,7 +37,7 @@ mock.module('@babylon/engine', () => ({
   ReplyRateLimiter: {},
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mock(),
   logger: {
     info: mock(),

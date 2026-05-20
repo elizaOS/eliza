@@ -95,23 +95,23 @@
  * });
  * ```
  *
- * @see {@link babylon train} CLI benchmark runner
+ * @see {@link feed train} CLI benchmark runner
  * @see {@link /src/lib/benchmark/SimulationEngine.ts} Simulation engine
  * @see {@link /src/lib/agents/autonomous/AutonomousCoordinator.ts} Autonomous coordinator
  */
 
-import { AutonomousCoordinator, agentRuntimeManager } from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { db, type JsonValue } from '@babylon/db';
-import { logger } from '@babylon/shared';
-import type { BenchmarkGameSnapshot } from '@babylon/training';
+import { AutonomousCoordinator, agentRuntimeManager } from '@feed/agents';
+import { authenticateUser, withErrorHandling } from '@feed/api';
+import { db, type JsonValue } from '@feed/db';
+import { logger } from '@feed/shared';
+import type { BenchmarkGameSnapshot } from '@feed/training';
 import {
   MetricsVisualizer,
   SimulationA2AInterface,
   type SimulationConfig,
   SimulationEngine,
   type SimulationResult,
-} from '@babylon/training';
+} from '@feed/training';
 import { promises as fs } from 'fs';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

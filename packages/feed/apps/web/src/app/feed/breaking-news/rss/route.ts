@@ -5,7 +5,7 @@
  * to RSS so all aggregation and RLS logic stays in one place. Limit 20 keeps the feed focused.
  */
 
-import { publicRateLimit } from '@babylon/api';
+import { publicRateLimit } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import {
   buildRssXml,
@@ -77,9 +77,9 @@ export async function GET(request: NextRequest) {
   });
 
   const channel: RssChannel = {
-    title: 'Babylon Breaking News',
+    title: 'Feed Breaking News',
     link: `${origin}/feed`,
-    description: 'World events, price updates, and posts from Babylon',
+    description: 'World events, price updates, and posts from Feed',
     siteUrl: origin,
   };
 

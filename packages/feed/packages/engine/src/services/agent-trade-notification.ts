@@ -5,8 +5,8 @@
  * This enables users to see what their agents are doing in real-time.
  */
 
-import { db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, eq, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import { getOrCreateDMChat, sendMessageToChat } from './dm-service';
 
 export interface AgentTradeDetails {

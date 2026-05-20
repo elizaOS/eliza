@@ -18,7 +18,7 @@
  */
 'use client';
 
-import { cn, formatDateTime, type JsonValue } from '@babylon/shared';
+import { cn, formatDateTime, type JsonValue } from '@feed/shared';
 import { AlertCircle, DollarSign } from 'lucide-react';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';

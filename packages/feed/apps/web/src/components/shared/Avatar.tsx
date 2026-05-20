@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, getFallbackProfileImageUrl, sanitizeId } from '@babylon/shared';
+import { cn, getFallbackProfileImageUrl, sanitizeId } from '@feed/shared';
 import { useEffect, useState } from 'react';
 
 /**

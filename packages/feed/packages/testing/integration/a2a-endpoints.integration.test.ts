@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { AgentType } from '@babylon/agents';
-import { OASFDomainCategories, OASFSkillCategories } from '@babylon/shared';
+import { AgentType } from '@feed/agents';
+import { OASFDomainCategories, OASFSkillCategories } from '@feed/shared';
 
 type DiscoveredAgent = {
   agentId: string;

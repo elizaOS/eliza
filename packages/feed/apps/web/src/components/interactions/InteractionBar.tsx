@@ -1,7 +1,7 @@
 'use client';
 
-import type { InteractionBarProps } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { InteractionBarProps } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { MessageCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { FeedCommentSection } from '@/components/feed/FeedCommentSection';

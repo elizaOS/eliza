@@ -59,9 +59,9 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { gameService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { gameService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

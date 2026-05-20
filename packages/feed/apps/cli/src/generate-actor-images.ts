@@ -63,7 +63,7 @@ import {
   organizationBanner,
   organizationLogo,
   renderPrompt,
-} from '@babylon/engine';
+} from '@feed/engine';
 import { fal } from '@fal-ai/client';
 import { config } from 'dotenv';
 import { access, mkdir, rm, writeFile } from 'fs/promises';

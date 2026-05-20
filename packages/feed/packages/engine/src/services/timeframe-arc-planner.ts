@@ -20,7 +20,7 @@
  * while maintaining the core principle: uncertainty early, clarity late.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { Actor, Organization } from '../types';
 import { shuffleArray } from '../utils/randomization';
 import type { RngFunction } from './narrative-state-service';

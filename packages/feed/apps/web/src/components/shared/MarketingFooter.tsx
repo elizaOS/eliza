@@ -31,13 +31,13 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
           <div className="flex items-center gap-3">
             <Image
               src="/assets/logos/logo.svg"
-              alt="Babylon Logo"
+              alt="Feed Logo"
               width={40}
               height={40}
               className="h-10 w-10"
             />
             <span className="font-bold text-foreground text-xl tracking-tight">
-              BABYLON
+              FEED
             </span>
           </div>
 
@@ -104,7 +104,7 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
 
           <div className="w-full border-primary/10 border-t pt-4">
             <div className="text-center text-muted-foreground/70 text-xs">
-              © {currentYear} Babylon. All rights reserved.
+              © {currentYear} Feed. All rights reserved.
             </div>
           </div>
         </div>
@@ -115,13 +115,13 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
               <div className="mb-3 flex items-center gap-3 sm:mb-4">
                 <Image
                   src="/assets/logos/logo.svg"
-                  alt="Babylon Logo"
+                  alt="Feed Logo"
                   width={40}
                   height={40}
                   className="h-10 w-10 shrink-0 sm:h-12 sm:w-12"
                 />
                 <span className="font-bold text-foreground text-xl tracking-tight sm:text-2xl">
-                  Babylon.Market
+                  Feed.Market
                 </span>
               </div>
               <p className="mb-3 max-w-md text-muted-foreground text-sm leading-relaxed sm:mb-4 sm:text-base">
@@ -213,7 +213,7 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
 
           <div className="flex flex-col items-center justify-center gap-3 border-primary/10 border-t pt-4 text-muted-foreground/70 text-xs sm:flex-row sm:pt-6 sm:text-sm">
             <div className="text-center">
-              © {currentYear} Babylon. All rights reserved.
+              © {currentYear} Feed. All rights reserved.
             </div>
           </div>
         </div>

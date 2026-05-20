@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, logger } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, logger } from '@feed/shared';
 import type {
   AreaSeriesOptions,
   ChartOptions,
@@ -414,7 +414,7 @@ export function formatChartTime(timestamp: number): Time {
  * Format price for display.
  */
 export function formatChartPrice(value: number, includeSymbol = false): string {
-  const prefix = includeSymbol ? BABYLON_POINTS_SYMBOL : '';
+  const prefix = includeSymbol ? FEED_POINTS_SYMBOL : '';
 
   if (value === 0) return `${prefix}0`;
   if (value >= 1_000_000_000)

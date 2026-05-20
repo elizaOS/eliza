@@ -13,7 +13,7 @@ if [ ! -f ".staging-cookies.txt" ]; then
 fi
 
 COOKIES=$(cat .staging-cookies.txt)
-BASE_URL="https://staging.babylon.market"
+BASE_URL="https://staging.feed.market"
 
 # Array of known user-controlled agent IDs (update with actual IDs)
 # To find agents with closed positions, query:

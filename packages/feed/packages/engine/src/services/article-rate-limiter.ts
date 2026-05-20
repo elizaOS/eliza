@@ -8,8 +8,8 @@
  * @module services/article-rate-limiter
  */
 
-import { and, db, eq, gte, isNull, posts, sql } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { and, db, eq, gte, isNull, posts, sql } from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Configuration for article rate limiting

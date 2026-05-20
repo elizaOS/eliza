@@ -9,17 +9,17 @@ import {
 import {
   TradingBalanceTransferService,
   TradingPerformanceService,
-} from '@babylon/api';
-import { balanceTransactions, db, eq, inArray, sql, users } from '@babylon/db';
+} from '@feed/api';
+import { balanceTransactions, db, eq, inArray, sql, users } from '@feed/db';
 import {
   calculatePortfolioBreakdown,
   calculatePortfolioPnL,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   generateSnowflakeId,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 setDefaultTimeout(30000);
 
@@ -246,7 +246,7 @@ describe('TradingBalanceTransferService - Integration', () => {
     expect(result).toEqual({
       success: false,
       errorCode: 'RECIPIENT_NOT_ALLOWED',
-      error: 'Recipient must be a Babylon user, not an actor or agent',
+      error: 'Recipient must be a Feed user, not an actor or agent',
     });
   });
 });

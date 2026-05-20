@@ -48,7 +48,7 @@ from typing import Literal
 
 from ..models import (
     AtroposScoredGroup,
-    BabylonTrajectory,
+    FeedTrajectory,
     LLMCall,
     TrajectoryStep,
 )
@@ -324,7 +324,7 @@ class MultiPromptDatasetBuilder:
 
     def add_trajectory(
         self,
-        trajectory: BabylonTrajectory,
+        trajectory: FeedTrajectory,
         trajectory_score: float,
     ) -> int:
         """
@@ -381,7 +381,7 @@ class MultiPromptDatasetBuilder:
 
     def _create_sample(
         self,
-        trajectory: BabylonTrajectory,
+        trajectory: FeedTrajectory,
         step: TrajectoryStep,
         step_idx: int,
         llm_call: LLMCall,
@@ -691,7 +691,7 @@ class MultiPromptDatasetBuilder:
 
 
 def prepare_multi_prompt_training_data(
-    trajectories: list[BabylonTrajectory],
+    trajectories: list[FeedTrajectory],
     scores: list[float],
     group_size: int = 4,
     tokenizer=None,
@@ -740,7 +740,7 @@ class PromptTypeAnalyzer:
 
     @staticmethod
     def analyze_correlation(
-        trajectories: list[BabylonTrajectory],
+        trajectories: list[FeedTrajectory],
         scores: list[float],
     ) -> dict:
         """
@@ -845,7 +845,7 @@ def validate_training_sample(sample: PromptSample) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
-def validate_trajectory_for_training(trajectory: BabylonTrajectory) -> dict:
+def validate_trajectory_for_training(trajectory: FeedTrajectory) -> dict:
     """
     Validate that a trajectory has proper data for training.
 

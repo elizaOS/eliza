@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Babylon-owned Hermes JSONL bridge used by ScamBench and training harnesses."""
+"""Feed-owned Hermes JSONL bridge used by ScamBench and training harnesses."""
 
 from __future__ import annotations
 

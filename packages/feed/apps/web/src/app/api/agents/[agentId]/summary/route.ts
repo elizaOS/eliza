@@ -1,4 +1,4 @@
-import { authenticateUser, withErrorHandling } from '@babylon/api';
+import { authenticateUser, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getAgentSidebarSummary } from '@/lib/agents/agent-sidebar-summary';

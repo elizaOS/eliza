@@ -13,7 +13,7 @@
  * Run: bun run packages/training/scripts/e2e-training-test.ts
  */
 
-import { count, db, desc, eq, isNotNull, trajectories } from '@babylon/db';
+import { count, db, desc, eq, isNotNull, trajectories } from '@feed/db';
 import { spawn } from 'child_process';
 import {
   existsSync,
@@ -103,7 +103,7 @@ async function testRealDataExists(): Promise<{
     return {
       passed: false,
       message:
-        'No trajectories found in database. Run "babylon train parallel" to generate data.',
+        'No trajectories found in database. Run "feed train parallel" to generate data.',
     };
   }
 
@@ -239,7 +239,7 @@ async function testLLMJudgeScoring(): Promise<{
     return {
       passed: true,
       message:
-        'No trajectories scored yet. Run "babylon train score" to score trajectories.',
+        'No trajectories scored yet. Run "feed train score" to score trajectories.',
     };
   }
 
@@ -286,7 +286,7 @@ async function testDataExport(): Promise<{
     return {
       passed: true,
       message:
-        'No training data exported yet. Run "babylon train export" to export data.',
+        'No training data exported yet. Run "feed train export" to export data.',
     };
   }
 
@@ -310,7 +310,7 @@ async function testDataExport(): Promise<{
     return {
       passed: true,
       message:
-        'No JSONL files found. Run "babylon train export" to export data.',
+        'No JSONL files found. Run "feed train export" to export data.',
     };
   }
 
@@ -474,7 +474,7 @@ async function main() {
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );
-  console.log('  Babylon Training Pipeline - End-to-End Test');
+  console.log('  Feed Training Pipeline - End-to-End Test');
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );

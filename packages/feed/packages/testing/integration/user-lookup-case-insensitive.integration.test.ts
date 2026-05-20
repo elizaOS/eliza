@@ -13,9 +13,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import {
   findUserByIdentifier,
   findUserByIdentifierWithSelect,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Test user IDs that we'll clean up
 const testUserIds: string[] = [];

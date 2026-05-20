@@ -51,7 +51,7 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 import {
   asSystem,
   chatParticipants,
@@ -60,8 +60,8 @@ import {
   desc,
   inArray,
   messages,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

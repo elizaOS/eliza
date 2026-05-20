@@ -67,13 +67,13 @@ const mockGenerateTagsFromPost = mock(() => Promise.resolve(['tag1', 'tag2']));
 const mockStoreTagsForPost = mock(() => Promise.resolve());
 
 // Set up all mocks before importing the module
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   eq: (a: unknown, b: unknown) => [a, b],
   posts: { id: 'id' },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mockGenerateSnowflakeId,
   logger: {
     debug: () => {},

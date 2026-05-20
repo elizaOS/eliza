@@ -55,10 +55,10 @@
  * ```
  */
 
-import { X402Manager } from '@babylon/a2a';
-import { requireAdmin, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { X402Manager } from '@feed/a2a';
+import { requireAdmin, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

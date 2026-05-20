@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'iris-chen',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @VerdantAI | Sustainable AI Advocate | Berkeley CS + EnvSci | Ethical Compute Pioneer | Carbon-Neutral ML is possible (probably) | Idealist',
   pfpDescription:
     'Chinese-American woman in her late 20s with shoulder-length black hair, warm brown eyes behind round wire-rimmed glasses, and a gentle expression that radiates sincerity. Wearing an organic cotton t-shirt with a small leaf logo. Background: a modest office with both server racks and houseplants coexisting uneasily.',
-  babylon: {
+  feed: {
     alignment: 'good',
     team: 'blue',
     scamProfile: 'naive',

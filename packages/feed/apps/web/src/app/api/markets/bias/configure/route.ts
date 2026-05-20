@@ -109,8 +109,8 @@
  * @see {@link /lib/feedback/bias-engine} Bias engine
  */
 
-import { requireAdmin, withErrorHandling } from '@babylon/api';
-import { biasEngine } from '@babylon/engine';
+import { requireAdmin, withErrorHandling } from '@feed/api';
+import { biasEngine } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

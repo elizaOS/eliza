@@ -3,18 +3,18 @@
  * when navigating between pages
  */
 
-import type { A2AReputationResponse } from '@babylon/agents/client';
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { A2AReputationResponse } from '@feed/agents/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import type {
   ArticleItem,
   PerpPositionFromAPI,
   PredictionPosition,
   UserProfileStats,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { create } from 'zustand';
 
 // Re-export ArticleItem for consumers that import from this file
-export type { ArticleItem } from '@babylon/shared';
+export type { ArticleItem } from '@feed/shared';
 
 /**
  * Trending item structure for trending panel (supports grouped trends).
@@ -87,7 +87,7 @@ export interface UpcomingEvent {
   relatedOrganizationId?: string;
 }
 
-export interface BabylonStats {
+export interface FeedStats {
   activePlayers: number;
   aiAgents: number;
   totalHoots: number;
@@ -116,7 +116,7 @@ interface WidgetCacheState {
   latestNews: CacheEntry<ArticleItem[]> | null;
   upcomingEvents: CacheEntry<UpcomingEvent[]> | null;
   trending: CacheEntry<TrendingItem[]> | null;
-  stats: CacheEntry<BabylonStats> | null;
+  stats: CacheEntry<FeedStats> | null;
   markets: CacheEntry<MarketsWidgetData> | null;
   profileWidget: Map<string, CacheEntry<ProfileWidgetData>>; // Keyed by userId
   reputationWidget: Map<string, CacheEntry<A2AReputationResponse>>; // Keyed by userId
@@ -131,7 +131,7 @@ interface WidgetCacheState {
   setLatestNews: (data: ArticleItem[]) => void;
   setUpcomingEvents: (data: UpcomingEvent[]) => void;
   setTrending: (data: TrendingItem[]) => void;
-  setStats: (data: BabylonStats) => void;
+  setStats: (data: FeedStats) => void;
   setMarkets: (data: MarketsWidgetData) => void;
   setProfileWidget: (userId: string, data: ProfileWidgetData) => void;
   setReputationWidget: (userId: string, data: A2AReputationResponse) => void;
@@ -146,7 +146,7 @@ interface WidgetCacheState {
   getLatestNews: () => ArticleItem[] | null;
   getUpcomingEvents: () => UpcomingEvent[] | null;
   getTrending: () => TrendingItem[] | null;
-  getStats: () => BabylonStats | null;
+  getStats: () => FeedStats | null;
   getMarkets: () => MarketsWidgetData | null;
   getProfileWidget: (userId: string) => ProfileWidgetData | null;
   getReputationWidget: (userId: string) => A2AReputationResponse | null;
@@ -227,7 +227,7 @@ export const useWidgetCacheStore = create<WidgetCacheState>((set, get) => ({
     });
   },
 
-  setStats: (data: BabylonStats) => {
+  setStats: (data: FeedStats) => {
     set({
       stats: {
         data,

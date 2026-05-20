@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useCallback, useEffect, useMemo } from 'react';
 import { refreshOwnedPortfolioState } from '@/stores/portfolioRefresh';
 import { isAgentTradeActivityMessage } from './ownedAgentTradeRefresh.shared';

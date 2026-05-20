@@ -33,7 +33,7 @@ ENGINE_DIR="$(dirname "$SCRIPT_DIR")/../engine"
 cd "$(dirname "$SCRIPT_DIR")"
 
 echo "=============================================="
-echo "Babylon Training Data Generator"
+echo "Feed Training Data Generator"
 echo "=============================================="
 echo ""
 echo "Configuration:"

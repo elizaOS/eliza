@@ -5,7 +5,7 @@
  * Environment properties match apps/web/src/lib/posthog/server.ts for consistent filtering.
  */
 
-import { checkProgress } from '@babylon/api';
+import { checkProgress } from '@feed/api';
 import { PostHog } from 'posthog-node';
 
 let client: PostHog | null = null;

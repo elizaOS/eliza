@@ -9,7 +9,7 @@ Kondo gate filters to the most informative experiences.
 With mock bridge (no external services):
     python scripts/run_team_rl.py --mock --ticks 20
 
-With live Babylon bridge:
+With live Feed bridge:
     python scripts/run_team_rl.py --bridge-url http://localhost:3001 --ticks 100
 
 On Nebius H100 (recommended):

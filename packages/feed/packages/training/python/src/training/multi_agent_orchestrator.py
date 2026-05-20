@@ -1,11 +1,11 @@
 """
 Multi-Agent Orchestrator for Distributed Online RL
 
-Launches N ContinuousRLAgents, connects them to a shared Babylon game,
+Launches N ContinuousRLAgents, connects them to a shared Feed game,
 and manages their lifecycle:
 
   - Each agent gets its own model on a separate GPU (or shares one with offloading)
-  - All agents interact with the same Babylon game via SimulationBridge
+  - All agents interact with the same Feed game via SimulationBridge
   - Population-based training: periodically evaluate agents, replace the weakest
     with mutated copies of the strongest (by cumulative delight)
   - Checkpoint sync to shared storage for distributed runs
@@ -93,7 +93,7 @@ class OrchestratorConfig:
 
 
 class MultiAgentOrchestrator:
-    """Manages N agents playing in a shared Babylon game."""
+    """Manages N agents playing in a shared Feed game."""
 
     def __init__(self, config: OrchestratorConfig):
         self.config = config
@@ -157,7 +157,7 @@ class MultiAgentOrchestrator:
             self.agents.append(agent)
             logger.info(f"Agent {agent_id} ({archetype}) ready on {devices[i]}")
 
-        # Connect to the shared Babylon game
+        # Connect to the shared Feed game
         self.bridge = SimulationBridge(
             base_url=self.config.bridge_url,
             timeout=60.0,

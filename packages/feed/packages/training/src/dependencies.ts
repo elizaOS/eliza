@@ -8,7 +8,7 @@
  *
  * Usage:
  * ```typescript
- * import { configureTrainingDependencies } from '@babylon/training';
+ * import { configureTrainingDependencies } from '@feed/training';
  *
  * configureTrainingDependencies({
  *   agentService,
@@ -21,8 +21,8 @@
  * @packageDocumentation
  */
 
-import type { User } from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+import type { User } from '@feed/db';
+import type { JsonValue } from '@feed/shared';
 import type { IAgentRuntime } from '@elizaos/core';
 
 /**

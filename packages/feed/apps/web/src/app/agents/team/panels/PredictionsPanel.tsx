@@ -1,7 +1,7 @@
 'use client';
 
-import type { PredictionMarketData, PredictionsTagData } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { PredictionMarketData, PredictionsTagData } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { CheckCircle, Clock, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PredictionProbabilityChart } from '@/components/markets/PredictionProbabilityChart';

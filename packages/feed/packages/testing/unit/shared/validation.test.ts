@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { ContentValidator } from '@babylon/shared';
+import { ContentValidator } from '@feed/shared';
 
 describe('Content Validator', () => {
   describe('validatePostContent', () => {

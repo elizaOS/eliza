@@ -4,8 +4,8 @@
  */
 
 export const agentCard = {
-  name: 'Babylon Local A2A Server',
-  description: 'Local development A2A server for Babylon agent testing',
+  name: 'Feed Local A2A Server',
+  description: 'Local development A2A server for Feed agent testing',
   url: 'http://localhost:3001',
   version: '0.1.0',
   capabilities: {

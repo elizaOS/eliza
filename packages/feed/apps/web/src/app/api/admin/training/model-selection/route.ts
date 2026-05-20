@@ -43,8 +43,8 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { modelSelectionService } from '@babylon/training';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { modelSelectionService } from '@feed/training';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

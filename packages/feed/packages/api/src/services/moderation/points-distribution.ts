@@ -16,8 +16,8 @@ import {
   pointsTransactions,
   reports,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 /**
  * ReputationService interface for dependency injection.

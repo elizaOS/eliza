@@ -1,14 +1,14 @@
 # Configuration
 
-Config is loaded by [c12](https://github.com/unjs/c12) from a `babylon.config.ts` file in the project root (or `.js`, `.json`, `.mjs`, etc.). c12 handles all the file format detection.
+Config is loaded by [c12](https://github.com/unjs/c12) from a `feed.config.ts` file in the project root (or `.js`, `.json`, `.mjs`, etc.). c12 handles all the file format detection.
 
 ## Config file
 
 ```ts
-// babylon.config.ts
-import { defineBabylonConfig } from '@babylon/sim';
+// feed.config.ts
+import { defineFeedConfig } from '@feed/sim';
 
-export default defineBabylonConfig({
+export default defineFeedConfig({
   systemsDir: './systems',
   budgetMs: 60_000,
   disabledSystems: ['expensive-analytics'],
@@ -19,7 +19,7 @@ export default defineBabylonConfig({
 });
 ```
 
-`defineBabylonConfig()` is an identity function that provides type checking. It does not transform anything.
+`defineFeedConfig()` is an identity function that provides type checking. It does not transform anything.
 
 ## Options
 
@@ -43,9 +43,9 @@ Any environment variable is available in `process.env` inside your config file a
 ## Programmatic loading
 
 ```ts
-import { loadBabylonConfig } from '@babylon/sim';
+import { loadFeedConfig } from '@feed/sim';
 
-const { config, configFile } = await loadBabylonConfig('/path/to/project');
+const { config, configFile } = await loadFeedConfig('/path/to/project');
 console.log(config.budgetMs);
 console.log(configFile); // absolute path to the config file, or undefined
 ```
@@ -53,9 +53,9 @@ console.log(configFile); // absolute path to the config file, or undefined
 ## Watching for changes
 
 ```ts
-import { watchBabylonConfig } from '@babylon/sim';
+import { watchFeedConfig } from '@feed/sim';
 
-const watcher = await watchBabylonConfig('/path/to/project', (newConfig) => {
+const watcher = await watchFeedConfig('/path/to/project', (newConfig) => {
   console.log('Config changed:', newConfig);
 });
 

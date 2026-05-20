@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { evaluateEnv } from '../../../scripts/validate-env';
 
 const baseEnv = {
-  DATABASE_URL: 'postgresql://localhost:5432/babylon',
+  DATABASE_URL: 'postgresql://localhost:5432/feed',
   NEXT_PUBLIC_PRIVY_APP_ID: 'privy-app-id',
   PRIVY_APP_SECRET: 'privy-app-secret',
   CRON_SECRET: 'cron-secret',

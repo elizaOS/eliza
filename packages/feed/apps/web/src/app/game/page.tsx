@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Activity } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { PageContainer } from '@/components/shared/PageContainer';

@@ -1,5 +1,5 @@
 /**
- * Babylon Storage Abstraction Layer
+ * Feed Storage Abstraction Layer
  *
  * Provides database-agnostic storage interfaces with multiple backend support:
  * - PostgreSQL (production)
@@ -8,7 +8,7 @@
  *
  * Usage:
  * ```typescript
- * import { createStorageProvider, getStorageProvider } from '@babylon/core/storage';
+ * import { createStorageProvider, getStorageProvider } from '@feed/core/storage';
  *
  * // Initialize with JSON mode for simulation
  * const provider = await createStorageProvider({ mode: 'json', jsonBasePath: './simulation-data' });

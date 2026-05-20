@@ -46,8 +46,8 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
-import { SignalExtractionService } from '@babylon/engine';
+} from '@feed/api';
+import { SignalExtractionService } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

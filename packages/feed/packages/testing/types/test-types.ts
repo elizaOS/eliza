@@ -4,13 +4,13 @@
  * Production-ready types to replace all 'any' and 'unknown' usage
  */
 
-import type { TrainedModel, TrainingBatch, Trajectory } from '@babylon/db';
+import type { TrainedModel, TrainingBatch, Trajectory } from '@feed/db';
 
 // ============================================================================
 // Actors Data Types
 // ============================================================================
 
-// Note: ActorData, Organization, and ActorsDatabase should be imported directly from @babylon/shared
+// Note: ActorData, Organization, and ActorsDatabase should be imported directly from @feed/shared
 
 // ============================================================================
 // Database Mock Types

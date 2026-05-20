@@ -1,4 +1,4 @@
-import { CHAIN_ID, ValidationError } from '@babylon/shared';
+import { CHAIN_ID, ValidationError } from '@feed/shared';
 
 function parsePositiveInt(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
@@ -7,7 +7,7 @@ function parsePositiveInt(value: string): number | null {
 }
 
 /**
- * Babylon runs the NFT flow on a single chain per environment.
+ * Feed runs the NFT flow on a single chain per environment.
  *
  * Source of truth: `NEXT_PUBLIC_CHAIN_ID` (or `CHAIN_ID` on the server).
  *

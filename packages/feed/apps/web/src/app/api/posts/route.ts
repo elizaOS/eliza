@@ -245,8 +245,8 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { Post } from '@babylon/db';
+} from '@feed/api';
+import type { Post } from '@feed/db';
 import {
   and,
   comments,
@@ -267,15 +267,15 @@ import {
   sql,
   userActorFollows,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   type GeneratedTag,
   generateTagsFromPost,
   handlePlayerMention,
   StaticDataRegistry,
   storeTagsForPost,
-} from '@babylon/engine';
-import { generateSnowflakeId, logger, toISO } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId, logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';

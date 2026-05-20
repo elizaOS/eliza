@@ -9,9 +9,9 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import { agentRegistry } from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
+import { agentRegistry } from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

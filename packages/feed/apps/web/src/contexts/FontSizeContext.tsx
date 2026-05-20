@@ -46,7 +46,7 @@ const FONT_SIZE_PRESETS = {
   large: 1.125, // 18px base
 };
 
-const STORAGE_KEY = 'babylon-font-size';
+const STORAGE_KEY = 'feed-font-size';
 
 /**
  * Font size context provider component.

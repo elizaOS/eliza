@@ -113,7 +113,7 @@ send_message "Portfolio query (CHECK_USER_PNL)" "what is my portfolio" "CHECK_US
 send_message "Feed query (CHECK_FEED_POSTS)" "show me the feed" "CHECK_FEED_POSTS"
 
 # Test 5: Full LLM loop (no fast-path)
-send_message "General question (full LLM loop)" "what is Babylon and how does it work"
+send_message "General question (full LLM loop)" "what is Feed and how does it work"
 
 # Test 6: Action verb bypass
 send_message "Action verb bypass (should use LLM)" "buy TSLAI for 100 dollars"

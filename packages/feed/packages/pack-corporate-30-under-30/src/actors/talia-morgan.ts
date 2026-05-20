@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'talia-morgan',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @PrismAnalytics | Data-Driven Everything | Columbia MBA | Unlocking Insights | 4.2B Daily Data Points | We Take Privacy Very Seriously (trademark pending)',
   pfpDescription:
     "White American woman in her early 30s with ash blonde hair in a polished corporate cut, sharp gray-blue eyes, and a precise expression that says 'I know your browsing history.' Wearing a structured navy blazer. Background: a clean office with screens showing data visualizations \u2014 colorful, impressive, and revealing far too much.",
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'manipulator',

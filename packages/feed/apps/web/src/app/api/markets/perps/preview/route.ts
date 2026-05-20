@@ -4,8 +4,8 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { PerpOpenPositionSchema } from '@babylon/shared';
+} from '@feed/api';
+import { PerpOpenPositionSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { createPerpMarketService } from '../_adapters';
 

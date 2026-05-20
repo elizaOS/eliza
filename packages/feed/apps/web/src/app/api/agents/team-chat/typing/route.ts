@@ -9,15 +9,15 @@
  * This allows other participants (and agents) to see when someone is typing.
  */
 
-import { teamChatService } from '@babylon/agents';
+import { teamChatService } from '@feed/agents';
 import {
   authenticateUser,
   broadcastTypingIndicator,
   checkRateLimitAsync,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

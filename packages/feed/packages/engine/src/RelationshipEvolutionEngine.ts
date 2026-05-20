@@ -20,9 +20,9 @@ import {
   gte,
   npcInteractions,
   or,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
-import type { BabylonLLMClient } from './llm/openai-client';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
+import type { FeedLLMClient } from './llm/openai-client';
 import { StaticDataRegistry } from './services/static-data-registry';
 import { isSimulationMode } from './storage-bridge';
 import type { Actor, ActorRelationship, Organization } from './types/shared';
@@ -49,7 +49,7 @@ export interface Interaction {
 }
 
 export class RelationshipEvolutionEngine {
-  constructor(private llm?: BabylonLLMClient) {}
+  constructor(private llm?: FeedLLMClient) {}
 
   /**
    * Generate initial relationships on first game tick

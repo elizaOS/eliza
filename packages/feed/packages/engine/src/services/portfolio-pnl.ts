@@ -9,13 +9,13 @@ import {
   perpPositions,
   positions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   CANONICAL_AGENT_TRANSFER_TRANSACTION_TYPES,
   CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
   resolveUserIdentifierKind,
   toNumber,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 export interface PortfolioPnLSnapshot {

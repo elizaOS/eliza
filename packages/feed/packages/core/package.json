@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/core",
+  "name": "@feed/core",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon core domain modules (markets, storage, etc.)",
+  "description": "Feed core domain modules (markets, storage, etc.)",
   "main": "./markets/index.ts",
   "types": "./markets/index.ts",
   "exports": {
@@ -57,8 +57,8 @@
     "typecheck": "tsc -b ."
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*",
-    "@babylon/db": "workspace:*"
+    "@feed/shared": "workspace:*",
+    "@feed/db": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

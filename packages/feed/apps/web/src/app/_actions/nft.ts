@@ -4,14 +4,14 @@ import {
   extractPrivyApiDiagnostics,
   type PrivyApiDiagnostics,
   redactJwtLikeTokens,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   type ConfirmResult,
   confirmMint,
   prepareMint,
   reconcileOnChainMint,
-} from '@babylon/api/services/nft-mint-service';
-import { logger } from '@babylon/shared';
+} from '@feed/api/services/nft-mint-service';
+import { logger } from '@feed/shared';
 import type { Hex } from 'viem';
 import { wrapServerActionWithSentry } from '@/lib/sentry/server-actions';
 

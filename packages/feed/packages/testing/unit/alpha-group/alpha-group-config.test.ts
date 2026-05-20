@@ -16,7 +16,7 @@ import {
   DOMAIN_FOCUS_WEIGHTS,
   getFocusWeightsForDomains,
   shouldResetDeclineCount,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('Alpha Group Configuration', () => {
   describe('Default Values', () => {

@@ -1,11 +1,11 @@
 {
-  "name": "@babylon/cli",
+  "name": "@feed/cli",
   "version": "0.2.0",
   "private": true,
-  "description": "Babylon CLI - Unified command-line interface for db, training, models, games, and agents",
+  "description": "Feed CLI - Unified command-line interface for db, training, models, games, and agents",
   "type": "module",
   "bin": {
-    "babylon": "./dist/index.js"
+    "feed": "./dist/index.js"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun",
@@ -28,12 +28,12 @@
     "images:migrate": "bun run src/migrate-images-to-blob.ts"
   },
   "dependencies": {
-    "@babylon/agents": "workspace:*",
-    "@babylon/api": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/engine": "workspace:*",
-    "@babylon/testing": "workspace:*",
-    "@babylon/training": "workspace:*",
+    "@feed/agents": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/testing": "workspace:*",
+    "@feed/training": "workspace:*",
     "@fal-ai/client": "^1.7.2",
     "openai": "^6.8.1",
     "@sentry/bun": "^10.29.0",

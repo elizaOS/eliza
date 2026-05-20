@@ -72,7 +72,7 @@ import {
   notifyGroupChatInvite,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   asSystem,
   chatParticipants,
@@ -81,8 +81,8 @@ import {
   groupMembers,
   groups,
   sql,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -206,7 +206,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return npcGroups;
   });
 
-  const { GROUP_CONFIG } = await import('@babylon/shared');
+  const { GROUP_CONFIG } = await import('@feed/shared');
   if (npcGroupCount >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
     return NextResponse.json(
       {

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Babylon Training Container Entrypoint
+# Feed Training Container Entrypoint
 # 
 # This script runs on container startup to:
 # 1. Validate GPU availability
@@ -10,7 +10,7 @@
 set -e
 
 echo "============================================"
-echo "  Babylon RL Training"
+echo "  Feed RL Training"
 echo "============================================"
 echo ""
 

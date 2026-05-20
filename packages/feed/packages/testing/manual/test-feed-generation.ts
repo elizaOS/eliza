@@ -8,7 +8,7 @@
  * Run: bun packages/testing/manual/test-feed-generation.ts
  */
 
-import { BabylonLLMClient, FeedGenerator } from '@babylon/engine';
+import { FeedLLMClient, FeedGenerator } from '@feed/engine';
 import type {
   Actor,
   ActorRelationship,
@@ -16,7 +16,7 @@ import type {
   FeedPost,
   Organization,
   WorldEvent,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -248,7 +248,7 @@ function createRelationships(_actors: Actor[]): ActorRelationship[] {
 // Output Helpers
 // ============================================================================
 
-const OUTPUT_DIR = '/tmp/babylon-feed-tests';
+const OUTPUT_DIR = '/tmp/feed-feed-tests';
 
 async function ensureOutputDir(): Promise<void> {
   try {
@@ -768,7 +768,7 @@ async function main(): Promise<void> {
 
   // Initialize FeedGenerator with real LLM
   console.log('\n🔌 Initializing FeedGenerator with LLM...');
-  const llm = new BabylonLLMClient();
+  const llm = new FeedLLMClient();
   const feedGenerator = new FeedGenerator(llm);
 
   // Configure generator

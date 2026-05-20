@@ -73,9 +73,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, ne, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, ne, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { trackServerEvent } from '@/lib/posthog/server';

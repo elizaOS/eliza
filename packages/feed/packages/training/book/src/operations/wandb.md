@@ -43,11 +43,11 @@ python scripts/run_training.py --profile 12gb
 
 # Specify project
 python scripts/run_training.py --profile 12gb \
-  --wandb-project babylon-training
+  --wandb-project feed-training
 
 # Specify team and project
 python scripts/run_training.py --profile 12gb \
-  --wandb-project babylon-training \
+  --wandb-project feed-training \
   --wandb-entity your-team
 ```
 
@@ -127,7 +127,7 @@ When training with causal scenarios (price context available):
 
 ### Project View
 
-Navigate to: `https://wandb.ai/your-team/babylon-training`
+Navigate to: `https://wandb.ai/your-team/feed-training`
 
 - **Runs table**: All training runs
 - **Workspace**: Custom metric charts
@@ -186,7 +186,7 @@ parameters:
 wandb sweep sweep.yaml
 
 # Run agent (on each GPU)
-wandb agent your-team/babylon-training/sweep_id
+wandb agent your-team/feed-training/sweep_id
 ```
 
 ## Artifacts
@@ -205,7 +205,7 @@ wandb.log_artifact(artifact)
 ```python
 # In evaluation code
 run = wandb.init()
-artifact = run.use_artifact('your-team/babylon-training/model:latest')
+artifact = run.use_artifact('your-team/feed-training/model:latest')
 artifact_dir = artifact.download()
 ```
 
@@ -284,7 +284,7 @@ train-cloud: db-up db-migrate
         $(if $(WANDB_ENTITY),--wandb-entity $(WANDB_ENTITY),)
 
 # Default project
-WANDB_PROJECT ?= babylon-training
+WANDB_PROJECT ?= feed-training
 WANDB_ENTITY ?=
 ```
 

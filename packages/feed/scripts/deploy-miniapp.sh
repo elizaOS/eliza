@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Babylon Farcaster Mini App Deployment Script
+# Feed Farcaster Mini App Deployment Script
 # Validates, tests, and prepares for deployment
 
 set -e  # Exit on error
 
-echo "🚀 Babylon Farcaster Mini App Deployment Script"
+echo "🚀 Feed Farcaster Mini App Deployment Script"
 echo "================================================"
 echo ""
 
@@ -93,7 +93,7 @@ echo "================================================"
 echo ""
 echo "Next steps:"
 echo "1. Deploy: vercel deploy --prod"
-echo "2. Test: curl https://babylon.market/.well-known/farcaster.json"
+echo "2. Test: curl https://feed.market/.well-known/farcaster.json"
 echo "3. Verify in a Farcaster client (e.g., Warpcast mobile app)"
 echo ""
 echo "🎉 Your Mini App is ready to launch!"

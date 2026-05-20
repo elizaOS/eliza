@@ -44,7 +44,7 @@ describe('trust experiment matrix', () => {
 
     expect(agent.sheet.settings.model).toBe('Qwen/Qwen2.5-0.5B-Instruct');
     expect(agent.sheet.settings.groq.primary).toBe('llama-3.1-8b-instant');
-    expect(agent.sheet.babylon.datasetTags).toContain(
+    expect(agent.sheet.feed.datasetTags).toContain(
       'runtime_model:llama-3.1-8b-instant'
     );
   });

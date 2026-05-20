@@ -7,14 +7,14 @@
     "types": ["bun-types"],
     "baseUrl": ".",
     "paths": {
-      "@babylon/core": ["../core/markets/index.ts"],
-      "@babylon/core/*": ["../core/*"],
-      "@babylon/engine": ["../engine/src/index.ts"],
-      "@babylon/engine/*": ["../engine/src/*"],
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"]
+      "@feed/core": ["../core/markets/index.ts"],
+      "@feed/core/*": ["../core/*"],
+      "@feed/engine": ["../engine/src/index.ts"],
+      "@feed/engine/*": ["../engine/src/*"],
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"]
     }
   },
   "include": ["src/**/*"],

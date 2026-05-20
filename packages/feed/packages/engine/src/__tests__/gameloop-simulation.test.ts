@@ -20,7 +20,7 @@ mock.module('../storage-bridge', () => ({
 }));
 
 // Mock dependencies to avoid DB calls
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {},
   isSimulationMode: () => true,
 }));
@@ -34,7 +34,7 @@ mock.module('../services/wallet-service', () => ({
   },
 }));
 
-mock.module('@babylon/core/markets/perps', () => ({
+mock.module('@feed/core/markets/perps', () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {
     getMarketsSnapshot = mock(() => Promise.resolve([]));

@@ -3,7 +3,7 @@ import {
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { BalanceTransaction } from './model-types';
 
 export const WELCOME_BONUS_BALANCE_DESCRIPTION =

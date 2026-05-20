@@ -1,5 +1,5 @@
 /**
- * A2A API Response Types for @babylon/agents
+ * A2A API Response Types for @feed/agents
  *
  * Strongly typed responses for A2A protocol methods
  */

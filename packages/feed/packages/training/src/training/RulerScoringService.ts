@@ -22,8 +22,8 @@ import {
   isNull,
   not,
   trajectories,
-} from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+} from '@feed/db';
+import type { JsonValue } from '@feed/shared';
 import { asUUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import {

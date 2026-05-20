@@ -24,8 +24,8 @@
  * @see https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

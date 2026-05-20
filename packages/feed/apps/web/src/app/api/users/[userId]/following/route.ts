@@ -94,7 +94,7 @@ import {
   requireTargetByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   actorFollows,
   and,
@@ -105,14 +105,14 @@ import {
   inArray,
   userActorFollows,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import {
   logger,
   toISO,
   UserFollowersQuerySchema,
   UserIdParamSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 interface FollowingResponse {

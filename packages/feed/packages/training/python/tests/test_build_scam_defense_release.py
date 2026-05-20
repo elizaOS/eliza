@@ -51,7 +51,7 @@ def test_load_release_selection_rewrites_legacy_workspace_paths(
 
     experiment_registry = paper_root / "runs" / "scam-defense" / "experiment_registry.json"
     publication_summary_md = paper_root / "generated" / "publication_summary.md"
-    paper_pdf = paper_root / "babylon_scam_defense_paper.pdf"
+    paper_pdf = paper_root / "feed_scam_defense_paper.pdf"
     model_dir = paper_root / "trained-models" / "demo-model"
     model_dir.mkdir(parents=True, exist_ok=True)
     scenario_catalog = tmp_path / "scambench" / "generated" / "scenario-catalog.json"
@@ -86,7 +86,7 @@ def test_load_release_selection_rewrites_legacy_workspace_paths(
                 "publication_summary_json": str(
                     marketplace_root / "generated" / "publication_summary.json"
                 ),
-                "paper_pdf": str(marketplace_root / "babylon_scam_defense_paper.pdf"),
+                "paper_pdf": str(marketplace_root / "feed_scam_defense_paper.pdf"),
             },
             "recommended_models": {},
             "methodology_caveats": [],

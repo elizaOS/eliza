@@ -1,7 +1,7 @@
 /**
  * Model pilot inquiry — POST from /research. Fully public (no Privy/session/API key).
  * Rate limited by client IP only. Not linked in navigation (noindex).
- * Emails babylon@elizalabs.ai (overridable) and the submitter via SendGrid.
+ * Emails feed@elizalabs.ai (overridable) and the submitter via SendGrid.
  */
 
 import {
@@ -12,13 +12,13 @@ import {
   sendModelPilotInquiryEmails,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   MODEL_PILOT_DELIVERABLES,
   MODEL_PILOT_OUTPUTS,
   MODEL_PILOT_REVIEW_LEVELS,
   MODEL_PILOT_SCENARIOS,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

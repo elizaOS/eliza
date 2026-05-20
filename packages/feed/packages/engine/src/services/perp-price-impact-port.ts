@@ -2,7 +2,7 @@ import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   type PriceImpactPort,
-} from '@babylon/core/markets/perps';
+} from '@feed/core/markets/perps';
 import {
   and,
   db,
@@ -11,12 +11,12 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   calculatePriceFromHoldings,
   logger,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { PriceUpdateService } from './price-update-service';
 
 /**

@@ -12,7 +12,7 @@
  * to avoid N+1 query patterns at scale.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 import {
   and,
   comments,
@@ -25,8 +25,8 @@ import {
   reports,
   sql,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
@@ -36,9 +36,9 @@ const ALLOWED_IMAGE_DOMAINS = [
   'picsum.photos',
   'cloudinary.com',
   'res.cloudinary.com',
-  'babylon-storage.s3.amazonaws.com',
+  'feed-storage.s3.amazonaws.com',
   'storage.googleapis.com',
-  'cdn.babylon.market',
+  'cdn.feed.market',
 ];
 
 /**

@@ -1,5 +1,5 @@
 """
-Tinker Client for Babylon Training
+Tinker Client for Feed Training
 
 Replaces local vLLM + PyTorch training with Tinker's cloud API.
 This provides a unified interface for both training and inference.
@@ -121,7 +121,7 @@ class TinkerConfig:
     )
 
     # Weight sync settings
-    checkpoint_name_prefix: str = "babylon"
+    checkpoint_name_prefix: str = "feed"
 
     # Timeout settings
     capabilities_timeout_seconds: int = 30
@@ -192,7 +192,7 @@ class SampleResult:
     finish_reasons: list[str] = field(default_factory=list)
 
 
-class BabylonTinkerClient:
+class FeedTinkerClient:
     """
     Unified Tinker client for training and inference.
 
@@ -203,7 +203,7 @@ class BabylonTinkerClient:
     - Automatic format conversion
 
     Usage:
-        client = BabylonTinkerClient(config)
+        client = FeedTinkerClient(config)
         client.setup()
 
         # Training

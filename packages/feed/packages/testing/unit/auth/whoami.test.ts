@@ -16,9 +16,9 @@ import {
 } from 'bun:test';
 import { NextRequest } from 'next/server';
 
-const _actualApi = await import('@babylon/api');
-const _actualDb = await import('@babylon/db');
-const _actualShared = await import('@babylon/shared');
+const _actualApi = await import('@feed/api');
+const _actualDb = await import('@feed/db');
+const _actualShared = await import('@feed/shared');
 
 // Mock user data (minimal: only id and username)
 const mockUsers = new Map([
@@ -50,21 +50,21 @@ let GET: (request: NextRequest) => Promise<Response>;
 const createMockRequest = (apiKey: string | null): NextRequest => {
   const headers = new Headers();
   if (apiKey) {
-    headers.set('x-babylon-api-key', apiKey);
+    headers.set('x-feed-api-key', apiKey);
   }
   return new NextRequest('http://localhost/api/auth/whoami', { headers });
 };
 
 describe('/api/auth/whoami endpoint', () => {
   beforeAll(async () => {
-    mock.module('@babylon/api', () => ({
+    mock.module('@feed/api', () => ({
       ..._actualApi,
       validateUserApiKey: mockValidateUserApiKey,
       withErrorHandling: (handler: (req: unknown) => Promise<unknown>) =>
         handler,
     }));
 
-    mock.module('@babylon/db', () => ({
+    mock.module('@feed/db', () => ({
       ..._actualDb,
       db: {
         select: (_fields: { id: unknown; username: unknown }) => ({
@@ -88,7 +88,7 @@ describe('/api/auth/whoami endpoint', () => {
       },
     }));
 
-    mock.module('@babylon/shared', () => ({
+    mock.module('@feed/shared', () => ({
       ..._actualShared,
       logger: {
         debug: () => {},
@@ -182,7 +182,7 @@ describe('/api/auth/whoami endpoint', () => {
       expect(mockValidateUserApiKey).not.toHaveBeenCalled();
       expect(response.status).toBe(401);
       expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'X-Babylon-Api-Key header is required' });
+      expect(body).toEqual({ error: 'X-Feed-Api-Key header is required' });
     });
 
     it('should return 401 when API key header is empty string', async () => {
@@ -194,7 +194,7 @@ describe('/api/auth/whoami endpoint', () => {
       expect(mockValidateUserApiKey).not.toHaveBeenCalled();
       expect(response.status).toBe(401);
       expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'X-Babylon-Api-Key header is required' });
+      expect(body).toEqual({ error: 'X-Feed-Api-Key header is required' });
     });
   });
 

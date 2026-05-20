@@ -44,7 +44,7 @@ from typing import Literal, Protocol
 import asyncpg
 
 from ..models import (
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
 )
 from .quality_utils import (
@@ -688,7 +688,7 @@ class FastSimulator:
         self,
         agent_runners: dict[str, AgentRunner],
         num_ticks: int | None = None,
-    ) -> list[BabylonTrajectory]:
+    ) -> list[FeedTrajectory]:
         """
         Generate training data by running agents.
 
@@ -827,7 +827,7 @@ class FastSimulator:
                 self.metrics.avg_accuracy * (self.metrics.total_agents - 1) + accuracy
             ) / self.metrics.total_agents
 
-    async def _save_trajectories(self, trajectories: list[BabylonTrajectory]) -> None:
+    async def _save_trajectories(self, trajectories: list[FeedTrajectory]) -> None:
         """Save trajectories to database"""
         if not self.db_pool:
             return

@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/chroma-e2e",
+  "name": "@feed/chroma-e2e",
   "private": true,
   "type": "module",
   "scripts": {

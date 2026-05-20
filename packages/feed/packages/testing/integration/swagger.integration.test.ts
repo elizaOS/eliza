@@ -38,7 +38,7 @@ describe('Swagger/OpenAPI Documentation', () => {
     expect(spec).toHaveProperty('openapi');
     expect(spec.openapi).toBe('3.0.0');
     expect(spec).toHaveProperty('info');
-    expect(spec.info.title).toBe('Babylon API');
+    expect(spec.info.title).toBe('Feed API');
     expect(spec).toHaveProperty('paths');
     expect(typeof spec.paths).toBe('object');
   }, 30000);

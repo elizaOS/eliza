@@ -15,7 +15,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared/constants/markets';
+} from '@feed/shared/constants/markets';
 import { PredictionPricing } from '../../core/markets/prediction/pricing';
 
 // ---------------------------------------------------------------------------

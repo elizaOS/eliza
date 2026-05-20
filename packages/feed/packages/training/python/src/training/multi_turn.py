@@ -1,7 +1,7 @@
 """
 Multi-Turn Episode Manager for GRPO Training
 
-Integrated into both BabylonRLAIFEnv (offline) and BabylonOnlineEnv (online).
+Integrated into both FeedRLAIFEnv (offline) and FeedOnlineEnv (online).
 For multi-step trajectories (>1 step), shape_trading_rewards() is called to
 apply GAE credit assignment so early good decisions get proper credit.
 

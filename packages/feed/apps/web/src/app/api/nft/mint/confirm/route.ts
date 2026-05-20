@@ -3,8 +3,8 @@ import {
   BadRequestError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { confirmMint } from '@babylon/api/services/nft-mint-service';
+} from '@feed/api';
+import { confirmMint } from '@feed/api/services/nft-mint-service';
 import type { NextRequest } from 'next/server';
 import type { Hex } from 'viem';
 

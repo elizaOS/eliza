@@ -8,12 +8,12 @@
  */
 
 import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@babylon/db';
+import { getRawDrizzle } from '@feed/db';
 import {
   organizations,
   questions,
   timeframedMarkets,
-} from '@babylon/db/schema';
+} from '@feed/db/schema';
 import { and, eq, gte } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------

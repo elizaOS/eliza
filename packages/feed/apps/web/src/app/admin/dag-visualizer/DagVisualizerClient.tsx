@@ -641,7 +641,7 @@ export function DagVisualizerClient() {
             </div>
             <div style={{ fontSize: 13, color: '#64748b' }}>
               Click <strong>Run Tick</strong> to execute a game tick with full
-              tracing, or enable BABYLON_DAG_TRACE=true
+              tracing, or enable FEED_DAG_TRACE=true
             </div>
             <button
               onClick={triggerTick}

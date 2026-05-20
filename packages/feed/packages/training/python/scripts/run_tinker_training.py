@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Babylon Tinker Training Script
+Feed Tinker Training Script
 
 Run GRPO training using Tinker API (cloud-based, no local GPU required).
 
@@ -76,7 +76,7 @@ async def main() -> int:
     )
 
     parser = argparse.ArgumentParser(
-        description="Babylon Tinker Training",
+        description="Feed Tinker Training",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -149,7 +149,7 @@ Examples:
 
     # Import trainer (after environment check)
     from src.training.tinker_trainer import (
-        BabylonTinkerTrainer,
+        FeedTinkerTrainer,
         TinkerTrainingConfig,
     )
 
@@ -167,7 +167,7 @@ Examples:
 
     # Run training
     print("\n" + "=" * 60)
-    print("  BABYLON TINKER TRAINING")
+    print("  FEED TINKER TRAINING")
     print("=" * 60)
     print(f"  Model: {config.base_model}")
     print(f"  Steps: {config.training_steps}")
@@ -176,7 +176,7 @@ Examples:
     print(f"  LoRA rank: {config.lora_rank}")
     print("=" * 60 + "\n")
 
-    trainer = BabylonTinkerTrainer(config)
+    trainer = FeedTinkerTrainer(config)
     result = await trainer.train()
 
     if result.get("success"):

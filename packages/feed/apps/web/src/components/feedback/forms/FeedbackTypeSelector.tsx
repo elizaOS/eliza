@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, type FeedbackType } from '@babylon/shared';
+import { cn, type FeedbackType } from '@feed/shared';
 
 export type { FeedbackType };
 

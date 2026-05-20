@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -30,7 +30,7 @@ export function PrivacyTab() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `babylon-data-export-${Date.now()}.json`;
+    a.download = `feed-data-export-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -83,7 +83,7 @@ export function PrivacyTab() {
         <h3 className="font-semibold">Legal Documents</h3>
         <div className="space-y-2">
           <a
-            href="https://docs.babylon.market/legal/privacy-policy/"
+            href="https://docs.feed.market/legal/privacy-policy/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-primary text-sm hover:underline"
@@ -92,7 +92,7 @@ export function PrivacyTab() {
             Privacy Policy
           </a>
           <a
-            href="https://docs.babylon.market/legal/terms-of-service/"
+            href="https://docs.feed.market/legal/terms-of-service/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-primary text-sm hover:underline"
@@ -225,10 +225,10 @@ export function PrivacyTab() {
           your rights, contact us at:
         </p>
         <a
-          href="mailto:babylon@elizalabs.ai"
+          href="mailto:feed@elizalabs.ai"
           className="text-primary text-sm hover:underline"
         >
-          babylon@elizalabs.ai
+          feed@elizalabs.ai
         </a>
         <p className="text-muted-foreground text-xs">
           We will respond to verified requests within 30 days (45 days for

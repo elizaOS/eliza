@@ -11,9 +11,9 @@ const mockDeliverDigestForUser = mock(async ({ candidate }) => ({
   hadContent: candidate.id === 'a' || candidate.id === 'b',
 }));
 
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
-  ..._actualBabylonApi,
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
+  ..._actualFeedApi,
   getDeploymentEnvironment: () =>
     process.env.VERCEL_ENV === 'production'
       ? 'production'
@@ -81,7 +81,7 @@ describe('notifications-digest cron fan-out', () => {
     ]);
 
     const response = await GET(
-      new NextRequest('https://babylon.market/api/cron/notifications-digest')
+      new NextRequest('https://feed.market/api/cron/notifications-digest')
     );
     const data = await response.json();
 
@@ -119,7 +119,7 @@ describe('notifications-digest cron fan-out', () => {
     ]);
 
     const request = new NextRequest(
-      'https://staging.babylon.market/api/cron/notifications-digest',
+      'https://staging.feed.market/api/cron/notifications-digest',
       {
         headers: {
           'x-cron-relay': 'notifications-digest',

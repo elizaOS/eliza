@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { SimulationAdapter } from '@babylon/agent-harness';
+ * import { SimulationAdapter } from '@feed/agent-harness';
  *
  * const adapter = new SimulationAdapter({
  *   numPredictionMarkets: 5,
@@ -25,7 +25,7 @@
  * ```
  */
 
-import { InMemoryStateStore, type SimulationConfig } from '@babylon/engine';
+import { InMemoryStateStore, type SimulationConfig } from '@feed/engine';
 import type {
   A2AClientInterface,
   AgentInfo,

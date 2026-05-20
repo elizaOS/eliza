@@ -22,7 +22,7 @@ import {
   posts,
   questions as questionsSchema,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 
 // =============================================================================
 // Question Queries

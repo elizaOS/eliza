@@ -1,7 +1,7 @@
 'use client';
 
-import type { PerpMarketData, PerpsTagData } from '@babylon/shared';
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import type { PerpMarketData, PerpsTagData } from '@feed/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PerpPriceChart } from '@/components/markets/PerpPriceChart';
@@ -121,7 +121,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
         <div className="mb-4 rounded-lg bg-muted/50 p-4">
           <div className="text-muted-foreground text-xs">Current Price</div>
           <div className="font-bold text-3xl">
-            {BABYLON_POINTS_SYMBOL}
+            {FEED_POINTS_SYMBOL}
             {displayPrice.toLocaleString()}
           </div>
         </div>
@@ -151,7 +151,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
             <div className="rounded-lg bg-muted/30 p-3">
               <div className="text-muted-foreground text-xs">24h Volume</div>
               <div className="font-semibold text-sm">
-                {BABYLON_POINTS_SYMBOL}
+                {FEED_POINTS_SYMBOL}
                 {(market.volume24h / 1000).toFixed(1)}K
               </div>
             </div>
@@ -160,7 +160,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
             <div className="rounded-lg bg-muted/30 p-3">
               <div className="text-muted-foreground text-xs">Open Interest</div>
               <div className="font-semibold text-sm">
-                {BABYLON_POINTS_SYMBOL}
+                {FEED_POINTS_SYMBOL}
                 {(market.openInterest / 1000).toFixed(1)}K
               </div>
             </div>
@@ -265,13 +265,13 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
               )}
               <div className="mt-2 flex items-baseline justify-between">
                 <span className="font-bold text-lg">
-                  {BABYLON_POINTS_SYMBOL}
+                  {FEED_POINTS_SYMBOL}
                   {market.currentPrice.toLocaleString()}
                 </span>
                 <span className="text-muted-foreground text-xs">
                   {market.volume24h != null && market.volume24h > 0 ? (
                     <>
-                      Vol: {BABYLON_POINTS_SYMBOL}
+                      Vol: {FEED_POINTS_SYMBOL}
                       {(market.volume24h / 1000).toFixed(1)}K
                     </>
                   ) : (

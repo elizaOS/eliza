@@ -9,11 +9,11 @@ import {
   type Question,
   sql,
   worldEvents,
-} from '@babylon/db';
-import { arcEventCoverage } from '@babylon/db/schema';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { arcEventCoverage } from '@feed/db/schema';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { ArticleGenerator } from '../ArticleGenerator';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import type { ArcEventStatus } from '../NewsArticlePacingEngine';
 import { toDateString, toSafeDayNumber } from '../utils/date-utils';
 import { secureRandom, weightedPick } from '../utils/entropy';
@@ -264,7 +264,7 @@ export async function generateEvents(
   questions: QuestionForEvent[],
   timestamp: Date,
   currentDay?: number,
-  llmClient?: BabylonLLMClient
+  llmClient?: FeedLLMClient
 ): Promise<number> {
   if (questions.length === 0) return 0;
 
@@ -550,7 +550,7 @@ export async function generateArticlesForArcEvent(
   arcEventId: string,
   eventStatus: ArcEventStatus,
   question: QuestionForEvent,
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   timestamp: Date,
   dayNumber?: number,
   options?: { skipRateLimit?: boolean }
@@ -840,7 +840,7 @@ export async function maybeGenerateBreakingArticle(
   eventId: string,
   eventType: string,
   question: QuestionForEvent,
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   timestamp: Date,
   dayNumber?: number
 ): Promise<number> {

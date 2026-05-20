@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { CharacterMappingService } from '@babylon/engine';
+import { CharacterMappingService } from '@feed/engine';
 
 // Mock database to avoid database dependency
 const mockCharacterMappings = [

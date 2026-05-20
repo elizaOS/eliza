@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import {
   AlertCircle,
   CheckCircle,
@@ -236,7 +236,7 @@ export function TrainingDataTab() {
                   : 'text-red-500'
               )}
             >
-              {BABYLON_POINTS_SYMBOL}
+              {FEED_POINTS_SYMBOL}
               {data.qualityMetrics.avgPnl.toFixed(2)}
             </div>
           </div>
@@ -271,7 +271,7 @@ export function TrainingDataTab() {
                       )}
                     >
                       {window.avgPnl >= 0 ? '+' : ''}
-                      {BABYLON_POINTS_SYMBOL}
+                      {FEED_POINTS_SYMBOL}
                       {window.avgPnl.toFixed(2)}
                     </div>
                     <div className="text-muted-foreground text-xs">avg P&L</div>
@@ -322,7 +322,7 @@ export function TrainingDataTab() {
                         )}
                       >
                         {traj.finalPnL >= 0 ? '+' : ''}
-                        {BABYLON_POINTS_SYMBOL}
+                        {FEED_POINTS_SYMBOL}
                         {traj.finalPnL.toFixed(2)}
                       </div>
                     )}
@@ -393,7 +393,7 @@ export function TrainingDataTab() {
               </p>
               <code className="block rounded bg-black/30 p-3 font-mono text-green-100 text-xs">
                 cd python{'\n'}
-                MODE=single python -m src.training.babylon_trainer
+                MODE=single python -m src.training.feed_trainer
               </code>
             </div>
           </div>

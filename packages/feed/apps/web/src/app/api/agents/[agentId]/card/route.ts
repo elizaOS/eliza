@@ -61,10 +61,10 @@
  * @see {@link https://sdk.ag0.xyz/} Agent0 SDK documentation
  */
 
-import type { AgentCard } from '@babylon/agents';
-import { agentRegistry } from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import type { AgentCard } from '@feed/agents';
+import { agentRegistry } from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

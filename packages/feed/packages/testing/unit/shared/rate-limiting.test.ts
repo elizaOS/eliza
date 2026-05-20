@@ -14,7 +14,7 @@ import {
   getDuplicateStats,
   getRateLimitStatus,
   RATE_LIMIT_CONFIGS,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('Rate Limiting (Shared)', () => {
   beforeEach(async () => {

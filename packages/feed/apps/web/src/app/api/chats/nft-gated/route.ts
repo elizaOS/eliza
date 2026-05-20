@@ -14,7 +14,7 @@ import {
   NFTVerificationService,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   asc,
@@ -26,8 +26,8 @@ import {
   inArray,
   sql,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

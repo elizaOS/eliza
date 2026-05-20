@@ -1,5 +1,5 @@
 """
-Babylon Hybrid Environment for GRPO Training
+Feed Hybrid Environment for GRPO Training
 
 Combines offline (database) and online (simulation bridge) rollouts.
 This provides the best of both worlds:
@@ -25,17 +25,17 @@ from typing import Any
 from atroposlib.envs.base import APIServerConfig, BaseEnv, ScoredDataGroup
 from pydantic import Field
 
-from .online_env import BabylonOnlineEnvConfig, Scenario
+from .online_env import FeedOnlineEnvConfig, Scenario
 from .simulation_bridge import SimulationBridge
 
 logger = logging.getLogger(__name__)
 
 
-class BabylonHybridEnvConfig(BabylonOnlineEnvConfig):
+class FeedHybridEnvConfig(FeedOnlineEnvConfig):
     """
     Configuration for hybrid environment.
 
-    Inherits from BabylonOnlineEnvConfig and adds offline ratio control.
+    Inherits from FeedOnlineEnvConfig and adds offline ratio control.
     """
 
     online_ratio: float = Field(
@@ -43,7 +43,7 @@ class BabylonHybridEnvConfig(BabylonOnlineEnvConfig):
         description="Ratio of rollouts from online simulation (0.0 = all offline, 1.0 = all online)",
     )
 
-    # Database settings for offline mode (same as BabylonEnvConfig)
+    # Database settings for offline mode (same as FeedEnvConfig)
     db_url: str | None = Field(
         default=None, description="PostgreSQL connection URL for offline trajectories"
     )
@@ -55,7 +55,7 @@ class BabylonHybridEnvConfig(BabylonOnlineEnvConfig):
     )
 
 
-class BabylonHybridEnv(BaseEnv):
+class FeedHybridEnv(BaseEnv):
     """
     Hybrid environment that mixes offline and online rollouts.
 
@@ -71,25 +71,25 @@ class BabylonHybridEnv(BaseEnv):
     - Smooth transition from offline to online training
     """
 
-    name = "babylon_hybrid_env"
+    name = "feed_hybrid_env"
 
     def __init__(
         self,
-        config: BabylonHybridEnvConfig,
+        config: FeedHybridEnvConfig,
         server_configs: list[APIServerConfig],
         slurm: bool = False,
         testing: bool = False,
     ):
         super().__init__(config, server_configs, slurm, testing)
-        self.config: BabylonHybridEnvConfig = config
+        self.config: FeedHybridEnvConfig = config
         self._server_configs = server_configs
 
-        # Offline components (from BabylonRLAIFEnv)
+        # Offline components (from FeedRLAIFEnv)
         self.db_pool = None
         self.trajectory_cache: list[dict] = []
         self.current_cache_idx: int = 0
 
-        # Online components (from BabylonOnlineEnv)
+        # Online components (from FeedOnlineEnv)
         self.simulation_bridge: SimulationBridge | None = None
         self.scenario_pool = None
         self._bridge_npc_index: int = 0
@@ -106,9 +106,9 @@ class BabylonHybridEnv(BaseEnv):
         logger.info(f"HybridEnv initialized with online_ratio={self.online_ratio:.0%}")
 
     @classmethod
-    def config_init(cls) -> tuple[BabylonHybridEnvConfig, list[APIServerConfig]]:
+    def config_init(cls) -> tuple[FeedHybridEnvConfig, list[APIServerConfig]]:
         """Create default config"""
-        env_config = BabylonHybridEnvConfig(
+        env_config = FeedHybridEnvConfig(
             tokenizer_name="Qwen/Qwen2.5-3B-Instruct",
             rollout_server_url="http://localhost:8000",
             total_steps=1000,
@@ -537,4 +537,4 @@ class BabylonHybridEnv(BaseEnv):
 
 
 if __name__ == "__main__":
-    BabylonHybridEnv.cli()
+    FeedHybridEnv.cli()

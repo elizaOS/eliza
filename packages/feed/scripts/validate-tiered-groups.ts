@@ -12,15 +12,15 @@
  *   --verbose     Show detailed output
  */
 
-import { and, count, db, eq, groupMembers, groups, users } from '@babylon/db';
+import { and, count, db, eq, groupMembers, groups, users } from '@feed/db';
 import {
   AlphaGroupInviteService,
   GroupChatService,
   StaticDataRegistry,
   TieredGroupService,
   UserAlphaGroupAssignmentService,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 
 interface ValidationResult {
   name: string;

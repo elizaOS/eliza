@@ -5,7 +5,7 @@ const mockCheckRateLimitAsync = mock();
 const mockGetClientIp = mock();
 const mockSendModelPilotInquiryEmails = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   checkRateLimitAsync: mockCheckRateLimitAsync,
   getClientIp: mockGetClientIp,
   RATE_LIMIT_CONFIGS: {
@@ -30,7 +30,7 @@ mock.module('@babylon/api', () => ({
     handler,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   MODEL_PILOT_DELIVERABLES: [
     'Behavioral data',
     'Evaluation report',

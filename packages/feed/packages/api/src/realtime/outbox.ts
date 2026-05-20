@@ -7,8 +7,8 @@ import {
   or,
   realtimeOutboxes,
   sql,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { randomUUID } from 'crypto';
 import { streamAdd } from '../redis';
 import type { RealtimeChannel, RealtimeEventEnvelope } from './index';

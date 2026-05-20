@@ -4,7 +4,7 @@
  * Validates Telegram's initData string using HMAC-SHA256 as specified by:
  * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
  *
- * On success, looks up or creates the Babylon user, ensures a Steward user
+ * On success, looks up or creates the Feed user, ensures a Steward user
  * record exists, and returns a Steward-compatible JWT.
  *
  * Client flow:
@@ -15,9 +15,9 @@
  */
 
 import { createHmac } from 'node:crypto';
-import { withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { SignJWT } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -51,7 +51,7 @@ async function mintToken(
   stewardUserId: string,
   telegramId: string
 ): Promise<string> {
-  return new SignJWT({ userId: stewardUserId, tenantId: 'babylon', telegramId })
+  return new SignJWT({ userId: stewardUserId, tenantId: 'feed', telegramId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuer('steward')
     .setIssuedAt()
@@ -115,7 +115,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   const telegramId = String(telegramUser.id);
 
-  // Look up Babylon user by Telegram ID
+  // Look up Feed user by Telegram ID
   const [existing] = await db
     .select({ id: users.id, stewardId: users.stewardId, email: users.email })
     .from(users)

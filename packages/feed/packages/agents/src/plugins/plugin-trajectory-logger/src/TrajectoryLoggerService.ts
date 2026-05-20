@@ -4,9 +4,9 @@
  * Core service for collecting agent interaction trajectories for RL training
  */
 
-import { db, llmCallLogs, trajectories } from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
-import type { TrajectoryStep as TrainingTrajectoryStep } from '@babylon/training';
+import { db, llmCallLogs, trajectories } from '@feed/db';
+import type { JsonValue } from '@feed/shared';
+import type { TrajectoryStep as TrainingTrajectoryStep } from '@feed/training';
 import { type IAgentRuntime, Service, type UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../../shared/logger';
@@ -619,7 +619,7 @@ export class TrajectoryLoggerService extends Service {
     // closing the gap between data collection and reward computation.
     try {
       const { computeDeterministicRewardJudgment, upsertRewardJudgment } =
-        await import('@babylon/training');
+        await import('@feed/training');
       // The plugin's TrajectoryStep type and the training package's TrajectoryStep
       // are structurally compatible but declared separately. Use unknown bridge.
       const trainingSteps =

@@ -1,13 +1,13 @@
 /**
- * Config loading via c12 — loads babylon.config.ts (or .js/.json/etc.)
+ * Config loading via c12 — loads feed.config.ts (or .js/.json/etc.)
  *
  * Automatically loads .env from the repo root before evaluating the config file,
- * so process.env is populated and available inside babylon.config.ts.
+ * so process.env is populated and available inside feed.config.ts.
  */
 
 import { execSync } from 'node:child_process';
 import { type ConfigWatcher, loadConfig, watchConfig } from 'c12';
-import type { BabylonConfig } from './augments';
+import type { FeedConfig } from './augments';
 import type { TickPhase } from './types';
 
 type IsEmpty<T> = keyof T extends never ? true : false;
@@ -28,7 +28,7 @@ function findRepoRoot(from?: string): string | undefined {
   return _repoRoot;
 }
 
-interface BabylonRuntimeConfigBase {
+interface FeedRuntimeConfigBase {
   /** Directory to scan for systems (relative to rootDir) */
   systemsDir?: string;
 
@@ -60,12 +60,12 @@ interface BabylonRuntimeConfigBase {
   };
 }
 
-export type BabylonRuntimeConfig = BabylonRuntimeConfigBase &
-  (IsEmpty<BabylonConfig> extends true
+export type FeedRuntimeConfig = FeedRuntimeConfigBase &
+  (IsEmpty<FeedConfig> extends true
     ? { [key: string]: unknown }
-    : BabylonConfig & { [key: string]: unknown });
+    : FeedConfig & { [key: string]: unknown });
 
-export const defaultConfig: BabylonRuntimeConfig = {
+export const defaultConfig: FeedRuntimeConfig = {
   systemsDir: './systems',
   budgetMs: 60_000,
   dev: {
@@ -74,14 +74,14 @@ export const defaultConfig: BabylonRuntimeConfig = {
   },
 };
 
-export async function loadBabylonConfig(
+export async function loadFeedConfig(
   cwd?: string
-): Promise<{ config: BabylonRuntimeConfig; configFile?: string }> {
+): Promise<{ config: FeedRuntimeConfig; configFile?: string }> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
-  const resolved = await loadConfig<BabylonRuntimeConfig>({
-    name: 'babylon',
+  const resolved = await loadConfig<FeedRuntimeConfig>({
+    name: 'feed',
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -95,15 +95,15 @@ export async function loadBabylonConfig(
   };
 }
 
-export async function watchBabylonConfig(
+export async function watchFeedConfig(
   cwd?: string,
-  onUpdate?: (config: BabylonRuntimeConfig) => void
-): Promise<ConfigWatcher<BabylonRuntimeConfig>> {
+  onUpdate?: (config: FeedRuntimeConfig) => void
+): Promise<ConfigWatcher<FeedRuntimeConfig>> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
-  const watcher = await watchConfig<BabylonRuntimeConfig>({
-    name: 'babylon',
+  const watcher = await watchConfig<FeedRuntimeConfig>({
+    name: 'feed',
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -119,8 +119,8 @@ export async function watchBabylonConfig(
   return watcher;
 }
 
-export function defineBabylonConfig(
-  config: BabylonRuntimeConfig
-): BabylonRuntimeConfig {
+export function defineFeedConfig(
+  config: FeedRuntimeConfig
+): FeedRuntimeConfig {
   return config;
 }

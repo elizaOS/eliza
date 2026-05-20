@@ -5,8 +5,8 @@ import {
   predictionPriceHistories,
   questions,
   type Transaction,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import type { InferInsertModel } from 'drizzle-orm';
 import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { PredictionPricing } from '../../pricing';

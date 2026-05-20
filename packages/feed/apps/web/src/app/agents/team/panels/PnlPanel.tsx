@@ -1,7 +1,7 @@
 'use client';
 
-import type { PnlTagData } from '@babylon/shared';
-import { cn, formatCompactCurrency } from '@babylon/shared';
+import type { PnlTagData } from '@feed/shared';
+import { cn, formatCompactCurrency } from '@feed/shared';
 import { BarChart3, Target, TrendingDown, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { PanelViewMoreLink } from './PanelViewMoreLink';

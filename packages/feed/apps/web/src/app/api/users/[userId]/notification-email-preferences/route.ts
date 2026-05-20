@@ -13,9 +13,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
@@ -39,7 +39,7 @@ const UpdateNotificationEmailPreferencesSchema = z
     }
   );
 
-// Phase 2: Privy email lookup removed. Email comes from Babylon's users.email
+// Phase 2: Privy email lookup removed. Email comes from Feed's users.email
 // column which is populated by Steward at login time.
 async function getVerifiedEmailFromDb(userId: string): Promise<string | null> {
   const [user] = await db

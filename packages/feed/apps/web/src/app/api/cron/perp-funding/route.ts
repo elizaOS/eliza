@@ -4,10 +4,10 @@ import {
   requireCronAuth,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
-import { FEE_CONFIG, WalletService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+import { FEE_CONFIG, WalletService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const maxDuration = 300;

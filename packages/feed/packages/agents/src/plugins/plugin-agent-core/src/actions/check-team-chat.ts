@@ -4,8 +4,8 @@
  * Useful when agents want to see what other agents have said
  */
 
-import { db, desc, eq, messages, users } from '@babylon/db';
-import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from '@babylon/shared';
+import { db, desc, eq, messages, users } from '@feed/db';
+import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from '@feed/shared';
 import type {
   Action,
   ActionResult,

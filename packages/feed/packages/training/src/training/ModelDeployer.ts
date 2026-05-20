@@ -14,7 +14,7 @@
  * from the trainedModels table. Deploy/rollback update that table.
  */
 
-import { db, eq, trainedModels } from '@babylon/db';
+import { db, eq, trainedModels } from '@feed/db';
 import { logger } from '../utils/logger';
 
 export interface DeploymentOptions {

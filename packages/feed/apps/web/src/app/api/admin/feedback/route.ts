@@ -9,7 +9,7 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   db,
@@ -21,8 +21,8 @@ import {
   lte,
   sql,
   users,
-} from '@babylon/db';
-import { FeedbackTypeSchema, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { FeedbackTypeSchema, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /** Valid feedback types for SQL filter validation */

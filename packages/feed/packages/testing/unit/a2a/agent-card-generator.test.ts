@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { generateAgentCardSync } from '@babylon/a2a';
+import { generateAgentCardSync } from '@feed/a2a';
 
 describe('Agent Card Generator', () => {
   describe('generateAgentCardSync', () => {
@@ -84,14 +84,14 @@ describe('Agent Card Generator', () => {
       };
       const card = generateAgentCardSync(agentWithNoDesc);
 
-      expect(card.description).toBe('Autonomous agent on Babylon platform');
+      expect(card.description).toBe('Autonomous agent on Feed platform');
     });
 
-    it('should have Babylon as provider', () => {
+    it('should have Feed as provider', () => {
       const card = generateAgentCardSync(mockAgent);
 
-      expect(card.provider?.organization).toBe('Babylon');
-      expect(card.provider?.url).toBe('https://babylon.market');
+      expect(card.provider?.organization).toBe('Feed');
+      expect(card.provider?.url).toBe('https://feed.market');
     });
 
     it('should prefer JSONRPC transport', () => {

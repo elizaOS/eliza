@@ -16,14 +16,14 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   getNftCollectionIdFromEnv,
   getOwnedTokenIdsFromIndexer,
   NftIndexerUnavailableError,
-} from '@babylon/api/services/nft-indexer-service';
-import { db, eq, inArray, nftCollection, nftOwnership } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api/services/nft-indexer-service';
+import { db, eq, inArray, nftCollection, nftOwnership } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { isAddress } from 'viem';

@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useCallback } from 'react';
 import { useOutcomeNotification } from '@/components/providers/OutcomeNotificationProvider';
 import { useAuth } from '@/hooks/useAuth';

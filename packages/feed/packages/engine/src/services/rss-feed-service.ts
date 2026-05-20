@@ -7,7 +7,7 @@
  * @module services/rss-feed-service
  */
 
-import type { RSSHeadline } from '@babylon/db';
+import type { RSSHeadline } from '@feed/db';
 import {
   and,
   db,
@@ -19,8 +19,8 @@ import {
   rssFeedSources,
   rssHeadlines,
   sql,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { parseStringPromise } from 'xml2js';
 
 type JsonValue =
@@ -84,7 +84,7 @@ export class RSSFeedService {
 
         const response = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; BabylonBot/1.0)',
+            'User-Agent': 'Mozilla/5.0 (compatible; FeedBot/1.0)',
           },
           signal: AbortSignal.timeout(15000), // 15 second timeout
         });

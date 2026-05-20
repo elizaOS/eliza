@@ -3,11 +3,11 @@
  * This is the "reality" of the game - agents observe and predict, but don't influence.
  */
 
-import type { PerpMarketRecord } from '@babylon/core/markets/perps';
-import { generateSnowflakeId, type WorldEvent } from '@babylon/shared';
+import type { PerpMarketRecord } from '@feed/core/markets/perps';
+import { generateSnowflakeId, type WorldEvent } from '@feed/shared';
 import { EventEmitter } from 'events';
 import { type FeedEvent, FeedGenerator } from './FeedGenerator';
-import type { BabylonLLMClient } from './llm/openai-client';
+import type { FeedLLMClient } from './llm/openai-client';
 import {
   daySummary,
   expertAnalysis,
@@ -105,7 +105,7 @@ export interface WorldConfig {
   verbosity?: 'minimal' | 'normal' | 'detailed';
 }
 
-// WorldEvent is now imported from @babylon/shared (see imports above)
+// WorldEvent is now imported from @feed/shared (see imports above)
 // Re-export for backwards compatibility with files that import from './GameWorld'
 export type { WorldEvent };
 
@@ -268,7 +268,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private trendingTopics?: TrendingTopicsEngine;
   private recentPosts: FeedPost[] = [];
   private tickCount = 0;
-  private llm?: BabylonLLMClient;
+  private llm?: FeedLLMClient;
 
   // Event cooldown state for probability-based generation
   private eventCooldowns: {
@@ -342,7 +342,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
    * const world = new GameWorld({ outcome: false });
    * ```
    */
-  constructor(config: WorldConfig, llm?: BabylonLLMClient) {
+  constructor(config: WorldConfig, llm?: FeedLLMClient) {
     super();
 
     this.config = {

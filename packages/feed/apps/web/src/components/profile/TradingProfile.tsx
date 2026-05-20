@@ -1,7 +1,7 @@
 'use client';
 
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
-import { cn, formatCompactCurrency } from '@babylon/shared';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
+import { cn, formatCompactCurrency } from '@feed/shared';
 import {
   Activity,
   AlertCircle,

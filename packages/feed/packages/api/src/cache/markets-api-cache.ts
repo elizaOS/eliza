@@ -3,7 +3,7 @@
  *
  * WHY separate module: keeps route handlers thin; keys/TTLs live next to CACHE_KEYS.
  *
- * WHY in @babylon/api, not in packages/core: Domain packages must stay
+ * WHY in @feed/api, not in packages/core: Domain packages must stay
  * framework-agnostic (no Redis/API imports). Cache is infrastructure;
  * invalidation is wiring that belongs at the boundary (route handlers and
  * web-only adapters call these helpers).

@@ -5,7 +5,7 @@
  * performance and identify bottlenecks before production deployment.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 export interface LoadTestConfig {
   /** Number of concurrent users to simulate */

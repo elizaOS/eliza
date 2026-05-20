@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, getActorProfileUrl, getProfileUrl } from '@babylon/shared';
+import { cn, getActorProfileUrl, getProfileUrl } from '@feed/shared';
 import {
   AlertCircle,
   Ban,
@@ -647,7 +647,7 @@ export function RegistryTab() {
           ERC8004 Registry
         </h2>
         <p className="text-muted-foreground">
-          Browse all registered entities in the Babylon ecosystem
+          Browse all registered entities in the Feed ecosystem
         </p>
       </div>
 

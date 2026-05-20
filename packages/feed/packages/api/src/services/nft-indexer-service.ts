@@ -1,5 +1,5 @@
-import { db, eq, inArray, nftOwnership, users } from '@babylon/db';
-import { ValidationError } from '@babylon/shared';
+import { db, eq, inArray, nftOwnership, users } from '@feed/db';
+import { ValidationError } from '@feed/shared';
 import { getNftChainId } from './nft/nft-chain';
 
 type JsonPrimitive = string | number | boolean | null;

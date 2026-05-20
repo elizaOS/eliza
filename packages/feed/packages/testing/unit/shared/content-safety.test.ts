@@ -5,13 +5,13 @@
 
 import { describe, expect, it, mock } from 'bun:test';
 
-// Restore @babylon/shared and use cache-busting to get a fresh copy.
-// Other test files mock @babylon/shared and override checkUserInput.
+// Restore @feed/shared and use cache-busting to get a fresh copy.
+// Other test files mock @feed/shared and override checkUserInput.
 const _realShared = await import('../../../shared/src/index');
-mock.module('@babylon/shared', () => ({ ..._realShared }));
+mock.module('@feed/shared', () => ({ ..._realShared }));
 const { checkAgentOutput, checkUserInput, sanitizeContent } = (await import(
   `../../../shared/src/utils/content-safety?isolation=${Date.now()}`
-)) as typeof import('@babylon/shared');
+)) as typeof import('@feed/shared');
 
 describe('Content Safety', () => {
   describe('checkUserInput', () => {

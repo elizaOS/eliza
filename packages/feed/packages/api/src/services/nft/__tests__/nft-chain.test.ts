@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CHAIN_ID } from '@babylon/shared';
+import { CHAIN_ID } from '@feed/shared';
 
 async function withEnv<T>(
   env: Record<string, string | undefined>,

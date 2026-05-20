@@ -14,7 +14,7 @@ The pipeline supports three training modes: offline, online, and hybrid.
 
 ```mermaid
 graph LR
-    DB[(PostgreSQL<br/>Historical Data)] --> ENV[BabylonRLAIFEnv]
+    DB[(PostgreSQL<br/>Historical Data)] --> ENV[FeedRLAIFEnv]
     ENV --> TRAINER[GRPO Trainer]
     TRAINER --> MODEL[Trained Model]
 ```
@@ -43,7 +43,7 @@ python scripts/run_training.py --profile 12gb --steps 100
 ### Configuration
 
 ```yaml
-# babylon_atropos.yaml (under env: section)
+# feed_atropos.yaml (under env: section)
 env:
   lookback_hours: 72                  # How far back to query
   min_agents_per_window: 2            # Need 2+ agents for comparison
@@ -55,7 +55,7 @@ env:
 
 ```mermaid
 graph LR
-    BRIDGE[Simulation Bridge<br/>TypeScript] --> |HTTP| ENV[BabylonRLAIFEnv]
+    BRIDGE[Simulation Bridge<br/>TypeScript] --> |HTTP| ENV[FeedRLAIFEnv]
     ENV --> VLLM[vLLM]
     VLLM --> |completion| ENV
     ENV --> |action| BRIDGE

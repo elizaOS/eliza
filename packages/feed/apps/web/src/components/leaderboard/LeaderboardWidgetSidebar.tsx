@@ -6,7 +6,7 @@ import {
   getProfileUrl,
   type LeaderboardMetric,
   type LeaderboardScope,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Bot, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

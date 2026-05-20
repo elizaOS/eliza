@@ -67,7 +67,7 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   asPublic,
@@ -84,9 +84,9 @@ import {
   shares,
   tags,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

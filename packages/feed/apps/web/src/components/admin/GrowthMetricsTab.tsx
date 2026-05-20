@@ -11,7 +11,7 @@
  */
 'use client';
 
-import { cn, formatNumber } from '@babylon/shared';
+import { cn, formatNumber } from '@feed/shared';
 import {
   Activity,
   ArrowDown,

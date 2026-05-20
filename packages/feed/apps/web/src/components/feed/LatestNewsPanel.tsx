@@ -1,6 +1,6 @@
 'use client';
 
-import { type ArticleItem, getTimeAgo, logger } from '@babylon/shared';
+import { type ArticleItem, getTimeAgo, logger } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';

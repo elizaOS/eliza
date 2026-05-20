@@ -7,9 +7,9 @@
  * - Combined and sorted by time
  */
 
-import { agentTrades, db, desc, eq, npcTrades, users } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { getTimeAgo } from '@babylon/shared';
+import { agentTrades, db, desc, eq, npcTrades, users } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { getTimeAgo } from '@feed/shared';
 import type {
   Action,
   ActionResult,

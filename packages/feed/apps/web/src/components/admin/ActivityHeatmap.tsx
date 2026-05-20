@@ -9,7 +9,7 @@
  */
 'use client';
 
-import { cn, formatNumber } from '@babylon/shared';
+import { cn, formatNumber } from '@feed/shared';
 import { Calendar, Clock, RefreshCw } from 'lucide-react';
 import {
   useCallback,

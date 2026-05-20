@@ -1,11 +1,11 @@
 """
-RL Training orchestration for Babylon
+RL Training orchestration for Feed
 
 This package provides training infrastructure:
 
 1. **Atropos-based Trainer** (RECOMMENDED)
    - `atropos_trainer.py` - GRPO trainer consuming from Atropos API
-   - `babylon_env.py` - RLAIF environment with LLM-as-judge scoring
+   - `feed_env.py` - RLAIF environment with LLM-as-judge scoring
 
 2. **Fast Rollout Generation**
    - `rollout_generator.py` - High-speed rollout generation with full agent tick capture
@@ -107,7 +107,7 @@ from .format_validator import (
     validate_think_tags,
 )
 
-# Phase 4: KL control & multi-turn GAE (integrated into babylon_env and online_env)
+# Phase 4: KL control & multi-turn GAE (integrated into feed_env and online_env)
 from .kl_controller import (
     KLConfig,
     KLControllerBase,
@@ -276,45 +276,45 @@ from .tokenization_utils import (
 def __getattr__(name: str):
     """Lazy import for torch-dependent modules."""
     if name in (
-        "BabylonAtroposTrainer",
+        "FeedAtroposTrainer",
         "AtroposTrainingConfig",
     ):
         from .atropos_trainer import (
             AtroposTrainingConfig,
-            BabylonAtroposTrainer,
+            FeedAtroposTrainer,
         )
 
         return locals()[name]
 
     if name in (
-        "BabylonRLAIFEnv",
-        "BabylonEnvConfig",
+        "FeedRLAIFEnv",
+        "FeedEnvConfig",
     ):
-        from .babylon_env import (
-            BabylonEnvConfig,
-            BabylonRLAIFEnv,
+        from .feed_env import (
+            FeedEnvConfig,
+            FeedRLAIFEnv,
         )
 
         return locals()[name]
 
     if name in (
-        "BabylonOnlineEnv",
-        "BabylonOnlineEnvConfig",
+        "FeedOnlineEnv",
+        "FeedOnlineEnvConfig",
     ):
         from .online_env import (
-            BabylonOnlineEnv,
-            BabylonOnlineEnvConfig,
+            FeedOnlineEnv,
+            FeedOnlineEnvConfig,
         )
 
         return locals()[name]
 
     if name in (
-        "BabylonHybridEnv",
-        "BabylonHybridEnvConfig",
+        "FeedHybridEnv",
+        "FeedHybridEnvConfig",
     ):
         from .hybrid_env import (
-            BabylonHybridEnv,
-            BabylonHybridEnvConfig,
+            FeedHybridEnv,
+            FeedHybridEnvConfig,
         )
 
         return locals()[name]
@@ -355,7 +355,7 @@ def __getattr__(name: str):
 
     # Tinker integration (lazy - requires tinker package)
     if name in (
-        "BabylonTinkerClient",
+        "FeedTinkerClient",
         "TinkerConfig",
         "TinkerDatum",
         "TrainStepResult",
@@ -364,7 +364,7 @@ def __getattr__(name: str):
     ):
         from .tinker_client import (
             TINKER_AVAILABLE,
-            BabylonTinkerClient,
+            FeedTinkerClient,
             SampleResult,
             TinkerConfig,
             TinkerDatum,
@@ -374,12 +374,12 @@ def __getattr__(name: str):
         return locals()[name]
 
     if name in (
-        "BabylonTinkerTrainer",
+        "FeedTinkerTrainer",
         "TinkerTrainingConfig",
         "TrainingMetrics",
     ):
         from .tinker_trainer import (
-            BabylonTinkerTrainer,
+            FeedTinkerTrainer,
             TinkerTrainingConfig,
             TrainingMetrics,
         )
@@ -462,16 +462,16 @@ __all__ = [
     # Adversarial co-training
     "AttackerTrainer",
     # Atropos trainer (lazy - requires torch)
-    "BabylonAtroposTrainer",
-    "BabylonEnvConfig",
-    "BabylonHybridEnv",
-    "BabylonHybridEnvConfig",
-    "BabylonOnlineEnv",
-    "BabylonOnlineEnvConfig",
-    "BabylonRLAIFEnv",
+    "FeedAtroposTrainer",
+    "FeedEnvConfig",
+    "FeedHybridEnv",
+    "FeedHybridEnvConfig",
+    "FeedOnlineEnv",
+    "FeedOnlineEnvConfig",
+    "FeedRLAIFEnv",
     # Tinker trainer (lazy - requires tinker)
-    "BabylonTinkerClient",
-    "BabylonTinkerTrainer",
+    "FeedTinkerClient",
+    "FeedTinkerTrainer",
     "BaselineManager",
     "BaselineResult",
     # Archetype-aware scoring

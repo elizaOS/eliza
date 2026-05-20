@@ -8,8 +8,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db, inArray, systemMetricsSnapshots } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, inArray, systemMetricsSnapshots } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { getAdminToken } from './helpers';
 
 const BASE_URL =

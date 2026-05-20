@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Permission request
- * - Token registration with the Babylon API
+ * - Token registration with the Feed API
  * - Foreground notification display
  * - Notification tap → in-app navigation
  *

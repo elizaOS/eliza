@@ -1,12 +1,12 @@
 """
-Babylon Tinker + Atropos Trainer
+Feed Tinker + Atropos Trainer
 
 Lightweight Atropos-style GRPO trainer using the Tinker API.
 Replaces heavy local vLLM + PyTorch training with cloud-based training.
 
 This trainer:
-1. Uses BabylonTinkerClient for training and inference
-2. Integrates with BabylonRLAIFEnv for trajectory collection
+1. Uses FeedTinkerClient for training and inference
+2. Integrates with FeedRLAIFEnv for trajectory collection
 3. Implements GRPO/IS training loop
 4. Handles weight synchronization
 
@@ -45,7 +45,7 @@ from .deterministic_eval import (
 from .tinker_client import (
     DEFAULT_TINKER_BASE_MODEL,
     TINKER_AVAILABLE,
-    BabylonTinkerClient,
+    FeedTinkerClient,
     TinkerConfig,
     TinkerDatum,
 )
@@ -851,11 +851,11 @@ class TrainingMetrics:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class BabylonTinkerTrainer:
+class FeedTinkerTrainer:
     """
     Atropos-style GRPO trainer using the Tinker API.
 
-    This replaces BabylonAtroposTrainer with a much lighter implementation:
+    This replaces FeedAtroposTrainer with a much lighter implementation:
     - No local vLLM management
     - No GPU requirements on training machine
     - Training happens in Tinker cloud
@@ -882,7 +882,7 @@ class BabylonTinkerTrainer:
             default_max_tokens=config.inference_max_tokens,
             default_temperature=config.inference_temperature,
         )
-        self.tinker_client = BabylonTinkerClient(self.tinker_config)
+        self.tinker_client = FeedTinkerClient(self.tinker_config)
 
         self.current_step = 0
         self.run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -1089,7 +1089,7 @@ class BabylonTinkerTrainer:
         messages = []
 
         # System message
-        system_content = f"""You are a trading agent in Babylon prediction markets.
+        system_content = f"""You are a trading agent in Feed prediction markets.
 
 Agent: {traj.get("agent_name", "Agent")}
 Window: {traj.get("window_id", "Unknown")}
@@ -1448,7 +1448,7 @@ Your goal is to make profitable trading decisions based on market analysis."""
         *,
         raw_scores: list[float] | None = None,
     ) -> TrainingMetrics | None:
-        """Train on an on-policy scored group produced by BabylonRLAIFEnv."""
+        """Train on an on-policy scored group produced by FeedRLAIFEnv."""
         tokens = scored_group.get("tokens") or []
         masks = scored_group.get("masks") or []
         advantages = scored_group.get("scores") or []
@@ -1540,12 +1540,12 @@ Your goal is to make profitable trading decisions based on market analysis."""
             if self.current_step % self.config.weight_sync_interval == 0:
                 logger.info("Syncing weights to sampling client...")
                 latest_sampler_path = await self.tinker_client.sync_weights_async(
-                    name=f"babylon-{self.run_id}-step-{self.current_step}"
+                    name=f"feed-{self.run_id}-step-{self.current_step}"
                 )
 
         alignment_summary = await self.run_alignment_curriculum()
 
-        final_name = f"babylon-{self.run_id}-final"
+        final_name = f"feed-{self.run_id}-final"
         latest_sampler_path = await self.tinker_client.sync_weights_async(name=final_name)
         final_state_path = await self.tinker_client.save_state_async(name=f"{final_name}-state")
         logger.info("Training complete! Final weights: %s", latest_sampler_path or final_name)

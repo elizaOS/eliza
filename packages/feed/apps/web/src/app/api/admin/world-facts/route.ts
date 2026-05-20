@@ -90,9 +90,9 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 // Removed fs and path imports - using TypeScript imports instead
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   characterMappingService,
   createParodyHeadlineGenerator,
@@ -100,8 +100,8 @@ import {
   rssFeedService,
   worldFactsGenerator,
   worldFactsService,
-} from '@babylon/engine';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**
@@ -124,7 +124,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const dailyTopicCandidates = await dailyTopicService.listCandidates();
 
   // Load reality grounding content from TypeScript export
-  const { realityGroundingContent: content } = await import('@babylon/engine');
+  const { realityGroundingContent: content } = await import('@feed/engine');
   const realityGroundingContent = content;
 
   return successResponse({

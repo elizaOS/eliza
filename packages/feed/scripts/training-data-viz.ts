@@ -23,7 +23,7 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 
 const { values: args } = parseArgs({
   options: {
@@ -381,7 +381,7 @@ const html = `<!DOCTYPE html>
   </div>
 
   <footer style="margin-top: 40px; padding-top: 10px; border-top: 1px solid #333; color: #666; font-size: 12px;">
-    Generated ${new Date().toISOString()} | Babylon Training Data Quality Tool
+    Generated ${new Date().toISOString()} | Feed Training Data Quality Tool
   </footer>
 </body>
 </html>`;

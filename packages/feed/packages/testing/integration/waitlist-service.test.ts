@@ -16,7 +16,7 @@ import {
   expect,
   it,
 } from 'bun:test';
-import { WaitlistService } from '@babylon/api';
+import { WaitlistService } from '@feed/api';
 import {
   db,
   eq,
@@ -24,8 +24,8 @@ import {
   pointsTransactions,
   referrals,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Skip tests if DATABASE_URL is not set
 const shouldSkip = !process.env.DATABASE_URL;

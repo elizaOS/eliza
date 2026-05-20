@@ -10,7 +10,7 @@ import {
   retryIfRetryable,
   retryWithCondition,
   sleep,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('Retry Utility - isRetryableError', () => {
   test('returns true for fetch network errors', () => {

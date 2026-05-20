@@ -66,7 +66,7 @@ const mockInsert = mock(() => ({ values: mockValues }));
 const mockDb = { insert: mockInsert };
 
 // Mock modules BEFORE importing the service
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   // Drizzle operators
   aliasedTable: (table: unknown) => table,
@@ -131,13 +131,13 @@ mock.module('@babylon/db', () => ({
   nftSnapshot: { userId: 'userId' },
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   UserAlphaGroupAssignmentService: {
     assignDefaultGroups: mockAssignDefaultGroups,
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: mockLoggerInfo,
     warn: mock(),

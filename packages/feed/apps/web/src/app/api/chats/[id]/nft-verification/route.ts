@@ -5,8 +5,8 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser } from '@babylon/db';
+} from '@feed/api';
+import { asUser } from '@feed/db';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(

@@ -10,9 +10,9 @@
  */
 
 import { afterAll, describe, expect, it } from 'bun:test';
-import { TradingBalanceFundingService } from '@babylon/api';
-import { balanceTransactions, db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { TradingBalanceFundingService } from '@feed/api';
+import { balanceTransactions, db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   createChargeRefundedEvent,
   createCheckoutCompletedEvent,
@@ -40,7 +40,7 @@ async function processWebhookEvent(
     paymentIntentId: string
   ) => Promise<string | null>
 ): Promise<{ handled: boolean; action?: string; error?: string }> {
-  // App metadata filter — only process events belonging to this app (babylon).
+  // App metadata filter — only process events belonging to this app (feed).
   // Events without metadata.app are allowed for backward compatibility.
   const eventObject = event.data.object as Record<string, unknown>;
   const appMetadata =
@@ -50,7 +50,7 @@ async function processWebhookEvent(
         ?.metadata as Record<string, string> | undefined
     )?.app;
 
-  if (appMetadata && appMetadata !== 'babylon') {
+  if (appMetadata && appMetadata !== 'feed') {
     return { handled: true, action: 'ignored_other_app' };
   }
 
@@ -623,7 +623,7 @@ describe('Stripe Webhook Handler Integration', () => {
         object: 'event',
         type: 'customer.created',
         created: Date.now(),
-        data: { object: { metadata: { app: 'babylon' } } },
+        data: { object: { metadata: { app: 'feed' } } },
       };
 
       const result = await processWebhookEvent(
@@ -637,11 +637,11 @@ describe('Stripe Webhook Handler Integration', () => {
   });
 
   describe('App Metadata Filtering', () => {
-    describe('Events tagged with babylon should be processed', () => {
-      it('should process checkout.session.completed with app=babylon', async () => {
+    describe('Events tagged with feed should be processed', () => {
+      it('should process checkout.session.completed with app=feed', async () => {
         const userId = await createDbUser();
         const event = createCheckoutCompletedEvent(userId, 10, {
-          app: 'babylon',
+          app: 'feed',
         });
 
         const result = await processWebhookEvent(
@@ -656,7 +656,7 @@ describe('Stripe Webhook Handler Integration', () => {
         expect(balance).toBe(1000);
       });
 
-      it('should process charge.dispute.created with app=babylon', async () => {
+      it('should process charge.dispute.created with app=feed', async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_filter_dispute_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -671,7 +671,7 @@ describe('Stripe Webhook Handler Integration', () => {
         );
 
         const event = createDisputeCreatedEvent(paymentIntentId, 50, {
-          app: 'babylon',
+          app: 'feed',
         });
 
         const result = await processWebhookEvent(
@@ -683,13 +683,13 @@ describe('Stripe Webhook Handler Integration', () => {
         expect(result.action).toBe('points_deducted_dispute');
       });
 
-      it('should process charge.dispute.closed (won) with app=babylon', async () => {
+      it('should process charge.dispute.closed (won) with app=feed', async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_filter_won_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeWonEvent(paymentIntentId, 25, {
-          app: 'babylon',
+          app: 'feed',
         });
 
         const result = await processWebhookEvent(
@@ -701,13 +701,13 @@ describe('Stripe Webhook Handler Integration', () => {
         expect(result.action).toBe('points_recredited_dispute_won');
       });
 
-      it('should process charge.dispute.closed (lost) with app=babylon', async () => {
+      it('should process charge.dispute.closed (lost) with app=feed', async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_filter_lost_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeLostEvent(paymentIntentId, 25, {
-          app: 'babylon',
+          app: 'feed',
         });
 
         const result = await processWebhookEvent(
@@ -719,7 +719,7 @@ describe('Stripe Webhook Handler Integration', () => {
         expect(result.action).toBe('dispute_lost_logged');
       });
 
-      it('should process charge.refunded with app=babylon', async () => {
+      it('should process charge.refunded with app=feed', async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_filter_refund_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -733,7 +733,7 @@ describe('Stripe Webhook Handler Integration', () => {
         );
 
         const event = createChargeRefundedEvent(paymentIntentId, 30, 30, {
-          app: 'babylon',
+          app: 'feed',
         });
 
         const result = await processWebhookEvent(
@@ -949,7 +949,7 @@ describe('Stripe Webhook Handler Integration', () => {
         expect(result.action).toBe('ignored_other_app');
       });
 
-      it('should allow subscription_details with app=babylon', async () => {
+      it('should allow subscription_details with app=feed', async () => {
         const event: MockStripeEvent = {
           id: `evt_sub_bab_${Date.now()}`,
           object: 'event',
@@ -959,7 +959,7 @@ describe('Stripe Webhook Handler Integration', () => {
             object: {
               metadata: {},
               subscription_details: {
-                metadata: { app: 'babylon' },
+                metadata: { app: 'feed' },
               },
             },
           },

@@ -27,7 +27,7 @@
  */
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Target, TrendingUp, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { apiUrl } from '@/utils/api-url';

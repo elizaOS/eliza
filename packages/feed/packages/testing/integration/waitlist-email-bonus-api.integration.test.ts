@@ -22,8 +22,8 @@ import {
   expect,
   test,
 } from 'bun:test';
-import { db, eq, inArray, pointsTransactions, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, eq, inArray, pointsTransactions, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { waitForEndpointAvailability } from './helpers';
 
 const BASE_URL =

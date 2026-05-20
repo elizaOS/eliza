@@ -34,8 +34,8 @@ import {
   type Transaction,
   timeframedMarkets,
   withTransaction,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { formatError } from '../utils/error-utils';
 import {
   deriveTopicFromText,

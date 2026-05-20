@@ -4,7 +4,7 @@
  * Handles authentication for MCP requests using per-user API keys
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { AuthenticatedAgent } from '../types/mcp';
 import { validateUserApiKey } from './api-key-auth';
 

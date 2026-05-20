@@ -1,5 +1,5 @@
-import type { JsonValue } from '@babylon/shared';
-import { clamp } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
+import { clamp } from '@feed/shared';
 import type {
   AgentAction,
   AgentActionType,

@@ -23,7 +23,7 @@ beforeAll(() => {
   void Reflect.set(process.env, 'REDIS_URL', 'redis://localhost:6379');
 
   // Mock the database module entirely
-  mock.module('@babylon/db', () => {
+  mock.module('@feed/db', () => {
     const mockDatabase = createMockDatabase();
     return {
       db: mockDatabase,

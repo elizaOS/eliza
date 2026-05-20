@@ -14,10 +14,10 @@ import {
   trajectories,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { config as loadDotenv } from 'dotenv';
 import {
-  type BabylonCharacterSheet,
+  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
 } from '../packages/agents/src/character-roster/local-roster';
 
@@ -81,7 +81,7 @@ async function writeJsonLines(
 }
 
 async function getCharacterAgents(
-  roster: BabylonCharacterSheet[],
+  roster: FeedCharacterSheet[],
   cutoff: Date
 ): Promise<CharacterAgentRecord[]> {
   const usernames = roster.map((sheet) => sheet.username);

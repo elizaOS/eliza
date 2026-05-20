@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { extractUsername } from '@babylon/shared';
+import { extractUsername } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { PageContainer } from '@/components/shared/PageContainer';

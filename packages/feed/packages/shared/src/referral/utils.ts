@@ -12,14 +12,14 @@ export function getReferralAppBaseUrl(): string {
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://babylon.market';
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market';
 }
 
 /**
  * Get the base URL for the waitlist (canonical referral destination).
  *
- * When you run the app on a separate subdomain (ex: app.babylon.market),
- * referrals should generally land on the waitlist domain (babylon.market).
+ * When you run the app on a separate subdomain (ex: app.feed.market),
+ * referrals should generally land on the waitlist domain (feed.market).
  */
 export function getWaitlistBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_WAITLIST_URL;
@@ -27,28 +27,28 @@ export function getWaitlistBaseUrl(): string {
 
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
-    if (hostname.endsWith('staging.babylon.market')) {
-      return 'https://staging.babylon.market';
+    if (hostname.endsWith('staging.feed.market')) {
+      return 'https://staging.feed.market';
     }
-    if (hostname.endsWith('babylon.market')) {
-      return 'https://babylon.market';
+    if (hostname.endsWith('feed.market')) {
+      return 'https://feed.market';
     }
     return window.location.origin;
   }
 
-  return 'https://babylon.market';
+  return 'https://feed.market';
 }
 
 /**
  * Generate a shareable referral URL for a user
  *
  * @param usernameOrCode - The user's username or referral code
- * @returns Full shareable referral URL (e.g., https://babylon.market?ref=babylon)
+ * @returns Full shareable referral URL (e.g., https://feed.market?ref=feed)
  *
  * @example
  * ```typescript
- * const url = getReferralUrl('babylon')
- * // Returns: "https://babylon.market?ref=babylon"
+ * const url = getReferralUrl('feed')
+ * // Returns: "https://feed.market?ref=feed"
  * ```
  */
 export function getReferralUrl(usernameOrCode: string): string {
@@ -64,13 +64,13 @@ export function getReferralUrl(usernameOrCode: string): string {
  *
  * @example
  * ```typescript
- * const display = getDisplayReferralUrl('babylon')
- * // Returns: "localhost:3000?ref=babylon"
+ * const display = getDisplayReferralUrl('feed')
+ * // Returns: "localhost:3000?ref=feed"
  * ```
  */
 export function getDisplayReferralUrl(usernameOrCode: string): string {
   const host =
-    typeof window !== 'undefined' ? window.location.host : 'babylon.market';
+    typeof window !== 'undefined' ? window.location.host : 'feed.market';
   return `${host}?ref=${usernameOrCode}`;
 }
 
@@ -78,13 +78,13 @@ export function getDisplayReferralUrl(usernameOrCode: string): string {
  * Generate referral share text for social media
  *
  * @param usernameOrCode - The user's username or referral code
- * @param customMessage - Optional custom message (default: "Join me on Babylon! 🎮")
+ * @param customMessage - Optional custom message (default: "Join me on Feed! 🎮")
  * @returns Formatted text with referral URL for sharing
  *
  * @example
  * ```typescript
- * const text = getReferralShareText('babylon')
- * // Returns: "Join me on Babylon! 🎮\n\nhttps://babylon.market?ref=babylon"
+ * const text = getReferralShareText('feed')
+ * // Returns: "Join me on Feed! 🎮\n\nhttps://feed.market?ref=feed"
  * ```
  */
 export function getReferralShareText(
@@ -93,7 +93,7 @@ export function getReferralShareText(
 ): string {
   const message =
     customMessage ||
-    'Join me in Babylon, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+    'Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
   const url = getReferralUrl(usernameOrCode);
   return `${message}\n\n${url}`;
 }

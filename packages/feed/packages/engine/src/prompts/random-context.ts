@@ -20,8 +20,8 @@ import {
   markets,
   posts,
   worldEvents,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { StaticDataRegistry } from '../services/static-data-registry';
 import { sampleRandom, shuffleArray } from '../utils/randomization';
 

@@ -15,10 +15,10 @@ import {
   agentRuntimeManager,
   autonomousCoordinator,
   createTestAgent,
-} from '@babylon/agents';
-import { db } from '@babylon/db';
-import { WalletService } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/agents';
+import { db } from '@feed/db';
+import { WalletService } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 import { existsSync, readFileSync } from 'fs';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
@@ -76,7 +76,7 @@ describe('Agent Actions Persistence Integration', () => {
         // Return a valid A2A agent card structure with required fields
         const baseUrl =
           process.env.NEXT_PUBLIC_APP_URL ||
-          process.env.BABYLON_A2A_ENDPOINT ||
+          process.env.FEED_A2A_ENDPOINT ||
           'http://localhost:3000';
         const agentCard = {
           protocolVersion: '0.3.0',
@@ -91,8 +91,8 @@ describe('Agent Actions Persistence Integration', () => {
             },
           ],
           provider: {
-            organization: 'Babylon',
-            url: 'https://babylon.market',
+            organization: 'Feed',
+            url: 'https://feed.market',
           },
           iconUrl: `${baseUrl}/logo.svg`,
           version: '1.0.0',

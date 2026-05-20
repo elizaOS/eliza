@@ -12,8 +12,8 @@ import type {
   TrainingBatch,
   Trajectory,
   WhereInput,
-} from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+} from '@feed/db';
+import type { JsonValue } from '@feed/shared';
 
 // Re-export schema types for convenience
 export type { LlmCallLog, TrainedModel, TrainingBatch, Trajectory };

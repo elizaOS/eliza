@@ -83,9 +83,9 @@
  * @see {@link /api/games} Games listing endpoint
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
-import { asPublic, asUser } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { asPublic, asUser } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (_request: NextRequest) => {

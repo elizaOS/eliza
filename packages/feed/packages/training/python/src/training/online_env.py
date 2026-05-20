@@ -1,5 +1,5 @@
 """
-Babylon Online Environment for GRPO Training
+Feed Online Environment for GRPO Training
 
 This environment generates ON-POLICY rollouts for GRPO training.
 To use: start the bridge server, then run online training.
@@ -7,7 +7,7 @@ To use: start the bridge server, then run online training.
   Terminal 2: python scripts/run_online_rl.py --mode single
 
 This environment generates ON-POLICY rollouts for GRPO training.
-Unlike the offline BabylonRLAIFEnv which uses historical trajectories,
+Unlike the offline FeedRLAIFEnv which uses historical trajectories,
 this environment:
 
 1. Samples scenarios from ScenarioPool (production snapshots + synthetic)
@@ -16,7 +16,7 @@ this environment:
 4. Scores using deterministic reward functions
 5. Returns properly masked token sequences for training
 
-Key differences from BabylonRLAIFEnv:
+Key differences from FeedRLAIFEnv:
 - ON-POLICY: Uses current model for completions (fresh rollouts)
 - PROPER MASKING: Uses managed_server for correct token/mask alignment
 - SCENARIO-BASED: Uses ScenarioPool instead of database trajectories
@@ -84,7 +84,7 @@ def build_trading_system_prompt(archetype: str = "trader") -> str:
 
     base_instruction = archetype_instructions.get(archetype, archetype_instructions["trader"])
 
-    return f"""You are a trading agent in Babylon prediction markets.
+    return f"""You are a trading agent in Feed prediction markets.
 
 {base_instruction}
 
@@ -373,8 +373,8 @@ def score_trading_response(
 # =============================================================================
 
 
-class BabylonOnlineEnvConfig(BaseEnvConfig):
-    """Configuration for Babylon Online GRPO Environment"""
+class FeedOnlineEnvConfig(BaseEnvConfig):
+    """Configuration for Feed Online GRPO Environment"""
 
     # Scenario settings
     scenario_pool_config: ScenarioPoolConfig = Field(
@@ -432,9 +432,9 @@ class BabylonOnlineEnvConfig(BaseEnvConfig):
 # =============================================================================
 
 
-class BabylonOnlineEnv(BaseEnv):
+class FeedOnlineEnv(BaseEnv):
     """
-    Babylon Online Environment for GRPO Training.
+    Feed Online Environment for GRPO Training.
 
     This environment generates ON-POLICY rollouts:
     1. Samples scenarios from ScenarioPool
@@ -450,18 +450,18 @@ class BabylonOnlineEnv(BaseEnv):
     - Archetype-aware scoring
     """
 
-    name = "babylon-online"
-    env_config_cls = BabylonOnlineEnvConfig
+    name = "feed-online"
+    env_config_cls = FeedOnlineEnvConfig
 
     def __init__(
         self,
-        config: BabylonOnlineEnvConfig,
+        config: FeedOnlineEnvConfig,
         server_configs: list[APIServerConfig],
         slurm: bool = False,
         testing: bool = False,
     ):
         super().__init__(config, server_configs, slurm, testing)
-        self.config: BabylonOnlineEnvConfig = config
+        self.config: FeedOnlineEnvConfig = config
         self._server_configs = server_configs  # Store for direct access
 
         # Scenario pool (initialized in setup)
@@ -511,9 +511,9 @@ class BabylonOnlineEnv(BaseEnv):
         )
 
     @classmethod
-    def config_init(cls) -> tuple[BabylonOnlineEnvConfig, list[APIServerConfig]]:
+    def config_init(cls) -> tuple[FeedOnlineEnvConfig, list[APIServerConfig]]:
         """Initialize configuration with defaults"""
-        env_config = BabylonOnlineEnvConfig(
+        env_config = FeedOnlineEnvConfig(
             tokenizer_name="Qwen/Qwen2.5-3B-Instruct",
             group_size=4,  # Generate 4 responses per scenario for GRPO
             use_wandb=True,
@@ -523,7 +523,7 @@ class BabylonOnlineEnv(BaseEnv):
             batch_size=16,
             steps_per_eval=100,
             max_token_length=4096,
-            wandb_name="babylon-online",
+            wandb_name="feed-online",
             eval_handling=EvalHandlingEnum.LIMIT_TRAIN,
             eval_limit_ratio=0.1,
             database_url=os.getenv("DATABASE_URL", ""),
@@ -544,7 +544,7 @@ class BabylonOnlineEnv(BaseEnv):
     async def setup(self):
         """Initialize scenario pool and load scenarios"""
         logger.info("=" * 60)
-        logger.info("BABYLON ONLINE ENVIRONMENT SETUP")
+        logger.info("FEED ONLINE ENVIRONMENT SETUP")
         logger.info("=" * 60)
 
         # Initialize simulation bridge if enabled
@@ -727,7 +727,7 @@ class BabylonOnlineEnv(BaseEnv):
             return None, []
 
         # Generate completions using direct HTTP API (OpenAI-compatible)
-        # This mirrors babylon_env's approach for maximum vLLM compatibility
+        # This mirrors feed_env's approach for maximum vLLM compatibility
         import aiohttp
 
         from .tokenization_utils import tokenize_for_trainer
@@ -1163,4 +1163,4 @@ class BabylonOnlineEnv(BaseEnv):
 
 # CLI entry point
 if __name__ == "__main__":
-    BabylonOnlineEnv.cli()
+    FeedOnlineEnv.cli()

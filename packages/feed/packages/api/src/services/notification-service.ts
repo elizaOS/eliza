@@ -13,12 +13,12 @@ import {
   hasBlocked,
   notifications,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   generateSnowflakeId,
   logger,
   type NotificationData,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { CACHE_KEYS, invalidateCachePattern } from '../cache/cache-service';
 import {
   type EmailNotificationCategory,
@@ -546,12 +546,12 @@ export async function notifyMention(
  */
 export async function notifyNewAccount(userId: string): Promise<void> {
   const message =
-    'Welcome to Babylon! Edit your profile details to earn free points and unlock rewards.';
+    'Welcome to Feed! Edit your profile details to earn free points and unlock rewards.';
 
   await createNotification({
     userId,
     type: 'system',
-    title: 'Welcome to Babylon',
+    title: 'Welcome to Feed',
     message,
   });
 }

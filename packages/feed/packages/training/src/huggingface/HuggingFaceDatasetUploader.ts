@@ -42,7 +42,7 @@ export interface DatasetMetadata {
 }
 
 export interface UploadOptions {
-  /** Dataset name (e.g., 'babylonlabs/agent-benchmarks') */
+  /** Dataset name (e.g., 'feedlabs/agent-benchmarks') */
   datasetName: string;
   version?: string;
   description?: string;
@@ -103,7 +103,7 @@ export class HuggingFaceDatasetUploader {
       const metadata = await this.prepareDatasetFiles(benchmarks, outputDir, {
         datasetName: options.datasetName,
         version,
-        description: options.description || 'Babylon agent benchmark results',
+        description: options.description || 'Feed agent benchmark results',
       });
 
       // Step 3: Generate dataset card
@@ -318,7 +318,7 @@ task_categories:
 - reinforcement-learning
 - agent-evaluation
 tags:
-- babylon
+- feed
 - prediction-markets
 - trading-agents
 - benchmarks
@@ -332,7 +332,7 @@ size_categories:
 
 ${metadata.description}
 
-This dataset contains benchmark results for autonomous trading agents on the Babylon prediction market platform. Each record includes comprehensive performance metrics, market conditions, and agent behavior data.
+This dataset contains benchmark results for autonomous trading agents on the Feed prediction market platform. Each record includes comprehensive performance metrics, market conditions, and agent behavior data.
 
 **Version:** ${metadata.version}  
 **Created:** ${metadata.createdAt}  
@@ -411,7 +411,7 @@ print(model_performance.sort_values('metrics.totalPnl', ascending=False))
 
 ### Environment
 
-- **Platform:** Babylon Prediction Markets
+- **Platform:** Feed Prediction Markets
 - **Market Types:** Prediction markets + perpetual futures
 - **Tick Interval:** ${benchmarks[0]?.benchmarkSnapshot.tickInterval || 60} seconds
 - **Duration:** ${Math.floor((benchmarks[0]?.benchmarkSnapshot.duration || 0) / 60000)} minutes
@@ -429,9 +429,9 @@ print(model_performance.sort_values('metrics.totalPnl', ascending=False))
 If you use this dataset in your research, please cite:
 
 \`\`\`bibtex
-@dataset{babylon_benchmarks_${metadata.version.replace(/\./g, '_')},
-  title = {Babylon Agent Benchmarks},
-  author = {Babylon Labs},
+@dataset{feed_benchmarks_${metadata.version.replace(/\./g, '_')},
+  title = {Feed Agent Benchmarks},
+  author = {Feed Labs},
   year = {${new Date().getFullYear()}},
   version = {${metadata.version}},
   url = {https://huggingface.co/datasets/${metadata.datasetName}}
@@ -444,7 +444,7 @@ ${metadata.license}
 
 ## Contact
 
-For questions or issues, please open an issue on the Babylon repository.
+For questions or issues, please open an issue on the Feed repository.
 `;
 
     const cardPath = path.join(outputDir, 'README.md');

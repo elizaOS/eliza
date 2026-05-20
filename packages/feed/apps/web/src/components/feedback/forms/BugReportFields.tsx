@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Image as ImageIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 

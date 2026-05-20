@@ -17,7 +17,7 @@ const {
   formatRelativeTime,
   formatTime,
   sanitizeId,
-} = await import('@babylon/shared');
+} = await import('@feed/shared');
 
 describe('Format Utilities', () => {
   describe('clamp', () => {

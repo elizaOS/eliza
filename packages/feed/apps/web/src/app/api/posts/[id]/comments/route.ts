@@ -88,7 +88,7 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   asc,
@@ -101,13 +101,13 @@ import {
   posts,
   reactions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   CreateCommentSchema,
   generateSnowflakeId,
   logger,
   PostIdParamSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**
@@ -388,11 +388,11 @@ export const POST = withErrorHandling(
     // If post doesn't exist, try to auto-create it based on format
     if (!post) {
       // Try multiple post ID formats
-      // Format 1: gameId-gameTimestamp-authorId-isoTimestamp (e.g., babylon-1761441310151-kash-patrol-2025-10-01T02:12:00Z)
+      // Format 1: gameId-gameTimestamp-authorId-isoTimestamp (e.g., feed-1761441310151-kash-patrol-2025-10-01T02:12:00Z)
       // Format 2: post-{timestamp}-{random} (e.g., post-1762099655817-0.7781412938928327)
       // Format 3: post-{timestamp}-{actorId}-{random} (e.g., post-1762099655817-kash-patrol-abc123)
 
-      let gameId = 'babylon'; // default game
+      let gameId = 'feed'; // default game
       let authorId = 'system'; // default author for game-generated posts
       let timestamp = new Date();
 

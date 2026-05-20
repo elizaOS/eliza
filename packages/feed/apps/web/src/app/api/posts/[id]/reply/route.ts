@@ -104,21 +104,21 @@ import {
   ensureUserForAuth,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { comments, db, eq, posts, users } from '@babylon/db';
+} from '@feed/api';
+import { comments, db, eq, posts, users } from '@feed/db';
 import {
   FollowingMechanics,
   GroupChatService,
   MessageQualityChecker,
   parsePostId,
   ReplyRateLimiter,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   generateSnowflakeId,
   logger,
   PostIdParamSchema,
   ReplyToPostSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
 import { POST as createCommentPOST } from '../comments/route';

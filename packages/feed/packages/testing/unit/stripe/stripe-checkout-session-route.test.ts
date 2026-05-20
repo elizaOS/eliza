@@ -13,7 +13,7 @@ const mockCreateSession = mock(async () => ({
   id: 'cs_test_123',
   url: 'https://checkout.stripe.com/c/pay/cs_test_123',
 }));
-const mockGetBaseUrl = mock(() => 'https://babylon.market');
+const mockGetBaseUrl = mock(() => 'https://feed.market');
 const mockValidatePurchaseAmount = mock(() => ({ valid: true }));
 const mockLoggerInfo = mock(() => undefined);
 const mockLoggerError = mock(() => undefined);
@@ -36,9 +36,9 @@ class MockServiceUnavailableError extends Error {
   }
 }
 
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
-  ..._actualBabylonApi,
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
+  ..._actualFeedApi,
   authenticate: mockAuthenticate,
   ServiceUnavailableError: MockServiceUnavailableError,
   withErrorHandling:
@@ -67,8 +67,8 @@ mock.module('@babylon/api', () => ({
     },
 }));
 
-const _actualShared = await import('@babylon/shared');
-mock.module('@babylon/shared', () => ({
+const _actualShared = await import('@feed/shared');
+mock.module('@feed/shared', () => ({
   ..._actualShared,
   logger: {
     info: mockLoggerInfo,
@@ -105,11 +105,11 @@ function makeRequest(
   body: Record<string, unknown>,
   headers?: Record<string, string>
 ): NextRequest {
-  return new Request('https://babylon.market/api/stripe/checkout/session', {
+  return new Request('https://feed.market/api/stripe/checkout/session', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      origin: 'https://babylon.market',
+      origin: 'https://feed.market',
       Authorization: 'Bearer test-token',
       ...headers,
     },
@@ -131,7 +131,7 @@ describe('Stripe checkout session route', () => {
       url: 'https://checkout.stripe.com/c/pay/cs_test_123',
     });
     mockGetBaseUrl.mockClear();
-    mockGetBaseUrl.mockReturnValue('https://babylon.market');
+    mockGetBaseUrl.mockReturnValue('https://feed.market');
     mockValidatePurchaseAmount.mockClear();
     mockValidatePurchaseAmount.mockReturnValue({ valid: true });
     mockLoggerInfo.mockClear();
@@ -157,11 +157,11 @@ describe('Stripe checkout session route', () => {
     expect(mockCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         customer_email: 'user@example.com',
-        cancel_url: 'https://babylon.market/markets?stripe_cancelled=true',
+        cancel_url: 'https://feed.market/markets?stripe_cancelled=true',
         success_url:
-          'https://babylon.market/markets?stripe_success=true&session_id={CHECKOUT_SESSION_ID}',
+          'https://feed.market/markets?stripe_success=true&session_id={CHECKOUT_SESSION_ID}',
         metadata: {
-          app: 'babylon',
+          app: 'feed',
           userId: 'user-123',
           balanceUnits: '2500',
           amountUSD: '25',

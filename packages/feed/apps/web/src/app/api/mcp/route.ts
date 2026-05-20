@@ -1,22 +1,22 @@
 /**
  * MCP Protocol Endpoint
  *
- * Implements JSON-RPC 2.0 Model Context Protocol for Babylon.
+ * Implements JSON-RPC 2.0 Model Context Protocol for Feed.
  * Exposes 75+ tools for prediction markets, social features, trading, and more.
  *
  * @route GET /api/mcp - Service discovery and capabilities
  * @route POST /api/mcp - JSON-RPC 2.0 tool execution
  */
 
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import {
   getMCPServerInfo,
   getServerCapabilities,
   MCP_PROTOCOL_VERSIONS,
   type MCPAuthContext,
   MCPRequestHandler,
-} from '@babylon/mcp';
-import { logger } from '@babylon/shared';
+} from '@feed/mcp';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { checkApiKey } from '@/lib/api/check-api-key';
@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic';
  * Returns MCP service information and capabilities
  */
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
-  const { error } = await checkApiKey(request, 'Babylon MCP');
+  const { error } = await checkApiKey(request, 'Feed MCP');
   if (error) return error;
 
   const serverInfo = getMCPServerInfo();
@@ -42,7 +42,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       protocolVersions: MCP_PROTOCOL_VERSIONS,
       capabilities,
       endpoint: '/api/mcp',
-      documentation: 'https://docs.babylon.market/mcp',
+      documentation: 'https://docs.feed.market/mcp',
     },
     {
       headers: {
@@ -60,7 +60,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 export const POST = withErrorHandling(async function POST(
   request: NextRequest
 ) {
-  const { error, authResult } = await checkApiKey(request, 'Babylon MCP');
+  const { error, authResult } = await checkApiKey(request, 'Feed MCP');
   if (error) return error;
 
   // Parse JSON-RPC request
@@ -87,7 +87,7 @@ export const POST = withErrorHandling(async function POST(
   });
 
   // Create authentication context for tool execution
-  const apiKey = request.headers.get('X-Babylon-Api-Key');
+  const apiKey = request.headers.get('X-Feed-Api-Key');
   const authContext: MCPAuthContext = {
     apiKey: apiKey ?? undefined,
     userId: authResult?.userId,

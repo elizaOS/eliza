@@ -47,7 +47,7 @@ export interface RelationshipState {
 /**
  * ActorState - Dynamic runtime state for actors (NPCs)
  *
- * Static actor data is in TypeScript (StaticDataRegistry from @babylon/engine).
+ * Static actor data is in TypeScript (StaticDataRegistry from @feed/engine).
  * This table stores only fields that change during gameplay.
  */
 export const actorState = pgTable(

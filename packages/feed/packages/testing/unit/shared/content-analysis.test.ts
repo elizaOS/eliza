@@ -11,7 +11,7 @@ import {
   calculateFreshness,
   detectPrediction,
   hasInsiderLanguage,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('Content Analysis', () => {
   describe('analyzeCertainty', () => {

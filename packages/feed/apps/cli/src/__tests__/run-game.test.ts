@@ -44,7 +44,7 @@ describe('CLI Game Command', () => {
     );
 
     const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
-    expect(output).toContain('babylon game generate');
+    expect(output).toContain('feed game generate');
     expect(output).toContain('training/benchmark tooling');
   });
 });

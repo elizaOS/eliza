@@ -3,14 +3,14 @@
 import {
   calculateExpectedPayout,
   PredictionPricing,
-} from '@babylon/core/markets/prediction/client';
-import type { PerpPositionFromAPI, PredictionPosition } from '@babylon/shared';
+} from '@feed/core/markets/prediction/client';
+import type { PerpPositionFromAPI, PredictionPosition } from '@feed/shared';
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatDate,
   type JsonValue,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   AlertTriangle,
   BarChart3,
@@ -220,7 +220,7 @@ export function PositionDetailModal({
     const sizeNum = parseFloat(size) || 0;
     if (sizeNum < perpMarket.minOrderSize) {
       toast.error(
-        `Minimum order size is ${BABYLON_POINTS_SYMBOL}${perpMarket.minOrderSize}`
+        `Minimum order size is ${FEED_POINTS_SYMBOL}${perpMarket.minOrderSize}`
       );
       return;
     }
@@ -270,7 +270,7 @@ export function PositionDetailModal({
 
     const amountNum = parseFloat(amount) || 0;
     if (amountNum < 1) {
-      toast.error(`Minimum bet is ${BABYLON_POINTS_SYMBOL}1`);
+      toast.error(`Minimum bet is ${FEED_POINTS_SYMBOL}1`);
       return;
     }
 
@@ -725,7 +725,7 @@ export function PositionDetailModal({
                         predictionMarketClosed &&
                           'cursor-not-allowed opacity-50'
                       )}
-                      placeholder={`Min: ${BABYLON_POINTS_SYMBOL}1`}
+                      placeholder={`Min: ${FEED_POINTS_SYMBOL}1`}
                     />
                   </div>
 
@@ -849,7 +849,7 @@ export function PositionDetailModal({
                         min={perpMarket.minOrderSize}
                         step="10"
                         className="w-32 rounded bg-background/50 px-3 py-1.5 text-right font-medium text-foreground focus:bg-background focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30"
-                        placeholder={`Min: ${BABYLON_POINTS_SYMBOL}${perpMarket.minOrderSize}`}
+                        placeholder={`Min: ${FEED_POINTS_SYMBOL}${perpMarket.minOrderSize}`}
                       />
                     </div>
                     <div>

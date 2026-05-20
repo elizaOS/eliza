@@ -66,9 +66,9 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

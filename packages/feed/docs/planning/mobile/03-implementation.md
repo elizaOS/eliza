@@ -6,7 +6,7 @@ Setting `output: 'export'` in `next.config.ts` outputs static HTML/CSS/JS files.
 
 ### What Breaks in Static Export
 
-| Feature | Used in Babylon? | Impact | Mitigation |
+| Feature | Used in Feed? | Impact | Mitigation |
 |---------|-----------------|--------|------------|
 | **API Routes** | ✅ 315 routes | Not included in static export | API stays on Vercel; mobile calls remote API |
 | **Middleware** | ✅ CORS, auth gating | Not available | CORS: add Capacitor origins. Auth gating: client-side. |
@@ -113,7 +113,7 @@ Instead of static export, Capacitor can load from a remote URL:
 
 ```typescript
 const config: CapacitorConfig = {
-  server: { url: 'https://play.babylon.market' },
+  server: { url: 'https://play.feed.market' },
 };
 ```
 

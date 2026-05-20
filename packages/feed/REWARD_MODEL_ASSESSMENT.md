@@ -221,5 +221,5 @@ For the paper's headline claim ("our model can attack GPT-5.4"):
 - Use the **Blue-only model** for defense benchmarks  
 - Present the **Shared model** as the balanced option
 
-For deployment (Babylon agents):
+For deployment (Feed agents):
 - Use the **Shared model** (one model serves all agent roles, smaller memory footprint)

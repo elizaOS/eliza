@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Materialize concrete prompt-injection assets from repos linked by
-awesome-prompt-injection into Babylon training examples and ScamBench scenarios.
+awesome-prompt-injection into Feed training examples and ScamBench scenarios.
 """
 
 from __future__ import annotations

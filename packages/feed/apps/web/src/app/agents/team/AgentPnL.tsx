@@ -1,11 +1,11 @@
 'use client';
 
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatCompactCurrency,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   ChevronDown,
   ExternalLink,
@@ -434,7 +434,7 @@ function UserPnL({
                           <span>Size: {Number(pos.size).toFixed(4)}</span>
                           {pos.entryPrice && (
                             <span>
-                              @ {BABYLON_POINTS_SYMBOL}
+                              @ {FEED_POINTS_SYMBOL}
                               {Number(pos.entryPrice).toFixed(2)}
                             </span>
                           )}
@@ -875,7 +875,7 @@ function AgentPnLView({
                           <span>Size: {Number(pos.size).toFixed(4)}</span>
                           {pos.entryPrice && (
                             <span>
-                              @ {BABYLON_POINTS_SYMBOL}
+                              @ {FEED_POINTS_SYMBOL}
                               {Number(pos.entryPrice).toFixed(2)}
                             </span>
                           )}

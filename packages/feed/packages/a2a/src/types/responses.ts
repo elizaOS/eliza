@@ -4,7 +4,7 @@
  * Strongly typed response interfaces for all A2A protocol methods
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 
 /**
  * Balance information response

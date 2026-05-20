@@ -7,10 +7,10 @@
  * Uses LLM to determine appropriate investments based on NPC characteristics.
  */
 
-import { actorState, and, db, eq, getDbInstance, gte, sql } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { actorState, and, db, eq, getDbInstance, gte, sql } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { loadActorById } from '../actors-loader';
-import { BabylonLLMClient } from '../llm/openai-client';
+import { FeedLLMClient } from '../llm/openai-client';
 import { StaticDataRegistry } from './static-data-registry';
 
 /**
@@ -119,7 +119,7 @@ export class InitialInvestmentService {
       'InitialInvestment'
     );
 
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
 
     // Process NPCs in batches to optimize LLM calls
     const batchSize = 10;
@@ -218,7 +218,7 @@ export class InitialInvestmentService {
       initialPrice: number | null;
       currentPrice: number | null;
     }>,
-    llm: BabylonLLMClient
+    llm: FeedLLMClient
   ): Promise<InitialInvestment[]> {
     // Build NPC profiles for prompt
     const npcProfiles = await Promise.all(

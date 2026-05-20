@@ -12,7 +12,7 @@
  *   // → [{ attacker: 'chad-sterling', defender: 'iris-chen', scenarioType: 'social-engineering' }, ...]
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // Types

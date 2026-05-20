@@ -11,8 +11,8 @@
  * @returns {Promise<NextResponse>} JSON response with templates data
  */
 
-import { getAllTemplates, getTemplateIds } from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
+import { getAllTemplates, getTemplateIds } from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 /**

@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 import aria_kim from './actors/aria-kim';
 import axel_frost from './actors/axel-frost';

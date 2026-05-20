@@ -21,8 +21,8 @@ import {
   tags,
   trendingTags,
   withTransaction,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import OpenAI from 'openai';
 import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
 
@@ -89,7 +89,7 @@ const baseURL = process.env.GROQ_API_KEY
   ? process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1'
   : 'https://api.openai.com/v1';
 const suppressOptionalLlmWarnings = ['1', 'true', 'yes'].includes(
-  (process.env.BABYLON_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
+  (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
     .trim()
     .toLowerCase()
 );

@@ -16,8 +16,8 @@ import {
   getRedisClient,
   isRedisAvailable,
   setCache,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import { z } from 'zod';
 import {
   ExtendedTaskStore,

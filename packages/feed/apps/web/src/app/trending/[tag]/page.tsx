@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { ArrowLeft, TrendingUp } from 'lucide-react';
 import nextDynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';

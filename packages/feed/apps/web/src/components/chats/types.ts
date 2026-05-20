@@ -1,6 +1,6 @@
-import type { MessageMetadata, MessageType } from '@babylon/shared';
+import type { MessageMetadata, MessageType } from '@feed/shared';
 
-export { MessageTypeEnum } from '@babylon/shared';
+export { MessageTypeEnum } from '@feed/shared';
 export type { MessageMetadata, MessageType };
 
 export type ChatFilter = 'all' | 'dms' | 'groups';

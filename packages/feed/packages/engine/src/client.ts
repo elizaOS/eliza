@@ -1,22 +1,22 @@
 /**
- * Babylon Engine - Client-Safe Exports
+ * Feed Engine - Client-Safe Exports
  *
  * This module exports utilities that are safe to use in client-side code.
  * It does NOT include any server-only dependencies like Redis, Postgres,
  * or Node.js built-in modules (tls, fs, child_process, etc.)
  *
  * Use this import for React client components:
- * import { PredictionPricing } from '@babylon/engine/client';
+ * import { PredictionPricing } from '@feed/engine/client';
  */
 
 // Prediction Pricing (pure math, no server dependencies)
-// IMPORTANT: Use /client path to avoid pulling in PredictionDbAdapter which imports @babylon/db
+// IMPORTANT: Use /client path to avoid pulling in PredictionDbAdapter which imports @feed/db
 export {
   calculateExpectedPayout,
   PredictionPricing,
   type ShareCalculation,
   type ShareCalculationWithFees,
-} from '@babylon/core/markets/prediction/pricing';
+} from '@feed/core/markets/prediction/pricing';
 // Fee Configuration (pure constants, no dependencies)
 export {
   FEE_CONFIG,

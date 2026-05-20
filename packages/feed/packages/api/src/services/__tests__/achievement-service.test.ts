@@ -5,7 +5,7 @@ import {
   DAILY_CHALLENGE_DEFINITIONS,
   EVENT_TO_TRACKING_TYPES,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   getActiveDailyChallengeIds,
   getActiveWeeklyChallengeIds,

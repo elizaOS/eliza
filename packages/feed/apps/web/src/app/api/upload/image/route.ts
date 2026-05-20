@@ -101,7 +101,7 @@
  * console.log(`Uploaded to: ${url} (${size} bytes)`);
  * ```
  *
- * @see {@link @babylon/shared} S3 storage client
+ * @see {@link @feed/shared} S3 storage client
  * @see {@link /lib/validation/schemas} Upload validation
  */
 
@@ -112,8 +112,8 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { ImageUploadSchema, logger } from '@babylon/shared';
+} from '@feed/api';
+import { ImageUploadSchema, logger } from '@feed/shared';
 import { mkdir, writeFile } from 'fs/promises';
 import type { NextRequest } from 'next/server';
 import { join } from 'path';

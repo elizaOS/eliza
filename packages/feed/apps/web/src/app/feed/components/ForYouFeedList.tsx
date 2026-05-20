@@ -4,7 +4,7 @@ import type {
   FeedEventAction,
   FeedSurface,
   NarrativeStory,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

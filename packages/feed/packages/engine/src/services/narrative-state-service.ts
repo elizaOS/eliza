@@ -1,12 +1,12 @@
 /**
  * Narrative State Service - Arc plan persistence
  *
- * Uses @babylon/db as the unified interface for storage.
+ * Uses @feed/db as the unified interface for storage.
  * Works with both PostgreSQL and JSON backends.
  */
 
-import { db } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { db } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { type RngFunction } from '../utils/randomization';
 import type { QuestionArcPlan as ArcPlanType } from './question-arc-planner';
 
@@ -22,7 +22,7 @@ export type { RngFunction } from '../utils/randomization';
  *
  * @example
  * ```typescript
- * import { SeededRandom } from '@babylon/engine';
+ * import { SeededRandom } from '@feed/engine';
  *
  * const seeded = new SeededRandom(12345);
  * const ctx: SimulationContext = {

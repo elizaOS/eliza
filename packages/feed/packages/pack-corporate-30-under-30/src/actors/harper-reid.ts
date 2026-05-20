@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'harper-reid',
@@ -78,7 +78,7 @@ const actor = {
     "Founder @BloomTherapeutics | Expanding Consciousness, One Molecule at a Time | Brown '22 | Psychedelic Medicine Pioneer | Microdosing is just focused intention",
   pfpDescription:
     "White American male in his late 20s with wavy brown hair that's slightly too long, gentle hazel eyes with slightly dilated pupils, and a serene expression that could be peace or could be psilocybin. Light stubble. Wearing a linen button-down that's half untucked. Background: an office with both clinical whiteboards and tapestries.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

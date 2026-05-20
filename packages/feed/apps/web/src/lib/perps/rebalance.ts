@@ -1,4 +1,4 @@
-import type { PerpPosition } from '@babylon/shared';
+import type { PerpPosition } from '@feed/shared';
 import type { TradeSide } from '@/types/markets';
 
 export type PerpRebalanceType = 'add' | 'reduce' | 'close' | 'flip';

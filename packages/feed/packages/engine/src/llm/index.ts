@@ -1,5 +1,5 @@
 /**
- * Babylon LLM Client Package
+ * Feed LLM Client Package
  * LLM utilities and clients for structured generation
  */
 
@@ -13,7 +13,7 @@ export {
   extractJsonFromText,
   parseContinuationContent,
 } from './json-continuation-parser';
-export { BabylonLLMClient } from './openai-client';
+export { FeedLLMClient } from './openai-client';
 export { parseXML, stripThinkingBlocks } from './xml-parser';
 
 /**
@@ -21,7 +21,7 @@ export { parseXML, stripThinkingBlocks } from './xml-parser';
  *
  * @example
  * ```typescript
- * import { getCacheOrFetch } from '@babylon/api';
+ * import { getCacheOrFetch } from '@feed/api';
  *
  * const response = await getCacheOrFetch(
  *   `llm:${promptHash}`,

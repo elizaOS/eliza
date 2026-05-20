@@ -11,7 +11,7 @@ import {
   renderPrompt,
   reply,
   socialPost,
-} from '@babylon/engine';
+} from '@feed/engine';
 import { VALUE_RANGES } from '../packages/engine/src/prompts/shared-sections';
 
 const GREEN = '\x1b[32m';

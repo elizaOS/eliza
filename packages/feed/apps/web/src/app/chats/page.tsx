@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';

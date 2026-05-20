@@ -15,7 +15,7 @@ import { join } from 'path';
 import { parseArgs, wantsHelp } from '../lib/args.js';
 import { logger } from '../lib/logger.js';
 
-const CONTAINER_NAME = 'babylon-postgres';
+const CONTAINER_NAME = 'feed-postgres';
 const COMPOSE_FILE = 'docker-compose.yml';
 const HOST_PORT = '5433';
 
@@ -66,7 +66,7 @@ function printHelp(): void {
 Database Management
 
 USAGE:
-  babylon db <command>
+  feed db <command>
 
 COMMANDS:
   start     Start PostgreSQL container
@@ -78,14 +78,14 @@ COMMANDS:
   reset     Reset database (drop + migrate)
 
 EXAMPLES:
-  babylon db start
-  babylon db migrate
-  babylon db seed
-  babylon db status
+  feed db start
+  feed db migrate
+  feed db seed
+  feed db status
 
 ENVIRONMENT:
   DATABASE_URL should be set in your .env file:
-  DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon"
+  DATABASE_URL="postgresql://feed:feed_dev_password@localhost:5433/feed"
 `);
 }
 
@@ -195,7 +195,7 @@ async function startDatabase(): Promise<void> {
     }
 
     logger.warn(
-      'Detected stale Docker networking state. Recreating babylon-postgres...'
+      'Detected stale Docker networking state. Recreating feed-postgres...'
     );
 
     await $`docker rm -f ${CONTAINER_NAME}`.quiet().catch(() => undefined);
@@ -283,7 +283,7 @@ async function showStatus(): Promise<void> {
 
   if (!exists) {
     console.log('Status: Not created');
-    console.log("\nRun 'babylon db start' to create and start the database.");
+    console.log("\nRun 'feed db start' to create and start the database.");
     return;
   }
 
@@ -311,7 +311,7 @@ async function showStatus(): Promise<void> {
     await showConnectionInfo();
   } else {
     console.log('Status: ⏸️  Stopped');
-    console.log("\nRun 'babylon db start' to start the database.");
+    console.log("\nRun 'feed db start' to start the database.");
   }
 }
 
@@ -327,11 +327,11 @@ async function showConnectionInfo(): Promise<void> {
   console.log('\nConnection Info:');
   console.log('  Host:     localhost');
   console.log(`  Port:     ${HOST_PORT}`);
-  console.log('  Database: babylon');
-  console.log('  User:     babylon');
-  console.log('  Password: babylon_dev_password');
+  console.log('  Database: feed');
+  console.log('  User:     feed');
+  console.log('  Password: feed_dev_password');
   console.log(
-    `\n  URL: postgresql://babylon:babylon_dev_password@localhost:${HOST_PORT}/babylon`
+    `\n  URL: postgresql://feed:feed_dev_password@localhost:${HOST_PORT}/feed`
   );
 }
 
@@ -349,7 +349,7 @@ async function runMigrations(): Promise<void> {
 
   if (!(await isContainerRunning())) {
     logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: babylon db start');
+    console.log('Start it first with: feed db start');
     process.exit(1);
   }
 
@@ -372,7 +372,7 @@ async function seedDatabase(): Promise<void> {
 
   if (!(await isContainerRunning())) {
     logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: babylon db start');
+    console.log('Start it first with: feed db start');
     process.exit(1);
   }
 
@@ -398,7 +398,7 @@ async function resetDatabase(): Promise<void> {
 
   if (!(await isContainerRunning())) {
     logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: babylon db start');
+    console.log('Start it first with: feed db start');
     process.exit(1);
   }
 

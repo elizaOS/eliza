@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   withErrorHandling: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 

@@ -1,4 +1,4 @@
-# Babylon Simulation Engine: Critical Audit Report
+# Feed Simulation Engine: Critical Audit Report
 
 ## Executive Summary
 
@@ -15,7 +15,7 @@ A thorough inspection of the game-tick execution flow, narrative arc system, eve
 
 ### C1. NPCs Receive Predetermined Question Outcomes
 
-**Files:** `packages/agents/src/plugins/babylon/providers/npc-game-context.ts:227-232`
+**Files:** `packages/agents/src/plugins/feed/providers/npc-game-context.ts:227-232`
 
 NPCs receive "intuitions" derived from the predetermined question outcome:
 ```

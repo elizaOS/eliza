@@ -31,8 +31,8 @@ import {
   nftOwnership,
   nftSnapshot,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { nanoid } from 'nanoid';
 
 const BASE_URL =
@@ -518,7 +518,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       const data = await response.json();
       expect(data.name).toBe('ProtoMonkey #1');
       expect(data.image).toBeDefined();
-      expect(data.external_url).toBe('https://babylon.market/nft/1');
+      expect(data.external_url).toBe('https://feed.market/nft/1');
     });
 
     test('should return 400 for invalid token ID (0)', async () => {

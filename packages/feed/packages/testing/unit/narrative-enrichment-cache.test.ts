@@ -12,7 +12,7 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-// ─── Mock @babylon/api cache functions ──────────────────────────────────────
+// ─── Mock @feed/api cache functions ──────────────────────────────────────
 
 const mockGetCache = mock(
   async (_key: string, _opts?: unknown): Promise<unknown> => null
@@ -21,9 +21,9 @@ const mockSetCache = mock(
   async (_key: string, _val: unknown, _opts?: unknown) => undefined
 );
 
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
-  ..._actualBabylonApi,
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
+  ..._actualFeedApi,
   getCacheOrFetch: mock(
     async (_key: string, fn: () => Promise<unknown>, _opts?: unknown) => fn()
   ),

@@ -96,15 +96,15 @@
  * @see {@link /lib/utils/oasf-skill-mapper} OASF skill taxonomy
  */
 
-import type { AgentDiscoveryFilter } from '@babylon/agents';
+import type { AgentDiscoveryFilter } from '@feed/agents';
 import {
   AgentStatus,
   AgentType,
   agentRegistry,
   npcBootstrapService,
-} from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
-import { getBaseUrl, logger } from '@babylon/shared';
+} from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
+import { getBaseUrl, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

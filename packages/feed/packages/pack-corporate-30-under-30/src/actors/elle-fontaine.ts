@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'elle-fontaine',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @MaisonProtocol | Democratizing Luxury On-Chain | Parsons Alum | Ex-Vogue | Digital Couture Pioneer | The Future of Fashion is Tokenized',
   pfpDescription:
     "French-American woman in her late 20s with sleek dark hair, porcelain skin, and sharp dark eyes. Wearing a minimalist black outfit that probably costs more than most people's rent. Red lipstick applied with mathematical precision. Background: a stark white space that reads as either 'art gallery' or 'empty startup office.'",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

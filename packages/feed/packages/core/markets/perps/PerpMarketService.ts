@@ -3,7 +3,7 @@ import {
   getInitialReserves,
   logger,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   evolveSyntheticPerpQuoteState,
   getSyntheticPerpExecutionPrice,
@@ -2339,7 +2339,7 @@ function calculateDynamicFundingRate(params: {
  * Funding payment for a single period given a **pre-converted** period rate.
  *
  * NOTE: This differs from the shared ``calculateFundingPayment`` in
- * ``@babylon/shared/perps-types`` which accepts an **annual** rate and
+ * ``@feed/shared/perps-types`` which accepts an **annual** rate and
  * internally divides by periods-per-year.  Here the caller
  * (``processFundingStep``) already converts to a period rate via
  * ``annualRate / periodsPerYear()``, so no further division is needed.

@@ -3,9 +3,9 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, desc, eq, gte, predictionPriceHistories } from '@babylon/db';
-import { PredictionMarketIdSchema, toISO } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, desc, eq, gte, predictionPriceHistories } from '@feed/db';
+import { PredictionMarketIdSchema, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { chooseBucketMs } from '@/lib/api/chart-utils';

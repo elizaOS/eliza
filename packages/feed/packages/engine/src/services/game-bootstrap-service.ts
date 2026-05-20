@@ -5,7 +5,7 @@
  * Replaces the need for manual seeding scripts.
  */
 
-import { getSyntheticPerpQuoteState } from '@babylon/core/markets/perps';
+import { getSyntheticPerpQuoteState } from '@feed/core/markets/perps';
 import {
   actorState,
   db,
@@ -19,9 +19,9 @@ import {
   rssFeedSources,
   sql,
   users,
-} from '@babylon/db';
-import type { ActorTier } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import type { ActorTier } from '@feed/shared';
+import { logger } from '@feed/shared';
 import { DEFAULT_RSS_SOURCES } from '../config/rss-sources';
 import { CapitalAllocationService } from './capital-allocation-service';
 import { StaticDataRegistry } from './static-data-registry';

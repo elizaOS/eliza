@@ -51,7 +51,7 @@ export const dispatchToAgentsAction: Action = {
   description:
     'Dispatch commands to multiple agents simultaneously. Use when the user wants input from several agents, or when a task benefits from parallel agent work.',
 
-  // Parameters defined as plain object for Babylon's dispatch system.
+  // Parameters defined as plain object for Feed's dispatch system.
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
   parameters: {
     dispatches: {

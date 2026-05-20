@@ -21,20 +21,20 @@ import pytest
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.training.babylon_env import BabylonEnvConfig, BabylonRLAIFEnv
+from src.training.feed_env import FeedEnvConfig, FeedRLAIFEnv
 
 # =============================================================================
 # Configuration Tests
 # =============================================================================
 
 
-class TestBabylonEnvConfig:
+class TestFeedEnvConfig:
     """Tests for trajectory source configuration."""
 
     def test_default_trajectory_source(self):
         """Test that default trajectory source is 'db'."""
         with patch.dict("os.environ", {}, clear=True):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
                 database_url="postgresql://localhost/test",
             )
@@ -44,7 +44,7 @@ class TestBabylonEnvConfig:
     def test_trajectory_source_from_env(self):
         """Test loading trajectory source from environment."""
         with patch.dict("os.environ", {"TRAJECTORY_SOURCE": "huggingface"}):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -59,7 +59,7 @@ class TestBabylonEnvConfig:
         }
 
         with patch.dict("os.environ", env_vars):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -70,7 +70,7 @@ class TestBabylonEnvConfig:
     def test_default_hf_split(self):
         """Test default HuggingFace split is 'raw'."""
         with patch.dict("os.environ", {}, clear=True):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -79,7 +79,7 @@ class TestBabylonEnvConfig:
     def test_database_url_from_env(self):
         """Test loading database URL from environment."""
         with patch.dict("os.environ", {"DATABASE_URL": "postgresql://test:pass@localhost/db"}):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -94,7 +94,7 @@ class TestBabylonEnvConfig:
         }
 
         with patch.dict("os.environ", env_vars):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -110,7 +110,7 @@ class TestBabylonEnvConfig:
         }
 
         with patch.dict("os.environ", env_vars):
-            config = BabylonEnvConfig(
+            config = FeedEnvConfig(
                 tokenizer_name="test/model",
             )
 
@@ -129,12 +129,12 @@ class TestDatabaseSourceSetup:
     @pytest.mark.asyncio
     async def test_setup_database_source_missing_url(self):
         """Test that database setup fails without DATABASE_URL."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "db"
         mock_config.database_url = ""
         mock_config.tokenizer_name = "test/model"
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.db_pool = None
         env.trajectory_cache = []
@@ -146,7 +146,7 @@ class TestDatabaseSourceSetup:
     @pytest.mark.asyncio
     async def test_setup_database_source_detects_pooler(self):
         """Test that Supabase pooler detection works."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "db"
         mock_config.database_url = "postgresql://user:pass@db.pooler.supabase.com:6543/postgres"
         mock_config.lookback_hours = 720
@@ -154,7 +154,7 @@ class TestDatabaseSourceSetup:
         mock_config.min_actions_per_trajectory = 3
         mock_config.min_agents_per_window = 2
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.db_pool = None
         env.trajectory_cache = []
@@ -187,11 +187,11 @@ class TestHuggingFaceSourceSetup:
     @pytest.mark.asyncio
     async def test_setup_hf_source_missing_dataset(self):
         """Test that HF setup fails without dataset ID."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "huggingface"
         mock_config.hf_trajectory_dataset = ""
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -201,7 +201,7 @@ class TestHuggingFaceSourceSetup:
     @pytest.mark.asyncio
     async def test_setup_hf_source_loads_reader(self):
         """Test that HF setup loads the trajectory reader."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "huggingface"
         mock_config.hf_trajectory_dataset = "elizaos/test-dataset"
         mock_config.hf_trajectory_split = "raw"
@@ -209,7 +209,7 @@ class TestHuggingFaceSourceSetup:
         mock_config.min_actions_per_trajectory = 3
         mock_config.min_agents_per_window = 2
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -247,11 +247,11 @@ class TestLocalExportSourceSetup:
 
     @pytest.mark.asyncio
     async def test_setup_local_export_source_missing_directory(self):
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "local_export"
         mock_config.local_export_dir = ""
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -260,14 +260,14 @@ class TestLocalExportSourceSetup:
 
     @pytest.mark.asyncio
     async def test_setup_local_export_source_loads_reader(self):
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "local_export"
         mock_config.local_export_dir = "/tmp/local-export"
         mock_config.max_trajectories = 10
         mock_config.min_actions_per_trajectory = 1
         mock_config.min_agents_per_window = 2
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -315,14 +315,14 @@ class TestLocalExportSourceSetup:
 
     @pytest.mark.asyncio
     async def test_setup_local_export_source_keeps_singleton_groups(self):
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "local_export"
         mock_config.local_export_dir = "/tmp/local-export"
         mock_config.max_trajectories = 10
         mock_config.min_actions_per_trajectory = 1
         mock_config.min_agents_per_window = 2
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -367,7 +367,7 @@ class TestSetupDispatch:
     @pytest.mark.asyncio
     async def test_setup_dispatches_to_database(self):
         """Test that setup() calls database setup for 'db' source."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "db"
         mock_config.database_url = "postgresql://test:pass@localhost/db"
         mock_config.lookback_hours = 720
@@ -376,7 +376,7 @@ class TestSetupDispatch:
         mock_config.min_agents_per_window = 2
         mock_config.use_wandb = False
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.db_pool = None
         env.trajectory_cache = []
@@ -393,7 +393,7 @@ class TestSetupDispatch:
     @pytest.mark.asyncio
     async def test_setup_dispatches_to_huggingface(self):
         """Test that setup() calls HF setup for 'huggingface' source."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "huggingface"
         mock_config.hf_trajectory_dataset = "org/dataset"
         mock_config.hf_trajectory_split = "raw"
@@ -402,7 +402,7 @@ class TestSetupDispatch:
         mock_config.min_agents_per_window = 2
         mock_config.use_wandb = False
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.db_pool = None
         env.trajectory_cache = []
@@ -418,12 +418,12 @@ class TestSetupDispatch:
 
     @pytest.mark.asyncio
     async def test_setup_dispatches_to_local_export(self):
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "local_export"
         mock_config.local_export_dir = "/tmp/local-export"
         mock_config.use_wandb = False
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.db_pool = None
         env.trajectory_cache = []
@@ -454,10 +454,10 @@ class TestReloadTrajectories:
     async def test_reload_uses_correct_source(self):
         """Test that _reload_trajectories uses the configured source."""
         # Test DB source
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "db"
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
         env.trajectory_cache = []
 
@@ -517,7 +517,7 @@ class TestSourceNameNormalization:
 
         for source in test_cases:
             with patch.dict("os.environ", {"TRAJECTORY_SOURCE": source}):
-                config = BabylonEnvConfig(
+                config = FeedEnvConfig(
                     tokenizer_name="test/model",
                 )
 
@@ -536,11 +536,11 @@ class TestErrorMessages:
     @pytest.mark.asyncio
     async def test_missing_database_url_message(self):
         """Test that missing DATABASE_URL produces helpful error."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "db"
         mock_config.database_url = ""
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
 
         with pytest.raises(ValueError) as exc_info:
@@ -551,11 +551,11 @@ class TestErrorMessages:
     @pytest.mark.asyncio
     async def test_missing_hf_dataset_message(self):
         """Test that missing HF_TRAJECTORY_DATASET produces helpful error."""
-        mock_config = MagicMock(spec=BabylonEnvConfig)
+        mock_config = MagicMock(spec=FeedEnvConfig)
         mock_config.trajectory_source = "huggingface"
         mock_config.hf_trajectory_dataset = ""
 
-        env = BabylonRLAIFEnv.__new__(BabylonRLAIFEnv)
+        env = FeedRLAIFEnv.__new__(FeedRLAIFEnv)
         env.config = mock_config
 
         with pytest.raises(ValueError) as exc_info:

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { ActorData } from '@babylon/shared';
+import type { ActorData } from '@feed/shared';
 import {
   mapActorToOASFDomains,
   mapActorToOASFSkills,
@@ -14,7 +14,7 @@ import {
   suggestSkillsFromKeywords,
   validateOASFDomainPath,
   validateOASFSkillPath,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('OASF Skill Mapper', () => {
   describe('mapActorToOASFSkills', () => {

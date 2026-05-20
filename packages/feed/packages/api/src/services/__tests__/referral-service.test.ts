@@ -48,7 +48,7 @@ const mockDb = {
   }),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   and: (...conditions: unknown[]) => conditions,
   db: mockDb,
   dbWrite: mockDb,
@@ -61,7 +61,7 @@ mock.module('@babylon/db', () => ({
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: mockLoggerInfo,
   },

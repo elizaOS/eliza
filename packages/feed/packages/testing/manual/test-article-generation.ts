@@ -9,8 +9,8 @@
  * 5. Shows sample outputs
  */
 
-import { db } from '@babylon/db';
-import { BabylonLLMClient } from '@babylon/engine';
+import { db } from '@feed/db';
+import { FeedLLMClient } from '@feed/engine';
 
 async function testArticleGeneration() {
   console.log('🔬 Testing Article Generation - Longform Verification\n');
@@ -200,7 +200,7 @@ async function testArticleGeneration() {
       console.log('🔥 Testing live article generation with LLM...\n');
 
       try {
-        const llm = new BabylonLLMClient();
+        const llm = new FeedLLMClient();
 
         const testPrompt = `You are BloombAIrg News, a news organization. Write a comprehensive news article about this prediction market: "Will OpenAGI achieve AGI by 2030?".
 

@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'destiny-washington',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @EduVerse | Reimagining Education | Stanford MBA | Every Child Deserves to Learn | EdTech Pioneer | Passionate about equity (from my penthouse)',
   pfpDescription:
     "Black American woman in her late 20s with natural curly hair, warm brown skin, bright brown eyes, and a genuine smile full of passion. Wearing a blazer over a t-shirt that says 'LEARN' in a trendy font. Background: a brightly colored office with motivational education posters.",
-  babylon: {
+  feed: {
     alignment: 'good',
     team: 'blue',
     scamProfile: 'naive',

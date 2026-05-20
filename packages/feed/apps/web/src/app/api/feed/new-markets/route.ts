@@ -12,7 +12,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   arcStates,
@@ -24,9 +24,9 @@ import {
   markets,
   questions,
   sql,
-} from '@babylon/db';
-import type { ArcStateType } from '@babylon/shared';
-import { toISO } from '@babylon/shared';
+} from '@feed/db';
+import type { ArcStateType } from '@feed/shared';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { dedupeQuestionMarketRows } from '../questionMarketRows';
 

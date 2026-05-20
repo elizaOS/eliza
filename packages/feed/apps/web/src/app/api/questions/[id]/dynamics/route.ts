@@ -50,10 +50,10 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
-import { PredictionPricing } from '@babylon/core/markets/prediction';
-import { db } from '@babylon/db';
-import { toISO } from '@babylon/shared';
+} from '@feed/api';
+import { PredictionPricing } from '@feed/core/markets/prediction';
+import { db } from '@feed/db';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

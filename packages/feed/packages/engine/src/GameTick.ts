@@ -3,7 +3,7 @@
  * Works with any state store (DB or in-memory) via injectable context.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { GameClock, GameTime } from './GameClock';
 
 /** Result of executing one game tick */

@@ -3,10 +3,10 @@
  */
 
 import consola from 'consola';
-import type { BabylonRuntimeConfig } from '../core/config';
-import { BabylonEngine } from '../core/engine';
+import type { FeedRuntimeConfig } from '../core/config';
+import { FeedEngine } from '../core/engine';
 import { scanSystems } from '../core/scanner';
-import { type BabylonSystem, TickPhase } from '../core/types';
+import { type FeedSystem, TickPhase } from '../core/types';
 
 export const phaseNames: Record<number, string> = {
   [TickPhase.Bootstrap]: 'Bootstrap',
@@ -24,10 +24,10 @@ export function phaseName(phase: number): string {
 }
 
 export async function buildEngine(
-  config: BabylonRuntimeConfig,
+  config: FeedRuntimeConfig,
   rootDir: string,
   includeLegacy: boolean
-): Promise<BabylonEngine> {
+): Promise<FeedEngine> {
   const {
     systemsDir: _systemsDir,
     disabledSystems: _disabledSystems,
@@ -36,7 +36,7 @@ export async function buildEngine(
     dev: _dev,
     ...customKeys
   } = config;
-  const engine = new BabylonEngine({
+  const engine = new FeedEngine({
     config: { budgetMs: config.budgetMs ?? 60_000, ...customKeys },
   });
 
@@ -59,7 +59,7 @@ export async function buildEngine(
   const phaseOverrides = config.systemPhases ?? {};
   const validPhases = new Set(Object.values(TickPhase));
 
-  function applyPhaseOverride(sys: BabylonSystem): BabylonSystem {
+  function applyPhaseOverride(sys: FeedSystem): FeedSystem {
     const override = phaseOverrides[sys.id];
     if (override === undefined) return sys;
     if (typeof override !== 'number' || !validPhases.has(override)) {

@@ -11,7 +11,7 @@ describe('Notification Email Service', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     process.env.NOTIFICATION_EMAIL_UNSUBSCRIBE_SECRET = 'test-unsub-secret';
-    process.env.NEXT_PUBLIC_APP_URL = 'https://babylon.market';
+    process.env.NEXT_PUBLIC_APP_URL = 'https://feed.market';
   });
 
   afterEach(() => {
@@ -68,7 +68,7 @@ describe('Notification Email Service', () => {
     });
 
     expect(url).toContain(
-      'https://babylon.market/api/notifications/email/unsubscribe?token='
+      'https://feed.market/api/notifications/email/unsubscribe?token='
     );
   });
 });

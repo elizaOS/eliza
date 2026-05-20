@@ -4,8 +4,8 @@
  * Give all agents starting virtual balance for trading
  */
 
-import { db } from '@babylon/db';
-import { users } from '@babylon/db/schema';
+import { db } from '@feed/db';
+import { users } from '@feed/db/schema';
 import { eq } from 'drizzle-orm';
 
 const STARTING_BALANCE = '1000.00'; // $1000 starting balance

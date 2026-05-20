@@ -35,10 +35,10 @@
  */
 
 import { createGroq } from '@ai-sdk/groq';
-import { userCorePlugin } from '@babylon/agents/plugins/plugin-user-core/src';
-import { buildCoordinatorDecisionTemplate } from '@babylon/agents/plugins/plugin-user-core/src/coordinator-decision-template';
-import { formatActionsWithParams } from '@babylon/agents/plugins/plugin-user-core/src/providers/actions';
-import { COORDINATOR_CONTEXT_TEXT } from '@babylon/agents/plugins/plugin-user-core/src/providers/coordinator-context';
+import { userCorePlugin } from '@feed/agents/plugins/plugin-user-core/src';
+import { buildCoordinatorDecisionTemplate } from '@feed/agents/plugins/plugin-user-core/src/coordinator-decision-template';
+import { formatActionsWithParams } from '@feed/agents/plugins/plugin-user-core/src/providers/actions';
+import { COORDINATOR_CONTEXT_TEXT } from '@feed/agents/plugins/plugin-user-core/src/providers/coordinator-context';
 import { parseKeyValueXml } from '@elizaos/core';
 import { generateText } from 'ai';
 
@@ -492,7 +492,7 @@ const DEFAULT_TEST_SUITE: TestCase[] = [
   // === CONVERSATIONAL (no action) ===
   {
     label: 'General question',
-    message: 'what is Babylon?',
+    message: 'what is Feed?',
     expectAction: '',
   },
   {

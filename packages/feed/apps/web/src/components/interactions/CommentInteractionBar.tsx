@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { MessageCircle, Repeat2 } from 'lucide-react';
 import { memo } from 'react';
 import { useAuth } from '@/hooks/useAuth';

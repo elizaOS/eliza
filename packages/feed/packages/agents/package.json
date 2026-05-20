@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/agents",
+  "name": "@feed/agents",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon Agent System - AI agents, plugins, and services",
+  "description": "Feed Agent System - AI agents, plugins, and services",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -22,19 +22,19 @@
     "typecheck": "tsc -b ."
   },
   "dependencies": {
-    "@babylon/a2a": "workspace:*",
+    "@feed/a2a": "workspace:*",
     "posthog-node": "^5.17.0"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "^0.3.5",
     "@ai-sdk/groq": "^2.0.32",
     "@anthropic-ai/sdk": "^0.71.0",
-    "@babylon/api": "workspace:*",
-    "@babylon/core": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/engine": "workspace:*",
-    "@babylon/shared": "workspace:*",
-    "@babylon/training": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "@feed/training": "workspace:*",
     "@elizaos/core": "2.0.0-alpha.109",
     "@elizaos/plugin-anthropic": "2.0.0-alpha.11",
     "@elizaos/plugin-openai": "2.0.0-alpha.15",

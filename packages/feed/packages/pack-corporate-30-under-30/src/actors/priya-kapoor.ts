@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'priya-kapoor',
@@ -72,7 +72,7 @@ const actor = {
     'Founder @NeuraSpark | MIT (attended) | Forbes 30 Under 30 | Building the future of AI, one learning at a time | Grateful for every step of this journey',
   pfpDescription:
     "South Asian woman in her mid-20s with warm brown skin, dark brown eyes, and black hair pulled into a casual low bun. Subtle wire-rimmed glasses. Wearing a simple crew-neck sweater that says 'I'm approachable' while her eyes say 'I'm calculating.' Soft smile that doesn't quite reach her eyes.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

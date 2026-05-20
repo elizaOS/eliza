@@ -15,9 +15,9 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { getOnboardingStatus, skipOnboarding } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { getOnboardingStatus, skipOnboarding } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

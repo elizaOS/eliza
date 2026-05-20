@@ -1,5 +1,5 @@
 -- Add wallet transfer log and daily limit tables for in-app wallet management
--- These support token/ETH/NFT transfers initiated through Babylon, plus daily spending limits
+-- These support token/ETH/NFT transfers initiated through Feed, plus daily spending limits
 
 CREATE TABLE IF NOT EXISTS "WalletTransferLog" (
   "id" text PRIMARY KEY NOT NULL,

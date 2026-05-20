@@ -84,7 +84,7 @@
  * ```
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
 import {
   and,
   asPublic,
@@ -99,15 +99,15 @@ import {
   posts,
   stockPrices,
   worldEvents,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import {
   BreakingNewsQuerySchema,
   FEED_WIDGET_CONFIG,
   getTimeAgo,
   logger,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { selectSignificantWorldEvents } from './helpers';
 

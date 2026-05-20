@@ -178,9 +178,9 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { logger, toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/agents';
+import { authenticateUser, withErrorHandling } from '@feed/api';
+import { logger, toISO, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

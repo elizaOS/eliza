@@ -5,7 +5,7 @@
  * Uses agentService.updateAgent() for proper logging and cache management.
  */
 
-import { agentLogs, db, eq, userAgentConfigs, users } from '@babylon/db';
+import { agentLogs, db, eq, userAgentConfigs, users } from '@feed/db';
 import type {
   Action,
   ActionResult,

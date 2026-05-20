@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { RealtimeChannel } from './index';
 
 interface ConnectionInfo {

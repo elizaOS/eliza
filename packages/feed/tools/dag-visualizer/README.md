@@ -1,15 +1,15 @@
-# Babylon DAG Inspector
+# Feed DAG Inspector
 
-Standalone, zero-dependency visualization of ALL data flowing through the Babylon game engine tick execution.
+Standalone, zero-dependency visualization of ALL data flowing through the Feed game engine tick execution.
 
 ## Quick Start
 
 ```bash
 # Open directly in browser — no server needed
-open babylon/tools/dag-visualizer/index.html
+open feed/tools/dag-visualizer/index.html
 
 # Or serve it
-npx serve babylon/tools/dag-visualizer
+npx serve feed/tools/dag-visualizer
 ```
 
 ## What It Shows
@@ -41,10 +41,10 @@ Embed in any admin page via iframe:
 
 ## Generating Trace Data
 
-Enable tracing in the Babylon engine:
+Enable tracing in the Feed engine:
 
 ```bash
-BABYLON_DAG_TRACE=true bun run game-tick
+FEED_DAG_TRACE=true bun run game-tick
 ```
 
 Traces are written to `runs/dag-traces/` with this structure:

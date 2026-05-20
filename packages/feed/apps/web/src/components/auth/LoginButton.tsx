@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Wallet } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 

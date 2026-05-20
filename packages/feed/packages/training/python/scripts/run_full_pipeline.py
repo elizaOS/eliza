@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Babylon local SFT pipeline stage.
+Feed local SFT pipeline stage.
 
 This script now serves as the internal local-SFT/data-prep stage used by the
 canonical `run_pipeline.py` orchestrator. It still supports direct invocation
@@ -203,7 +203,7 @@ class FullPipeline:
 
     @staticmethod
     def _trajectory_from_reader_row(traj_row, trajectory_model):
-        """Convert a reader row into a validated BabylonTrajectory."""
+        """Convert a reader row into a validated FeedTrajectory."""
         steps = json.loads(traj_row.steps_json)
         traj_data = {
             "id": traj_row.trajectory_id,
@@ -225,7 +225,7 @@ class FullPipeline:
     async def run_full_pipeline(self):
         """Run the complete pipeline end-to-end"""
         logger.info("=" * 70)
-        logger.info("BABYLON FULL TRAINING PIPELINE")
+        logger.info("FEED FULL TRAINING PIPELINE")
         logger.info("=" * 70)
         logger.info(f"Model: {self.model_name}")
         logger.info(f"Agents: {self.num_agents}")
@@ -300,7 +300,7 @@ class FullPipeline:
         trajectories from the configured source, applies provenance-aware
         filtering, and prepares them for scoring/training.
         """
-        from src.models import BabylonTrajectory
+        from src.models import FeedTrajectory
 
         trajectory_source = (
             self.trajectory_source or os.getenv("TRAJECTORY_SOURCE", "db").strip().lower()
@@ -437,7 +437,7 @@ class FullPipeline:
                             all_trajectories.append(
                                 self._trajectory_from_reader_row(
                                     traj_row,
-                                    BabylonTrajectory,
+                                    FeedTrajectory,
                                 )
                             )
                         except Exception as e:
@@ -1061,7 +1061,7 @@ class FullPipeline:
     async def _train_with_tinker(self):
         """Train using the Tinker-backed Atropos/GRPO path."""
         from src.training.tinker_client import TINKER_AVAILABLE
-        from src.training.tinker_trainer import BabylonTinkerTrainer, TinkerTrainingConfig
+        from src.training.tinker_trainer import FeedTinkerTrainer, TinkerTrainingConfig
 
         strict_tinker = self.training_backend_preference == "tinker"
 
@@ -1091,7 +1091,7 @@ class FullPipeline:
             decision_alignment_score=0.4,
         )
 
-        trainer = BabylonTinkerTrainer(config)
+        trainer = FeedTinkerTrainer(config)
 
         try:
             result = await trainer.train_from_scored_groups(self._build_tinker_scored_groups())
@@ -1684,7 +1684,7 @@ class FullPipeline:
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Babylon local SFT stage (internal helper for the canonical pipeline)",
+        description="Feed local SFT stage (internal helper for the canonical pipeline)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -1728,7 +1728,7 @@ async def main():
     parser.add_argument(
         "--source-dir",
         default=None,
-        help="Local Babylon export directory when --trajectory-source=local_export",
+        help="Local Feed export directory when --trajectory-source=local_export",
     )
     parser.add_argument(
         "--hf-dataset",

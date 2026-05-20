@@ -4,7 +4,7 @@
  * Wraps actions with trajectory logging
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import type {
   Action,
   HandlerCallback,

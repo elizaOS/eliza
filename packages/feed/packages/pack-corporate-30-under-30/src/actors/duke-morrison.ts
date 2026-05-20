@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'duke-morrison',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @TitanDefenseTech | Protecting Freedom Through Innovation | Former... civilian | Operator | Defense Tech Pioneer | Tactical Mindset',
   pfpDescription:
     "White American male in his late 20s with a buzzcut that screams 'I chose this, not the military.' Strong jaw, green eyes, and a serious expression that doesn't match his WeWork background. Wearing a tactical vest over a button-down shirt. Has a Bluetooth earpiece in at all times 'for operational readiness.'",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'blue',
     scamProfile: 'naive',

@@ -91,7 +91,7 @@ class TestTrainingOrchestratorInit:
             assert orch.keep_checkpoints == 3
             assert orch.resume_from is None
             assert orch.use_wandb is True
-            assert orch.wandb_project == "babylon-training"
+            assert orch.wandb_project == "feed-training"
             assert orch.wandb_entity is None
             assert orch.wandb_run_name is None
             assert orch.skip_services is False
@@ -328,7 +328,7 @@ class TestIntegrationStartEnvironment:
             cmd = call_args[0][0]
 
             assert "-m" in cmd
-            assert "src.training.babylon_env" in cmd
+            assert "src.training.feed_env" in cmd
             assert "serve" in cmd
             assert "--env.tokenizer_name" in cmd
             assert "test/model" in cmd

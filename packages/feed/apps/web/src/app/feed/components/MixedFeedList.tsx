@@ -1,6 +1,6 @@
 'use client';
 
-import type { FeedPost } from '@babylon/shared';
+import type { FeedPost } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';

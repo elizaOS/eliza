@@ -240,7 +240,7 @@ def _trajectory_to_messages(self, trajectory: dict) -> list[dict]:
     archetype = trajectory.get("archetype", "trader")
     messages.append({
         "role": "system",
-        "content": f"You are a {archetype} agent in Babylon..."
+        "content": f"You are a {archetype} agent in Feed..."
     })
     
     # Convert each step to user/assistant turns

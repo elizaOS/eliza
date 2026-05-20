@@ -1,10 +1,10 @@
 'use client';
 
-import { isRecord } from '@babylon/shared';
+import { isRecord } from '@feed/shared';
 
-const DEV_USER_ID_COOKIE_NAME = 'babylon-dev-user-id';
-const DEV_ADMIN_TOKEN_COOKIE_NAME = 'babylon-dev-admin-token';
-export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'babylon-playwright-dev-auth';
+const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
+const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
+export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'feed-playwright-dev-auth';
 
 export interface BrowserDevAuthSession {
   userId: string;

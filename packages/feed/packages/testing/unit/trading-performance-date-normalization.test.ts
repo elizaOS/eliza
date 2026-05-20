@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 const mockExecute = mock(async () => [{ count: 0 }]);
 
-const actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ...actualDb,
   buildCapitalBaseContributionSql: () => '0',
   db: {

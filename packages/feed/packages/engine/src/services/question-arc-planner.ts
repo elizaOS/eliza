@@ -41,7 +41,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { Actor, Organization, Question } from '../types';
 import type { RngFunction } from './narrative-state-service';
 

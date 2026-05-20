@@ -15,7 +15,7 @@ import {
   getClientIp,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   agentTrades,
   db,
@@ -26,9 +26,9 @@ import {
   npcTrades,
   sql,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

@@ -6,25 +6,25 @@ import {
 } from '../../../apps/web/src/lib/host-routing';
 
 describe('host-routing (legacy redirects)', () => {
-  it('identifies legacy babylon.social hosts', () => {
-    expect(isLegacyCanonicalHostname('babylon.social')).toBe(true);
-    expect(isLegacyCanonicalHostname('www.babylon.social')).toBe(true);
-    expect(isLegacyCanonicalHostname('babylon.market')).toBe(false);
+  it('identifies legacy feed.social hosts', () => {
+    expect(isLegacyCanonicalHostname('feed.social')).toBe(true);
+    expect(isLegacyCanonicalHostname('www.feed.social')).toBe(true);
+    expect(isLegacyCanonicalHostname('feed.market')).toBe(false);
   });
 
-  it('maps legacy babylon.social hosts to babylon.market', () => {
-    expect(getLegacyCanonicalOrigin('babylon.social', 'https:')).toBe(
-      'https://babylon.market'
+  it('maps legacy feed.social hosts to feed.market', () => {
+    expect(getLegacyCanonicalOrigin('feed.social', 'https:')).toBe(
+      'https://feed.market'
     );
-    expect(getLegacyCanonicalOrigin('www.babylon.social', 'https:')).toBe(
-      'https://babylon.market'
+    expect(getLegacyCanonicalOrigin('www.feed.social', 'https:')).toBe(
+      'https://feed.market'
     );
   });
 
   it('returns null for non-legacy hosts', () => {
-    expect(getLegacyCanonicalOrigin('babylon.market', 'https:')).toBeNull();
+    expect(getLegacyCanonicalOrigin('feed.market', 'https:')).toBeNull();
     expect(
-      getLegacyCanonicalOrigin('staging.babylon.market', 'https:')
+      getLegacyCanonicalOrigin('staging.feed.market', 'https:')
     ).toBeNull();
   });
 });

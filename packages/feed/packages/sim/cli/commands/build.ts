@@ -1,12 +1,12 @@
 /**
- * `babylon build` — Bundle the runtime and discovered systems into a standalone output.
+ * `feed build` — Bundle the runtime and discovered systems into a standalone output.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
 import { defineCommand } from 'citty';
 import consola from 'consola';
-import { loadBabylonConfig } from '../../core/config';
+import { loadFeedConfig } from '../../core/config';
 import { scanSystems } from '../../core/scanner';
 
 export default defineCommand({
@@ -45,9 +45,9 @@ export default defineCommand({
     const rootDir = resolve(args.rootDir);
     const outDir = resolve(rootDir, args.outDir);
 
-    consola.box('Babylon Runtime — build');
+    consola.box('Feed Runtime — build');
 
-    const { config, configFile } = await loadBabylonConfig(rootDir);
+    const { config, configFile } = await loadFeedConfig(rootDir);
     consola.info(`Config: ${configFile ?? 'defaults'}`);
 
     // Discover systems
@@ -85,16 +85,16 @@ export default defineCommand({
 
     const entrySource = `#!/usr/bin/env bun
 /**
- * Babylon Runtime — built entry point
+ * Feed Runtime — built entry point
  * Generated at ${new Date().toISOString()}
  */
 
-import { BabylonEngine } from '${enginePath}';
-import { loadBabylonConfig } from '${configPath}';
+import { FeedEngine } from '${enginePath}';
+import { loadFeedConfig } from '${configPath}';
 
 ${systemImports.join('\n')}
 
-interface BabylonSystemLike {
+interface FeedSystemLike {
   id: string;
   name: string;
   phase: number;
@@ -102,7 +102,7 @@ interface BabylonSystemLike {
   [key: string]: unknown;
 }
 
-function isBabylonSystem(obj: unknown): obj is BabylonSystemLike {
+function isFeedSystem(obj: unknown): obj is FeedSystemLike {
   if (!obj || typeof obj !== 'object') return false;
   const m = obj as Record<string, unknown>;
   return (
@@ -113,14 +113,14 @@ function isBabylonSystem(obj: unknown): obj is BabylonSystemLike {
   );
 }
 
-function tryInstantiate(ctor: Function): BabylonSystemLike | null {
+function tryInstantiate(ctor: Function): FeedSystemLike | null {
   try {
     const inst = new (ctor as new () => unknown)();
-    return isBabylonSystem(inst) ? inst : null;
+    return isFeedSystem(inst) ? inst : null;
   } catch { return null; }
 }
 
-function useIfEnabled(sys: BabylonSystemLike): void {
+function useIfEnabled(sys: FeedSystemLike): void {
   if (_disabled.has(sys.id)) {
     console.warn(\`System "\${sys.id}" disabled by config\`);
     return;
@@ -144,7 +144,7 @@ function useIfEnabled(sys: BabylonSystemLike): void {
 
 function registerScanned(mod: Record<string, unknown>): void {
   const candidate = mod.default ?? mod;
-  if (isBabylonSystem(candidate)) {
+  if (isFeedSystem(candidate)) {
     useIfEnabled(candidate);
     return;
   }
@@ -153,7 +153,7 @@ function registerScanned(mod: Record<string, unknown>): void {
     if (inst) { useIfEnabled(inst); return; }
   }
   for (const val of Object.values(mod)) {
-    if (isBabylonSystem(val)) { useIfEnabled(val); continue; }
+    if (isFeedSystem(val)) { useIfEnabled(val); continue; }
     if (typeof val === 'function') {
       const inst = tryInstantiate(val);
       if (inst) { useIfEnabled(inst); }
@@ -161,9 +161,9 @@ function registerScanned(mod: Record<string, unknown>): void {
   }
 }
 
-const { config: runtimeConfig } = await loadBabylonConfig();
+const { config: runtimeConfig } = await loadFeedConfig();
 const { systemsDir: _a, disabledSystems, systemPhases, migratedSubsystems: _b, dev: _c, ...engineKeys } = runtimeConfig;
-const engine = new BabylonEngine({
+const engine = new FeedEngine({
   config: { budgetMs: runtimeConfig.budgetMs ?? 60_000, ...engineKeys },
 });
 

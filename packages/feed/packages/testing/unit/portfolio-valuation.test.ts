@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   calculatePerpPositionMarketValue,
   toNumber,
-} from '@babylon/engine/client';
+} from '@feed/engine/client';
 
 describe('toNumber', () => {
   it('returns the value when it is already a finite number', () => {

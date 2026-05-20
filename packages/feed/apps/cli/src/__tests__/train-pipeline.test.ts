@@ -247,7 +247,7 @@ describe('CLI Train Pipeline', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(
-      'DATABASE_URL is required for babylon train pipeline unless trajectory-source=huggingface'
+      'DATABASE_URL is required for feed train pipeline unless trajectory-source=huggingface'
     );
   });
 
@@ -332,7 +332,7 @@ describe('CLI Train Pipeline', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(
-      'source-dir is required for babylon train pipeline with trajectory-source=local_export'
+      'source-dir is required for feed train pipeline with trajectory-source=local_export'
     );
   });
 
@@ -359,7 +359,7 @@ describe('CLI Train Pipeline', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(
-      'TINKER_API_KEY is required for babylon train pipeline with --training-backend=tinker'
+      'TINKER_API_KEY is required for feed train pipeline with --training-backend=tinker'
     );
   });
 

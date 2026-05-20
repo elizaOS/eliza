@@ -1,7 +1,7 @@
 /**
- * @babylon/agents - Babylon Agent System
+ * @feed/agents - Feed Agent System
  *
- * This package provides the core agent infrastructure for Babylon:
+ * This package provides the core agent infrastructure for Feed:
  * - Agent services (creation, management, points)
  * - Autonomous behaviors (trading, posting, commenting, messaging)
  * - Plugin system for extending agent capabilities
@@ -26,13 +26,13 @@ export {
 } from './external/ExternalAgentAdapter';
 // LLM integrations
 export * from './llm';
-// Plugins - Babylon plugin is the main export
+// Plugins - Feed plugin is the main export
 export {
-  babylonPlugin,
+  feedPlugin,
   initializeAgentA2AClient,
-  initializeBabylonPlugin,
-} from './plugins/babylon';
-export type { BabylonRuntime } from './plugins/babylon/types';
+  initializeFeedPlugin,
+} from './plugins/feed';
+export type { FeedRuntime } from './plugins/feed/types';
 // Plugin utilities
 export { groqPlugin } from './plugins/groq';
 export * from './plugins/plugin-agent-core/src';

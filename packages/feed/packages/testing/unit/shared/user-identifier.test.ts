@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { resolveUserIdentifierKind } from '@babylon/shared';
+import { resolveUserIdentifierKind } from '@feed/shared';
 
 describe('resolveUserIdentifierKind', () => {
   it('should classify UUID as id', () => {

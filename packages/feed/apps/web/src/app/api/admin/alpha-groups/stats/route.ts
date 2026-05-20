@@ -16,7 +16,7 @@ import {
   requirePermission,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   count,
@@ -26,14 +26,14 @@ import {
   groupMembers,
   groups,
   gte,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   ALPHA_GROUP_CONFIG,
   AlphaGroupInviteService,
   TIER_CONFIG,
   TieredGroupService,
-} from '@babylon/engine';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/engine';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

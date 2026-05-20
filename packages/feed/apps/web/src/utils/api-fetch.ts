@@ -8,7 +8,7 @@
  * web (same-origin) and mobile (cross-origin via NEXT_PUBLIC_API_URL).
  */
 
-import { extractErrorMessage, logger } from '@babylon/shared';
+import { extractErrorMessage, logger } from '@feed/shared';
 import { getBrowserDevAuthSession } from '@/lib/auth/dev-auth';
 
 import { apiUrl } from './api-url';
@@ -115,8 +115,8 @@ export async function apiFetch(
       finalHeaders.set('Authorization', `Bearer ${token}`);
     } else if (typeof window !== 'undefined') {
       // Check for embed token from Milady desktop/web host
-      const embedToken = (window as Window & { __babylonEmbedToken?: string })
-        .__babylonEmbedToken;
+      const embedToken = (window as Window & { __feedEmbedToken?: string })
+        .__feedEmbedToken;
       if (embedToken) {
         finalHeaders.set('Authorization', `Bearer ${embedToken}`);
       } else {

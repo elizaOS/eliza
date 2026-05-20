@@ -18,8 +18,8 @@
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { NFTVerificationService } from '@babylon/api';
-import { ValidationError } from '@babylon/shared';
+import { NFTVerificationService } from '@feed/api';
+import { ValidationError } from '@feed/shared';
 import type { Address } from 'viem';
 
 describe('NFTVerificationService', () => {

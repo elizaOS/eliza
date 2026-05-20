@@ -5,7 +5,7 @@ import {
   getDisplayReferralUrl,
   getReferralUrl,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   BookOpen,
   Check,

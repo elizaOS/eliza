@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, type FeedPost } from '@babylon/shared';
+import { cn, type FeedPost } from '@feed/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PostList } from '@/app/feed/components/PostList';
 import { useFeedPosts } from '@/app/feed/hooks/useFeedPosts';

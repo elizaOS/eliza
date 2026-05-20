@@ -12,7 +12,7 @@ import {
   filterIncoherent,
   validateCoherence,
   validateGrounding,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 // ─── validateGrounding: Edge Cases ──────────────────────────────────────────
 

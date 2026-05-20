@@ -159,13 +159,13 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@babylon/agents';
+} from '@feed/agents';
 import {
   authenticateUser,
   checkProgress,
   withErrorHandling,
-} from '@babylon/api';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/api';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { listOwnedAgentSummaries } from '@/lib/agents/owned-agent-summaries';

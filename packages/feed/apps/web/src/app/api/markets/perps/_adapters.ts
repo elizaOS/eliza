@@ -11,20 +11,20 @@
 import {
   broadcastToChannel,
   invalidateMarketsApiPerpsSnapshot,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   PerpMarketService,
   type PerpServiceDeps,
   type PriceImpactPort,
-} from '@babylon/core/markets/perps';
+} from '@feed/core/markets/perps';
 import type {
   BroadcastPort,
   FeeConfig,
   FeeProcessor,
   WalletPort,
-} from '@babylon/core/markets/shared/common';
+} from '@feed/core/markets/shared/common';
 import {
   and,
   db,
@@ -33,19 +33,19 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   FEE_CONFIG,
   FeeService,
   PriceUpdateService,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   calculatePriceFromHoldings,
   type JsonValue,
   logger,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { createTradingFeeOutboxAdapter } from '@/lib/services/trading-fee-outbox';
 
 /**

@@ -14,8 +14,8 @@ import {
   feedbacks,
   gte,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { clamp01, clampPercent } from '../utils/math-utils';
 import {
   calculateConfidenceScore,

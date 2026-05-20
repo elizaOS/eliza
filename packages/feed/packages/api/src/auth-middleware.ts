@@ -14,8 +14,8 @@
  * Test DID:  steward:test:<userId> Bearer token (integration tests).
  */
 
-import { and, db, eq, isNull, users } from '@babylon/db';
-import { type AuthenticatedUser } from '@babylon/shared';
+import { and, db, eq, isNull, users } from '@feed/db';
+import { type AuthenticatedUser } from '@feed/shared';
 import { jwtVerify } from 'jose';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -31,8 +31,8 @@ import {
 } from './errors';
 import { ensureUserFromSteward } from './users/ensure-user';
 
-export type { AuthenticatedUser } from '@babylon/shared';
-export { extractErrorMessage } from '@babylon/shared';
+export type { AuthenticatedUser } from '@feed/shared';
+export { extractErrorMessage } from '@feed/shared';
 export { AuthenticationError, isAuthenticationError };
 
 // ─── Steward JWT verification ─────────────────────────────────────────────────
@@ -99,7 +99,7 @@ async function resolveUserFromStewardPayload(
     return toAuthUser(byId);
   }
 
-  // 2. Email bridge: Babylon user exists but hasn't logged in via Steward yet.
+  // 2. Email bridge: Feed user exists but hasn't logged in via Steward yet.
   //    Only match on real emails — skip synthetic @id.steward.internal addresses.
   const isRealEmail =
     email &&

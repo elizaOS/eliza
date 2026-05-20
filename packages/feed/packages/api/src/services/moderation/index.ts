@@ -11,6 +11,6 @@ export {
   getMutedUserIds,
   hasBlocked,
   hasMuted,
-} from '@babylon/db';
+} from '@feed/db';
 export * from './points-distribution';
 export * from './report-evaluation';

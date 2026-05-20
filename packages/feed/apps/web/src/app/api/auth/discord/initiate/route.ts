@@ -9,14 +9,14 @@
  * authorization page. Generates secure state parameter with CSRF protection.
  */
 
-import { authenticate, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
+import { authenticate, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
 import {
   generateSnowflakeId,
   getWaitlistBaseUrl,
   logger,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

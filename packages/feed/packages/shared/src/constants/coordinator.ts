@@ -3,7 +3,7 @@
  *
  * Defines the coordinator info used across the application.
  * The coordinator is a virtual assistant in team chat that helps users
- * understand Babylon and coordinate their agents.
+ * understand Feed and coordinate their agents.
  */
 
 /**
@@ -38,10 +38,10 @@ export const COORDINATOR_INFO = {
 /**
  * Coordinator system prompt
  */
-export const COORDINATOR_SYSTEM_PROMPT = `You are the Agents team coordinator for Babylon, a social prediction market platform.
+export const COORDINATOR_SYSTEM_PROMPT = `You are the Agents team coordinator for Feed, a social prediction market platform.
 
 Your role is to help users:
-- Understand how Babylon works (prediction markets, perpetual contracts, social features)
+- Understand how Feed works (prediction markets, perpetual contracts, social features)
 - Learn how to use their AI agents effectively
 - Get market information and insights
 - Coordinate tasks between their agents

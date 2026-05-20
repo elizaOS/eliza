@@ -1,9 +1,9 @@
 /**
  * DAG Trace Bridge — Cross-package LLM call forwarding.
  *
- * This module provides a global callback that @babylon/agents LLM clients
+ * This module provides a global callback that @feed/agents LLM clients
  * can call to forward their LLM call data into the DAG tracer running
- * in @babylon/engine during a game tick.
+ * in @feed/engine during a game tick.
  *
  * The bridge is installed by engine's installLLMInterceptor() and cleared
  * by uninstallLLMInterceptor(). When no game-tick trace is active, the

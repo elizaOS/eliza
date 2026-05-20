@@ -1,6 +1,6 @@
-# Babylon RL Training - Deployment
+# Feed RL Training - Deployment
 
-This directory contains everything needed to deploy Babylon RL training to various platforms.
+This directory contains everything needed to deploy Feed RL training to various platforms.
 
 ## Quick Start
 
@@ -127,7 +127,7 @@ Instead of a live database, you can train on frozen HuggingFace datasets:
 ```bash
 # Set trajectory source to HuggingFace
 export TRAJECTORY_SOURCE=huggingface
-export HF_TRAJECTORY_DATASET=elizaos/babylon-trajectories-simulation-v1
+export HF_TRAJECTORY_DATASET=elizaos/feed-trajectories-simulation-v1
 export HF_TRAJECTORY_SPLIT=raw
 
 # Run training
@@ -148,7 +148,7 @@ export HF_TOKEN=your-token
 ./local/run.sh --profile 24gb --steps 1000
 ```
 
-Model codenames are Babylon-inspired: `ishtar`, `marduk`, `gilgamesh`, `enkidu`, `tiamat`, etc.
+Model codenames are Feed-inspired: `ishtar`, `marduk`, `gilgamesh`, `enkidu`, `tiamat`, etc.
 
 ## Post-Training Benchmark
 

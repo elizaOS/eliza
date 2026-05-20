@@ -1,7 +1,7 @@
-import type { OrgCorrelation } from '@babylon/shared';
+import type { OrgCorrelation } from '@feed/shared';
 
 /**
- * Inter-organization correlations for the default Babylon pack.
+ * Inter-organization correlations for the default Feed pack.
  * Defines supply chains, competitive relationships, partnerships, and investments.
  *
  * Migrated from packages/engine MarketCorrelation format.

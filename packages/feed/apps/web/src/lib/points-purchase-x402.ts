@@ -1,8 +1,8 @@
 import 'server-only';
 
-import { type RedisClient, X402Manager } from '@babylon/a2a';
-import { ensureRedisReady, type RedisInstance } from '@babylon/api';
-import { getCurrentRpcUrl } from '@babylon/shared';
+import { type RedisClient, X402Manager } from '@feed/a2a';
+import { ensureRedisReady, type RedisInstance } from '@feed/api';
+import { getCurrentRpcUrl } from '@feed/shared';
 
 function ioredisToX402Redis(redis: RedisInstance): RedisClient {
   return {

@@ -1,4 +1,4 @@
-import { broadcastToChannel, createNotification } from '@babylon/api';
+import { broadcastToChannel, createNotification } from '@feed/api';
 import {
   and,
   db,
@@ -9,8 +9,8 @@ import {
   markets,
   positions,
   users,
-} from '@babylon/db';
-import { logger, type MarketResolvedNotificationData } from '@babylon/shared';
+} from '@feed/db';
+import { logger, type MarketResolvedNotificationData } from '@feed/shared';
 
 interface ResolvedOutcomeRow {
   holderId: string;

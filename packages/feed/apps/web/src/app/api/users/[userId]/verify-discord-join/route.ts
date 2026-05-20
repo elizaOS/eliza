@@ -5,7 +5,7 @@
  * @access Authenticated
  *
  * @description
- * Verifies that a user has joined the Babylon Discord server using Discord OAuth token.
+ * Verifies that a user has joined the Feed Discord server using Discord OAuth token.
  * Awards points if verification succeeds (trusted reward system).
  */
 
@@ -18,18 +18,18 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
-// Babylon Discord Guild ID
-const BABYLON_DISCORD_GUILD_ID =
+// Feed Discord Guild ID
+const FEED_DISCORD_GUILD_ID =
   process.env.DISCORD_GUILD_ID || '1438561373012627456';
 
 /**
  * POST /api/users/[userId]/verify-discord-join
- * Verify that a user has joined the Babylon Discord server
+ * Verify that a user has joined the Feed Discord server
  */
 export const POST = withErrorHandling(
   async (
@@ -91,7 +91,7 @@ export const POST = withErrorHandling(
     const alreadyAwarded = user.pointsAwardedForDiscordJoin;
 
     // Check if Discord Guild ID is configured
-    if (!BABYLON_DISCORD_GUILD_ID) {
+    if (!FEED_DISCORD_GUILD_ID) {
       throw new BusinessLogicError(
         'Discord verification is not configured. Please contact support.',
         'DISCORD_GUILD_NOT_CONFIGURED'
@@ -107,7 +107,7 @@ export const POST = withErrorHandling(
       {
         userId: canonicalUserId,
         discordId: user.discordId,
-        guildId: BABYLON_DISCORD_GUILD_ID,
+        guildId: FEED_DISCORD_GUILD_ID,
       },
       'POST /api/users/[userId]/verify-discord-join'
     );
@@ -133,23 +133,23 @@ export const POST = withErrorHandling(
         'POST /api/users/[userId]/verify-discord-join'
       );
 
-      // Check if Babylon guild is in the list
-      const babylonGuild = guilds.find(
-        (guild) => guild.id === BABYLON_DISCORD_GUILD_ID
+      // Check if Feed guild is in the list
+      const feedGuild = guilds.find(
+        (guild) => guild.id === FEED_DISCORD_GUILD_ID
       );
 
-      if (babylonGuild) {
+      if (feedGuild) {
         isMember = true;
         logger.info(
-          'User is a member of Babylon Discord',
+          'User is a member of Feed Discord',
           { userId: canonicalUserId, discordId: user.discordId },
           'POST /api/users/[userId]/verify-discord-join'
         );
       } else {
         verificationError =
-          'You are not a member of the Babylon Discord server. Please join first.';
+          'You are not a member of the Feed Discord server. Please join first.';
         logger.warn(
-          'User is not a member of Babylon Discord',
+          'User is not a member of Feed Discord',
           {
             userId: canonicalUserId,
             discordId: user.discordId,
@@ -188,7 +188,7 @@ export const POST = withErrorHandling(
         verified: false,
         message:
           verificationError ||
-          'Could not verify membership. Please ensure you have joined the Babylon Discord server.',
+          'Could not verify membership. Please ensure you have joined the Feed Discord server.',
         reputation: {
           awarded: 0,
           newReputationTotal: 0,

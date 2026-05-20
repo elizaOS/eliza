@@ -1,4 +1,4 @@
-import { TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from '@babylon/shared';
+import { TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import {
@@ -10,13 +10,13 @@ import {
  * Production and staging origins for CORS requests
  */
 const PRODUCTION_ORIGINS = [
-  'https://babylon.market',
-  'https://www.babylon.market',
-  'https://app.babylon.market',
-  // 'https://privy.babylon.market', // DEPRECATED — Privy removed in Phase 2
-  'https://staging.babylon.market',
-  'https://app.staging.babylon.market',
-  'https://play.staging.babylon.market',
+  'https://feed.market',
+  'https://www.feed.market',
+  'https://app.feed.market',
+  // 'https://privy.feed.market', // DEPRECATED — Privy removed in Phase 2
+  'https://staging.feed.market',
+  'https://app.staging.feed.market',
+  'https://play.staging.feed.market',
   // Capacitor mobile app origins.
   // Capacitor iOS sets Origin: capacitor://localhost; Android sets Origin: https://localhost.
   // These are the WebView origins for the native shell — not reachable from external browsers.
@@ -161,7 +161,7 @@ export function middleware(request: NextRequest) {
     return legacyPfpRewrite;
   }
 
-  // Redirect legacy babylon.social domains to babylon.market
+  // Redirect legacy feed.social domains to feed.market
   if (isLegacyCanonicalHostname(hostname)) {
     const redirectOrigin = getLegacyCanonicalOrigin(
       hostname,

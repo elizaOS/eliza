@@ -73,15 +73,15 @@ import {
   type AuthenticatedUser,
   optionalAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { asPublic, asUser, desc, eq, posts, postTags } from '@babylon/db';
+} from '@feed/api';
+import { asPublic, asUser, desc, eq, posts, postTags } from '@feed/db';
 import {
   generateTrendingSummary,
   getCurrentTrendingTags,
   groupTrendingTags,
   type TrendingTag,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

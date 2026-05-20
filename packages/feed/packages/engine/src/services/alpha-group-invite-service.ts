@@ -26,8 +26,8 @@ import {
   gte,
   or,
   userInteractions,
-} from '@babylon/db';
-import { GROUP_CONFIG, logger, type TierLevel } from '@babylon/shared';
+} from '@feed/db';
+import { GROUP_CONFIG, logger, type TierLevel } from '@feed/shared';
 import {
   ALPHA_GROUP_CONFIG,
   calculateNextEligibleDate,

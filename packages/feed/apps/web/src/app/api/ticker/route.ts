@@ -16,14 +16,14 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
   PredictionPricing,
-} from '@babylon/core/markets/prediction';
-import { FEE_CONFIG, WalletService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/core/markets/prediction';
+import { FEE_CONFIG, WalletService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import type {
   TickerNewsItem,

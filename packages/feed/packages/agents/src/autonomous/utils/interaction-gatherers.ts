@@ -20,7 +20,7 @@ import {
   messages,
   posts,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type {
   PendingChatMessage,
   PendingCommentReply,

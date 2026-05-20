@@ -8,7 +8,7 @@
  * - Character limits respected
  */
 
-import { escapeRegex } from '@babylon/shared';
+import { escapeRegex } from '@feed/shared';
 import { getForbiddenRealNames } from './world-context';
 
 export interface ValidationResult {

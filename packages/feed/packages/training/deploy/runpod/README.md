@@ -1,6 +1,6 @@
-# Babylon Training & Benchmark - RunPod
+# Feed Training & Benchmark - RunPod
 
-Deploy Babylon RL training and benchmarks to [RunPod](https://runpod.io) cloud GPUs.
+Deploy Feed RL training and benchmarks to [RunPod](https://runpod.io) cloud GPUs.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ cp ../env.example .env
 # Edit .env with DATABASE_URL, WANDB_API_KEY, etc.
 
 # 3. Start training
-python setup.py train --gpu h100 --gpus 2 --image yourorg/babylon-training:latest --env-file .env
+python setup.py train --gpu h100 --gpus 2 --image yourorg/feed-training:latest --env-file .env
 
 # 4. Monitor
 python setup.py list
@@ -26,10 +26,10 @@ python setup.py logs <pod-id>
 
 ```bash
 # Provision a shell pod, SSH in, run the canonical pipeline manually, then stop it
-python setup.py shell --gpu h200 --image yourorg/babylon-training:latest --env-file .env
+python setup.py shell --gpu h200 --image yourorg/feed-training:latest --env-file .env
 
 # Or provision the recommended split-GPU box for 7B-9B RL/SFT runs
-python setup.py shell --gpu a100 --gpus 2 --image yourorg/babylon-training:latest --env-file .env
+python setup.py shell --gpu a100 --gpus 2 --image yourorg/feed-training:latest --env-file .env
 ```
 
 ### Benchmarking
@@ -58,7 +58,7 @@ python setup.py benchmark \
 # Uses all settings from .env file
 python setup.py train \
   --gpu h100 \
-  --image yourorg/babylon-training:latest \
+  --image yourorg/feed-training:latest \
   --env-file .env
 ```
 
@@ -68,7 +68,7 @@ python setup.py train \
 # Override specific settings
 python setup.py train \
   --gpu h100 \
-  --image yourorg/babylon-training:latest \
+  --image yourorg/feed-training:latest \
   --db "postgresql://..." \
   --wandb "your-wandb-key" \
   --steps 5000
@@ -80,7 +80,7 @@ python setup.py train \
 # Use spot instance (may be interrupted)
 python setup.py train \
   --gpu 4090 \
-  --image yourorg/babylon-training:latest \
+  --image yourorg/feed-training:latest \
   --env-file .env \
   --spot \
   --community
@@ -115,7 +115,7 @@ python setup.py logs <pod-id>
 | `h100` | 80GB | Check RunPod live pricing | Balanced large-box training |
 | `h200` | 141GB | Check RunPod live pricing | Simplest single-GPU 7B-9B run |
 
-For the current Babylon stack:
+For the current Feed stack:
 
 - `a100 --gpus 2` is the best value configuration for 7B-9B RL because it cleanly splits vLLM and training across GPUs.
 - `h200 --gpus 1` is the simplest single-box configuration when you want training and inference on one card.
@@ -128,7 +128,7 @@ For the current Babylon stack:
 --image       Docker image (required)
 --env-file    Path to .env file (recommended)
 --hf-dataset  HuggingFace dataset ID (recommended for cloud)
---name        Pod name (default: babylon-<gpu>)
+--name        Pod name (default: feed-<gpu>)
 --gpus        Number of GPUs (default: 1, auto-selects multi-GPU profiles when available)
 --steps       Training steps (default: from env or 1000)
 --profile     Training profile (default: auto from GPU)
@@ -164,9 +164,9 @@ python setup.py shell --gpu <type> --image <image> [options]
 --hf-model    HuggingFace model ID to benchmark (e.g., elizaos/gilgamesh-test-3060)
 --base-model  Base model for vLLM (must match training, e.g., Qwen/Qwen2.5-0.5B-Instruct)
 --model       Path to model inside container (alternative to --hf-model)
---image       Docker image (default: revlentless/babylon-benchmark:latest)
+--image       Docker image (default: revlentless/feed-benchmark:latest)
 --env-file    Path to .env file
---name        Pod name (default: babylon-bench-<gpu>)
+--name        Pod name (default: feed-bench-<gpu>)
 --hf-token    HF_TOKEN for private models
 --quick       Quick mode - 7-day scenarios (faster)
 --scenario    Specific scenario: bull-market, bear-market, scandal-unfolds, pump-and-dump
@@ -192,7 +192,7 @@ Uses the master [`../env.example`](../env.example). Key variables:
 ```bash
 python setup.py train \
   --gpu h100 \
-  --image yourorg/babylon-training:latest \
+  --image yourorg/feed-training:latest \
   --env-file .env \
   --hf-dataset elizaos/enkidu-trajectories-raw
 ```
@@ -213,7 +213,7 @@ cp ../env.example .env
 
 # 3. Deploy
 cd ../runpod
-python setup.py train --gpu h100 --gpus 2 --image yourorg/babylon-training:latest --env-file ../.env
+python setup.py train --gpu h100 --gpus 2 --image yourorg/feed-training:latest --env-file ../.env
 
 # 4. Monitor at https://runpod.io/console/pods
 
@@ -226,7 +226,7 @@ python setup.py stop <pod-id>
 
 ```bash
 # 1. Provision a shell pod
-python setup.py shell --gpu a100 --gpus 2 --image yourorg/babylon-training:latest --env-file ../.env
+python setup.py shell --gpu a100 --gpus 2 --image yourorg/feed-training:latest --env-file ../.env
 
 # 2. SSH into the pod from the RunPod console
 
@@ -235,7 +235,7 @@ cd /app
 python3 python/scripts/run_pipeline.py \
   --mode full \
   --model Qwen/Qwen3.5-9B \
-  --output /workspace/babylon-output \
+  --output /workspace/feed-output \
   --local-backend cuda \
   --local-steps 200 \
   --local-batch-size 2 \

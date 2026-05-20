@@ -40,8 +40,8 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
+import { withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 
@@ -74,7 +74,7 @@ export const GET = withErrorHandling(async function GET(
     }),
   ]);
 
-  const displayName = user?.displayName || user?.username || 'A Babylon Trader';
+  const displayName = user?.displayName || user?.username || 'A Feed Trader';
 
   return new ImageResponse(
     <div
@@ -111,7 +111,7 @@ export const GET = withErrorHandling(async function GET(
           display: 'flex',
         }}
       >
-        Babylon
+        Feed
       </div>
 
       <div
@@ -146,7 +146,7 @@ export const GET = withErrorHandling(async function GET(
             display: 'flex',
           }}
         >
-          Join Me on Babylon
+          Join Me on Feed
         </div>
 
         <div

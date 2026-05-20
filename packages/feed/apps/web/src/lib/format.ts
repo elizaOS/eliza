@@ -6,7 +6,7 @@
 import {
   formatCompactCurrency,
   formatCurrency as formatCurrencyShared,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 export type CurrencyInput = string | number | null | undefined;
 

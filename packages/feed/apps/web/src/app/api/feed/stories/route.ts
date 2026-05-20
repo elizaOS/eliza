@@ -4,8 +4,8 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { toISO } from '@babylon/shared';
+} from '@feed/api';
+import { toISO } from '@feed/shared';
 
 import type { NextRequest } from 'next/server';
 import { decodeCursor, encodeCursor, findCursorIndex } from '../feed-cursor';

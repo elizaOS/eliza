@@ -9,7 +9,7 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
-import { BabylonLLMClient } from '../../llm/openai-client';
+import { FeedLLMClient } from '../../llm/openai-client';
 import {
   checkVoiceConsistency,
   getCharacterConfig,
@@ -30,11 +30,11 @@ const liveLlmConfig = resolveLiveLlmTestConfig();
 describe.skipIf(!liveLlmConfig.enabled || !hasApiKey)(
   'NPC Voice Diversity Integration',
   () => {
-    let llmClient: BabylonLLMClient;
+    let llmClient: FeedLLMClient;
 
     beforeAll(() => {
       if (hasApiKey) {
-        llmClient = BabylonLLMClient.forGameTick();
+        llmClient = FeedLLMClient.forGameTick();
       }
     });
 

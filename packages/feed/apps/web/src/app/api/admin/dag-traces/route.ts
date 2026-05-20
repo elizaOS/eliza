@@ -7,7 +7,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 
 const TRACE_DIR = path.resolve(process.cwd(), 'runs', 'dag-traces');
@@ -18,7 +18,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (!fs.existsSync(TRACE_DIR)) {
     return successResponse({
       traces: [],
-      message: 'No traces found. Enable with BABYLON_DAG_TRACE=true',
+      message: 'No traces found. Enable with FEED_DAG_TRACE=true',
     });
   }
 

@@ -3,7 +3,7 @@
 Shared helpers for the scam-defense data exchange pipeline.
 
 The goal is to keep one canonical row shape that can be reprocessed into:
-- Babylon trajectory JSONL
+- Feed trajectory JSONL
 - OpenAI-style chat records
 - Anthropic-style message records
 - framework bridge records (Hermes / ElizaOS / OpenClaw / generic)
@@ -26,7 +26,7 @@ PRIVATE_REASONING_VISIBILITY = "private"
 
 NATURAL_MESSAGE_SYSTEM_PROMPT = " ".join(
     [
-        "You are an autonomous Babylon agent operating across chats and DMs.",
+        "You are an autonomous Feed agent operating across chats and DMs.",
         "You will receive runtime context plus the recent conversation transcript.",
         "Reply with the exact next message you would actually send in the conversation.",
         "Do not output JSON, bullet points, markdown fences, or hidden reasoning.",
@@ -35,7 +35,7 @@ NATURAL_MESSAGE_SYSTEM_PROMPT = " ".join(
 
 DECISION_JSON_SYSTEM_PROMPT = " ".join(
     [
-        "You are an autonomous Babylon agent operating across chats and DMs.",
+        "You are an autonomous Feed agent operating across chats and DMs.",
         "You will receive runtime context plus the recent conversation transcript.",
         "Reply with exactly one JSON object and no extra text.",
         'The JSON must include these keys: "chosenAction", "leakedSecret", "explanation", '
@@ -871,7 +871,7 @@ def paraphrased_response_text(
         ]
         return options[rng.randrange(len(options))]
     if (
-        source_pool == "babylon-export"
+        source_pool == "feed-export"
         and chosen_action == "request-verification"
         and len(cleaned) < 120
     ):

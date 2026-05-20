@@ -2,8 +2,8 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@babylon/agents';
-import { logger, toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/agents';
+import { logger, toISO, toISOOrNull } from '@feed/shared';
 
 export type AgentModelTier = 'free' | 'pro';
 

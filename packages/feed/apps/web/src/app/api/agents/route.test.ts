@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 const mockAuthenticateUser = mock();
 const mockListOwnedAgentSummaries = mock();
 
-mock.module('@babylon/agents', () => ({
+mock.module('@feed/agents', () => ({
   agentService: {
     createAgent: mock(),
     updateAgent: mock(),
@@ -13,14 +13,14 @@ mock.module('@babylon/agents', () => ({
   isAutonomousTradingEnabled: mock(() => false),
 }));
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticateUser: mockAuthenticateUser,
   checkProgress: mock(),
   withErrorHandling: (handler: (request: NextRequest) => Promise<unknown>) =>
     handler,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: mock(),
   },

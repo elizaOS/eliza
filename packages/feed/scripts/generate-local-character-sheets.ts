@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     console.log(`${sheet.name} (@${sheet.username})`);
     console.log(`  ${sheet.bio[0] ?? ''}`);
     console.log(
-      `  ${sheet.babylon.alignment}/${sheet.babylon.team} | ${sheet.babylon.scamProfile.replaceAll('_', ' ')} | ${sheet.settings.groq.primary}`
+      `  ${sheet.feed.alignment}/${sheet.feed.team} | ${sheet.feed.scamProfile.replaceAll('_', ' ')} | ${sheet.settings.groq.primary}`
     );
   }
 }

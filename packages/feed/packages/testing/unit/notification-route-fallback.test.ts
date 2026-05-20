@@ -113,9 +113,9 @@ const mockDbSelect = mock((shape?: unknown) => ({
   },
 }));
 
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
-  ..._actualBabylonApi,
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
+  ..._actualFeedApi,
   authenticate: mockAuthenticate,
   CACHE_KEYS: { USER: 'user' },
   getCacheOrFetch: mockGetCacheOrFetch,
@@ -137,8 +137,8 @@ mock.module('@babylon/api', () => ({
     },
 }));
 
-const _actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const _actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ..._actualDb,
   and: (...conditions: unknown[]) => ({ op: 'and', conditions }),
   count: () => ({ op: 'count' }),
@@ -159,8 +159,8 @@ mock.module('@babylon/db', () => ({
   users: usersTable,
 }));
 
-const _actualShared = await import('@babylon/shared');
-mock.module('@babylon/shared', () => ({
+const _actualShared = await import('@feed/shared');
+mock.module('@feed/shared', () => ({
   ..._actualShared,
   DEFAULT_NOTIFICATION_DIGEST_SETTINGS: {
     digestEnabled: true,

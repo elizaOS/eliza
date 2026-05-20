@@ -118,8 +118,8 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { requireAdmin, withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

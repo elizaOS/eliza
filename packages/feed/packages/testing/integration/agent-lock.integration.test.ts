@@ -6,22 +6,22 @@ import {
   expect,
   test,
 } from 'bun:test';
-import { AgentStatus, createTestAgent } from '@babylon/agents';
+import { AgentStatus, createTestAgent } from '@feed/agents';
 import {
   AGENT_LOCK_DURATION_MS,
   acquireAgentLock,
   checkAgentLock,
   releaseAgentLock,
-} from '@babylon/agents/services/agent-lock-service';
-import { agentRegistry } from '@babylon/agents/services/agent-registry.service';
+} from '@feed/agents/services/agent-lock-service';
+import { agentRegistry } from '@feed/agents/services/agent-registry.service';
 import {
   adminRoles,
   asSystem,
   db,
   inArray,
   userAgentConfigs,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import type {
   AgentTickResponse,
   AgentTickResultItem,

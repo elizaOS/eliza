@@ -68,10 +68,10 @@
  * ```
  */
 
-import { X402Manager } from '@babylon/a2a';
-import { requireAdmin, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { generateSnowflakeId, logger, toISO } from '@babylon/shared';
+import { X402Manager } from '@feed/a2a';
+import { requireAdmin, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { generateSnowflakeId, logger, toISO } from '@feed/shared';
 import { parseEther } from 'ethers';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

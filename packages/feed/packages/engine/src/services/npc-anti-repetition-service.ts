@@ -31,7 +31,7 @@
  * @module services/npc-anti-repetition-service
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 /** Maximum posts to track per character */
 const HISTORY_SIZE = 20;

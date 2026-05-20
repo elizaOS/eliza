@@ -1,4 +1,4 @@
-import type { NarrativeStory } from '@babylon/shared';
+import type { NarrativeStory } from '@feed/shared';
 
 /**
  * Cursor encoding for score-ranked feeds (For You, Stories).

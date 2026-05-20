@@ -16,7 +16,7 @@
  * - CHECK_RECENT_MARKET_TRADES action for viewing recent trading activity
  * - CHECK_POST_DETAIL action for viewing a post with all comments and thread structure
  * - CHECK_COMMENT_DETAIL action for viewing a comment with thread context
- * - CREATE_POST action for creating posts on the Babylon feed
+ * - CREATE_POST action for creating posts on the Feed feed
  * - CREATE_COMMENT action for commenting on posts or replying to comments
  * - BUY_PREDICTION action for buying prediction market shares
  * - SELL_PREDICTION action for selling prediction market shares

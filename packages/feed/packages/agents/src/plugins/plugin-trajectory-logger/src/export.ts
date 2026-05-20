@@ -18,15 +18,15 @@ import {
   lte,
   sql,
   trajectories,
-} from '@babylon/db';
-import { shuffleArray } from '@babylon/engine';
+} from '@feed/db';
+import { shuffleArray } from '@feed/engine';
 import { logger } from '../../../shared/logger';
 import type { JsonValue } from '../../../types/common';
 import type { Trajectory } from './types';
 
 export interface ExportOptions {
   // Dataset configuration
-  datasetName: string; // e.g., 'BabylonSocial/babylon-agent-trajectories'
+  datasetName: string; // e.g., 'FeedSocial/feed-agent-trajectories'
   huggingFaceToken?: string;
 
   // Data filtering

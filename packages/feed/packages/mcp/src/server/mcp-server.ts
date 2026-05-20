@@ -23,9 +23,9 @@ export const DEFAULT_MCP_PROTOCOL_VERSION: MCPProtocolVersion = '2024-11-05';
  */
 export function getMCPServerInfo(): Implementation {
   return {
-    name: 'Babylon Prediction Markets',
+    name: 'Feed Prediction Markets',
     version: '1.0.0',
-    title: 'Babylon MCP Server',
+    title: 'Feed MCP Server',
   };
 }
 
@@ -67,7 +67,7 @@ export function getInitializeResult(
     capabilities,
     serverInfo,
     instructions:
-      'Babylon MCP Server provides access to prediction markets, trading, social features, and more. Use tools/list to see available tools.',
+      'Feed MCP Server provides access to prediction markets, trading, social features, and more. Use tools/list to see available tools.',
   };
 }
 

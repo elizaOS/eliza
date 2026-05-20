@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PortfolioPnLCard } from '../../../../apps/web/src/components/markets/PortfolioPnLCard';

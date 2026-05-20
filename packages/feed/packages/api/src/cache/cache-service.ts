@@ -13,10 +13,10 @@
  * - Works with any Redis server via standard protocol
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { getRedisClient, isRedisAvailable } from '../redis';
 
-const CACHE_BIGINT_MARKER = '__babylonCacheBigInt__';
+const CACHE_BIGINT_MARKER = '__feedCacheBigInt__';
 
 function cacheJsonReplacer(_key: string, value: unknown): unknown {
   if (typeof value === 'bigint') {

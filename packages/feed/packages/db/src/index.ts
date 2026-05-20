@@ -89,13 +89,13 @@ export {
 // Drizzle Query Operators
 // ============================================================================
 
-// Re-export snowflake utilities from @babylon/shared
+// Re-export snowflake utilities from @feed/shared
 export {
   generateSnowflakeId,
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from '@babylon/shared';
+} from '@feed/shared';
 export type { SQL } from 'drizzle-orm';
 export {
   aliasedTable,

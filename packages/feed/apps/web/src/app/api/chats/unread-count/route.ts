@@ -52,8 +52,8 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { asUser } from '@babylon/db';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { asUser } from '@feed/db';
 import type { NextRequest } from 'next/server';
 
 /**

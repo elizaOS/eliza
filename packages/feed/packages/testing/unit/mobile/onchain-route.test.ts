@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 /**
  * Tests for the /api/onchain route's input validation and token extraction.
  *
- * The actual on-chain transaction logic depends on @babylon/api and
+ * The actual on-chain transaction logic depends on @feed/api and
  * Privy server auth, which require live infrastructure. These tests
  * verify the request parsing and validation layer.
  */

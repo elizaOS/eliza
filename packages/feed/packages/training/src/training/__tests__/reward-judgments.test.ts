@@ -11,7 +11,7 @@
 
 import { describe, expect, mock, test } from 'bun:test';
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     insert: mock(() => ({
       values: mock(() => ({
@@ -93,7 +93,7 @@ describe('computeDeterministicRewardJudgment', () => {
       totalReward: 1.0,
     });
 
-    expect(result.judgeModel).toBe('babylon-deterministic');
+    expect(result.judgeModel).toBe('feed-deterministic');
     expect(result.overallScore).toBeGreaterThanOrEqual(0);
     expect(result.overallScore).toBeLessThanOrEqual(1);
     expect(result.componentScores).toBeDefined();

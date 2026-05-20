@@ -9,7 +9,7 @@ import {
   getProfileUrl,
   getUserProfileUrl,
   isUsername,
-} from '@babylon/shared/utils/profile';
+} from '@feed/shared/utils/profile';
 
 describe('Profile URL Utilities', () => {
   describe('getProfileUrl', () => {

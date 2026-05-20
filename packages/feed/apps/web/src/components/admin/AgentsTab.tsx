@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn, logger } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
 import {
   Activity,
   AlertCircle,
@@ -682,7 +682,7 @@ export function AgentsTab() {
                         )}
                       >
                         {agent.lifetimePnL >= 0 ? '+' : ''}
-                        {BABYLON_POINTS_SYMBOL}
+                        {FEED_POINTS_SYMBOL}
                         {agent.lifetimePnL.toFixed(2)}
                       </div>
                     </div>

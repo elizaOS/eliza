@@ -11,7 +11,7 @@
  */
 
 import { createGroq } from '@ai-sdk/groq';
-import { GROQ_MODELS } from '@babylon/shared';
+import { GROQ_MODELS } from '@feed/shared';
 import type { IAgentRuntime } from '@elizaos/core';
 import { generateText } from 'ai';
 import {
@@ -202,7 +202,7 @@ export async function callGroqDirect(params: {
 
   // Forward to DAG trace bridge if active (game-tick observability)
   try {
-    const { getAgentLLMBridge } = require('@babylon/shared');
+    const { getAgentLLMBridge } = require('@feed/shared');
     const bridge = getAgentLLMBridge();
     if (bridge) {
       bridge({

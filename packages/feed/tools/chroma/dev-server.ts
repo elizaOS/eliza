@@ -18,7 +18,7 @@ const localEnv = {
   NEXT_PUBLIC_ENABLE_ONCHAIN_PERPS: 'true',
   NEXT_PUBLIC_PERP_SETTLEMENT_MODE: 'onchain',
   PERP_SETTLEMENT_MODE: 'onchain',
-  BABYLON_DISABLE_REDIS: '1',
+  FEED_DISABLE_REDIS: '1',
   AGENT0_ENABLED: 'false',
   DISABLE_SENTRY: 'true',
   NEXT_PUBLIC_DISABLE_SENTRY: 'true',
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     repoRoot,
     {
       ...localEnv,
-      BABYLON_LOCAL_BOOTSTRAP_ONCE: '1',
+      FEED_LOCAL_BOOTSTRAP_ONCE: '1',
     }
   );
   await waitForExit(bootstrap, 'local chain bootstrap');

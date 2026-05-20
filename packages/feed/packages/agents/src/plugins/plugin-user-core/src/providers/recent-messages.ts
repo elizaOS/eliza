@@ -14,8 +14,8 @@ import {
   messages as messagesTable,
   or,
   sql,
-} from '@babylon/db';
-import { COORDINATOR_SENDER_ID } from '@babylon/shared';
+} from '@feed/db';
+import { COORDINATOR_SENDER_ID } from '@feed/shared';
 import type {
   IAgentRuntime,
   Memory,

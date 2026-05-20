@@ -1,4 +1,4 @@
-import { clamp } from '@babylon/shared';
+import { clamp } from '@feed/shared';
 import type { PerpMarketRecord } from './types';
 
 export type SyntheticQuoteSide = 'buy' | 'sell';

@@ -7,7 +7,7 @@
  * @description
  * Returns list of organizations in the game world. Supports filtering by IDs
  * for batch lookups. Organizations represent groups, factions, and institutions
- * in the Babylon game world.
+ * in the Feed game world.
  *
  * @openapi
  * /api/organizations:
@@ -64,8 +64,8 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/api';
+import { StaticDataRegistry } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

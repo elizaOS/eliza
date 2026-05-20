@@ -29,20 +29,20 @@ export {
   runQuickMatchupBenchmark,
 } from './ArchetypeMatchupBenchmark';
 export type {
-  BabylonTrustBenchmarkResult,
-  BabylonTrustScenario,
+  FeedTrustBenchmarkResult,
+  FeedTrustScenario,
   TrustScenarioId,
   TrustScenarioMetadata,
-} from './BabylonTrustBenchmark';
+} from './FeedTrustBenchmark';
 export {
-  BabylonTrustBenchmark,
+  FeedTrustBenchmark,
   getTrustScenarioLoader,
   isValidTrustScenarioId,
   listTrustScenarios,
   loadTrustScenario,
   TrustScenarioLoader,
   TrustScenarioValidationError,
-} from './BabylonTrustBenchmark';
+} from './FeedTrustBenchmark';
 export type {
   BenchmarkHistoryEntry,
   ModelComparisonData,

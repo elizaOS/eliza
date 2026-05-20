@@ -1,5 +1,5 @@
 """
-Babylon Trajectory Reader
+Feed Trajectory Reader
 
 Reads trajectories from PostgreSQL database or local JSON files for training.
 Validates LLM call quality to ensure training data authenticity.
@@ -284,7 +284,7 @@ def discover_local_export_files(root: Path) -> list[Path]:
 
 
 class PostgresTrajectoryReader:
-    """Reads Babylon trajectories from a PostgreSQL database."""
+    """Reads Feed trajectories from a PostgreSQL database."""
 
     def __init__(self, database_url: str):
         if psycopg2 is None:
@@ -411,7 +411,7 @@ class PostgresTrajectoryReader:
 
 
 class JsonTrajectoryReader:
-    """Reads Babylon trajectories from a local directory of JSON files."""
+    """Reads Feed trajectories from a local directory of JSON files."""
 
     def __init__(self, directory_path: str):
         self._directory = Path(directory_path)
@@ -711,7 +711,7 @@ class JsonTrajectoryReader:
         yield trajectory_data
 
     def _looks_like_trajectory(self, payload: object) -> bool:
-        """Return True when a payload resembles a Babylon trajectory export."""
+        """Return True when a payload resembles a Feed trajectory export."""
         if not isinstance(payload, dict):
             return False
         return any(

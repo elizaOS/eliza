@@ -1,12 +1,12 @@
 /**
- * Bridge system that wraps executeGameTick() as a BabylonSystem.
+ * Bridge system that wraps executeGameTick() as a FeedSystem.
  * Enables running the existing game tick within the runtime engine.
  *
  * Uses skipDeadlineCheck so the runtime never skips it —
  * executeGameTick() manages its own internal deadline.
  */
 
-import { type ExecuteGameTickResult, executeGameTick } from '@babylon/engine';
+import { type ExecuteGameTickResult, executeGameTick } from '@feed/engine';
 import { defineSystem } from '../system';
 import { TickPhase } from '../types';
 

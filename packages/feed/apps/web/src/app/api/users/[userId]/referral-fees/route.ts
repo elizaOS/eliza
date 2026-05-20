@@ -60,9 +60,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { FeeService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { FeeService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(

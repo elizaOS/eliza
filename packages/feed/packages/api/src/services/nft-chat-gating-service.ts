@@ -6,8 +6,8 @@ import {
   eq,
   groupMembers,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger, ValidationError } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger, ValidationError } from '@feed/shared';
 import { sql } from 'drizzle-orm';
 import { AuthorizationError, NotFoundError } from '../errors';
 import {

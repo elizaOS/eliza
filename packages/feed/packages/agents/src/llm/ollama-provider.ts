@@ -54,18 +54,18 @@ interface OllamaListResponse {
  * Updated when new models are trained, benchmarked, and deployed
  */
 const ARCHETYPE_MODELS: Record<string, string> = {
-  trader: 'babylon-trader:latest',
-  'social-butterfly': 'babylon-social:latest',
-  scammer: 'babylon-scammer:latest',
-  degen: 'babylon-degen:latest',
-  'information-trader': 'babylon-info-trader:latest',
-  researcher: 'babylon-researcher:latest',
-  'goody-twoshoes': 'babylon-goody:latest',
-  'ass-kisser': 'babylon-asskisser:latest',
-  'perps-trader': 'babylon-perps:latest',
-  'super-predictor': 'babylon-predictor:latest',
-  infosec: 'babylon-infosec:latest',
-  liar: 'babylon-liar:latest',
+  trader: 'feed-trader:latest',
+  'social-butterfly': 'feed-social:latest',
+  scammer: 'feed-scammer:latest',
+  degen: 'feed-degen:latest',
+  'information-trader': 'feed-info-trader:latest',
+  researcher: 'feed-researcher:latest',
+  'goody-twoshoes': 'feed-goody:latest',
+  'ass-kisser': 'feed-asskisser:latest',
+  'perps-trader': 'feed-perps:latest',
+  'super-predictor': 'feed-predictor:latest',
+  infosec: 'feed-infosec:latest',
+  liar: 'feed-liar:latest',
 };
 
 // Default fallback model

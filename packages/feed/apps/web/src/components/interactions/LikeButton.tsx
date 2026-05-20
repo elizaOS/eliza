@@ -1,7 +1,7 @@
 'use client';
 
-import type { LikeButtonProps } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { LikeButtonProps } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { Frown, Heart, Laugh } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';

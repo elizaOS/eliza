@@ -17,7 +17,7 @@ import {
   calculateBondingCurvePrice,
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { STABILITY_FUND_CONFIG } from '../../services/fee-redistribution-service';
 import { MarketMomentumService } from '../../services/market-momentum-service';
 

@@ -8,9 +8,9 @@
  * manual review before the market can be resolved.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { and, asc, db, eq, isNull, or, questions } from '@babylon/db';
-import { toISOOrNull } from '@babylon/shared';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { and, asc, db, eq, isNull, or, questions } from '@feed/db';
+import { toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

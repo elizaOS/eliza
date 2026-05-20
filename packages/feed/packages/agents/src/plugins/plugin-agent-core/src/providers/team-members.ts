@@ -8,7 +8,7 @@
  * Requires `teamChatId` to be set in state.values.
  */
 
-import { and, chatParticipants, db, eq, users } from '@babylon/db';
+import { and, chatParticipants, db, eq, users } from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,

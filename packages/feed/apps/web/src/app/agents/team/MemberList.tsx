@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCompactCurrency } from '@babylon/shared';
+import { cn, formatCompactCurrency } from '@feed/shared';
 import { ExternalLink, MoreVertical, Settings, Square } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/shared/Avatar';

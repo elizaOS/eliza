@@ -1,6 +1,6 @@
 'use client';
 
-import type { OnboardingProfilePayload } from '@babylon/shared';
+import type { OnboardingProfilePayload } from '@feed/shared';
 import { createContext, useContext } from 'react';
 import type { ImportedProfileData } from './UserOnboardingFlow';
 

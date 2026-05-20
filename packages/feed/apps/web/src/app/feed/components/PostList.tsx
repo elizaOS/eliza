@@ -1,6 +1,6 @@
 'use client';
 
-import type { FeedPost } from '@babylon/shared';
+import type { FeedPost } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toFeedPostCardData } from '@/app/feed/utils/postMappers';

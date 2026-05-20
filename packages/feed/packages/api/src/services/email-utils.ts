@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { getNotificationEmailFromEnv } from '../env';
 
 export interface ParsedEmailAddress {
@@ -163,7 +163,7 @@ export async function resolveRecipientEmail(
     return profileEmail;
   }
 
-  // Phase 2: Privy user lookup removed. Email is now stored directly in Babylon's
+  // Phase 2: Privy user lookup removed. Email is now stored directly in Feed's
   // users.email column (populated by Steward at login time).
   // If we reach this point without an email, log and return null.
   if (!profileEmail) {

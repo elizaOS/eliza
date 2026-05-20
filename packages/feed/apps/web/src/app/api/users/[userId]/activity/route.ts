@@ -15,7 +15,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   balanceTransactions,
   comments,
@@ -26,8 +26,8 @@ import {
   markets,
   pointsTransactions,
   posts,
-} from '@babylon/db';
-import { toISO, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/db';
+import { toISO, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

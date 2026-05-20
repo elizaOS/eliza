@@ -1,4 +1,4 @@
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   authenticate,
   broadcastToChannel,
@@ -6,22 +6,22 @@ import {
   invalidateMarketsApiPredictionsAfterUserTrade,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   FEE_CONFIG,
   FeeService,
   invalidateAfterPredictionTrade,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   logger,
   PredictionMarketIdSchema,
   PredictionMarketTradeSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 

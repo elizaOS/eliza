@@ -1,13 +1,13 @@
 # Writing systems
 
-This guide covers everything you need to know to write a new system for `@babylon/sim`.
+This guide covers everything you need to know to write a new system for `@feed/sim`.
 
 ## The basics
 
 A system is a plain object. You define it with `defineSystem()`, which gives you type safety but does not add any runtime behavior. It just returns what you pass in.
 
 ```ts
-import { defineSystem, TickPhase } from '@babylon/sim';
+import { defineSystem, TickPhase } from '@feed/sim';
 
 export default defineSystem({
   id: 'my-system',
@@ -20,14 +20,14 @@ export default defineSystem({
 });
 ```
 
-Put this in the `systems/` directory (or wherever `systemsDir` points in your config). The engine scans that directory at boot and picks up any file that exports something matching the `BabylonSystem` shape.
+Put this in the `systems/` directory (or wherever `systemsDir` points in your config). The engine scans that directory at boot and picks up any file that exports something matching the `FeedSystem` shape.
 
 The file must have a default export or a named export. Both work. If you have multiple exports in one file, the scanner tries all of them.
 
 ## Required fields
 
 - **id** - Unique string. Used for dependency resolution, metrics keys, and logs.
-- **name** - Human-readable label. Shows up in `babylon info` output.
+- **name** - Human-readable label. Shows up in `feed info` output.
 - **phase** - A `TickPhase` value that determines when your system runs relative to others.
 - **onTick(ctx)** - The function that runs every tick. Must return a `SystemTickResult` (or just `{}`).
 

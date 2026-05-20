@@ -164,9 +164,9 @@ services:
   postgres-test:
     image: postgres:15
     environment:
-      POSTGRES_USER: babylon_test
+      POSTGRES_USER: feed_test
       POSTGRES_PASSWORD: test_password
-      POSTGRES_DB: babylon_test
+      POSTGRES_DB: feed_test
     ports:
       - "5434:5432"  # Different port from production
 ```
@@ -183,14 +183,14 @@ async def db_pool():
     await pool.close()
 
 async def test_load_trajectories(db_pool):
-    env = BabylonRLAIFEnv(config)
+    env = FeedRLAIFEnv(config)
     await env.setup()
     
     trajectories = await env._load_trajectories()
     assert len(trajectories) > 0
 
 async def test_window_grouping(db_pool):
-    env = BabylonRLAIFEnv(config)
+    env = FeedRLAIFEnv(config)
     groups = await env._group_by_window()
     
     for window_id, trajs in groups.items():
@@ -290,7 +290,7 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: babylon_test
+          POSTGRES_USER: feed_test
           POSTGRES_PASSWORD: test_password
         ports:
           - 5434:5432
@@ -330,7 +330,7 @@ pytest tests/integration/test_json_mode_integration.py -v --pdb
 docker ps | grep postgres-test
 
 # Check connection
-psql postgresql://babylon_test:test_password@localhost:5434/babylon_test
+psql postgresql://feed_test:test_password@localhost:5434/feed_test
 
 # View logs
 docker logs $(docker ps -q --filter name=postgres-test)

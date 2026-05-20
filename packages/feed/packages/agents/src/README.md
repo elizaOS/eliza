@@ -1,4 +1,4 @@
-# Babylon Autonomous Agents System ✅
+# Feed Autonomous Agents System ✅
 
 **Status**: Active development  
 **Version**: 2.0.0  
@@ -21,7 +21,7 @@ Comprehensive autonomous agent system with:
 ### Runtime Usage
 
 ```typescript
-import { AgentRuntimeManager, autonomousCoordinator } from '@babylon/agents'
+import { AgentRuntimeManager, autonomousCoordinator } from '@feed/agents'
 
 // Get properly initialized runtime
 const manager = AgentRuntimeManager.getInstance()
@@ -54,7 +54,7 @@ npx tsx test-autonomous-tick.ts
 ## 📦 Components
 
 ### 1. Dashboard Provider
-**File**: `plugins/babylon/providers/dashboard.ts`
+**File**: `plugins/feed/providers/dashboard.ts`
 
 Complete agent context:
 - Portfolio & positions (prediction + perp)
@@ -105,21 +105,21 @@ Orchestrates complete ticks:
 
 ### 5. Providers (15 Total)
 
-- BABYLON_DASHBOARD (comprehensive context)
-- BABYLON_GOALS
-- BABYLON_AGENT_WALLET
-- BABYLON_MARKETS
-- BABYLON_MARKET_MOVERS
-- BABYLON_PORTFOLIO
-- BABYLON_FEED
-- BABYLON_TRENDING
-- BABYLON_TRENDING_TOPICS
-- BABYLON_HEADLINES
-- BABYLON_MESSAGES
-- BABYLON_NOTIFICATIONS
-- BABYLON_USER_WALLET
-- BABYLON_USER_PROFILE
-- BABYLON_ENTITY_MENTIONS
+- FEED_DASHBOARD (comprehensive context)
+- FEED_GOALS
+- FEED_AGENT_WALLET
+- FEED_MARKETS
+- FEED_MARKET_MOVERS
+- FEED_PORTFOLIO
+- FEED_FEED
+- FEED_TRENDING
+- FEED_TRENDING_TOPICS
+- FEED_HEADLINES
+- FEED_MESSAGES
+- FEED_NOTIFICATIONS
+- FEED_USER_WALLET
+- FEED_USER_PROFILE
+- FEED_ENTITY_MENTIONS
 
 ---
 
@@ -170,7 +170,7 @@ src/
 │   ├── AutonomousDMService.ts
 │   └── AutonomousGroupChatService.ts
 ├── plugins/
-│   └── babylon/
+│   └── feed/
 │       ├── index.ts                          # Plugin definition
 │       ├── providers/
 │       │   ├── dashboard.ts                  # Dashboard provider ⭐
@@ -234,7 +234,7 @@ src/
 ### Basic Tick Execution
 
 ```typescript
-import { AgentRuntimeManager, autonomousCoordinator } from '@babylon/agents'
+import { AgentRuntimeManager, autonomousCoordinator } from '@feed/agents'
 
 const manager = AgentRuntimeManager.getInstance()
 const runtime = await manager.getRuntime(agentUserId)
@@ -291,7 +291,7 @@ for (const agentId of agents) {
 
 - `README.md` - This file (quick start)
 - `autonomous/` - Service implementations
-- `plugins/babylon/` - Plugin and providers
+- `plugins/feed/` - Plugin and providers
 - `examples/autonomous-agent-setup.ts` - Integration examples
 
 ---

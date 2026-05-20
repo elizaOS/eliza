@@ -1,14 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: babylon-postgres
+    container_name: feed-postgres
     restart: unless-stopped
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: babylon
-      POSTGRES_PASSWORD: babylon_dev_password
-      POSTGRES_DB: babylon
+      POSTGRES_USER: feed
+      POSTGRES_PASSWORD: feed_dev_password
+      POSTGRES_DB: feed
       PGDATA: /var/lib/postgresql/data/pgdata
     command: >
       postgres
@@ -40,19 +40,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/docker/init-steward-db.sh:/docker-entrypoint-initdb.d/20-steward.sh
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U babylon"]
+      test: ["CMD-SHELL", "pg_isready -U feed"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
-    container_name: babylon-pgbouncer
+    container_name: feed-pgbouncer
     restart: unless-stopped
     ports:
       - "6432:5432"
     environment:
-      DATABASE_URL: "postgresql://babylon:babylon_dev_password@postgres:5432/babylon"
+      DATABASE_URL: "postgresql://feed:feed_dev_password@postgres:5432/feed"
       POOL_MODE: transaction
       # Client-side settings (what connects to PgBouncer)
       MAX_CLIENT_CONN: 10000
@@ -79,14 +79,14 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "babylon"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "feed"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: babylon-redis
+    container_name: feed-redis
     restart: unless-stopped
     ports:
       - "6380:6379"
@@ -112,14 +112,14 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: babylon-minio
+    container_name: feed-minio
     restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: babylon
-      MINIO_ROOT_PASSWORD: babylon_dev_password
+      MINIO_ROOT_USER: feed
+      MINIO_ROOT_PASSWORD: feed_dev_password
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -131,11 +131,11 @@ services:
 
   steward:
     # Steward auth service — multi-tenant auth provider (sibling repo at ../steward)
-    # Run bun run steward:init once after first boot to provision the babylon tenant.
+    # Run bun run steward:init once after first boot to provision the feed tenant.
     build:
       context: ../steward
       dockerfile: Dockerfile
-    container_name: babylon-steward
+    container_name: feed-steward
     restart: unless-stopped
     ports:
       - "3200:3200"
@@ -147,12 +147,12 @@ services:
       STEWARD_JWT_SECRET: ${STEWARD_JWT_SECRET:-dev-jwt-secret-change-in-prod}
       # Steward's user.ts reads STEWARD_SESSION_SECRET; set to same value as STEWARD_JWT_SECRET
       STEWARD_SESSION_SECRET: ${STEWARD_JWT_SECRET:-dev-jwt-secret-change-in-prod}
-      DATABASE_URL: "postgresql://babylon:babylon_dev_password@postgres:5432/steward"
+      DATABASE_URL: "postgresql://feed:feed_dev_password@postgres:5432/steward"
       STEWARD_PLATFORM_KEYS: ${STEWARD_PLATFORM_KEYS:-dev-platform-key}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-login@babylon.social}
+      EMAIL_FROM: ${EMAIL_FROM:-login@feed.social}
       APP_URL: ${STEWARD_APP_URL:-http://localhost:3000}
-      PASSKEY_RP_NAME: Babylon
+      PASSKEY_RP_NAME: Feed
       PASSKEY_RP_ID: localhost
       PASSKEY_ORIGIN: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

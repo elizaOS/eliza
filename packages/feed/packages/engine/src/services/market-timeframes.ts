@@ -56,12 +56,12 @@ import type {
   LongTermArcState,
   MarketCategory,
   MarketTimeframe,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { clamp01 } from '../utils/math-utils';
 
 // Re-export types from DB schema for consumers of this module
-// Arc state types are canonical in @babylon/db/schema/narrative.ts
+// Arc state types are canonical in @feed/db/schema/narrative.ts
 export type {
   ArcStateType,
   DailyArcState,
@@ -71,7 +71,7 @@ export type {
   MarketCategory,
   MarketTimeframe,
   WeeklyArcState,
-} from '@babylon/db';
+} from '@feed/db';
 
 /**
  * Standard arc state alias for weekly/monthly/quarterly markets.

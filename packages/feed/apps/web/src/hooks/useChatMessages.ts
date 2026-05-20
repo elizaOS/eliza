@@ -1,4 +1,4 @@
-import { logger, type MessageMetadata } from '@babylon/shared';
+import { logger, type MessageMetadata } from '@feed/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {

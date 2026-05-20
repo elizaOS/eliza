@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCompactCurrency } from '@babylon/shared';
+import { formatCompactCurrency } from '@feed/shared';
 import { Loader2, Sparkles, Wallet } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { AgentWallet as SharedAgentWallet } from '@/components/agents/AgentWallet';

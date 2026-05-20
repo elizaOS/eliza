@@ -11,7 +11,7 @@ import {
   calculateBondingCurvePrice,
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('Bonding Curve Pricing', () => {
   describe('calculateBondingCurvePrice - Pure Math Tests', () => {

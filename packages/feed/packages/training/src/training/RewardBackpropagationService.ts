@@ -5,7 +5,7 @@
  * This allows the RL model to learn from actual results, not just immediate actions.
  */
 
-import { and, db, eq, marketOutcomes, trajectories } from '@babylon/db';
+import { and, db, eq, marketOutcomes, trajectories } from '@feed/db';
 import { logger } from '../utils/logger';
 import { MarketOutcomesTracker } from './MarketOutcomesTracker';
 import type { TrajectoryStep } from './types';

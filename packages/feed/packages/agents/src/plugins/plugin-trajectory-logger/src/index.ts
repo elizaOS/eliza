@@ -7,7 +7,7 @@ import { TrajectoryLoggerService } from './TrajectoryLoggerService';
  * Collects complete agent interaction trajectories for RL training.
  * Records LLM calls, provider access, actions, environment state, and computes rewards.
  *
- * Registers the runtime service so Babylon can retrieve a single
+ * Registers the runtime service so Feed can retrieve a single
  * plugin-owned trajectory logger instance per runtime.
  */
 export const trajectoryLoggerPlugin: Plugin = {
@@ -37,7 +37,7 @@ export * from './types';
 // - logProviderFromAction()
 
 // Game-Knowledge Rewards: REMOVED (was dead stubs).
-// Canonical reward computation is in @babylon/training: reward-judgments.ts
+// Canonical reward computation is in @feed/training: reward-judgments.ts
 
 // ==========================================
 // TRAJECTORY FORMAT CONVERSION
@@ -76,6 +76,6 @@ export * from './integration';
 // ==========================================
 // REWARD SCORING
 // Deterministic judge is auto-called in endTrajectory().
-// For manual scoring, import from @babylon/training directly:
-//   import { computeDeterministicRewardJudgment } from '@babylon/training/training/reward-judgments'
+// For manual scoring, import from @feed/training directly:
+//   import { computeDeterministicRewardJudgment } from '@feed/training/training/reward-judgments'
 // ==========================================

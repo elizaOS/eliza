@@ -55,10 +55,10 @@ import {
   publicRateLimit,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { NPCInvestmentManager } from '@babylon/engine';
-import { toISO } from '@babylon/shared';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { NPCInvestmentManager } from '@feed/engine';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

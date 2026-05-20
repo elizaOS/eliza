@@ -1,7 +1,7 @@
-# Babylon TWA (Trusted Web Activity)
+# Feed TWA (Trusted Web Activity)
 
 This directory contains the configuration for building a Trusted Web Activity (TWA)
-Android APK from the Babylon PWA. This APK is used for distribution on the
+Android APK from the Feed PWA. This APK is used for distribution on the
 **Solana Mobile dApp Store**.
 
 ## Prerequisites
@@ -16,7 +16,7 @@ Android APK from the Babylon PWA. This APK is used for distribution on the
 
 ```bash
 # Initialize the Bubblewrap project from the live manifest
-bubblewrap init --manifest https://babylon.market/manifest.webmanifest
+bubblewrap init --manifest https://feed.market/manifest.webmanifest
 
 # Or use the local twa-manifest.json
 bubblewrap init --manifest ./twa-manifest.json
@@ -29,7 +29,7 @@ automatically if they're not installed.
 
 ```bash
 keytool -genkeypair \
-  -alias babylon \
+  -alias feed \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000 \
@@ -55,13 +55,13 @@ The TWA needs to verify that the Android app owns the web domain. Add the
 SHA-256 fingerprint of your signing key to:
 
 ```
-https://babylon.market/.well-known/assetlinks.json
+https://feed.market/.well-known/assetlinks.json
 ```
 
 Generate the fingerprint:
 
 ```bash
-keytool -list -v -keystore signing-key.keystore -alias babylon | grep SHA256
+keytool -list -v -keystore signing-key.keystore -alias feed | grep SHA256
 ```
 
 Then create `assetlinks.json`:
@@ -71,7 +71,7 @@ Then create `assetlinks.json`:
   "relation": ["delegate_permission/common.handle_all_urls"],
   "target": {
     "namespace": "android_app",
-    "package_name": "market.babylon.app",
+    "package_name": "market.feed.app",
     "sha256_cert_fingerprints": ["YOUR_SHA256_FINGERPRINT"]
   }
 }]

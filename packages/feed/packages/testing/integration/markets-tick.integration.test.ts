@@ -41,12 +41,12 @@ import {
   questions,
   sql,
   timeframedMarkets,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   GRANULAR_TO_DB_TIMEFRAME,
   mapGranularToDbTimeframe,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Set timeout to 120 seconds for integration tests (market creation can be slow)
 setDefaultTimeout(120000);
@@ -413,7 +413,7 @@ describe('Markets Tick Integration', () => {
 
   describe('Market Timeframe Distribution', () => {
     test('should have correct DB timeframe mapping', () => {
-      // Test the mapping logic using the production mapping from @babylon/engine
+      // Test the mapping logic using the production mapping from @feed/engine
       // This ensures the test fails if the production mapping changes
 
       // Verify expected aggregations from the production mapping
@@ -478,7 +478,7 @@ describe('Markets Tick Integration', () => {
 describe('Idempotency Check Logic', () => {
   test('should aggregate target counts by DB timeframe', () => {
     // This tests the logic without requiring database
-    // Uses the production mapping function from @babylon/engine
+    // Uses the production mapping function from @feed/engine
     // MARKET_STRUCTURE has these counts:
     // 15m: 2, 30m: 2 -> flash total: 4
     // 1h: 1, 6h: 1 -> intraday total: 2

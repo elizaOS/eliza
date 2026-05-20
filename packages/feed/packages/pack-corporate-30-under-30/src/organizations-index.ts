@@ -1,4 +1,4 @@
-import type { PackOrganization } from '@babylon/shared';
+import type { PackOrganization } from '@feed/shared';
 import aetherEnergy from './organizations/aether-energy';
 import apexDynamics from './organizations/apex-dynamics';
 import aphelionCapital from './organizations/aphelion-capital';

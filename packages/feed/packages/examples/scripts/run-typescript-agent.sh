@@ -8,7 +8,7 @@ echo "====================================="
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 EXAMPLES_DIR="$(dirname "$SCRIPT_DIR")"
-AGENT_DIR="$EXAMPLES_DIR/babylon-typescript-agent"
+AGENT_DIR="$EXAMPLES_DIR/feed-typescript-agent"
 
 # Check if A2A server is running
 if ! curl -s http://localhost:3001/health > /dev/null 2>&1; then
@@ -21,17 +21,17 @@ fi
 if [ ! -f "$AGENT_DIR/.env.local" ]; then
     echo "Creating .env.local from example..."
     cat > "$AGENT_DIR/.env.local" << 'EOF'
-# Babylon A2A Example Agent Configuration
+# Feed A2A Example Agent Configuration
 
 # Agent wallet (uses anvil test account 0)
 AGENT0_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
 # A2A Server (local)
-BABYLON_API_URL=http://localhost:3001
+FEED_API_URL=http://localhost:3001
 
 # Agent Configuration
 AGENT_NAME=Demo Agent
-AGENT_DESCRIPTION=Autonomous trading agent for Babylon
+AGENT_DESCRIPTION=Autonomous trading agent for Feed
 AGENT_STRATEGY=balanced
 TICK_INTERVAL=10000
 

@@ -2,8 +2,8 @@
  * Server-side portfolio breakdown (wallet + agents + positions) for consistent P/L.
  */
 
-import { isOpenPerpPositionStateValid } from '@babylon/core/markets/perps';
-import { PredictionPricing } from '@babylon/core/markets/prediction';
+import { isOpenPerpPositionStateValid } from '@feed/core/markets/perps';
+import { PredictionPricing } from '@feed/core/markets/prediction';
 import {
   balanceTransactions,
   db,
@@ -11,13 +11,13 @@ import {
   perpPositions,
   positions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   CANONICAL_AGENT_TRANSFER_TRANSACTION_TYPES,
   CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
   logger,
   resolveUserIdentifierKind,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { FEE_CONFIG } from '../config/fees';
 import {
@@ -91,7 +91,7 @@ function calculatePredictionPositionValue(position: {
  *
  * **WHY classification-based routing on the initial user row?**
  * - Previously: `or(eq(users.id, userId), eq(users.privyId, userId))` forced the planner to merge predicates and often blocked a clean single-index plan.
- * - Now: `resolveUserIdentifierKind` from `@babylon/shared` picks one branch (PK, unique privyId, or case-insensitive username) so each lookup uses one optimal index.
+ * - Now: `resolveUserIdentifierKind` from `@feed/shared` picks one branch (PK, unique privyId, or case-insensitive username) so each lookup uses one optimal index.
  * - **WHY `lower(username)` for the username branch?** Matches `idx_users_username_lower` and stays consistent with `findUserByIdentifier` (case-insensitive usernames).
  *
  * Further detail: `packages/engine/src/services/PORTFOLIO_BREAKDOWN_OPTIMIZATION.md`.

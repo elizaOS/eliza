@@ -88,14 +88,14 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
 import {
   asUser,
   getBlockedByUserIds,
   getBlockedUserIds,
   getMutedUserIds,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /** Maximum number of search results to return */

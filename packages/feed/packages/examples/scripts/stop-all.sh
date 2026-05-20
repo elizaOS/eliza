@@ -3,7 +3,7 @@ set -e
 
 # Stop all development services
 
-echo "🛑 Stopping Babylon Agent Development Environment"
+echo "🛑 Stopping Feed Agent Development Environment"
 echo "=================================================="
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

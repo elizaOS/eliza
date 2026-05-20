@@ -18,7 +18,7 @@ import {
   FEEDBACK_TYPE_CONFIG,
   type FeedbackType,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   AlertTriangle,
   Bug,

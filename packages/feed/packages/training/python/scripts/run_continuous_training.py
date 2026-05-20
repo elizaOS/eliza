@@ -10,7 +10,7 @@ Usage:
     # Local mode (mock simulation bridge)
     python3 run_continuous_training.py --mock --model Qwen/Qwen3.5-4B --ticks 20
 
-    # Production mode (connect to Babylon server)
+    # Production mode (connect to Feed server)
     python3 run_continuous_training.py \
         --model Qwen/Qwen3.5-4B \
         --bridge-url http://localhost:3001 \
@@ -51,7 +51,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Continuous RL training daemon")
     p.add_argument("--model", default="Qwen/Qwen3.5-4B")
     p.add_argument("--mock", action="store_true", help="Use mock simulation bridge")
-    p.add_argument("--bridge-url", default="http://localhost:3001", help="Babylon server URL")
+    p.add_argument("--bridge-url", default="http://localhost:3001", help="Feed server URL")
     p.add_argument("--ticks", type=int, default=50, help="Training ticks per cycle")
     p.add_argument("--cycles", type=int, default=0, help="Total cycles (0=infinite)")
     p.add_argument("--cycle-interval", type=int, default=60, help="Seconds between cycles")

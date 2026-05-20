@@ -1,16 +1,16 @@
 /**
  * Create Post Action
  *
- * Creates a post on the Babylon feed. The content is provided as a parameter
+ * Creates a post on the Feed feed. The content is provided as a parameter
  * (determined by the LLM in the multi-step decision).
  */
 
-import { db, posts } from '@babylon/db';
+import { db, posts } from '@feed/db';
 import {
   type GeneratedTag,
   generateTagsFromPost,
   storeTagsForPost,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type {
   Action,
   ActionResult,
@@ -29,11 +29,11 @@ export interface CreatePostParams {
 /**
  * CREATE_POST Action
  *
- * Creates a post on the Babylon social feed.
+ * Creates a post on the Feed social feed.
  */
 export const createPostAction: Action = {
   name: 'CREATE_POST',
-  description: 'Create a post on the Babylon social feed',
+  description: 'Create a post on the Feed social feed',
 
   parameters: {
     content: {

@@ -1,4 +1,4 @@
-import type { FeedPost } from '@babylon/shared';
+import type { FeedPost } from '@feed/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSSEChannel } from '@/hooks/useSSE';
 import { apiUrl } from '@/utils/api-url';

@@ -16,10 +16,10 @@ import {
   mock,
   test,
 } from 'bun:test';
-import { db, rssFeedSources } from '@babylon/db';
-import type { BabylonLLMClient } from '@babylon/engine';
-import { ParodyHeadlineGenerator } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, rssFeedSources } from '@feed/db';
+import type { FeedLLMClient } from '@feed/engine';
+import { ParodyHeadlineGenerator } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Skip tests if DATABASE_URL is not set
 const shouldSkip = !process.env.DATABASE_URL;
@@ -47,8 +47,8 @@ describeTests('ParodyHeadlineGenerator', () => {
 
   // Mock LLM client that doesn't require API keys
   // Returns XML-parsed format (nested response structure)
-  // Uses type assertion to satisfy BabylonLLMClient interface while allowing mock functions
-  function createMockLLMClient(): BabylonLLMClient {
+  // Uses type assertion to satisfy FeedLLMClient interface while allowing mock functions
+  function createMockLLMClient(): FeedLLMClient {
     // Define mock without type checking, then cast at return
     // This is necessary because bun:test mock() has incompatible types with the actual interface
     const generateJSONMock = mock(async () => ({
@@ -63,9 +63,9 @@ describeTests('ParodyHeadlineGenerator', () => {
 
     // Build the mock object with explicit unknown cast per property
     return {
-      generateJSON: generateJSONMock as BabylonLLMClient['generateJSON'],
-      getProvider: getProviderMock as BabylonLLMClient['getProvider'],
-    } as BabylonLLMClient;
+      generateJSON: generateJSONMock as FeedLLMClient['generateJSON'],
+      getProvider: getProviderMock as FeedLLMClient['getProvider'],
+    } as FeedLLMClient;
   }
 
   beforeEach(async () => {

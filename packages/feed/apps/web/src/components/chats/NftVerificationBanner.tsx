@@ -1,6 +1,6 @@
 'use client';
 
-import { getCurrentChainId } from '@babylon/shared';
+import { getCurrentChainId } from '@feed/shared';
 
 import { Check, ExternalLink, Loader2, Shield } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';

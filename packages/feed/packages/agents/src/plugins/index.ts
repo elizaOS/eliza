@@ -8,11 +8,11 @@
  */
 
 export {
-  babylonPlugin,
-  default as defaultBabylonPlugin,
-  initializeBabylonPlugin,
-} from './babylon';
-export type { BabylonRuntime } from './babylon/types';
+  feedPlugin,
+  default as defaultFeedPlugin,
+  initializeFeedPlugin,
+} from './feed';
+export type { FeedRuntime } from './feed/types';
 export { groqPlugin } from './groq';
 export * from './plugin-agent-core/src';
 export * from './plugin-autonomy/src';

@@ -1,6 +1,6 @@
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
-import type { WalletPort } from '@babylon/core/markets/shared';
-import { logger } from '@babylon/shared';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+import type { WalletPort } from '@feed/core/markets/shared';
+import { logger } from '@feed/shared';
 import { FEE_CONFIG } from './config/fees';
 import { getSimulationPrice, getSimulationTickers } from './config/simulation';
 import type { FeedGenerator } from './FeedGenerator';

@@ -1,18 +1,18 @@
-import type { AgentTemplate } from '@babylon/agents/client';
+import type { AgentTemplate } from '@feed/agents/client';
 import {
   getAgentDefaultProfileImageUrl,
   logger,
   randomAgentDefaultProfileIndex,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { createNameMatchRegex, generateAgentName } from '@/utils/nameGenerator';
 
 const TOTAL_BANNERS = 100;
-const STORAGE_KEY = 'babylon_agent_draft';
+const STORAGE_KEY = 'feed_agent_draft';
 /** Stable idempotency key for one fal avatar per agent-create session (server dedupes). */
-const AGENT_AVATAR_IDEM_SESSION_KEY = 'babylon_agent_avatar_idem';
+const AGENT_AVATAR_IDEM_SESSION_KEY = 'feed_agent_avatar_idem';
 
 function getOrCreateAgentAvatarIdempotencyKey(): string {
   try {

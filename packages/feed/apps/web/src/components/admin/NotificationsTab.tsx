@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 import { Bell, MessageCircle, Send, User, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -50,7 +50,7 @@ export function NotificationsTab() {
   const [isSending, startSending] = useTransition();
 
   // DM Testing state
-  const [dmSenderId, setDmSenderId] = useState('demo-user-babylon-support');
+  const [dmSenderId, setDmSenderId] = useState('demo-user-feed-support');
   const [dmRecipientId, setDmRecipientId] = useState('');
   const [isSendingDm, startSendingDm] = useTransition();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -437,7 +437,7 @@ export function NotificationsTab() {
               disabled={isSendingDm}
             />
             <p className="mt-1 text-muted-foreground text-xs">
-              Default: demo-user-babylon-support (Babylon Support)
+              Default: demo-user-feed-support (Feed Support)
             </p>
           </div>
 
@@ -597,9 +597,9 @@ export function NotificationsTab() {
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li className="flex items-center gap-2">
                 <code className="rounded bg-muted px-2 py-1 font-mono">
-                  demo-user-babylon-support
+                  demo-user-feed-support
                 </code>
-                <span>→ Babylon Support (default sender)</span>
+                <span>→ Feed Support (default sender)</span>
               </li>
               <li className="flex items-center gap-2">
                 <code className="rounded bg-muted px-2 py-1 font-mono">

@@ -1,4 +1,4 @@
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import { Share2, Sparkles } from 'lucide-react';
 
 interface PortfolioPnLCardProps {

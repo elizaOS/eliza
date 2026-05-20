@@ -151,10 +151,10 @@ Respond with JSON:
 
 ## Configuration
 
-### In Python (babylon_env.py)
+### In Python (feed_env.py)
 
 ```python
-# BabylonEnvConfig
+# FeedEnvConfig
 judge_model: str = "gpt-4o-mini"
 judge_temperature: float = 0.3
 judge_max_tokens: int = 1024
@@ -196,7 +196,7 @@ Score trajectories without training:
 bun run packages/training/scripts/score-trajectories.ts
 
 # Or via CLI
-babylon train score --archetype trader
+feed train score --archetype trader
 ```
 
 ```typescript

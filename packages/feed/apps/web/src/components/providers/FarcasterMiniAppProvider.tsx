@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { sdk } from '@farcaster/miniapp-sdk';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useStewardAuthContext } from './StewardAuthProvider';
@@ -8,7 +8,7 @@ import { useStewardAuthContext } from './StewardAuthProvider';
 /**
  * Farcaster Mini App Provider.
  *
- * Phase 2: Auto-authenticates via the Babylon /api/auth/farcaster-miniapp
+ * Phase 2: Auto-authenticates via the Feed /api/auth/farcaster-miniapp
  * endpoint (quickAuth JWKS verification) instead of Privy.
  *
  * Flow:

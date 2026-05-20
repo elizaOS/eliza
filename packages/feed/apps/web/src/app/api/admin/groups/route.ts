@@ -77,7 +77,7 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   asc,
   asSystem,
@@ -89,8 +89,8 @@ import {
   inArray,
   messages,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

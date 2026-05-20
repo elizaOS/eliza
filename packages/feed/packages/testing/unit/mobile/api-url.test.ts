@@ -71,75 +71,75 @@ describe('apiUrl', () => {
 
   describe('when NEXT_PUBLIC_API_URL is set (mobile mode)', () => {
     it('prepends base URL to relative paths', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       expect(apiUrl('/api/posts')).toBe(
-        'https://play.babylon.market/api/posts'
+        'https://play.feed.market/api/posts'
       );
     });
 
     it('prepends base URL to paths with query params', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       expect(apiUrl('/api/posts?limit=10&cursor=abc')).toBe(
-        'https://play.babylon.market/api/posts?limit=10&cursor=abc'
+        'https://play.feed.market/api/posts?limit=10&cursor=abc'
       );
     });
 
     it('does not double-prefix absolute http URLs', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       expect(apiUrl('https://other.com/api/foo')).toBe(
         'https://other.com/api/foo'
       );
     });
 
     it('does not double-prefix absolute https URLs', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       expect(apiUrl('http://localhost:3000/api/foo')).toBe(
         'http://localhost:3000/api/foo'
       );
     });
 
     it('strips trailing slashes from base URL', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market/');
+      const apiUrl = await importApiUrl('https://play.feed.market/');
       expect(apiUrl('/api/posts')).toBe(
-        'https://play.babylon.market/api/posts'
+        'https://play.feed.market/api/posts'
       );
     });
 
     it('strips multiple trailing slashes from base URL', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market///');
+      const apiUrl = await importApiUrl('https://play.feed.market///');
       expect(apiUrl('/api/posts')).toBe(
-        'https://play.babylon.market/api/posts'
+        'https://play.feed.market/api/posts'
       );
     });
 
     it('handles staging URL', async () => {
-      const apiUrl = await importApiUrl('https://staging.babylon.market');
+      const apiUrl = await importApiUrl('https://staging.feed.market');
       expect(apiUrl('/api/health')).toBe(
-        'https://staging.babylon.market/api/health'
+        'https://staging.feed.market/api/health'
       );
     });
 
     it('handles path without leading slash', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       // This is technically a misuse but should still produce a valid URL
-      expect(apiUrl('api/posts')).toBe('https://play.babylon.market/api/posts');
+      expect(apiUrl('api/posts')).toBe('https://play.feed.market/api/posts');
     });
   });
 
   describe('template literal paths (from fetch calls)', () => {
     it('handles interpolated paths', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       const agentId = 'agent-123';
       expect(apiUrl(`/api/agents/${agentId}/chat`)).toBe(
-        'https://play.babylon.market/api/agents/agent-123/chat'
+        'https://play.feed.market/api/agents/agent-123/chat'
       );
     });
 
     it('handles URL-encoded params', async () => {
-      const apiUrl = await importApiUrl('https://play.babylon.market');
+      const apiUrl = await importApiUrl('https://play.feed.market');
       const identifier = 'did:privy:abc%3A123';
       expect(apiUrl(`/api/profiles/resolve/${identifier}`)).toBe(
-        `https://play.babylon.market/api/profiles/resolve/${identifier}`
+        `https://play.feed.market/api/profiles/resolve/${identifier}`
       );
     });
   });

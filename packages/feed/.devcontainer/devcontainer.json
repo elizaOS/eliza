@@ -1,5 +1,5 @@
 {
-  "name": "Babylon Dev",
+  "name": "Feed Dev",
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
   "service": "workspace",
   "workspaceFolder": "/workspace",

@@ -1,7 +1,7 @@
 'use client';
 
-import type { PostTagData } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { PostTagData } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { MessageCircle, Repeat2 } from 'lucide-react';
 import Link from 'next/link';
 import { PanelViewMoreLink } from './PanelViewMoreLink';

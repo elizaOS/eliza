@@ -152,9 +152,9 @@ import {
   notifyUserGroupInvite,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, generateSnowflakeId, groupInvites } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { asUser, generateSnowflakeId, groupInvites } from '@feed/db';
+import { logger } from '@feed/shared';
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';

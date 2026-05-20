@@ -4,7 +4,7 @@
  * Look up a user by username or display name to get their ID for other actions.
  */
 
-import { db, ilike, or, users } from '@babylon/db';
+import { db, ilike, or, users } from '@feed/db';
 import type {
   Action,
   ActionResult,

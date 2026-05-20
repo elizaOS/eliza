@@ -3,8 +3,8 @@
 import {
   calculateExpectedPayout,
   PredictionPricing,
-} from '@babylon/core/markets/prediction/client';
-import { BABYLON_POINTS_SYMBOL, cn, logger } from '@babylon/shared';
+} from '@feed/core/markets/prediction/client';
+import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
 import {
   Ban,
   CheckCircle,
@@ -210,7 +210,7 @@ export function PredictionTradingModal({
     if (!user) return;
 
     if (amountNum < 1) {
-      toast.error(`Minimum bet is ${BABYLON_POINTS_SYMBOL}1`);
+      toast.error(`Minimum bet is ${FEED_POINTS_SYMBOL}1`);
       return;
     }
 
@@ -288,8 +288,8 @@ export function PredictionTradingModal({
       toast.success(`Sold ${sharesToSell.toFixed(2)} shares!`, {
         description:
           pnl >= 0
-            ? `Profit: +${BABYLON_POINTS_SYMBOL}${pnl.toFixed(2)}`
-            : `Loss: ${BABYLON_POINTS_SYMBOL}${pnl.toFixed(2)}`,
+            ? `Profit: +${FEED_POINTS_SYMBOL}${pnl.toFixed(2)}`
+            : `Loss: ${FEED_POINTS_SYMBOL}${pnl.toFixed(2)}`,
       });
 
       trackTrade('sell', String(question.id), sharesToSell, true);
@@ -338,7 +338,7 @@ export function PredictionTradingModal({
   };
 
   const formatPrice = (price: number) => {
-    return `${BABYLON_POINTS_SYMBOL}${price.toFixed(2)}`;
+    return `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
   };
 
   return (
@@ -522,7 +522,7 @@ export function PredictionTradingModal({
                         'w-full rounded bg-muted/50 px-4 py-3 font-medium text-base text-foreground focus:bg-muted focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30 sm:text-lg',
                         loading && 'cursor-not-allowed opacity-50'
                       )}
-                      placeholder={`Min: ${BABYLON_POINTS_SYMBOL}1`}
+                      placeholder={`Min: ${FEED_POINTS_SYMBOL}1`}
                     />
                   </div>
 

@@ -14,9 +14,9 @@
  * @module services/article-persistence
  */
 
-import { db, eq, posts } from '@babylon/db';
-import type { ArticlePersistInput } from '@babylon/shared';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { db, eq, posts } from '@feed/db';
+import type { ArticlePersistInput } from '@feed/shared';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { formatError } from '../utils/error-utils';
 import { generateArticleImageWithRetry } from './article-image-service';
 import { articleRateLimiter } from './article-rate-limiter';

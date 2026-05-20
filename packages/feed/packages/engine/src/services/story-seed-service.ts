@@ -27,8 +27,8 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import { logger } from '@feed/shared';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { StaticDataRegistry } from './static-data-registry';
 import {
   type EditorialBeat,
@@ -227,9 +227,9 @@ const STORY_TEMPLATES: Array<{
  */
 export class StorySeedService {
   /** LLM client for future use in LLM-powered story generation */
-  public readonly llm: BabylonLLMClient;
+  public readonly llm: FeedLLMClient;
 
-  constructor(llm: BabylonLLMClient) {
+  constructor(llm: FeedLLMClient) {
     this.llm = llm;
   }
 
@@ -526,7 +526,7 @@ let storySeedServiceInstance: StorySeedService | null = null;
 /**
  * Get the singleton StorySeedService instance
  */
-export function getStorySeedService(llm: BabylonLLMClient): StorySeedService {
+export function getStorySeedService(llm: FeedLLMClient): StorySeedService {
   if (!storySeedServiceInstance) {
     storySeedServiceInstance = new StorySeedService(llm);
   }

@@ -1,7 +1,7 @@
 'use client';
 
-import type { PostInteraction } from '@babylon/shared';
-import { cn, getProfileUrl } from '@babylon/shared';
+import type { PostInteraction } from '@feed/shared';
+import { cn, getProfileUrl } from '@feed/shared';
 import { Repeat2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

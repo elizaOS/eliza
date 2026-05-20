@@ -23,8 +23,8 @@ import {
   isNotNull,
   isNull,
   ne,
-} from '@babylon/db';
-import { GROUP_CONFIG, generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { GROUP_CONFIG, generateSnowflakeId, logger } from '@feed/shared';
 
 import { DistributedLockService } from './distributed-lock-service';
 import { NPCInteractionTracker } from './npc-interaction-tracker';

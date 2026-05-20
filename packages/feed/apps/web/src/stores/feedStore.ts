@@ -3,7 +3,7 @@
  * Handles: optimistic post creation, quote posts
  */
 
-import type { FeedPost } from '@babylon/shared';
+import type { FeedPost } from '@feed/shared';
 import { create } from 'zustand';
 
 interface FeedStoreState {

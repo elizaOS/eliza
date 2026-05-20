@@ -15,7 +15,7 @@
  *
  * @example
  * ```typescript
- * import { HermesAdapter, createHermesAdapter } from '@babylon/agent-harness';
+ * import { HermesAdapter, createHermesAdapter } from '@feed/agent-harness';
  *
  * const hermes = createHermesAdapter({
  *   model: 'llama-3.3-70b-versatile',
@@ -57,7 +57,7 @@ export interface HermesAdapterConfig {
   apiKey?: string;
   /** Maximum Hermes internal reasoning iterations per decision. Default: 4. */
   maxIterations?: number;
-  /** Workspace root override (parent of the babylon repo). Auto-detected if omitted. */
+  /** Workspace root override (parent of the feed repo). Auto-detected if omitted. */
   workspaceRoot?: string;
   /** Timeout for a single Hermes call in ms. Default: 60000. */
   timeoutMs?: number;
@@ -68,11 +68,11 @@ export interface HermesAdapterConfig {
 // ─── Path resolution ──────────────────────────────────────────────────────────
 
 function detectWorkspaceRoot(): string {
-  // Walk up from this file until we find the babylon directory with packages/
+  // Walk up from this file until we find the feed directory with packages/
   const __dir = new URL(import.meta.url).pathname.replace(/\/[^/]+$/, '');
   let current = resolve(__dir);
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(current, 'babylon', 'package.json'))) return current;
+    if (existsSync(join(current, 'feed', 'package.json'))) return current;
     if (existsSync(join(current, 'packages', 'engine')))
       return join(current, '..');
     current = join(current, '..');
@@ -84,7 +84,7 @@ function findBridgeScript(workspaceRoot: string): string {
   const candidates = [
     join(
       workspaceRoot,
-      'babylon',
+      'feed',
       'scripts',
       'scambench',
       'hermes_benchmark_bridge.py'
@@ -134,7 +134,7 @@ function resolveApiKey(baseUrl: string): string {
 
 // ─── Decision prompt ──────────────────────────────────────────────────────────
 
-const HERMES_SYSTEM = `You are an autonomous trading agent in Babylon, a satirical prediction market game.
+const HERMES_SYSTEM = `You are an autonomous trading agent in Feed, a satirical prediction market game.
 
 Given the current game state (portfolio, markets, feed), you must decide your next action.
 

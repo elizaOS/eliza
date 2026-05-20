@@ -5,7 +5,7 @@
  * Allows coordinator to know who the user's agents are and help with @mentions.
  */
 
-import { and, chatParticipants, db, eq, users } from '@babylon/db';
+import { and, chatParticipants, db, eq, users } from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,

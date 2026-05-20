@@ -9,8 +9,8 @@
  * Body: { trajectoryIds: string[], batchId?: string }
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db, inArray, trajectories } from '@babylon/db';
+import { withErrorHandling } from '@feed/api';
+import { db, inArray, trajectories } from '@feed/db';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';

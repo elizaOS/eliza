@@ -19,9 +19,9 @@ export const scambenchSessions = pgTable(
   {
     id: text('id').primaryKey(), // uuid
     participantId: text('participantId').notNull(), // user-chosen or generated
-    /** Optional Babylon user ID if authenticated */
+    /** Optional Feed user ID if authenticated */
     userId: text('userId'),
-    /** 'web' | 'mturk' | 'babylon' | 'api' */
+    /** 'web' | 'mturk' | 'feed' | 'api' */
     source: text('source').notNull().default('web'),
     /** MTurk assignment ID if from Mechanical Turk */
     mturkAssignmentId: text('mturkAssignmentId'),

@@ -17,7 +17,7 @@ Use the capacity planner before changing local or Nebius training recipes.
 ## Canonical Entrypoint
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python3 scripts/plan_qwen_training.py --format markdown
 ```
 

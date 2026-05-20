@@ -1,5 +1,5 @@
 /**
- * Type Exports for @babylon/agents
+ * Type Exports for @feed/agents
  */
 
 // Re-export specific A2A types (avoid duplicates with ./common)
@@ -29,7 +29,7 @@ export {
   type PaymentReceipt,
   type PaymentRequest,
   PaymentRequestSchema,
-} from '@babylon/a2a';
+} from '@feed/a2a';
 export * from './a2a-responses';
 export * from './agent-registry';
 export * from './common';

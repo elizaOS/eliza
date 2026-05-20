@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import { useWidgetCacheStore } from './widgetCacheStore';
 
 const portfolioA: PortfolioBreakdownSnapshot = {

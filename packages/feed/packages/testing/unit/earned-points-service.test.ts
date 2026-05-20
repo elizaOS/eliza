@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { EarnedPointsService } from '@babylon/engine';
+import { EarnedPointsService } from '@feed/engine';
 
 describe('EarnedPointsService', () => {
   describe('pnlToPoints', () => {

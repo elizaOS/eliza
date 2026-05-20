@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.training.atropos_trainer import (
     AtroposTrainingConfig,
-    BabylonAtroposTrainer,
+    FeedAtroposTrainer,
     LRSchedulerType,
     get_lr_scheduler,
 )
@@ -399,7 +399,7 @@ class TestAtroposTrainingConfig:
         assert config.log_to_file is True
         assert config.log_file == "./logs/training_metrics.jsonl"
         assert config.use_wandb is True
-        assert config.wandb_project == "babylon-training"
+        assert config.wandb_project == "feed-training"
         assert config.wandb_entity is None
         assert config.wandb_run_name is None
 
@@ -444,13 +444,13 @@ class TestAtroposTrainingConfig:
         assert config.device == "cpu"
 
 
-class TestBabylonAtroposTrainer:
-    """Tests for BabylonAtroposTrainer class"""
+class TestFeedAtroposTrainer:
+    """Tests for FeedAtroposTrainer class"""
 
     def test_initialization(self):
         """Test trainer initializes correctly"""
         config = AtroposTrainingConfig()
-        trainer = BabylonAtroposTrainer(config)
+        trainer = FeedAtroposTrainer(config)
 
         assert trainer.config == config
         assert trainer.model is None
@@ -466,7 +466,7 @@ class TestBabylonAtroposTrainer:
     def test_extract_step_from_path_valid(self):
         """Test step extraction from checkpoint path"""
         config = AtroposTrainingConfig()
-        trainer = BabylonAtroposTrainer(config)
+        trainer = FeedAtroposTrainer(config)
 
         assert trainer._extract_step_from_path("./models/step_50") == 50
         assert trainer._extract_step_from_path("/path/to/step_100") == 100
@@ -476,7 +476,7 @@ class TestBabylonAtroposTrainer:
     def test_extract_step_from_path_invalid(self):
         """Test step extraction with invalid paths"""
         config = AtroposTrainingConfig()
-        trainer = BabylonAtroposTrainer(config)
+        trainer = FeedAtroposTrainer(config)
 
         # Non-step paths should return 0
         assert trainer._extract_step_from_path("./models/final_model") == 0
@@ -487,7 +487,7 @@ class TestBabylonAtroposTrainer:
     def test_extract_step_from_path_edge_cases(self):
         """Test step extraction edge cases"""
         config = AtroposTrainingConfig()
-        trainer = BabylonAtroposTrainer(config)
+        trainer = FeedAtroposTrainer(config)
 
         # Path with just "step_"
         assert trainer._extract_step_from_path("step_") == 0
@@ -501,7 +501,7 @@ class TestBabylonAtroposTrainer:
     def test_run_id_format(self):
         """Test run_id is in expected format"""
         config = AtroposTrainingConfig()
-        trainer = BabylonAtroposTrainer(config)
+        trainer = FeedAtroposTrainer(config)
 
         # Should be YYYYMMDD-HHMMSS format
         assert len(trainer.run_id) == 15

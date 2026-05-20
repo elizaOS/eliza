@@ -1,4 +1,4 @@
-import type { PackManifest } from '@babylon/shared';
+import type { PackManifest } from '@feed/shared';
 import { actors } from './actors-index';
 import { correlations } from './correlations';
 import { organizations } from './organizations-index';

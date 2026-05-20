@@ -19,10 +19,10 @@ import {
   ServiceUnavailableError,
   TradingError,
   ValidationError,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('Error Classes', () => {
-  describe('BabylonError base class', () => {
+  describe('FeedError base class', () => {
     it('should have correct properties', () => {
       const error = new ValidationError('Test error', ['field1']);
       expect(error.message).toBe('Test error');

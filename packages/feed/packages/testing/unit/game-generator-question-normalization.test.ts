@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { GameGenerator } from '@babylon/engine';
-import type { Organization, Question, Scenario } from '@babylon/shared';
+import { GameGenerator } from '@feed/engine';
+import type { Organization, Question, Scenario } from '@feed/shared';
 
 type TestableGameGenerator = {
   llm: {

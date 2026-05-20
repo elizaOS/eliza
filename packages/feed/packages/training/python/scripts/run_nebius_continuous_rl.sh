@@ -33,7 +33,7 @@ KONDO_RATE=0.03
 LOCAL=false
 MOCK=false
 EVAL_EVERY=50
-REMOTE_DIR="/home/\$USER/babylon-rl"
+REMOTE_DIR="/home/\$USER/feed-rl"
 
 usage() {
   echo "Usage: $0 [OPTIONS]"
@@ -68,11 +68,11 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TRAINING_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BABYLON_ROOT="$(cd "$TRAINING_ROOT/../.." && pwd)"
-SCAMBENCH_ROOT="$(cd "$BABYLON_ROOT/../scambench" && pwd)"
+FEED_ROOT="$(cd "$TRAINING_ROOT/../.." && pwd)"
+SCAMBENCH_ROOT="$(cd "$FEED_ROOT/../scambench" && pwd)"
 
 echo "═══════════════════════════════════════════════════════════════════"
-echo "  Babylon Continuous RL Training"
+echo "  Feed Continuous RL Training"
 echo "═══════════════════════════════════════════════════════════════════"
 echo "  Model:           $MODEL"
 echo "  Ticks:           $TICKS"
@@ -147,7 +147,7 @@ else
   echo ""
   echo "[2/5] Setting up Python environment..."
   ssh "$USER@$HOST" << 'SETUP_EOF'
-cd $HOME/babylon-rl/training
+cd $HOME/feed-rl/training
 python3 -m venv venv 2>/dev/null || true
 source venv/bin/activate
 pip install -q torch transformers accelerate
@@ -161,7 +161,7 @@ SETUP_EOF
   if $MOCK; then MOCK_FLAG="--mock"; fi
 
   ssh "$USER@$HOST" << TRAIN_EOF
-cd \$HOME/babylon-rl/training
+cd \$HOME/feed-rl/training
 source venv/bin/activate
 python3 scripts/run_shared_model_rl.py \
   $MOCK_FLAG \

@@ -2,7 +2,7 @@
  * Shared Chat Context Service
  *
  * Maintains low-cost, globally shared summaries and facts extracted from
- * Babylon group chats. The goal is to preserve useful cross-chat context
+ * Feed group chats. The goal is to preserve useful cross-chat context
  * without dumping long raw histories into agent prompts.
  */
 
@@ -18,8 +18,8 @@ import {
   messages,
   users,
   worldFacts,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { GroupChatService } from './group-chat-service';
 
 const SHARED_CHAT_CONTEXT_CATEGORY = 'shared_chat_context';

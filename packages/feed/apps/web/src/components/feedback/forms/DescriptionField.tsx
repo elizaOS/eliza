@@ -4,7 +4,7 @@ import {
   cn,
   FEEDBACK_DESCRIPTION_MAX_LENGTH,
   FEEDBACK_DESCRIPTION_MIN_LENGTH,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { FeedbackType } from './FeedbackTypeSelector';
 
 const PLACEHOLDERS: Record<FeedbackType, string> = {

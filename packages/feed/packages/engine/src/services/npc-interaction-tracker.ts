@@ -25,8 +25,8 @@ import {
   shares,
   userInteractions,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { ALPHA_GROUP_CONFIG } from '../config/alpha-group-config';
 
 /**

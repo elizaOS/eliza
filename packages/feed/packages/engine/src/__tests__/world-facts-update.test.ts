@@ -65,7 +65,7 @@ const mockDb = {
   })),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   desc: (col: unknown) => col,
@@ -98,7 +98,7 @@ const mockLogger = {
   error: mock(() => {}),
 };
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mock(() => Promise.resolve('test-snowflake-id')),
   logger: mockLogger,
 }));

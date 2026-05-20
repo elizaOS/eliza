@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { actors } from '@babylon/pack-default';
+import { actors } from '@feed/pack-default';
 import { organizations } from '../packages/engine/src/data/organizations';
 
 // ---------------------------------------------------------------------------
@@ -222,8 +222,8 @@ for (const actor of actors) {
       model: undefined,
     },
 
-    // Babylon-specific
-    babylon: {
+    // Feed-specific
+    feed: {
       alignment: 'neutral' as const,
       team: 'gray' as const,
       scamProfile: 'wary' as const,
@@ -262,7 +262,7 @@ for (const actor of actors) {
 
   const filePath = resolve(ACTORS_DIR, `${actor.id}.ts`);
   const fileContents = [
-    "import type { PackActor } from '@babylon/shared';",
+    "import type { PackActor } from '@feed/shared';",
     '',
     `const actor = ${JSON.stringify(packActor, null, 2)} as const satisfies PackActor;`,
     '',
@@ -277,7 +277,7 @@ for (const actor of actors) {
 
 const actorsIndexPath = resolve(PACK_ROOT, 'actors-index.ts');
 const actorIndexContents = [
-  "import type { PackActor } from '@babylon/shared';",
+  "import type { PackActor } from '@feed/shared';",
   '',
   ...actorModuleIds.map(
     (actorId) => `import ${toImportName(actorId)} from './actors/${actorId}';`
@@ -319,7 +319,7 @@ for (const org of organizations) {
 
   const filePath = resolve(ORGS_DIR, `${org.id}.ts`);
   const fileContents = [
-    "import type { PackOrganization } from '@babylon/shared';",
+    "import type { PackOrganization } from '@feed/shared';",
     '',
     `const organization = ${JSON.stringify(packOrg, null, 2)} as const satisfies PackOrganization;`,
     '',
@@ -334,7 +334,7 @@ for (const org of organizations) {
 
 const organizationsIndexPath = resolve(PACK_ROOT, 'organizations-index.ts');
 const organizationIndexContents = [
-  "import type { PackOrganization } from '@babylon/shared';",
+  "import type { PackOrganization } from '@feed/shared';",
   '',
   ...organizationModuleIds.map(
     (organizationId) =>

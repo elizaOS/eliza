@@ -19,8 +19,8 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { asSystem, eq, userApiKeys } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { asSystem, eq, userApiKeys } from '@feed/db';
+import { logger } from '@feed/shared';
 import { getRedisClient, isRedisAvailable } from '../redis';
 
 /**
@@ -87,7 +87,7 @@ let flushSuccessCount = 0;
 let flushFailureCount = 0;
 let totalUpdatesFlushed = 0;
 const globalFlusherState = globalThis as typeof globalThis & {
-  __babylonApiKeyFlusherSignalsRegistered?: boolean;
+  __feedApiKeyFlusherSignalsRegistered?: boolean;
 };
 
 /**
@@ -427,9 +427,9 @@ export function getFlusherStats(): {
 // We avoid calling process.exit() here so framework-managed runtimes can shut down naturally.
 if (
   typeof process !== 'undefined' &&
-  !globalFlusherState.__babylonApiKeyFlusherSignalsRegistered
+  !globalFlusherState.__feedApiKeyFlusherSignalsRegistered
 ) {
-  globalFlusherState.__babylonApiKeyFlusherSignalsRegistered = true;
+  globalFlusherState.__feedApiKeyFlusherSignalsRegistered = true;
   let shuttingDown = false;
   const handleShutdown = (signal: string) => {
     if (shuttingDown) return; // Prevent double-signal race

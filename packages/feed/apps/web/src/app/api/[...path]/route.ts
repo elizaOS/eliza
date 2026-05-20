@@ -1,4 +1,4 @@
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 function notFoundResponse() {

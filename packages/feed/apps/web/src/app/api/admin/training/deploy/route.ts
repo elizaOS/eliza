@@ -65,7 +65,7 @@ import {
   requireAdmin,
   ServiceUnavailableError,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import type { NextRequest } from 'next/server';
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

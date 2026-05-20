@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '@/utils/api-url';
 

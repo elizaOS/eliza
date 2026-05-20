@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "description": "Canonical public configuration for Babylon",
+  "description": "Canonical public configuration for Feed",
 
   "networks": {
     "local": {

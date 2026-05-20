@@ -1,12 +1,12 @@
 'use client';
 
-import type { UserPredictionPosition } from '@babylon/shared';
+import type { UserPredictionPosition } from '@feed/shared';
 import {
   calculateUnrealizedPnL,
   cn,
   formatCurrency,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';

@@ -29,13 +29,13 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, games } from '@babylon/db';
+} from '@feed/api';
+import { db, eq, games } from '@feed/db';
 import {
   type Article,
   ArticleGenerator,
   articleRateLimiter,
-  BabylonLLMClient,
+  FeedLLMClient,
   getActiveEventsForPosting,
   hasEventBeenCovered,
   markEventAsCovered,
@@ -45,8 +45,8 @@ import {
   type StaticOrganization,
   secureRandom,
   worldFactsService,
-} from '@babylon/engine';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -397,7 +397,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     }
 
     // Create LLM client for article generation
-    const llmClient = BabylonLLMClient.forGameTick();
+    const llmClient = FeedLLMClient.forGameTick();
 
     let articlesCreated = 0;
     let errorCount = 0;
@@ -522,7 +522,7 @@ async function generateEventArticle(
   actorsList: StaticActor[],
   worldFactsContext: string,
   gameState: GameState,
-  llmClient: BabylonLLMClient
+  llmClient: FeedLLMClient
 ): Promise<ArticleGenerationResult> {
   // P0: Pre-check rate limit BEFORE expensive LLM calls to avoid wasting resources
   const { allowed } = await articleRateLimiter.canGenerateArticle();
@@ -601,7 +601,7 @@ async function generateBaselineArticle(
   actorsList: StaticActor[],
   worldFactsContext: string,
   gameState: GameState,
-  llmClient: BabylonLLMClient
+  llmClient: FeedLLMClient
 ): Promise<ArticleGenerationResult> {
   // Pick a random actor to focus on
   const actorIndex = Math.floor(

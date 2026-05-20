@@ -28,7 +28,7 @@ import { resolve } from 'path';
 
 const filePath = resolve(
   import.meta.dir,
-  '../../../agents/src/plugins/babylon/integration-a2a-sdk.ts'
+  '../../../agents/src/plugins/feed/integration-a2a-sdk.ts'
 );
 const fileContent = readFileSync(filePath, 'utf-8');
 

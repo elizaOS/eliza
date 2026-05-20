@@ -2,8 +2,8 @@
 
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { and, closeDatabase, db, eq, isNotNull, users } from '@babylon/db';
-import { getAllVerifiedEmails, type PrivyLinkedAccount } from '@babylon/shared';
+import { and, closeDatabase, db, eq, isNotNull, users } from '@feed/db';
+import { getAllVerifiedEmails, type PrivyLinkedAccount } from '@feed/shared';
 import {
   type LinkedAccount,
   PrivyClient,

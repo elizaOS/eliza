@@ -6,9 +6,9 @@
  * @access Public (no auth required for participation)
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { scambenchSessions } from '@babylon/db/schema';
+import { withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { scambenchSessions } from '@feed/db/schema';
 import { randomUUID } from 'crypto';
 import { avg, count, desc } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';

@@ -1,10 +1,10 @@
 /**
- * Babylon Question Manager
+ * Feed Question Manager
  *
  * @module engine/QuestionManager
  *
  * @description
- * Manages the complete lifecycle of prediction market questions in the Babylon game.
+ * Manages the complete lifecycle of prediction market questions in the Feed game.
  * Questions are the core mechanic that drives events, NPC behavior, and player betting.
  *
  * **Core Responsibilities:**
@@ -61,7 +61,7 @@
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   and,
   db,
@@ -72,15 +72,15 @@ import {
   tags,
   trendingTags,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   generateSnowflakeId,
   logger,
   RESOLUTION_CONFIDENCE_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { type Article, ArticleGenerator } from './ArticleGenerator';
-import type { BabylonLLMClient } from './llm/openai-client';
-import { BabylonLLMClient as BabylonLLMClientValue } from './llm/openai-client';
+import type { FeedLLMClient } from './llm/openai-client';
+import { FeedLLMClient as FeedLLMClientValue } from './llm/openai-client';
 import { MarketDecisionEngine } from './MarketDecisionEngine';
 import {
   generateWorldContext,
@@ -240,10 +240,10 @@ export interface QuestionManagerServices {
 }
 
 export class QuestionManager {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
   private injectedServices?: QuestionManagerServices;
 
-  constructor(llm: BabylonLLMClient, services?: QuestionManagerServices) {
+  constructor(llm: FeedLLMClient, services?: QuestionManagerServices) {
     this.llm = llm;
     this.injectedServices = services;
   }
@@ -1634,7 +1634,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
       await saveArcPlan(question.id, arcPlan);
 
       const skipNpcBetting =
-        process.env.BABYLON_TRUST_CORPUS_FAST_MODE === 'true';
+        process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
       if (skipNpcBetting) {
         logger.info(
           'Skipping NPC betting on new question in fast mode',
@@ -1652,7 +1652,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
             const contextService =
               this.injectedServices?.contextService ??
               new MarketContextService();
-            const marketDecisionLLM = BabylonLLMClientValue.forGameTick();
+            const marketDecisionLLM = FeedLLMClientValue.forGameTick();
             const modelName =
               process.env.MARKET_DECISION_MODEL || 'openai/gpt-oss-120b';
             const isKimiModel = modelName.toLowerCase().includes('kimi');

@@ -1,6 +1,6 @@
 'use client';
 
-import { type MessageTag } from '@babylon/shared';
+import { type MessageTag } from '@feed/shared';
 import { Loader2, MessageCircle } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';

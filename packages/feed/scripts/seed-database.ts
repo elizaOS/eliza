@@ -12,9 +12,9 @@
  *   bun run scripts/seed-database.ts --stats  # Show database stats
  */
 
-import { closeDatabase } from '@babylon/db';
-import { GameBootstrapService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { closeDatabase } from '@feed/db';
+import { GameBootstrapService } from '@feed/engine';
+import { logger } from '@feed/shared';
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     'SeedDatabase'
   );
   logger.info(
-    'Babylon Database Seeder',
+    'Feed Database Seeder',
     { forceReseed, showStats },
     'SeedDatabase'
   );

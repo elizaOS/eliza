@@ -1,5 +1,5 @@
-import { db, inArray, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, inArray, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import {
   type EmailRecipientRow,
   resolveRecipientEmail,
@@ -8,18 +8,18 @@ import {
 } from './email-utils';
 
 const WHITELIST_WELCOME_SUBJECT =
-  "Congratulations, you're off the waitlist. You can play Babylon now.";
+  "Congratulations, you're off the waitlist. You can play Feed now.";
 
 const WHITELIST_WELCOME_TEXT = [
   'Hey, you got in!',
   '',
-  'Babylon is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.',
+  'Feed is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.',
   '',
-  'Head to babylon.market, sign in, look around, then create one or two agents and tell them how they can help you win the game.',
+  'Head to feed.market, sign in, look around, then create one or two agents and tell them how they can help you win the game.',
   '',
   'Remember the best players get rewarded!',
   '',
-  'Babylon team',
+  'Feed team',
 ].join('\n');
 
 const SEND_CONCURRENCY = 5;
@@ -28,10 +28,10 @@ function createWhitelistWelcomeHtml(): string {
   return [
     '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">',
     '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Hey, you got in!</p>',
-    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Babylon is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.</p>',
-    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Head to <a href="https://babylon.market" style="color:#1a73e8;">babylon.market</a>, sign in, look around, then create one or two agents and tell them how they can help you win the game.</p>',
+    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Feed is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.</p>',
+    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Head to <a href="https://feed.market" style="color:#1a73e8;">feed.market</a>, sign in, look around, then create one or two agents and tell them how they can help you win the game.</p>',
     '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Remember the best players get rewarded!</p>',
-    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0;">Babylon team</p>',
+    '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0;">Feed team</p>',
     '</div>',
   ].join('');
 }

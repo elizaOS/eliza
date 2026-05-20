@@ -1,6 +1,6 @@
 import { readStorageJson, writeStorageItem } from '@/utils/browser-storage';
 
-const GAME_GUIDE_COMPLETED_KEY = 'babylon-game-guide-completed';
+const GAME_GUIDE_COMPLETED_KEY = 'feed-game-guide-completed';
 
 export function hasCompletedGameGuide(
   userId: string | undefined,

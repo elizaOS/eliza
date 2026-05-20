@@ -9,8 +9,8 @@
  * is enabled.
  */
 
-import { db, userAgentConfigs } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+import { db, userAgentConfigs } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import type { IAgentRuntime } from '@elizaos/core';
 import { getAgentConfig } from '../shared/agent-config';
 
@@ -35,13 +35,13 @@ export async function buildAgentIdentityMap(): Promise<
   try {
     const allActors = StaticDataRegistry.getAllActors();
     for (const actor of allActors) {
-      const babylon = (actor as unknown as Record<string, unknown>).babylon as
+      const feed = (actor as unknown as Record<string, unknown>).feed as
         | Record<string, unknown>
         | undefined;
-      if (!babylon) continue;
+      if (!feed) continue;
       map.set(actor.id, {
-        team: (babylon.team as string) ?? 'gray',
-        alignment: (babylon.alignment as string) ?? 'neutral',
+        team: (feed.team as string) ?? 'gray',
+        alignment: (feed.alignment as string) ?? 'neutral',
         instanceId: actor.id,
       });
     }
@@ -89,13 +89,13 @@ export async function populateIdentityMapOnRuntime(
 
   // Store this agent's own alignment for downstream use
   if (isNpc) {
-    const babylon = (
-      runtime.character as unknown as { babylon?: Record<string, unknown> }
-    ).babylon;
+    const feed = (
+      runtime.character as unknown as { feed?: Record<string, unknown> }
+    ).feed;
     (runtime as { _agentTeam?: string })._agentTeam =
-      (babylon?.team as string) ?? 'gray';
+      (feed?.team as string) ?? 'gray';
     (runtime as { _agentAlignment?: string })._agentAlignment =
-      (babylon?.alignment as string) ?? 'neutral';
+      (feed?.alignment as string) ?? 'neutral';
   } else {
     const config = await getAgentConfig(agentUserId);
     const alignment = (config as Record<string, unknown>)?.alignment;

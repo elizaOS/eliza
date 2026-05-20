@@ -1,15 +1,15 @@
 # ---------------------------------------------------------
-# @babylon/sim — standalone simulation engine
+# @feed/sim — standalone simulation engine
 #
 # Must be built from the monorepo root:
 #
-#   docker build -f packages/sim/Dockerfile -t babylon-sim .
+#   docker build -f packages/sim/Dockerfile -t feed-sim .
 #
 # Run modes:
-#   docker run babylon-sim                          # loop (default)
-#   docker run -e SIM_ONCE=1 babylon-sim            # single tick
-#   docker run babylon-sim --once                   # single tick (alt)
-#   docker run -e TICK_INTERVAL_MS=30000 babylon-sim
+#   docker run feed-sim                          # loop (default)
+#   docker run -e SIM_ONCE=1 feed-sim            # single tick
+#   docker run feed-sim --once                   # single tick (alt)
+#   docker run -e TICK_INTERVAL_MS=30000 feed-sim
 # ---------------------------------------------------------
 
 FROM oven/bun:1.3.4 AS base
@@ -61,15 +61,15 @@ FROM base AS runtime
 WORKDIR /app/packages/sim
 
 # The 9MB bundle has everything inlined except externalized deps.
-# c12 is needed at runtime for config loading (loadBabylonConfig).
+# c12 is needed at runtime for config loading (loadFeedConfig).
 # node-fetch-native is externalized by the bundler.
 RUN bun add --no-save node-fetch-native c12
 
 # Build output (self-contained bundle)
 COPY --from=build /app/packages/sim/.output ./.output
 
-# Config + core (needed for babylon.config.ts relative imports)
-COPY --from=build /app/packages/sim/babylon.config.ts* ./
+# Config + core (needed for feed.config.ts relative imports)
+COPY --from=build /app/packages/sim/feed.config.ts* ./
 COPY --from=build /app/packages/sim/core/ ./core/
 
 ENV NODE_ENV=production

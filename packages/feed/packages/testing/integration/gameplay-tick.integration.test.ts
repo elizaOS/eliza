@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { asSystem, db } from '@babylon/db';
-import { executeGameTick } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { asSystem, db } from '@feed/db';
+import { executeGameTick } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 const BASE_URL =
   process.env.TEST_API_URL ||
@@ -17,8 +17,8 @@ describe('Gameplay Tick Integration', () => {
   let initialFastMode: string | undefined;
 
   beforeAll(async () => {
-    initialFastMode = process.env.BABYLON_TRUST_CORPUS_FAST_MODE;
-    process.env.BABYLON_TRUST_CORPUS_FAST_MODE = 'true';
+    initialFastMode = process.env.FEED_TRUST_CORPUS_FAST_MODE;
+    process.env.FEED_TRUST_CORPUS_FAST_MODE = 'true';
 
     // Check if server is running
     try {
@@ -103,9 +103,9 @@ describe('Gameplay Tick Integration', () => {
 
   afterAll(async () => {
     if (initialFastMode === undefined) {
-      delete process.env.BABYLON_TRUST_CORPUS_FAST_MODE;
+      delete process.env.FEED_TRUST_CORPUS_FAST_MODE;
     } else {
-      process.env.BABYLON_TRUST_CORPUS_FAST_MODE = initialFastMode;
+      process.env.FEED_TRUST_CORPUS_FAST_MODE = initialFastMode;
     }
 
     // Restore game state

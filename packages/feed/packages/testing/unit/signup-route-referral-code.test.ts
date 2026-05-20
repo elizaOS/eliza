@@ -59,8 +59,8 @@ mock.module('zod', () => ({
   ..._actualZod,
 }));
 
-const _actualApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
+const _actualApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
   ..._actualApi,
   authenticate: mockAuthenticate,
   cachedDb: {
@@ -108,8 +108,8 @@ mock.module('@babylon/api', () => ({
   ) => handler,
 }));
 
-const _actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const _actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ..._actualDb,
   and: (...conditions: unknown[]) => conditions,
   balanceTransactions: { id: 'balanceTransactions.id' },
@@ -145,7 +145,7 @@ mock.module('@babylon/db', () => ({
   withTransaction: mockWithTransaction,
 }));
 
-const _actualEngine = await import('@babylon/engine');
+const _actualEngine = await import('@feed/engine');
 (
   _actualEngine.UserAlphaGroupAssignmentService as unknown as Record<
     string,
@@ -156,12 +156,12 @@ const _actualEngine = await import('@babylon/engine');
   assignments: [],
   errors: [],
 }));
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   ..._actualEngine,
 }));
 
-const _actualShared = await import('@babylon/shared');
-mock.module('@babylon/shared', () => ({
+const _actualShared = await import('@feed/shared');
+mock.module('@feed/shared', () => ({
   ..._actualShared,
   checkForAdminEmail: mock(() => ({
     adminEmail: null,
@@ -286,7 +286,7 @@ describe('signup route referral code handling', () => {
 
   it('returns success without a post-signup referral code regeneration call', async () => {
     const request = new MockNextRequest(
-      'https://babylon.market/api/users/signup',
+      'https://feed.market/api/users/signup',
       {
         method: 'POST',
         body: JSON.stringify({

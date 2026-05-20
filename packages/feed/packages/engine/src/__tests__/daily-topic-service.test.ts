@@ -92,7 +92,7 @@ const dbMock = {
   })),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: dbMock,
   dailyTopics: { __name: 'dailyTopics', id: 'id' },
   rssHeadlines: {
@@ -111,7 +111,7 @@ mock.module('@babylon/db', () => ({
   gte: (a: unknown, b: unknown) => [a, b],
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: mock(() => {}),
     warn: mock(() => {}),

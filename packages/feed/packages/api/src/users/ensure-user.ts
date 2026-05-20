@@ -6,11 +6,11 @@
  * information.
  */
 
-import { db, eq, type User, users } from '@babylon/db';
+import { db, eq, type User, users } from '@feed/db';
 import {
   generateSnowflakeId,
   resolveUserIdentifierKind,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { sql } from 'drizzle-orm';
 import type { AuthenticatedUser } from '../auth-middleware';
 import { cachedDb } from '../cache/cached-database-service';
@@ -327,10 +327,10 @@ export function getCanonicalUserId(
 }
 
 /**
- * Ensure a Babylon user record exists for a Steward-authenticated user.
+ * Ensure a Feed user record exists for a Steward-authenticated user.
  *
  * Called by auth-middleware when a Steward JWT arrives and no existing user
- * is found by stewardId or email. Creates a new minimal Babylon user and
+ * is found by stewardId or email. Creates a new minimal Feed user and
  * links the stewardId.
  *
  * Idempotent: uses onConflictDoUpdate to handle concurrent first-logins.
@@ -346,7 +346,7 @@ export async function ensureUserFromSteward(
   isAdmin: boolean;
   isAgent: boolean;
 }> {
-  // Try insert first — generate a new Babylon snowflake ID for this user
+  // Try insert first — generate a new Feed snowflake ID for this user
   const newId = await generateSnowflakeId();
   const inserted = await db
     .insert(users)

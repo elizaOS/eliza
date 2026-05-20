@@ -40,9 +40,9 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { calculatePortfolioBreakdown } from '@babylon/engine';
+import { withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { calculatePortfolioBreakdown } from '@feed/engine';
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 
@@ -72,7 +72,7 @@ export const GET = withErrorHandling(async function GET(
     calculatePortfolioBreakdown(userId),
   ]);
 
-  const displayName = user?.displayName || user?.username || 'Babylon User';
+  const displayName = user?.displayName || user?.username || 'Feed User';
   const totalPnL = pnlData?.totalPnL || 0;
   const totalAssets = pnlData?.totalAssets || 0;
   const availableBalance = pnlData?.available || 0;
@@ -103,7 +103,7 @@ export const GET = withErrorHandling(async function GET(
           display: 'flex',
         }}
       >
-        Babylon
+        Feed
       </div>
 
       <div

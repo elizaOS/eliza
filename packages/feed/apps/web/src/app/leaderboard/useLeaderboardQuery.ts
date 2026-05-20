@@ -1,6 +1,6 @@
 'use client';
 
-import type { LeaderboardMetric, LeaderboardScope } from '@babylon/shared';
+import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import {

@@ -1,7 +1,7 @@
 """
-Babylon to Atropos Converter
+Feed to Atropos Converter
 
-Converts Babylon trajectories to Atropos ScoredDataGroup format for GRPO training.
+Converts Feed trajectories to Atropos ScoredDataGroup format for GRPO training.
 Uses pre-computed mask metadata from TypeScript when available.
 Integrates 'The Judge' (Reward Functions) to score trajectories during conversion.
 """
@@ -11,7 +11,7 @@ import random
 from dataclasses import dataclass, field
 
 from ..models import AtroposScoredGroup as PydanticScoredGroup
-from ..models import BabylonTrajectory, MarketOutcomes
+from ..models import FeedTrajectory, MarketOutcomes
 from ..training.quality_utils import calculate_detailed_tick_quality
 from ..training.rewards import TrajectoryRewardInputs, calculate_risk_reward, composite_reward
 
@@ -70,9 +70,9 @@ class ScoredGroupResult:
         )
 
 
-class BabylonToAtroposConverter:
+class FeedToAtroposConverter:
     """
-    Converts Babylon trajectories to Atropos format.
+    Converts Feed trajectories to Atropos format.
 
     Args:
         dropout_rate: Random dropout rate for data augmentation (0.0-0.5)
@@ -94,16 +94,16 @@ class BabylonToAtroposConverter:
 
     def convert_trajectory(
         self,
-        babylon_traj: BabylonTrajectory,
+        feed_traj: FeedTrajectory,
         market_outcomes: MarketOutcomes | None = None,
         tokenizer=None,
     ) -> AtroposTrajectory | None:
         """
-        Convert a Babylon trajectory to Atropos format.
+        Convert a Feed trajectory to Atropos format.
         Calculates rewards using 'The Judge' logic.
 
         Args:
-            babylon_traj: Source trajectory
+            feed_traj: Source trajectory
             market_outcomes: Optional market outcome data for context
             tokenizer: Optional tokenizer for token mask computation
 
@@ -120,14 +120,14 @@ class BabylonToAtroposConverter:
         messages: list[AtroposMessage] = []
 
         # System message with context
-        system_msg = self._build_system_message(babylon_traj, market_outcomes)
+        system_msg = self._build_system_message(feed_traj, market_outcomes)
         messages.append(AtroposMessage(role="system", content=system_msg))
 
         # Convert steps to messages
         steps = (
-            babylon_traj.steps[-self.max_steps :]
-            if len(babylon_traj.steps) > self.max_steps
-            else babylon_traj.steps
+            feed_traj.steps[-self.max_steps :]
+            if len(feed_traj.steps) > self.max_steps
+            else feed_traj.steps
         )
 
         total_format_score = 0.0
@@ -171,7 +171,7 @@ class BabylonToAtroposConverter:
                     step.llm_calls,
                     step.action,
                     None,  # No explicit feedback dict in standard steps yet
-                    babylon_traj.archetype,
+                    feed_traj.archetype,
                 )
                 total_format_score += fmt_score
                 total_reasoning_score += rsn_score
@@ -189,7 +189,7 @@ class BabylonToAtroposConverter:
         if len(messages) < 3:
             # We assume at least System + User + Assistant
             raise ValueError(
-                f"Trajectory {babylon_traj.trajectory_id} has only {len(messages)} messages (need 3+)"
+                f"Trajectory {feed_traj.trajectory_id} has only {len(messages)} messages (need 3+)"
             )
 
         # Calculate averages
@@ -201,25 +201,25 @@ class BabylonToAtroposConverter:
         end_bal = 10000.0
 
         # Try to get precise start/end from steps if available
-        if babylon_traj.steps:
-            start_bal = babylon_traj.steps[0].environment_state.agent_balance
-            end_bal = babylon_traj.steps[-1].environment_state.agent_balance
-        elif babylon_traj.final_balance is not None:
+        if feed_traj.steps:
+            start_bal = feed_traj.steps[0].environment_state.agent_balance
+            end_bal = feed_traj.steps[-1].environment_state.agent_balance
+        elif feed_traj.final_balance is not None:
             # Fallback if step data is partial but trajectory header is populated
-            end_bal = babylon_traj.final_balance
+            end_bal = feed_traj.final_balance
             # Infer start from PnL
-            start_bal = end_bal - babylon_traj.final_pnl
+            start_bal = end_bal - feed_traj.final_pnl
 
         reward_inputs = TrajectoryRewardInputs(
-            final_pnl=babylon_traj.final_pnl,
+            final_pnl=feed_traj.final_pnl,
             starting_balance=start_bal,
             end_balance=end_bal,
             format_score=avg_format,
             reasoning_score=avg_reasoning,
             risky_actions_count=risky_actions_count,
             # Legacy stats
-            num_steps=len(babylon_traj.steps),
-            trades_executed=babylon_traj.trades_executed or 0,
+            num_steps=len(feed_traj.steps),
+            trades_executed=feed_traj.trades_executed or 0,
         )
 
         final_score = composite_reward(reward_inputs)
@@ -243,12 +243,12 @@ class BabylonToAtroposConverter:
             logprobs=[],
             score=final_score,
             metadata={
-                "trajectory_id": babylon_traj.trajectory_id,
-                "agent_id": babylon_traj.agent_id,
-                "window_id": babylon_traj.window_id,
-                "final_pnl": babylon_traj.final_pnl,
-                "episode_length": babylon_traj.episode_length,
-                "trades_executed": babylon_traj.trades_executed or 0,
+                "trajectory_id": feed_traj.trajectory_id,
+                "agent_id": feed_traj.agent_id,
+                "window_id": feed_traj.window_id,
+                "final_pnl": feed_traj.final_pnl,
+                "episode_length": feed_traj.episode_length,
+                "trades_executed": feed_traj.trades_executed or 0,
                 # Store breakdown for debugging/logging
                 "format_score": avg_format,
                 "reasoning_score": avg_reasoning,
@@ -304,7 +304,7 @@ class BabylonToAtroposConverter:
 
     def _build_system_message(
         self,
-        trajectory: BabylonTrajectory,
+        trajectory: FeedTrajectory,
         market_outcomes: MarketOutcomes | None,
     ) -> str:
         """Build system message with ground truth context."""
@@ -330,7 +330,7 @@ TIME WINDOW: {trajectory.window_id}
 
     def convert_window_group(
         self,
-        trajectories: list[BabylonTrajectory],
+        trajectories: list[FeedTrajectory],
         market_outcomes: MarketOutcomes | None,
         scores: list[float] | None = None,
         max_per_group: int = 8,

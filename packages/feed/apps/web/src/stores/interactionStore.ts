@@ -11,8 +11,8 @@ import type {
   InteractionError,
   PendingInteraction,
   PostInteraction,
-} from '@babylon/shared';
-import { retryIfRetryable } from '@babylon/shared';
+} from '@feed/shared';
+import { retryIfRetryable } from '@feed/shared';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getAuthToken } from '@/lib/auth';
@@ -487,7 +487,7 @@ export const useInteractionStore = create<InteractionStore>()(
       },
     }),
     {
-      name: 'babylon-interactions',
+      name: 'feed-interactions',
       // Custom serialization for Maps and Sets
       partialize: (state: InteractionStore): PersistedInteractionState => ({
         postInteractions: Array.from(state.postInteractions.entries()),

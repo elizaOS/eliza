@@ -16,7 +16,7 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import type { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';

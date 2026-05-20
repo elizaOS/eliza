@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStewardAuthContext } from '@/components/providers/StewardAuthProvider';
@@ -367,7 +367,7 @@ export function useAuth(): UseAuthReturn {
         (
           window as Window & { __privyAccessToken?: string | null }
         ).__privyAccessToken = null;
-        localStorage.removeItem('babylon-auth');
+        localStorage.removeItem('feed-auth');
       }
       globalFetchInFlight = null;
       if (globalTokenRetryTimeout !== null) {
@@ -394,7 +394,7 @@ export function useAuth(): UseAuthReturn {
       (
         window as Window & { __privyAccessToken?: string | null }
       ).__privyAccessToken = null;
-      removeStorageItem('localStorage', 'babylon-auth');
+      removeStorageItem('localStorage', 'feed-auth');
     }
 
     globalFetchInFlight = null;

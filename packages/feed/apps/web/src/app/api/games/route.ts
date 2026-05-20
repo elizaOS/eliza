@@ -86,9 +86,9 @@
  * @see {@link /lib/serverless-game-tick} Game tick engine
  */
 
-import { successResponse, withErrorHandling } from '@babylon/api';
-import { gameService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { successResponse, withErrorHandling } from '@feed/api';
+import { gameService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (_request: NextRequest) => {

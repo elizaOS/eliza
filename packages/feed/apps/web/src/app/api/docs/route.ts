@@ -40,7 +40,7 @@
  *                   type: string
  */
 
-import { generateAutoSpec, withErrorHandling } from '@babylon/api';
+import { generateAutoSpec, withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 /**

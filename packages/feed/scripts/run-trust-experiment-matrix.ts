@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { actors as staticActors } from '@babylon/pack-default';
+import { actors as staticActors } from '@feed/pack-default';
 import type { IAgentRuntime } from '@elizaos/core';
 import { config as loadDotenv } from 'dotenv';
 import {
@@ -14,9 +14,9 @@ import {
   writeTrustExperimentCharacterSheets,
 } from '../packages/agents/src/character-roster/trust-experiment';
 
-const BABYLON_REPO_ROOT = path.resolve(import.meta.dir, '..');
-loadDotenv({ path: path.join(BABYLON_REPO_ROOT, '.env') });
-loadDotenv({ path: path.join(BABYLON_REPO_ROOT, '.env.local') });
+const FEED_REPO_ROOT = path.resolve(import.meta.dir, '..');
+loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env') });
+loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env.local') });
 
 interface Options {
   agentCount: number;
@@ -109,19 +109,19 @@ type RuntimeWithSettings = IAgentRuntime & {
 };
 
 interface RunDeps {
-  db: typeof import('@babylon/db').db;
-  and: typeof import('@babylon/db').and;
-  eq: typeof import('@babylon/db').eq;
-  inArray: typeof import('@babylon/db').inArray;
-  users: typeof import('@babylon/db').users;
-  chats: typeof import('@babylon/db').chats;
-  groups: typeof import('@babylon/db').groups;
-  groupMembers: typeof import('@babylon/db').groupMembers;
-  executeGameTick: typeof import('@babylon/engine').executeGameTick;
-  autoJoinEmptyUsersToNpcGroupChats: typeof import('@babylon/engine').autoJoinEmptyUsersToNpcGroupChats;
-  agentRuntimeManager: typeof import('@babylon/agents').agentRuntimeManager;
-  autonomousCoordinator: typeof import('@babylon/agents').autonomousCoordinator;
-  createTestAgent: typeof import('@babylon/agents').createTestAgent;
+  db: typeof import('@feed/db').db;
+  and: typeof import('@feed/db').and;
+  eq: typeof import('@feed/db').eq;
+  inArray: typeof import('@feed/db').inArray;
+  users: typeof import('@feed/db').users;
+  chats: typeof import('@feed/db').chats;
+  groups: typeof import('@feed/db').groups;
+  groupMembers: typeof import('@feed/db').groupMembers;
+  executeGameTick: typeof import('@feed/engine').executeGameTick;
+  autoJoinEmptyUsersToNpcGroupChats: typeof import('@feed/engine').autoJoinEmptyUsersToNpcGroupChats;
+  agentRuntimeManager: typeof import('@feed/agents').agentRuntimeManager;
+  autonomousCoordinator: typeof import('@feed/agents').autonomousCoordinator;
+  createTestAgent: typeof import('@feed/agents').createTestAgent;
   upsertAgentConfig: typeof import('../packages/agents/src/shared/agent-config').upsertAgentConfig;
 }
 
@@ -136,9 +136,9 @@ async function getRunDeps(): Promise<RunDeps> {
         agents,
         sharedConfig,
       ] = await Promise.all([
-        import('@babylon/db'),
-        import('@babylon/engine'),
-        import('@babylon/agents'),
+        import('@feed/db'),
+        import('@feed/engine'),
+        import('@feed/agents'),
         import('../packages/agents/src/shared/agent-config'),
       ]);
 
@@ -291,12 +291,12 @@ function buildConfigStyle(agent: TrustExperimentAgentSpec) {
     all: agent.sheet.style.all,
     chat: agent.sheet.style.chat,
     post: agent.sheet.style.post,
-    babylon: {
+    feed: {
       sheetId: agent.sheet.id,
       instanceId: agent.instanceId,
       username: agent.sheet.username,
       models: agent.sheet.settings.groq,
-      metadata: agent.sheet.babylon,
+      metadata: agent.sheet.feed,
       trustExperiment: {
         modelSize: agent.modelProfile.id,
         parameterCountB: agent.modelProfile.parameterCountB,
@@ -308,9 +308,9 @@ function buildConfigStyle(agent: TrustExperimentAgentSpec) {
 
 function buildAgentPersonalitySummary(agent: TrustExperimentAgentSpec): string {
   return [
-    `${agent.sheet.babylon.alignment} ${agent.sheet.babylon.team} posture`,
-    agent.sheet.babylon.socialStyle,
-    `scam:${agent.sheet.babylon.scamProfile.replaceAll('_', ' ')}`,
+    `${agent.sheet.feed.alignment} ${agent.sheet.feed.team} posture`,
+    agent.sheet.feed.socialStyle,
+    `scam:${agent.sheet.feed.scamProfile.replaceAll('_', ' ')}`,
     `model:${agent.modelProfile.id}`,
     `profile:${agent.modelProfile.trainingProfile}`,
   ].join(' | ');
@@ -324,11 +324,11 @@ async function ensureExperimentAgent(
     username: agent.sheet.username,
     displayName: agent.sheet.name,
     virtualBalance: 25000,
-    autonomousTrading: agent.sheet.babylon.autonomy.trading,
-    autonomousPosting: agent.sheet.babylon.autonomy.posting,
-    autonomousCommenting: agent.sheet.babylon.autonomy.commenting,
-    autonomousDMs: agent.sheet.babylon.autonomy.dms,
-    autonomousGroupChats: agent.sheet.babylon.autonomy.groups,
+    autonomousTrading: agent.sheet.feed.autonomy.trading,
+    autonomousPosting: agent.sheet.feed.autonomy.posting,
+    autonomousCommenting: agent.sheet.feed.autonomy.commenting,
+    autonomousDMs: agent.sheet.feed.autonomy.dms,
+    autonomousGroupChats: agent.sheet.feed.autonomy.groups,
     systemPrompt: agent.sheet.system,
   });
 
@@ -344,37 +344,37 @@ async function ensureExperimentAgent(
   await deps.upsertAgentConfig(result.agentId, {
     systemPrompt: agent.sheet.system,
     personality: buildAgentPersonalitySummary(agent),
-    tradingStrategy: agent.sheet.babylon.tradingStyle,
+    tradingStrategy: agent.sheet.feed.tradingStyle,
     style: buildConfigStyle(agent),
     messageExamples: agent.sheet.bio,
     personaPrompt: JSON.stringify(agent.sheet),
     goals: {
-      motivations: agent.sheet.babylon.motivations,
-      fears: agent.sheet.babylon.fears,
+      motivations: agent.sheet.feed.motivations,
+      fears: agent.sheet.feed.fears,
       topics: agent.sheet.topics,
     },
     directives: agent.sheet.style.all,
     constraints: [
-      `alignment:${agent.sheet.babylon.alignment}`,
-      `team:${agent.sheet.babylon.team}`,
-      `scam_profile:${agent.sheet.babylon.scamProfile}`,
+      `alignment:${agent.sheet.feed.alignment}`,
+      `team:${agent.sheet.feed.team}`,
+      `scam_profile:${agent.sheet.feed.scamProfile}`,
       `model_size:${agent.modelProfile.id}`,
       `training_profile:${agent.modelProfile.trainingProfile}`,
     ],
     planningHorizon: 'campaign',
     riskTolerance:
-      agent.sheet.babylon.caution === 'paranoid'
+      agent.sheet.feed.caution === 'paranoid'
         ? 'low'
-        : agent.sheet.babylon.caution === 'reckless'
+        : agent.sheet.feed.caution === 'reckless'
           ? 'high'
           : 'medium',
-    maxActionsPerTick: agent.sheet.babylon.caution === 'paranoid' ? 2 : 5,
+    maxActionsPerTick: agent.sheet.feed.caution === 'paranoid' ? 2 : 5,
     modelTier: agent.modelProfile.parameterCountB >= 14 ? 'pro' : 'free',
-    autonomousTrading: agent.sheet.babylon.autonomy.trading,
-    autonomousPosting: agent.sheet.babylon.autonomy.posting,
-    autonomousCommenting: agent.sheet.babylon.autonomy.commenting,
-    autonomousDMs: agent.sheet.babylon.autonomy.dms,
-    autonomousGroupChats: agent.sheet.babylon.autonomy.groups,
+    autonomousTrading: agent.sheet.feed.autonomy.trading,
+    autonomousPosting: agent.sheet.feed.autonomy.posting,
+    autonomousCommenting: agent.sheet.feed.autonomy.commenting,
+    autonomousDMs: agent.sheet.feed.autonomy.dms,
+    autonomousGroupChats: agent.sheet.feed.autonomy.groups,
     a2aEnabled: false,
     updatedAt: new Date(),
   });
@@ -433,7 +433,7 @@ function setTrustContext(
   runtime: IAgentRuntime,
   agent: TrustExperimentAgentSpec
 ): void {
-  const babylon = agent.sheet.babylon;
+  const feed = agent.sheet.feed;
   // Set trust outcomes on runtime for trajectory recording.
   // These are initialized from the character sheet's trust profile;
   // the autonomous coordinator reads them at endTrajectory.
@@ -459,15 +459,15 @@ function setTrustContext(
       wasLegitimate: boolean;
       wasRejected: boolean;
     }>,
-    interactedWithRedTeam: babylon.team === 'red',
-    interactedWithBlueTeam: babylon.team === 'blue',
+    interactedWithRedTeam: feed.team === 'red',
+    interactedWithBlueTeam: feed.team === 'blue',
     redTeamNpcIds: [] as string[],
     // Metadata for downstream filtering
-    agentTeam: babylon.team,
-    agentAlignment: babylon.alignment,
-    agentScamProfile: babylon.scamProfile,
-    agentCaution: babylon.caution,
-    agentDeception: babylon.deception,
+    agentTeam: feed.team,
+    agentAlignment: feed.alignment,
+    agentScamProfile: feed.scamProfile,
+    agentCaution: feed.caution,
+    agentDeception: feed.deception,
   };
 }
 
@@ -495,8 +495,8 @@ async function executeAgentTick(
       const scenarioId = [
         'trust-exp',
         agent.modelProfile.trainingProfile,
-        agent.sheet.babylon.scamProfile,
-        agent.sheet.babylon.team,
+        agent.sheet.feed.scamProfile,
+        agent.sheet.feed.team,
         agent.modelProfile.id,
       ]
         .map((part) => String(part).trim())
@@ -527,13 +527,13 @@ async function executeAgentTick(
           modelSize: agent.modelProfile.id,
           parameterCountB: agent.modelProfile.parameterCountB,
           trainingProfile: agent.modelProfile.trainingProfile,
-          team: agent.sheet.babylon.team,
-          alignment: agent.sheet.babylon.alignment,
-          scamProfile: agent.sheet.babylon.scamProfile,
-          caution: agent.sheet.babylon.caution,
-          deception: agent.sheet.babylon.deception,
-          socialStyle: agent.sheet.babylon.socialStyle,
-          scenarioProfile: `${agent.sheet.babylon.team}:${agent.sheet.babylon.scamProfile}:${agent.modelProfile.trainingProfile}`,
+          team: agent.sheet.feed.team,
+          alignment: agent.sheet.feed.alignment,
+          scamProfile: agent.sheet.feed.scamProfile,
+          caution: agent.sheet.feed.caution,
+          deception: agent.sheet.feed.deception,
+          socialStyle: agent.sheet.feed.socialStyle,
+          scenarioProfile: `${agent.sheet.feed.team}:${agent.sheet.feed.scamProfile}:${agent.modelProfile.trainingProfile}`,
           initialGroupChatTarget:
             initialGroupChatSeed?.targetGroupChatCount ?? null,
           initialGroupChatCount:
@@ -753,11 +753,11 @@ async function seedInitialAgentGroupChats(
 
 async function main(): Promise<void> {
   const options = parseOptions();
-  process.env.BABYLON_DISABLE_A2A ??= '1';
-  process.env.BABYLON_SUPPRESS_OPTIONAL_LLM_WARNINGS ??= '1';
-  if (process.env.BABYLON_SUPPRESS_OPTIONAL_LLM_WARNINGS === '1') {
+  process.env.FEED_DISABLE_A2A ??= '1';
+  process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS ??= '1';
+  if (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS === '1') {
     delete process.env.OPENAI_API_KEY;
-    process.env.SECRET_SALT ??= 'babylon-trust-experiment';
+    process.env.SECRET_SALT ??= 'feed-trust-experiment';
   }
   const timestamp = new Date().toISOString().replaceAll(':', '-');
   const experimentRunId =
@@ -849,8 +849,8 @@ async function main(): Promise<void> {
     const ensured = await ensureExperimentAgent(agent);
     idByInstanceId.set(agent.instanceId, ensured.agentId);
     agentIdentityMap.set(ensured.agentId, {
-      team: agent.sheet.babylon.team,
-      alignment: agent.sheet.babylon.alignment,
+      team: agent.sheet.feed.team,
+      alignment: agent.sheet.feed.alignment,
       instanceId: agent.instanceId,
     });
     registeredAgents.push({

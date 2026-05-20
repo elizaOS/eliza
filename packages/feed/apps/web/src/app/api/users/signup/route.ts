@@ -86,7 +86,7 @@
  * @see {@link /lib/onboarding/types} Onboarding types
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   authenticate,
   ConflictError,
@@ -99,7 +99,7 @@ import {
   successResponse,
   TradingBalanceFundingService,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   db,
@@ -112,16 +112,16 @@ import {
   users,
   withRetry,
   withTransaction,
-} from '@babylon/db';
-import { UserAlphaGroupAssignmentService } from '@babylon/engine';
-import type { OnboardingProfilePayload } from '@babylon/shared';
+} from '@feed/db';
+import { UserAlphaGroupAssignmentService } from '@feed/engine';
+import type { OnboardingProfilePayload } from '@feed/shared';
 import {
   generateSnowflakeId,
   logger,
   OnboardingProfileSchema,
   POINTS,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { trackServerEvent } from '@/lib/posthog/server';

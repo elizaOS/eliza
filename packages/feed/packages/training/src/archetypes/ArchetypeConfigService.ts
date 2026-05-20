@@ -5,7 +5,7 @@
  * Provides personality, trading strategies, and behavioral patterns for each archetype.
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 
 export interface ArchetypeTraits {
   greed: number; // 0-1

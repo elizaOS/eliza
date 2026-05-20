@@ -58,8 +58,8 @@
  *         description: Unauthorized
  */
 
-import { teamChatService } from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
+import { teamChatService } from '@feed/agents';
+import { authenticateUser, withErrorHandling } from '@feed/api';
 import {
   chatParticipants,
   chats,
@@ -71,8 +71,8 @@ import {
   messages,
   userAgentConfigs,
   withTransaction,
-} from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

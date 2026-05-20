@@ -4,14 +4,14 @@
  * User-level rate limiting and duplicate content detection utilities.
  *
  * NOTE:
- * The engine package intentionally does not depend on `@babylon/api`. Historically,
- * these utilities were provided by `@babylon/api` and re-exported from
- * `@babylon/engine` for convenience. That creates circular dependencies in the
+ * The engine package intentionally does not depend on `@feed/api`. Historically,
+ * these utilities were provided by `@feed/api` and re-exported from
+ * `@feed/engine` for convenience. That creates circular dependencies in the
  * monorepo, so the engine now provides a framework-agnostic, in-memory default
  * implementation, plus an optional injection point for API/runtime overrides.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { createHash } from 'crypto';
 
 // =============================================================================

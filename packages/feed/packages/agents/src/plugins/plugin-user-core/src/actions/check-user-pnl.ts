@@ -14,9 +14,9 @@ import {
   perpPositions,
   positions,
   users,
-} from '@babylon/db';
-import { calculatePortfolioBreakdown, WalletService } from '@babylon/engine';
-import type { MessageTag } from '@babylon/shared';
+} from '@feed/db';
+import { calculatePortfolioBreakdown, WalletService } from '@feed/engine';
+import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,

@@ -210,7 +210,7 @@ normalize_archetype("DEGEN")  # "degen"
 ## Loading Rubrics in TypeScript
 
 ```typescript
-import { getRubric, getPriorityMetrics } from '@babylon/training';
+import { getRubric, getPriorityMetrics } from '@feed/training';
 
 const rubric = getRubric('trader');
 const metrics = getPriorityMetrics('trader');

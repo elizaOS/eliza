@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Babylon Benchmark Docker Entrypoint
+# Feed Benchmark Docker Entrypoint
 # =============================================================================
 #
 # Orchestrates vLLM startup and benchmark execution.
@@ -65,9 +65,9 @@ BENCHMARK_BASELINE="${BENCHMARK_BASELINE:-random}"
 
 show_help() {
     cat << EOF
-Babylon Benchmark Container
+Feed Benchmark Container
 
-Usage: docker run [docker-options] babylon-benchmark:latest [options]
+Usage: docker run [docker-options] feed-benchmark:latest [options]
 
 Options:
   --help, -h           Show this help message
@@ -91,18 +91,18 @@ Examples:
   # Benchmark with local adapter
   docker run --gpus all -v ./trained_models:/models \\
     -e MODEL_PATH=/models/final_model \\
-    babylon-benchmark:latest
+    feed-benchmark:latest
 
   # Benchmark with HuggingFace model
   docker run --gpus all \\
     -e HF_MODEL=elizaos/ishtar-v0.1 \\
     -e HF_TOKEN=hf_xxx \\
-    babylon-benchmark:latest
+    feed-benchmark:latest
 
   # Quick benchmark on single scenario
   docker run --gpus all -v ./trained_models:/models \\
     -e MODEL_PATH=/models/final_model \\
-    babylon-benchmark:latest --quick --scenario bear-market
+    feed-benchmark:latest --quick --scenario bear-market
 
 EOF
     exit 0
@@ -161,7 +161,7 @@ fi
 # =============================================================================
 
 log_info "═══════════════════════════════════════════════════════════════"
-log_info "              BABYLON BENCHMARK CONTAINER"
+log_info "              FEED BENCHMARK CONTAINER"
 log_info "═══════════════════════════════════════════════════════════════"
 echo ""
 

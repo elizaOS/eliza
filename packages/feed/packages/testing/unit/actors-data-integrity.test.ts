@@ -9,8 +9,8 @@
  */
 
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { loadActorsData } from '@babylon/engine';
-import type { ActorData, ActorsDatabase, Organization } from '@babylon/shared';
+import { loadActorsData } from '@feed/engine';
+import type { ActorData, ActorsDatabase, Organization } from '@feed/shared';
 
 describe('Actors.json Data Integrity', () => {
   let actorsData: ActorsDatabase;

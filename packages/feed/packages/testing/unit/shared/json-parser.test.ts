@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { parseJsonString, parseJsonWithFallback } from '@babylon/shared';
+import { parseJsonString, parseJsonWithFallback } from '@feed/shared';
 
 describe('JSON Parser', () => {
   describe('parseJsonString', () => {

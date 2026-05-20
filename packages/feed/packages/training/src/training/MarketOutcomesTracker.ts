@@ -14,7 +14,7 @@ import {
   marketOutcomes,
   markets,
   perpPositions,
-} from '@babylon/db';
+} from '@feed/db';
 import { generateSnowflakeId, logger } from '../utils';
 import { getPreviousWindowId } from './window-utils';
 

@@ -3,9 +3,9 @@ import {
   issueRealtimeToken,
   type RealtimeChannel,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, inArray, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, inArray, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

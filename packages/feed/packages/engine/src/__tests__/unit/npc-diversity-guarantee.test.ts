@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { ActorStateRow } from '@babylon/db';
+import type { ActorStateRow } from '@feed/db';
 import { StaticDataRegistry } from '../../services/static-data-registry';
 import { toDateString } from '../../utils/date-utils';
 

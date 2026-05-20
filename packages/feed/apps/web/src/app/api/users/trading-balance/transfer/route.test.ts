@@ -63,9 +63,9 @@ const sharedModuleFactory = () => ({
   },
 });
 
-mock.module('@babylon/api', apiModuleFactory);
+mock.module('@feed/api', apiModuleFactory);
 mock.module(apiModulePath, apiModuleFactory);
-mock.module('@babylon/shared', sharedModuleFactory);
+mock.module('@feed/shared', sharedModuleFactory);
 mock.module(sharedModulePath, sharedModuleFactory);
 
 async function loadPostHandler() {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Materialize retained GitHub security repos plus retained Hugging Face tool/reasoning
-datasets into Babylon training rows, benchmark scenario seeds, and reasoning donors.
+datasets into Feed training rows, benchmark scenario seeds, and reasoning donors.
 """
 
 from __future__ import annotations

@@ -22,8 +22,8 @@ import {
   sql,
   userAgentConfigs,
   users,
-} from '@babylon/db';
-import type { PriceAlert } from '@babylon/db/schema';
+} from '@feed/db';
+import type { PriceAlert } from '@feed/db/schema';
 // Import TeamChatService to resolve the team chat for owner alerts
 import { teamChatService } from '../services/TeamChatService';
 import { logger } from '../shared/logger';

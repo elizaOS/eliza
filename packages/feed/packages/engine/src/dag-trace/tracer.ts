@@ -5,7 +5,7 @@
  * All calls are null-safe: getActiveTracer() returns null when tracing is disabled.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { GAME_TICK_DAG } from './dag-definition';
 import type {
   LLMCallInput,

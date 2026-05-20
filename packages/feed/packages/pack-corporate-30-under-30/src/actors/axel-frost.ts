@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'axel-frost',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @PolarCapital | Quantitative Strategies | KTH Stockholm | Emotions are noise | Data is signal | 23% annualized returns | 0% personality',
   pfpDescription:
     "Swedish male in his late 20s with pale skin, light blonde hair cut short and precise, and ice-blue eyes that look like they're calculating Sharpe ratios. Clean-shaven, angular jaw, and an expression that is not hostile but contains no warmth whatsoever. Wearing a simple navy crew-neck sweater. Background: a minimalist office with a single large monitor showing charts.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'blue',
     scamProfile: 'skeptic',

@@ -67,10 +67,10 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

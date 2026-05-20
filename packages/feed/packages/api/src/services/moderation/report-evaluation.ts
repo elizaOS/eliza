@@ -16,8 +16,8 @@ import {
   posts,
   reports,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { callClaudeDirect } from '../claude-service';
 
 /**

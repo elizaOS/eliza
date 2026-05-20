@@ -1,4 +1,4 @@
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
 import {
   db,
   eq,
@@ -6,9 +6,9 @@ import {
   organizationState,
   organizations,
   perpMarketSnapshots,
-} from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import type { JsonValue } from '@feed/shared';
+import { logger } from '@feed/shared';
 import { FEE_CONFIG } from '../config/fees';
 import { broadcastToChannel } from './realtime-broadcaster';
 import { WalletService } from './wallet-service';

@@ -22,14 +22,14 @@ import {
   type Pool,
   perpPositions,
   poolPositions,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   buildFallbackMetricsByPool,
   type FallbackPerpRow,
   type FallbackPositionRow,
   NPCInvestmentManager,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 describe('NPC Leaderboard Fallback Metrics', () => {
   const TEST_POOL_ID = 'test-fallback-pool-' + Date.now();

@@ -39,8 +39,8 @@ import {
   sql,
   users,
   worldEvents,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import { logger } from '../../shared/logger';
 import type {
   AgentMemoryEntry,
@@ -889,7 +889,7 @@ export async function getGroupChatIntel(
   agentUserId: string
 ): Promise<GroupChatIntel[]> {
   try {
-    const { sharedChatContextService } = await import('@babylon/engine');
+    const { sharedChatContextService } = await import('@feed/engine');
     const contexts =
       await sharedChatContextService.getRelevantGroupContextForUser(
         agentUserId,

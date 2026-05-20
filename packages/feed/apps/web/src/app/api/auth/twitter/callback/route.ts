@@ -57,9 +57,9 @@
  * @see {@link /lib/services/points-service} Points service
  */
 
-import { ReputationService, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { getWaitlistBaseUrl, logger } from '@babylon/shared';
+import { ReputationService, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { getWaitlistBaseUrl, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

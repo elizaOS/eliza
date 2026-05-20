@@ -78,11 +78,11 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   generateGameCompletionFeedback,
   generateTradeCompletionFeedback,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

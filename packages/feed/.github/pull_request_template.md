@@ -1,5 +1,5 @@
 <!--
-Babylon PR template
+Feed PR template
 
 Goal: make PRs easy to review + easy to ship.
 - Prefer small, focused PRs (one theme). Avoid catch‑all PRs.

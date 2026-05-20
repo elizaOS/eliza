@@ -112,11 +112,11 @@ describe('browser-storage', () => {
     setWindow({ localStorage, sessionStorage: createMemoryStorage() });
 
     const storage = createSafeStorage('localStorage');
-    storage.setItem('babylon-auth', '{"state":{}}');
+    storage.setItem('feed-auth', '{"state":{}}');
 
-    expect(storage.getItem('babylon-auth')).toBe('{"state":{}}');
+    expect(storage.getItem('feed-auth')).toBe('{"state":{}}');
 
-    storage.removeItem('babylon-auth');
-    expect(storage.getItem('babylon-auth')).toBeNull();
+    storage.removeItem('feed-auth');
+    expect(storage.getItem('feed-auth')).toBeNull();
   });
 });

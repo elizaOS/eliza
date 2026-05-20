@@ -2,7 +2,7 @@
 /**
  * Real Archetype Benchmark
  *
- * Queries actual agent data from the Babylon database.
+ * Queries actual agent data from the Feed database.
  *
  * Usage:
  *   bun run packages/training/scripts/real-archetype-benchmark.ts
@@ -17,7 +17,7 @@ import {
   isNull,
   poolPositions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { ArchetypeConfigService } from '../src/archetypes/ArchetypeConfigService';
 
 // Get the available archetypes from our actual config
@@ -38,7 +38,7 @@ async function main() {
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );
-  console.log('  Babylon Real Archetype Benchmark');
+  console.log('  Feed Real Archetype Benchmark');
   console.log('  Using ACTUAL data from the game engine');
   console.log(
     '═══════════════════════════════════════════════════════════════\n'
@@ -179,7 +179,7 @@ async function main() {
   const outputDir = './research-output/real-benchmarks';
   mkdirSync(outputDir, { recursive: true });
 
-  const report = `# Babylon Real Archetype Benchmark
+  const report = `# Feed Real Archetype Benchmark
 
 Generated: ${new Date().toISOString()}
 

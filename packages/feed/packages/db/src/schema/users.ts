@@ -1,4 +1,4 @@
-import type { GameOnboardingStep } from '@babylon/shared';
+import type { GameOnboardingStep } from '@feed/shared';
 import { relations } from 'drizzle-orm';
 import {
   boolean,
@@ -17,7 +17,7 @@ import type { JsonValue } from '../types';
 import { onboardingStatusEnum } from './enums';
 
 // Re-export for consumers
-export type { GameOnboardingStep } from '@babylon/shared';
+export type { GameOnboardingStep } from '@feed/shared';
 
 /**
  * Game onboarding state stored in JSONB

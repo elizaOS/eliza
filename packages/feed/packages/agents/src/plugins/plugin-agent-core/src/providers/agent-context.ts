@@ -1,7 +1,7 @@
 /**
  * Agent Context Provider
  *
- * Provides context about the Babylon platform and agent capabilities.
+ * Provides context about the Feed platform and agent capabilities.
  * This helps reduce prompt redundancy by centralizing platform description.
  */
 
@@ -17,21 +17,21 @@ import type {
  * Agent Context Provider
  *
  * Injects context about:
- * - What Babylon is
+ * - What Feed is
  * - What agents can do
  * - Agent identity and autonomy
  */
 export const agentContextProvider: Provider = {
   name: 'AGENT_CONTEXT',
-  description: 'Context about Babylon platform and agent capabilities',
+  description: 'Context about Feed platform and agent capabilities',
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
     _state: State
   ): Promise<ProviderResult> => {
-    const contextText = `# About Babylon
-Babylon is a social prediction market platform with two main features:
+    const contextText = `# About Feed
+Feed is a social prediction market platform with two main features:
 
 **Trading:**
 - **Prediction Markets**: YES/NO bets on future events

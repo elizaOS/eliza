@@ -1,7 +1,7 @@
 /**
  * Recent Messages Provider
  *
- * Provides conversation history from Babylon's database.
+ * Provides conversation history from Feed's database.
  *
  * In team chat mode: Queries the `messages` table filtered to only
  * messages that target this specific agent (via targetIds) and the agent's responses.
@@ -17,7 +17,7 @@ import {
   messages as messagesTable,
   or,
   sql,
-} from '@babylon/db';
+} from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,

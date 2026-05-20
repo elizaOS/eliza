@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_NOTIFICATION_DIGEST_SETTINGS } from '@babylon/shared';
+import { DEFAULT_NOTIFICATION_DIGEST_SETTINGS } from '@feed/shared';
 
 describe('DEFAULT_NOTIFICATION_DIGEST_SETTINGS', () => {
   test('matches the product defaults for new users', () => {

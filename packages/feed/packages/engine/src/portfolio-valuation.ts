@@ -1,5 +1,5 @@
-import { isOpenPerpPositionStateValid } from '@babylon/core/markets/perps/client';
-import { toNumber } from '@babylon/shared';
+import { isOpenPerpPositionStateValid } from '@feed/core/markets/perps/client';
+import { toNumber } from '@feed/shared';
 
 export { toNumber };
 

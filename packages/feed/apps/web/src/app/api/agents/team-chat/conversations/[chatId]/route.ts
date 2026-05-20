@@ -5,9 +5,9 @@
  * @route DELETE /api/agents/team-chat/conversations/[chatId] - Delete conversation
  */
 
-import { teamChatService } from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { teamChatService } from '@feed/agents';
+import { authenticateUser, withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

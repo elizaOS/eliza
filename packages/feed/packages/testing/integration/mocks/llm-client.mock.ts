@@ -2,12 +2,12 @@
  * Mock LLM client for game tick tests.
  *
  * Avoids hitting real APIs during tests which causes timeouts and flakes.
- * Mocks @babylon/engine and overrides only BabylonLLMClient.
+ * Mocks @feed/engine and overrides only FeedLLMClient.
  */
 import { mock } from 'bun:test';
 
-mock.module('@babylon/engine', async () => {
-  const actualEngine = await import('@babylon/engine');
+mock.module('@feed/engine', async () => {
+  const actualEngine = await import('@feed/engine');
 
   const createMockClient = () => ({
     getStats: () => ({ provider: 'mock', model: 'mock-model' }),
@@ -108,7 +108,7 @@ mock.module('@babylon/engine', async () => {
 
   return {
     ...actualEngine,
-    BabylonLLMClient: {
+    FeedLLMClient: {
       forGameTick: createMockClient,
       forGroq: createMockClient,
       forClaude: createMockClient,

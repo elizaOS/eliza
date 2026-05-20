@@ -30,7 +30,7 @@ from src.training.rubric_loader import get_available_archetypes
 
 
 TRAINING_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_TEST_DATABASE_URL = "postgresql://babylon_test:test_password@localhost:5434/babylon_test"
+DEFAULT_TEST_DATABASE_URL = "postgresql://feed_test:test_password@localhost:5434/feed_test"
 TEST_DB_COMPOSE_FILE = TRAINING_ROOT / "docker-compose.test.yml"
 TRAJECTORIES_TABLE_SQL = """
 DROP TABLE IF EXISTS trajectories CASCADE;
@@ -94,7 +94,7 @@ def _uses_default_test_database(database_url: str) -> bool:
         parsed.scheme.startswith("postgresql")
         and parsed.hostname in {"localhost", "127.0.0.1"}
         and parsed.port == 5434
-        and parsed.path == "/babylon_test"
+        and parsed.path == "/feed_test"
     )
 
 
@@ -130,12 +130,12 @@ def _start_test_database(database_url: str) -> bool:
             [
                 "docker",
                 "exec",
-                "babylon-postgres-test",
+                "feed-postgres-test",
                 "pg_isready",
                 "-U",
-                "babylon_test",
+                "feed_test",
                 "-d",
-                "babylon_test",
+                "feed_test",
             ],
             check=False,
             capture_output=True,
@@ -246,7 +246,7 @@ class TrajectoryFixture:
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format matching BabylonTrajectory."""
+        """Convert to dictionary format matching FeedTrajectory."""
         return {
             "trajectoryId": self.trajectory_id,
             "trajectory_id": self.trajectory_id,

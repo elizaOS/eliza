@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { FeedPost, NarrativePost } from '@babylon/shared';
+import type { FeedPost, NarrativePost } from '@feed/shared';
 import {
   toFeedPostCardData,
   toPostCardData,

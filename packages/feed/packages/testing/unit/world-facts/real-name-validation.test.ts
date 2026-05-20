@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { getForbiddenRealNames, validateNoRealNames } from '@babylon/engine';
+import { getForbiddenRealNames, validateNoRealNames } from '@feed/engine';
 
 describe('Real Name Validation System', () => {
   describe('Pattern-Based Detection', () => {

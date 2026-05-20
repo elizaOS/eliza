@@ -1,4 +1,4 @@
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import type { TrustMetrics } from './trust';
 
 export type AgentActionType =

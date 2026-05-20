@@ -20,8 +20,8 @@ import {
   groups,
   inArray,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, getCurrentChainId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, getCurrentChainId } from '@feed/shared';
 
 const BASE_URL =
   process.env.TEST_API_URL ||

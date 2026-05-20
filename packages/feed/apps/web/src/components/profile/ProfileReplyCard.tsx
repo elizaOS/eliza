@@ -1,6 +1,6 @@
 'use client';
 
-import { getProfileUrl } from '@babylon/shared';
+import { getProfileUrl } from '@feed/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';

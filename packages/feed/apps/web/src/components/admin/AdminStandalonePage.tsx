@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import type { ReactNode } from 'react';
 import { PageContainer } from '@/components/shared/PageContainer';
 

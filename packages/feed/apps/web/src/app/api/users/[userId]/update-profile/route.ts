@@ -96,9 +96,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, ne, sql, users } from '@babylon/db';
-import { logger, UpdateUserSchema, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, ne, sql, users } from '@feed/db';
+import { logger, UpdateUserSchema, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 

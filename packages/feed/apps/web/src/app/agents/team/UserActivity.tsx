@@ -1,12 +1,12 @@
 'use client';
 
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatCompactCurrency,
   getTimeAgo,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Activity } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
@@ -261,7 +261,7 @@ function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
           <span className="text-muted-foreground">{typeLabel}</span>
           <span className="text-muted-foreground/60">•</span>
           <span className="font-mono text-foreground">
-            {BABYLON_POINTS_SYMBOL}
+            {FEED_POINTS_SYMBOL}
             {amount.toLocaleString()}
           </span>
         </div>

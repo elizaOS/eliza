@@ -52,7 +52,7 @@ class MockLoggerClass {
   setLevel() {}
 }
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   checkUserInput: mockCheckUserInput,
   logger: mockLogger,
   Logger: MockLoggerClass,
@@ -62,7 +62,7 @@ mock.module('@babylon/shared', () => ({
   MessageTypeEnum: { COORDINATOR: 'coordinator' },
   extractErrorMessage: (err: unknown) =>
     err instanceof Error ? err.message : String(err),
-  BabylonError: class BabylonError extends Error {},
+  FeedError: class FeedError extends Error {},
   ValidationError: class ValidationError extends Error {},
   CHAIN: {},
   POINTS: {},
@@ -87,7 +87,7 @@ const mockDb = {
   update: mockDbUpdate,
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   // Drizzle operators
   aliasedTable: (table: unknown) => table,
@@ -164,7 +164,7 @@ mock.module('@babylon/db', () => ({
   isValidSnowflakeId: () => true,
 }));
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   assertPrivyOfflineConfig: () => undefined,
   broadcastAgentActivity: async () => undefined,
   broadcastToChannel: async () => undefined,

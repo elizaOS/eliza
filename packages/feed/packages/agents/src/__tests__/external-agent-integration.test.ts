@@ -57,7 +57,7 @@ const createChainableMock = (
 };
 
 // Mock database
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     externalAgentConnection: {
       findMany: mock(() => Promise.resolve([])),

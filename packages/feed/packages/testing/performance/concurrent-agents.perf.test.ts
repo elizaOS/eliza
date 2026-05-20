@@ -14,8 +14,8 @@ import {
   CommunicationHub,
   ExternalAgentAdapter,
   getEventBus,
-} from '@babylon/agents';
-import type { AgentCapabilities } from '@babylon/shared';
+} from '@feed/agents';
+import type { AgentCapabilities } from '@feed/shared';
 
 // Performance thresholds
 const PERF_THRESHOLDS = {

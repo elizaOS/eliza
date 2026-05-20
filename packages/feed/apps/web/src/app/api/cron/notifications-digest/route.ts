@@ -5,8 +5,8 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { logger, type NotificationDigestSettings } from '@babylon/shared';
+} from '@feed/api';
+import { logger, type NotificationDigestSettings } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import {
   deliverDigestForUser,

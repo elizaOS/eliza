@@ -55,7 +55,7 @@ const mockDb = {
 };
 
 // Mock the db module before importing coordinator
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   users: { id: 'id' },
   eq: (a: unknown, b: unknown) => ({ a, b }),

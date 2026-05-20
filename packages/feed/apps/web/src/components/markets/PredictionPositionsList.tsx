@@ -1,7 +1,7 @@
 'use client';
 
-import type { UserPredictionPosition } from '@babylon/shared';
-import { cn, formatCurrency, logger } from '@babylon/shared';
+import type { UserPredictionPosition } from '@feed/shared';
+import { cn, formatCurrency, logger } from '@feed/shared';
 import { Bot, CheckCircle, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

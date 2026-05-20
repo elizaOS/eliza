@@ -4,8 +4,8 @@ import {
   autonomousDMService,
   autonomousPlanningCoordinator,
   type PlannedAction,
-} from '@babylon/agents';
-import type { JsonValue } from '@babylon/api';
+} from '@feed/agents';
+import type { JsonValue } from '@feed/api';
 import type { IAgentRuntime } from '@elizaos/core';
 
 type ExecuteActionFn = (

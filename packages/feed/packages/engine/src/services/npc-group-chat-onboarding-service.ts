@@ -21,8 +21,8 @@ import {
   messages,
   sql,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { type RngFunction, sampleRandom } from '../utils/randomization';
 
 function isTestEnvironment(): boolean {

@@ -25,14 +25,14 @@ import {
   test,
 } from 'bun:test';
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   GroupChatService,
   StaticDataRegistry,
   TieredGroupService,
   UserAlphaGroupAssignmentService,
-} from '@babylon/engine';
-import { GROUP_CONFIG, generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { GROUP_CONFIG, generateSnowflakeId } from '@feed/shared';
 
 // Set timeout to 60 seconds for integration tests
 setDefaultTimeout(60000);

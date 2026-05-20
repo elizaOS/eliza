@@ -12,8 +12,8 @@ import {
   inArray,
   type LongTermArcState,
   questions,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { formatError } from '../utils/error-utils';
 import { StaticDataRegistry } from './static-data-registry';
 

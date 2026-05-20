@@ -9,7 +9,7 @@
  * 2. Causal Simulation Mode: Hidden facts → Events → Price movements (learnable signal)
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import { logger } from '../utils/logger';
 import type { TrustGroundTruth } from './trust';
 
@@ -221,7 +221,7 @@ export interface GroundTruth {
   }>;
 
   /**
-   * Trust/scam ground truth used by the Babylon trust benchmark.
+   * Trust/scam ground truth used by the Feed trust benchmark.
    * Optional so existing market-only scenarios remain valid.
    */
   trustGroundTruth?: TrustGroundTruth;

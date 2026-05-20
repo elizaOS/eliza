@@ -1,4 +1,4 @@
-# Babylon Deploy System - Full Test Plan
+# Feed Deploy System - Full Test Plan
 
 Complete end-to-end testing of training, dataset, model, and benchmark infrastructure.
 
@@ -57,9 +57,9 @@ Complete end-to-end testing of training, dataset, model, and benchmark infrastru
 
 | Image | Tag | Registry |
 |-------|-----|----------|
-| Base | `revlentless/babylon-base:0.2.1` | Docker Hub |
-| Training | `revlentless/babylon-training:0.2.1` | Docker Hub |
-| Benchmark | `revlentless/babylon-benchmark:0.1.0` | Docker Hub |
+| Base | `revlentless/feed-base:0.2.1` | Docker Hub |
+| Training | `revlentless/feed-training:0.2.1` | Docker Hub |
+| Benchmark | `revlentless/feed-benchmark:0.1.0` | Docker Hub |
 
 ### GPU Profiles
 
@@ -93,7 +93,7 @@ HF_ORG="elizaos"
 # WEIGHTS & BIASES (Optional but recommended)
 # =============================================================================
 WANDB_API_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-WANDB_PROJECT="babylon-training"
+WANDB_PROJECT="feed-training"
 WANDB_ENTITY="your-entity"
 
 # =============================================================================
@@ -183,7 +183,7 @@ cd deploy/docker
 ./build.sh benchmark -t 0.1.0 -o revlentless
 
 # Verify images exist
-docker images | grep babylon
+docker images | grep feed
 ```
 
 ---
@@ -217,7 +217,7 @@ echo $DATABASE_URL | head -c 30
 
 # Run minimal training (5 steps)
 ./run.sh \
-  --image revlentless/babylon-training:0.2.1 \
+  --image revlentless/feed-training:0.2.1 \
   --profile 12gb \
   --steps 5 \
   --min-agents 1 \
@@ -323,7 +323,7 @@ export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # Run training with HF source
 ./run.sh \
-  --image revlentless/babylon-training:0.2.1 \
+  --image revlentless/feed-training:0.2.1 \
   --profile 12gb \
   --steps 5 \
   --min-agents 1 \
@@ -398,7 +398,7 @@ export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # Quick benchmark (7-day scenarios)
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --model gilgamesh-local-001 \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --quick
@@ -436,14 +436,14 @@ export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # Benchmark the model we pushed (must match base model!)
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --hf-model elizaos/gilgamesh-test-3060 \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --quick
 
 # Benchmark base model for comparison (public, no token needed)
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --hf-model Qwen/Qwen2.5-0.5B-Instruct \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --quick \
@@ -469,14 +469,14 @@ export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # Full benchmark (all scenarios, 22-day)
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --model gilgamesh-local-001 \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --full
 
 # Single scenario deep dive
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --model gilgamesh-local-001 \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --scenario bear-market
@@ -499,7 +499,7 @@ cd packages/training/deploy/local
 
 # Training container shell
 ./run.sh \
-  --image revlentless/babylon-training:0.2.1 \
+  --image revlentless/feed-training:0.2.1 \
   --env-file ../.env \
   --interactive
 
@@ -512,7 +512,7 @@ exit
 
 # Benchmark container shell
 ./benchmark.sh \
-  --image revlentless/babylon-benchmark:0.1.0 \
+  --image revlentless/feed-benchmark:0.1.0 \
   --interactive
 
 # Inside container, verify:
@@ -567,8 +567,8 @@ docker login
 ./build.sh push-benchmark -t 0.1.0 -o revlentless
 
 # Verify images are accessible (from another machine or after logout)
-docker pull revlentless/babylon-training:0.2.1
-docker pull revlentless/babylon-benchmark:0.1.0
+docker pull revlentless/feed-training:0.2.1
+docker pull revlentless/feed-benchmark:0.1.0
 ```
 
 ---
@@ -588,7 +588,7 @@ python setup.py list
 # Start training pod (4090 for cost efficiency)
 python setup.py train \
   --gpu 4090 \
-  --image revlentless/babylon-training:0.2.1 \
+  --image revlentless/feed-training:0.2.1 \
   --env-file ../.env \
   --steps 100 \
   --profile 24gb \
@@ -634,7 +634,7 @@ cd packages/training/deploy/runpod
 # H100 for faster training
 python setup.py train \
   --gpu h100 \
-  --image revlentless/babylon-training:0.2.1 \
+  --image revlentless/feed-training:0.2.1 \
   --env-file ../.env \
   --steps 500 \
   --profile h100 \
@@ -785,7 +785,7 @@ make docker-training TAG=0.2.1 ORG=revlentless
 make docker-benchmark TAG=0.1.0 ORG=revlentless
 
 # Verify
-docker images | grep babylon
+docker images | grep feed
 ```
 
 ---
@@ -1078,9 +1078,9 @@ elizaos/enkidu-trajectories-test  # Small test dataset
 ### Docker Images
 
 ```
-revlentless/babylon-base:0.2.1
-revlentless/babylon-training:0.2.1
-revlentless/babylon-benchmark:0.1.0
+revlentless/feed-base:0.2.1
+revlentless/feed-training:0.2.1
+revlentless/feed-benchmark:0.1.0
 ```
 
 ### Key Directories

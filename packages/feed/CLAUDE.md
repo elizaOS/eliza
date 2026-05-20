@@ -1,4 +1,4 @@
-# Babylon — Agent & Developer Rules
+# Feed — Agent & Developer Rules
 
 > Single source of truth for all AI coding agents (Claude Code, Cursor, Codex, etc.) and human contributors.
 > If you are reading `AGENTS.md`, it points here. Do not duplicate rules — edit this file.

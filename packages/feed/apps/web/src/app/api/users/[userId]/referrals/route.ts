@@ -65,7 +65,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   count,
@@ -80,12 +80,12 @@ import {
   sum,
   tradingFees,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   logger,
   ReferralQuerySchema,
   UserIdParamSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**
@@ -339,7 +339,7 @@ export const GET = withErrorHandling(
     // Use username as referral code (without @)
     const referralCode = user.username || null;
     const referralUrl = referralCode
-      ? `${process.env.NEXT_PUBLIC_APP_URL || 'https://babylon.market'}?ref=${referralCode}`
+      ? `${process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market'}?ref=${referralCode}`
       : null;
 
     logger.info(

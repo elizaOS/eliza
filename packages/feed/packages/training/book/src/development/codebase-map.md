@@ -71,8 +71,8 @@ packages/training/
 
 | File | Purpose | Key Contents |
 |------|---------|--------------|
-| `training/babylon_env.py` | Atropos environment | `BabylonRLAIFEnv` class |
-| `training/atropos_trainer.py` | GRPO training loop | `BabylonAtroposTrainer` class |
+| `training/feed_env.py` | Atropos environment | `FeedRLAIFEnv` class |
+| `training/atropos_trainer.py` | GRPO training loop | `FeedAtroposTrainer` class |
 | `training/rewards.py` | Reward functions | `archetype_composite_reward`, weight dicts |
 | `training/rubric_loader.py` | Load rubrics.json | `get_rubric_for_archetype` |
 | `training/format_validator.py` | Response parsing | `validate_response_format` |
@@ -107,7 +107,7 @@ packages/training/
 
 | File | Purpose |
 |------|---------|
-| `config/babylon_atropos.yaml` | Atropos environment config |
+| `config/feed_atropos.yaml` | Atropos environment config |
 | `config/profiles/*.json` | GPU profile configurations |
 
 ## TypeScript Scripts (`scripts/`)
@@ -157,7 +157,7 @@ GPU-specific configurations:
 }
 ```
 
-### `python/config/babylon_atropos.yaml`
+### `python/config/feed_atropos.yaml`
 
 Atropos framework configuration.
 
@@ -173,12 +173,12 @@ Atropos framework configuration.
 
 ## Key Classes
 
-### BabylonRLAIFEnv
+### FeedRLAIFEnv
 
 The main Atropos environment:
 
 ```python
-class BabylonRLAIFEnv(BaseEnv):
+class FeedRLAIFEnv(BaseEnv):
     async def setup(self):
         """Initialize DB connection and load data."""
     
@@ -289,7 +289,7 @@ Training rewards
 | GPU profiles | `python/config/profiles/*.json` |
 | Training args | `python/scripts/run_training.py` |
 | Trajectory types | `src/training/types.ts` |
-| Scoring logic | `python/src/training/babylon_env.py:_score_with_judge` |
+| Scoring logic | `python/src/training/feed_env.py:_score_with_judge` |
 | Fixed scenarios | `data/benchmarks/scenarios/*.json` |
 | Archetype fit scoring | `src/benchmark/ArchetypeFitCalculator.ts` |
 | Benchmark reports | `src/benchmark/StakeholderReport.ts` |
@@ -301,7 +301,7 @@ Training rewards
 | How are trajectories recorded? | `src/training/TrajectoryRecorder.ts` |
 | How are rewards computed? | `python/src/training/rewards.py` |
 | How does training run? | `python/scripts/run_training.py` |
-| How are prompts built? | `python/src/training/babylon_env.py:_trajectory_to_messages` |
+| How are prompts built? | `python/src/training/feed_env.py:_trajectory_to_messages` |
 | How is format validated? | `python/src/training/format_validator.py` |
 | How does benchmarking work? | `scripts/run-benchmark-suite.ts` |
 | How are scenarios loaded? | `src/benchmark/ScenarioLoader.ts` |

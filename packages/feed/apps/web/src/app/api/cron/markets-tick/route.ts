@@ -42,11 +42,11 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   type ArcStateType,
   and,
@@ -68,9 +68,9 @@ import {
   sql,
   timeframedMarkets,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 import {
-  BabylonLLMClient,
+  FeedLLMClient,
   type DailyTopicContext,
   dailyTopicService,
   deriveTopicFromText,
@@ -85,8 +85,8 @@ import {
   secureRandom,
   timeframeArcPlanner,
   weightedPick,
-} from '@babylon/engine';
-import { isStringArray, logger, toISO } from '@babylon/shared';
+} from '@feed/engine';
+import { isStringArray, logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { notifyResolvedMarketOwners } from '@/lib/services/market-resolution-notifications';
@@ -576,7 +576,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     }
 
     // Initialize LLM client for question generation
-    const llmClient = BabylonLLMClient.forGameTick();
+    const llmClient = FeedLLMClient.forGameTick();
 
     // Results tracking with detailed performance metrics
     const results = {
@@ -1399,7 +1399,7 @@ async function resolveMarket(
     questionNumber: number;
     timeframe: string;
   },
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   gameState: GameState
 ): Promise<{ resolved: boolean }> {
   logger.info(
@@ -1761,7 +1761,7 @@ async function resolveMarket(
 async function createMarketForTimeframe(
   timeframe: string,
   durationMs: number,
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   gameState: GameState,
   dailyTopic: DailyTopicContext | null,
   allTopics: DailyTopicContext[] = []
@@ -2111,7 +2111,7 @@ function inferCategory(questionText: string): MarketCategory {
 
 /**
  * Map our timeframe strings to database MarketTimeframe enum values.
- * Delegates to the shared mapping function from @babylon/engine which
+ * Delegates to the shared mapping function from @feed/engine which
  * throws on unknown timeframes to fail fast.
  */
 function mapTimeframeToDbType(timeframe: string): MarketTimeframe {
@@ -2302,7 +2302,7 @@ function resolveTopicForMarket(
 async function createSubMarket(
   parentMarket: ParentMarketData,
   durationMs: number,
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   gameState: GameState
 ): Promise<boolean> {
   const now = new Date();

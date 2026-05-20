@@ -97,7 +97,7 @@ describe('CommentPreview - Conditional Rendering Logic', () => {
    */
 
   /**
-   * Intentionally minimal subset of CommentPreviewData from @babylon/shared.
+   * Intentionally minimal subset of CommentPreviewData from @feed/shared.
    * The render-decision logic only checks comments.length, not individual
    * comment properties, so we use a minimal shape for test clarity.
    * See: packages/shared/src/game-types.ts for the full CommentPreviewData type.

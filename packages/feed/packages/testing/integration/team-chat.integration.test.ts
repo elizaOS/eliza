@@ -11,7 +11,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'bun:test';
-import { teamChatService } from '@babylon/agents';
+import { teamChatService } from '@feed/agents';
 import {
   chatParticipants,
   chats,
@@ -23,7 +23,7 @@ import {
   messages,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 
 // Test data cleanup tracking
 const testCleanup: {

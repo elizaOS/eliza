@@ -12,7 +12,7 @@
  * - TTL: 24 hours (events older than this rarely need reactions)
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { getRedisClient } from '../redis/client';
 
 const RECENT_EVENTS_KEY = 'events:recent';

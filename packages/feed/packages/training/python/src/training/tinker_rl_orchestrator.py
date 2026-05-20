@@ -1,7 +1,7 @@
 """
-Tinker-native RL orchestration for the canonical Babylon pipeline.
+Tinker-native RL orchestration for the canonical Feed pipeline.
 
-This stage reuses the deterministic Babylon reward/judge path, but performs
+This stage reuses the deterministic Feed reward/judge path, but performs
 sampling and optimization through Tinker instead of local vLLM + Atropos.
 """
 
@@ -18,7 +18,7 @@ from typing import Any
 
 from atroposlib.envs.base import APIServerConfig, EvalHandlingEnum
 
-from .babylon_env import BabylonEnvConfig, BabylonRLAIFEnv
+from .feed_env import FeedEnvConfig, FeedRLAIFEnv
 from .deterministic_eval import (
     ACTION_REASON_PROMPTS,
     ACTION_REASON_SYSTEM_PROMPT,
@@ -27,7 +27,7 @@ from .deterministic_eval import (
     summarize_action_reason_results,
 )
 from .tinker_client import TINKER_AVAILABLE
-from .tinker_trainer import BabylonTinkerTrainer, TinkerTrainingConfig
+from .tinker_trainer import FeedTinkerTrainer, TinkerTrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class TinkerRLConfig:
 
 
 class TinkerRLOrchestrator:
-    """Runs Babylon RL using Tinker-backed Atropos training plus Tinker sampling."""
+    """Runs Feed RL using Tinker-backed Atropos training plus Tinker sampling."""
 
     def __init__(self, config: TinkerRLConfig):
         if not TINKER_AVAILABLE:
@@ -67,7 +67,7 @@ class TinkerRLOrchestrator:
         self.log_dir = self.output_dir / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def _build_trainer(self) -> BabylonTinkerTrainer:
+    def _build_trainer(self) -> FeedTinkerTrainer:
         max_trajectories = self.config.max_trajectories or 1000
         trainer_config = TinkerTrainingConfig(
             base_model=self.config.base_model,
@@ -86,11 +86,11 @@ class TinkerRLOrchestrator:
             alignment_passes=max(2, min(6, self.config.training_steps // 6)),
             alignment_score=0.35,
         )
-        return BabylonTinkerTrainer(trainer_config)
+        return FeedTinkerTrainer(trainer_config)
 
-    def _build_env(self) -> BabylonRLAIFEnv:
+    def _build_env(self) -> FeedRLAIFEnv:
         max_trajectories = self.config.max_trajectories or 1000
-        env_config = BabylonEnvConfig(
+        env_config = FeedEnvConfig(
             tokenizer_name=self.config.base_model,
             group_size=max(2, self.config.group_size),
             use_wandb=self.config.use_wandb,
@@ -100,7 +100,7 @@ class TinkerRLOrchestrator:
             batch_size=max(2, self.config.group_size),
             steps_per_eval=max(10, min(100, self.config.training_steps)),
             max_token_length=4096,
-            wandb_name="babylon-rlaif-tinker",
+            wandb_name="feed-rlaif-tinker",
             eval_handling=EvalHandlingEnum.LIMIT_TRAIN,
             eval_limit_ratio=0.1,
             trajectory_source=self.config.trajectory_source,
@@ -121,7 +121,7 @@ class TinkerRLOrchestrator:
                 num_requests_for_eval=64,
             )
         ]
-        return BabylonRLAIFEnv(env_config, server_configs, slurm=False, testing=True)
+        return FeedRLAIFEnv(env_config, server_configs, slurm=False, testing=True)
 
     @staticmethod
     def _extract_tinker_archive(archive_path: Path, output_dir: Path) -> Path:
@@ -139,7 +139,7 @@ class TinkerRLOrchestrator:
 
     async def _download_final_artifacts(
         self,
-        trainer: BabylonTinkerTrainer,
+        trainer: FeedTinkerTrainer,
         remote_model_ref: str,
     ) -> tuple[Path | None, Path | None]:
         artifact_root = self.output_dir / "tinker_trained"
@@ -187,7 +187,7 @@ class TinkerRLOrchestrator:
 
     async def _evaluate_checkpoint_selection(
         self,
-        trainer: BabylonTinkerTrainer,
+        trainer: FeedTinkerTrainer,
         *,
         checkpoint_ref: str,
         state_ref: str | None,
@@ -239,8 +239,8 @@ class TinkerRLOrchestrator:
 
     def _summarize_metrics(
         self,
-        trainer: BabylonTinkerTrainer,
-        env: BabylonRLAIFEnv,
+        trainer: FeedTinkerTrainer,
+        env: FeedRLAIFEnv,
         *,
         windows_processed: int,
         skipped_batches: int,
@@ -313,10 +313,10 @@ class TinkerRLOrchestrator:
 
                 if trainer.current_step % max(1, self.config.weight_sync_interval) == 0:
                     latest_sampler_path = await trainer.tinker_client.sync_weights_async(
-                        name=f"babylon-rl-{trainer.run_id}-step-{trainer.current_step}"
+                        name=f"feed-rl-{trainer.run_id}-step-{trainer.current_step}"
                     )
                     latest_state_path = await trainer.tinker_client.save_state_async(
-                        name=f"babylon-rl-{trainer.run_id}-step-{trainer.current_step}-state"
+                        name=f"feed-rl-{trainer.run_id}-step-{trainer.current_step}-state"
                     )
                     checkpoint_candidates.append(
                         await self._evaluate_checkpoint_selection(
@@ -328,7 +328,7 @@ class TinkerRLOrchestrator:
                         )
                     )
 
-            final_name = f"babylon-rl-{trainer.run_id}-final"
+            final_name = f"feed-rl-{trainer.run_id}-final"
             latest_sampler_path = await trainer.tinker_client.sync_weights_async(name=final_name)
             latest_state_path = await trainer.tinker_client.save_state_async(
                 name=f"{final_name}-state"

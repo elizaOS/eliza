@@ -19,7 +19,7 @@ const WORKSPACES = [
   'packages/testing',
   'packages/sim',
   'packages/examples/local-a2a-server',
-  'packages/examples/babylon-typescript-agent',
+  'packages/examples/feed-typescript-agent',
   'apps/cli',
   'apps/web',
 ] as const;
@@ -48,7 +48,7 @@ async function runTypecheck(workspace: string): Promise<void> {
 }
 
 // Bootstrap agents declarations to break circular dependency with api.
-// api resolves @babylon/agents/* from agents/dist, but agents references api
+// api resolves @feed/agents/* from agents/dist, but agents references api
 // via project refs. Emit agents .d.ts without type-checking so api can resolve
 // its imports before the full typecheck sequence runs.
 process.stdout.write('\n[packages/agents] emitting declarations (bootstrap)\n');

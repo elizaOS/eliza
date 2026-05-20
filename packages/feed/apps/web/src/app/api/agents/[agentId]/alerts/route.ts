@@ -10,10 +10,10 @@
  * Alerts are checked every autonomous tick (~3 min) by PriceAlertService.
  */
 
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { db, eq, userAgentConfigs, users } from '@babylon/db';
-import type { PriceAlert } from '@babylon/db/schema';
-import { generateSnowflakeId } from '@babylon/shared';
+import { authenticateUser, withErrorHandling } from '@feed/api';
+import { db, eq, userAgentConfigs, users } from '@feed/db';
+import type { PriceAlert } from '@feed/db/schema';
+import { generateSnowflakeId } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

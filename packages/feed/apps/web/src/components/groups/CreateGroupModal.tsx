@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, GROUP_CONFIG, getCurrentChainId, logger } from '@babylon/shared';
+import { cn, GROUP_CONFIG, getCurrentChainId, logger } from '@feed/shared';
 
 import { Check, Loader2, Search, Shield, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';

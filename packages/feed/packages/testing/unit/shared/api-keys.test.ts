@@ -9,7 +9,7 @@ import {
   generateTestApiKey,
   hashApiKey,
   verifyApiKey,
-} from '@babylon/api';
+} from '@feed/api';
 
 describe('API Key Utilities', () => {
   describe('generateApiKey', () => {

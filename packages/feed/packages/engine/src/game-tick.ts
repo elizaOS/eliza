@@ -8,11 +8,11 @@ import {
   PerpDbAdapter as CorePerpDbAdapter,
   PerpQuoteStateService as CorePerpQuoteStateService,
   isOpenPerpPositionStateValid,
-} from '@babylon/core/markets/perps';
+} from '@feed/core/markets/perps';
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   actorRelationships,
   and,
@@ -43,13 +43,13 @@ import {
   trendingTags,
   widgetCaches,
   worldFacts,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   calculatePriceFromHoldings,
   generateSnowflakeId,
   logger,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   endTrace,
   getActiveTracer,
@@ -58,7 +58,7 @@ import {
   uninstallLLMInterceptor,
   writeTickTrace,
 } from './dag-trace';
-import { BabylonLLMClient } from './llm/openai-client';
+import { FeedLLMClient } from './llm/openai-client';
 import { QuestionManager } from './QuestionManager';
 import { RelationshipEvolutionEngine } from './RelationshipEvolutionEngine';
 // Services - using barrel exports from services/index.ts
@@ -197,7 +197,7 @@ export async function executeGameTick(
   skipContentGeneration = false,
   skip = new Set<string>()
 ): Promise<GameTickResult> {
-  const fastMode = process.env.BABYLON_TRUST_CORPUS_FAST_MODE === 'true';
+  const fastMode = process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
   const timestamp = new Date();
   const startedAt = Date.now();
   const budgetMs = Number(process.env.GAME_TICK_BUDGET_MS || 180000); // 3 minutes default
@@ -207,7 +207,7 @@ export async function executeGameTick(
   const tokenStatsTickId = tokenStatsService.startTick(`tick-${startedAt}`);
 
   // DAG trace: capture all inputs/outputs when enabled
-  const dagTraceEnabled = process.env.BABYLON_DAG_TRACE === 'true';
+  const dagTraceEnabled = process.env.FEED_DAG_TRACE === 'true';
   if (dagTraceEnabled) {
     startTrace(`tick-${startedAt}`, 0);
     installLLMInterceptor();
@@ -312,7 +312,7 @@ export async function executeGameTick(
 
   // Initialize LLM client for game tick operations
   // Priority: Groq > Claude > OpenAI
-  const llmClient = BabylonLLMClient.forGameTick();
+  const llmClient = FeedLLMClient.forGameTick();
   const stats = llmClient.getStats();
   logger.info(
     'LLM client initialized for game tick operations',
@@ -697,14 +697,14 @@ export async function executeGameTick(
   // Process alpha group invites (small chance for highly engaged users)
   tracer?.startNode('alpha-invites', {});
   const skipAlphaInvites =
-    process.env.BABYLON_SKIP_ALPHA_GROUP_INVITES === 'true' ||
-    process.env.BABYLON_TRUST_CORPUS_FAST_MODE === 'true';
+    process.env.FEED_SKIP_ALPHA_GROUP_INVITES === 'true' ||
+    process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
   if (skipAlphaInvites || fastMode) {
     logger.info(
       'Skipping alpha group invites for this tick',
       {
         reason:
-          'BABYLON_SKIP_ALPHA_GROUP_INVITES/BABYLON_TRUST_CORPUS_FAST_MODE',
+          'FEED_SKIP_ALPHA_GROUP_INVITES/FEED_TRUST_CORPUS_FAST_MODE',
       },
       'GameTick'
     );
@@ -763,14 +763,14 @@ export async function executeGameTick(
   // Process NPC group dynamics (form, join, leave, post, invite, kick)
   tracer?.startNode('group-dynamics', {});
   const skipNpcGroupDynamics =
-    process.env.BABYLON_SKIP_NPC_GROUP_DYNAMICS === 'true' ||
-    process.env.BABYLON_TRUST_CORPUS_FAST_MODE === 'true';
+    process.env.FEED_SKIP_NPC_GROUP_DYNAMICS === 'true' ||
+    process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
   if (skipNpcGroupDynamics || fastMode) {
     logger.info(
       'Skipping NPC group dynamics for this tick',
       {
         reason:
-          'BABYLON_SKIP_NPC_GROUP_DYNAMICS/BABYLON_TRUST_CORPUS_FAST_MODE',
+          'FEED_SKIP_NPC_GROUP_DYNAMICS/FEED_TRUST_CORPUS_FAST_MODE',
       },
       'GameTick'
     );
@@ -1460,7 +1460,7 @@ export async function updateMarketPricesFromTrades(
  */
 async function generateNewQuestions(
   count: number,
-  llm: BabylonLLMClient,
+  llm: FeedLLMClient,
   deadlineMs: number
 ): Promise<number> {
   const questionManager = new QuestionManager(llm);
@@ -2427,7 +2427,7 @@ export async function simulateMarketVolatility(options?: {
 async function processNarrativeArcs(
   activeQuestions: Array<{ id: string }>,
   dayNumber: number,
-  llmClient: BabylonLLMClient
+  llmClient: FeedLLMClient
 ): Promise<{
   arcsProcessed: number;
   transitioned: number;

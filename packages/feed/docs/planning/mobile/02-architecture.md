@@ -55,7 +55,7 @@ Requires new API routes or significant rework.
 
 | File | What It Does | Why It's Hard | Conversion |
 |------|-------------|---------------|------------|
-| `profile/[id]/page.tsx` | Calls `findUserByIdentifierWithSelect()` from `@babylon/api`, queries DB directly (`@babylon/db`), loads actors from `@babylon/engine`, resolves identifier → redirect to `/u/handle` or `/actors/id` | **Imports 3 server-only packages**, does DB queries at request time, uses `force-dynamic` | Created `GET /api/profiles/resolve/[identifier]` API route. Mobile page calls it and navigates. |
+| `profile/[id]/page.tsx` | Calls `findUserByIdentifierWithSelect()` from `@feed/api`, queries DB directly (`@feed/db`), loads actors from `@feed/engine`, resolves identifier → redirect to `/u/handle` or `/actors/id` | **Imports 3 server-only packages**, does DB queries at request time, uses `force-dynamic` | Created `GET /api/profiles/resolve/[identifier]` API route. Mobile page calls it and navigates. |
 | `page.tsx` (home) | Uses `headers()` for host detection (waitlist vs app), `redirect()` based on NFT gating flag | Uses `next/headers`, `next/navigation` server redirect | Mobile version skips all host/gating logic, renders `<HomePageClient />` directly. Host detection is irrelevant in native app. |
 
 ### Category D — OG Meta Tag Pages (2 pages, EXCLUDED)

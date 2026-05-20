@@ -44,7 +44,7 @@ const mockLLM: LLMJsonClient = {
 
 describe('NPC interactions (simulation mode)', () => {
   beforeEach(async () => {
-    const basePath = mkdtempSync(join(tmpdir(), 'babylon-engine-npc-'));
+    const basePath = mkdtempSync(join(tmpdir(), 'feed-engine-npc-'));
     await initializeSimulationMode(basePath);
   });
 

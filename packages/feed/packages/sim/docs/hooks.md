@@ -2,7 +2,7 @@
 
 The engine emits lifecycle events at key points during boot, tick execution, and shutdown. You can listen to these from outside the engine or from inside a system's `register()` function.
 
-Hooks are powered by [hookable](https://github.com/unjs/hookable). `BabylonEngine` extends `Hookable<RuntimeHooks>` directly.
+Hooks are powered by [hookable](https://github.com/unjs/hookable). `FeedEngine` extends `Hookable<RuntimeHooks>` directly.
 
 ## Hook reference
 
@@ -81,7 +81,7 @@ engine.hook('system:error', (systemId: string, error: Error, ctx: TickContext) =
 ### From outside the engine
 
 ```ts
-const engine = new BabylonEngine({ /* ... */ });
+const engine = new FeedEngine({ /* ... */ });
 const unregister = engine.hook('tick:before', (ctx) => { /* ... */ });
 
 // Later, to stop listening:

@@ -15,8 +15,8 @@
  */
 
 import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@babylon/db';
-import { markets, perpMarketSnapshots } from '@babylon/db/schema';
+import { getRawDrizzle } from '@feed/db';
+import { markets, perpMarketSnapshots } from '@feed/db/schema';
 import { eq } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ async function runTick(runNum: number): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
-  console.log(`${bold}Babylon Full Tick Runner${reset}  ${dim}${BASE}${reset}`);
+  console.log(`${bold}Feed Full Tick Runner${reset}  ${dim}${BASE}${reset}`);
   const active = TICK_ORDER.filter(shouldRun).join(', ');
   console.log(`${dim}Running: ${active}${reset}`);
   if (loopMode) {

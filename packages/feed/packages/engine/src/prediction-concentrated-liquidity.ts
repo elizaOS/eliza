@@ -42,8 +42,8 @@
  * ```
  */
 
-import { PredictionPricing } from '@babylon/core/markets/prediction/pricing';
-import { logger } from '@babylon/shared';
+import { PredictionPricing } from '@feed/core/markets/prediction/pricing';
+import { logger } from '@feed/shared';
 
 /**
  * A concentrated liquidity position

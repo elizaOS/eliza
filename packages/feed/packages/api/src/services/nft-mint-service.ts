@@ -19,14 +19,14 @@ import {
   nftCollection,
   nftOwnership,
   nftSnapshot,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   hardhat,
   logger,
   mainnet,
   sepolia,
   ValidationError,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { nanoid } from 'nanoid';
 import {
   type Address,
@@ -1043,7 +1043,7 @@ export async function getTokenMetadata(tokenId: number) {
   const baseUrl =
     configuredBaseUrl && configuredBaseUrl.length > 0
       ? configuredBaseUrl
-      : 'https://babylon.market';
+      : 'https://feed.market';
 
   return {
     name: nft.name,

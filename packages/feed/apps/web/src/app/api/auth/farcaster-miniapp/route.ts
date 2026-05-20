@@ -15,9 +15,9 @@
  *   4. Client POSTs to /api/auth/session to set httpOnly cookie
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { createClient } from '@farcaster/quick-auth';
 import { SignJWT } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
@@ -54,7 +54,7 @@ async function ensureStewardUser(email?: string): Promise<string> {
 }
 
 async function mintToken(stewardUserId: string, fid: number): Promise<string> {
-  return new SignJWT({ userId: stewardUserId, tenantId: 'babylon', fid })
+  return new SignJWT({ userId: stewardUserId, tenantId: 'feed', fid })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuer('steward')
     .setIssuedAt()

@@ -12,7 +12,7 @@
  *   cursor - Pagination cursor (trajectory ID) for next page
  */
 
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import {
   and,
   asc,
@@ -22,7 +22,7 @@ import {
   inArray,
   rewardJudgments,
   trajectories,
-} from '@babylon/db';
+} from '@feed/db';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';

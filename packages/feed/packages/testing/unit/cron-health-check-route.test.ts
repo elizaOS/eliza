@@ -4,9 +4,9 @@ import { NextRequest } from 'next/server';
 const mockGetSystemStatusSnapshot = mock();
 const mockSendDiscordSystemAlertIfNeeded = mock();
 
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => ({
-  ..._actualBabylonApi,
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => ({
+  ..._actualFeedApi,
   getSystemStatusSnapshot: mockGetSystemStatusSnapshot,
   sendDiscordSystemAlertIfNeeded: mockSendDiscordSystemAlertIfNeeded,
   withCronAuth: (
@@ -57,7 +57,7 @@ describe('cron health-check route', () => {
     });
 
     const response = await GET(
-      new NextRequest('https://babylon.market/api/cron/health-check')
+      new NextRequest('https://feed.market/api/cron/health-check')
     );
     const data = await response.json();
 
@@ -95,7 +95,7 @@ describe('cron health-check route', () => {
     });
 
     const response = await GET(
-      new NextRequest('https://babylon.market/api/cron/health-check')
+      new NextRequest('https://feed.market/api/cron/health-check')
     );
     const data = await response.json();
 

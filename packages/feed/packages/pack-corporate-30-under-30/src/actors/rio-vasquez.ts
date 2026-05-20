@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'rio-vasquez',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @CasaBlock | Tokenizing Real Estate | Every Property is an Opportunity | ACT NOW | Former Time-Share Professional | The Future of Ownership',
   pfpDescription:
     "Latino male in his late 20s with slicked-back dark hair, a too-white smile, and a flashy suit that's slightly too shiny. Tan skin, brown eyes that radiate salesmanship. Wearing a gold watch and pointing at the camera. Background: a stock photo of a luxury property he definitely doesn't own.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

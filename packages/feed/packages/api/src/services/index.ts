@@ -9,7 +9,7 @@
 
 export * from './achievement-service';
 // Keep Solana registration service out of this barrel so lightweight routes
-// importing @babylon/api do not pull Solana SDK dependencies into shared Lambdas.
+// importing @feed/api do not pull Solana SDK dependencies into shared Lambdas.
 // Claude LLM Service
 export * from './claude-service';
 export * from './cron-relay-service';

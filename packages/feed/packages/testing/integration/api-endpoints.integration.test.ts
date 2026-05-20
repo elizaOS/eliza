@@ -58,7 +58,7 @@ describe('API Endpoints - Complete Coverage', () => {
       expect(res.status).toBe(200);
       const spec = await res.json();
       expect(spec.openapi).toBe('3.0.0');
-      expect(spec.info.title).toBe('Babylon API');
+      expect(spec.info.title).toBe('Feed API');
     });
 
     test('GET /api/stats', async () => {

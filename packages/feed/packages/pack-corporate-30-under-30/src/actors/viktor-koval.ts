@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'viktor-koval',
@@ -77,7 +77,7 @@ const actor = {
     'Founder @MeridianSystems | PhD Applied Cryptographic Warfare (classified) | Your systems are not secure | I know this because I checked | DEF CON speaker',
   pfpDescription:
     "Eastern European male in his late 20s with sharp Slavic features, pale skin, close-cropped dark hair, and intense gray-blue eyes that look like they're analyzing your security posture. Slight stubble. Wearing a plain black t-shirt. Background: multiple monitors showing code and network maps in a dimly lit room.",
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'manipulator',

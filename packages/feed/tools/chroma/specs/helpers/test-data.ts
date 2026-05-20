@@ -1,7 +1,7 @@
 /**
  * Test data constants for chroma e2e tests
  *
- * Comprehensive routes and test data for E2E testing of the Babylon app.
+ * Comprehensive routes and test data for E2E testing of the Feed app.
  */
 
 /**

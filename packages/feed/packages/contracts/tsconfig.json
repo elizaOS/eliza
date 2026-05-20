@@ -7,8 +7,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@babylon/contracts": ["./src/index.ts"],
-      "@babylon/contracts/*": ["./*"]
+      "@feed/contracts": ["./src/index.ts"],
+      "@feed/contracts/*": ["./*"]
     }
   },
   "include": ["src/**/*", "deployments/**/*.ts", "deployments/**/*.json"],

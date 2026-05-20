@@ -1,6 +1,6 @@
 'use client';
 
-import { POINTS } from '@babylon/shared';
+import { POINTS } from '@feed/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSSEChannel } from '@/hooks/useSSE';

@@ -14,8 +14,8 @@
  *   --npc=<id>   Only bootstrap a specific NPC (for testing)
  */
 
-import { StaticDataRegistry, TieredGroupService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { StaticDataRegistry, TieredGroupService } from '@feed/engine';
+import { logger } from '@feed/shared';
 
 async function main() {
   const args = process.argv.slice(2);

@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'serena-wright',
@@ -71,7 +71,7 @@ const actor = {
     "Founder @CatalystBio | CRISPR Pioneer | Johns Hopkins PhD | 14 publications (11 not retracted) | Moving faster than peer review | Science doesn't wait",
   pfpDescription:
     'Black British-American woman in her early 30s with dark brown skin, sharp intelligent eyes, and natural hair pulled back practically. Wearing a lab coat over a startup t-shirt. Expression: intense focus. Background: a cutting-edge genetics lab with CRISPR equipment.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

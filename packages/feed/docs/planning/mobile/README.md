@@ -1,10 +1,10 @@
-# Babylon Mobile App
+# Feed Mobile App
 
 > **Status:** All code complete through Phase 3. Tested on real Pixel 10 device.  
 > **Branch:** `feat/mobile`  
 > **Last Updated:** February 13, 2026  
 
-Ship Babylon to iOS App Store and Android Play Store using Capacitor — without a React Native rewrite.
+Ship Feed to iOS App Store and Android Play Store using Capacitor — without a React Native rewrite.
 
 ## Docs
 
@@ -23,7 +23,7 @@ Ship Babylon to iOS App Store and Android Play Store using Capacitor — without
 ```bash
 # Build the mobile static export
 cd apps/mobile
-NEXT_PUBLIC_API_URL=https://play.babylon.market \
+NEXT_PUBLIC_API_URL=https://play.feed.market \
 NEXT_PUBLIC_PRIVY_APP_ID=<id> \
 bun run build && npx cap sync && bun run generate:assets
 

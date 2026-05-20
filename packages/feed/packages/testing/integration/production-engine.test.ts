@@ -32,7 +32,7 @@ import {
 } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
 // Set timeout to 5 minutes for LLM-based generation
@@ -150,7 +150,7 @@ describe('Production Engine Tests', () => {
 
   describe('Static Data Registry', () => {
     test('loads actors and organizations', async () => {
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const actors = StaticDataRegistry.getAllActors();
       const organizations = StaticDataRegistry.getAllOrganizations();
@@ -197,7 +197,7 @@ describe('Production Engine Tests', () => {
 
   describe('Character Mapping Service', () => {
     test('maps real names to parody names', async () => {
-      const { characterMappingService } = await import('@babylon/engine');
+      const { characterMappingService } = await import('@feed/engine');
 
       // Test real-to-parody mapping
       const testCases = [
@@ -233,7 +233,7 @@ describe('Production Engine Tests', () => {
     });
 
     test('detects real names that need replacement', async () => {
-      const { characterMappingService } = await import('@babylon/engine');
+      const { characterMappingService } = await import('@feed/engine');
 
       const testText =
         'Elon Musk announced that Tesla and OpenAI are partnering.';
@@ -251,7 +251,7 @@ describe('Production Engine Tests', () => {
   describe('NPC Persona Generator', () => {
     test('generates consistent personas', async () => {
       const { NPCPersonaGenerator, StaticDataRegistry } = await import(
-        '@babylon/engine'
+        '@feed/engine'
       );
 
       const generator = new NPCPersonaGenerator();
@@ -320,7 +320,7 @@ describe('Production Engine Tests', () => {
   describe('Lookahead Generation Service', () => {
     if (liveLlmTestConfig.enabled) {
       test('checks lookahead status', async () => {
-        const { checkLookaheadStatus } = await import('@babylon/engine');
+        const { checkLookaheadStatus } = await import('@feed/engine');
 
         const status = await checkLookaheadStatus();
 
@@ -335,16 +335,16 @@ describe('Production Engine Tests', () => {
   describe('Post Generation', () => {
     if (liveLlmTestConfig.enabled) {
       test('generates NPC post with proper parody names', async () => {
-        const { BabylonLLMClient, StaticDataRegistry } = await import(
-          '@babylon/engine'
+        const { FeedLLMClient, StaticDataRegistry } = await import(
+          '@feed/engine'
         );
 
         // Import the post generation helper
         const { generateNPCPost, loadSharedPostContext } = await import(
-          '@babylon/engine/services/post-generation-helpers'
+          '@feed/engine/services/post-generation-helpers'
         );
 
-        const llmClient = BabylonLLMClient.forGameTick();
+        const llmClient = FeedLLMClient.forGameTick();
         const actors = StaticDataRegistry.getAllActors();
         const actor = actors[0];
 

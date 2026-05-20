@@ -1,5 +1,5 @@
 /**
- * Common Type Definitions for @babylon/agents
+ * Common Type Definitions for @feed/agents
  *
  * Shared types for common patterns
  */

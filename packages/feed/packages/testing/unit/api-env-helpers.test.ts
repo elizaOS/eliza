@@ -36,11 +36,11 @@ describe('api env helpers', () => {
   });
 
   it('getNotificationEmailFromEnv prefers NOTIFICATION_EMAIL_FROM and falls back to EMAIL_FROM', () => {
-    process.env.NOTIFICATION_EMAIL_FROM = 'notify@babylon.market';
-    process.env.EMAIL_FROM = 'legacy@babylon.market';
-    expect(getNotificationEmailFromEnv()).toBe('notify@babylon.market');
+    process.env.NOTIFICATION_EMAIL_FROM = 'notify@feed.market';
+    process.env.EMAIL_FROM = 'legacy@feed.market';
+    expect(getNotificationEmailFromEnv()).toBe('notify@feed.market');
 
     delete process.env.NOTIFICATION_EMAIL_FROM;
-    expect(getNotificationEmailFromEnv()).toBe('legacy@babylon.market');
+    expect(getNotificationEmailFromEnv()).toBe('legacy@feed.market');
   });
 });

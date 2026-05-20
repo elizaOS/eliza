@@ -6,7 +6,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { actorPortrait } from '@babylon/engine';
+import { actorPortrait } from '@feed/engine';
 
 // ─── Actor portrait prompt ────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ describe('pfpDescription physical accuracy (audited actors)', () => {
   let actors: Array<{ id: string; pfpDescription?: string }>;
 
   beforeAll(async () => {
-    const { loadActorsData } = await import('@babylon/engine');
+    const { loadActorsData } = await import('@feed/engine');
     const db = loadActorsData() as {
       actors: Array<{ id: string; pfpDescription?: string }>;
     };

@@ -50,13 +50,13 @@
  * ```
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
-import { asPublic, asUser } from '@babylon/db';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { asPublic, asUser } from '@feed/db';
 import {
   FEED_WIDGET_CONFIG,
   logger,
   UpcomingEventsQuerySchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 interface UpcomingEvent {

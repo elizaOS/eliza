@@ -6,7 +6,7 @@
  * authenticate() from auth-middleware.ts.
  */
 
-import { db, eq, users } from '@babylon/db';
+import { db, eq, users } from '@feed/db';
 import { jwtVerify } from 'jose';
 import { AuthenticationError } from '../../errors';
 

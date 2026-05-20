@@ -17,8 +17,8 @@ const BASE_URL =
   'http://127.0.0.1:3400';
 
 const EXPECTED_BLOG_URL =
-  process.env.NEXT_PUBLIC_BLOG_URL || 'https://blog.babylon.market';
-const EXPECTED_GITHUB_URL = 'https://github.com/BabylonSocial/babylon';
+  process.env.NEXT_PUBLIC_BLOG_URL || 'https://blog.feed.market';
+const EXPECTED_GITHUB_URL = 'https://github.com/FeedSocial/feed';
 
 test.describe('Landing Page Blog Links', () => {
   // Landing page with blog links not yet implemented - app redirects to /feed

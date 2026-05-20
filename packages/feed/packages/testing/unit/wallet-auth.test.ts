@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { requireFreshToken, type TokenFreshnessResult } from '@babylon/api';
+import { requireFreshToken, type TokenFreshnessResult } from '@feed/api';
 
 // ---------------------------------------------------------------------------
 // Helpers: build unsigned JWTs with controlled `iat`

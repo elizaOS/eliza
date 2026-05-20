@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'sienna-blake',
@@ -72,7 +72,7 @@ const actor = {
     'Founder @LumenAI | Ex-Google | Pioneering Agentic Intelligence Ecosystems | Keynote Speaker | Forbes 30 Under 30 | Paradigm Enthusiast',
   pfpDescription:
     "White American woman in her late 20s with blonde highlights in light brown hair styled in a perfect blowout. Blue-green eyes, subtle makeup, and a smile that says 'I just raised $120M for a spreadsheet.' Wearing a cashmere sweater in Lumen AI's brand color (a custom shade of purple). Background: a perfectly curated office with branded everything.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

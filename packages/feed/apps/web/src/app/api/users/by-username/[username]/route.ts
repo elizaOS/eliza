@@ -75,7 +75,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   comments,
   count,
@@ -86,8 +86,8 @@ import {
   reactions,
   sql,
   users,
-} from '@babylon/db';
-import { logger, toISO, UsernameParamSchema } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO, UsernameParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

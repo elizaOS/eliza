@@ -26,8 +26,8 @@ import {
   markets,
   questions,
   worldEvents,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Represents an event's expected impact on a prediction market

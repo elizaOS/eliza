@@ -1,15 +1,15 @@
 /**
  * Narrative State Service Integration Test
  *
- * Tests arc plan persistence using @babylon/db interface.
+ * Tests arc plan persistence using @feed/db interface.
  * Requires: Database running, RUN_INTEGRATION_TESTS=true
  *
  * Run with: RUN_INTEGRATION_TESTS=true bun test narrative-state.integration
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   getArcPlan,
   saveArcPlan,

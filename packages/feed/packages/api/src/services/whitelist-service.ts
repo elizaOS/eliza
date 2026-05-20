@@ -14,9 +14,9 @@ import {
   users,
   whitelist,
   whitelistConfig,
-} from '@babylon/db';
-import { UserAlphaGroupAssignmentService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { UserAlphaGroupAssignmentService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import { nanoid } from 'nanoid';
 
 // ---------------------------------------------------------------------------

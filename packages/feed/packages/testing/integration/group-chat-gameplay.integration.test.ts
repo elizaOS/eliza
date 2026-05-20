@@ -13,13 +13,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   AlphaGroupInviteService,
   GroupChatService,
   NPCGroupDynamicsService,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Test data cleanup tracking
 const testIds = {
@@ -707,7 +707,7 @@ describe('Benchmark/Simulation Group Chat Integration', () => {
   test('simulation data generator includes group chat events', async () => {
     // Import the data generator
     const { BenchmarkDataGenerator } = await import(
-      '@babylon/training/benchmark/BenchmarkDataGenerator'
+      '@feed/training/benchmark/BenchmarkDataGenerator'
     );
 
     const config = {
@@ -748,13 +748,13 @@ describe('Benchmark/Simulation Group Chat Integration', () => {
   test('simulation interface should handle group chat queries', async () => {
     // Import simulation components
     const { BenchmarkDataGenerator } = await import(
-      '@babylon/training/benchmark/BenchmarkDataGenerator'
+      '@feed/training/benchmark/BenchmarkDataGenerator'
     );
     const { SimulationEngine } = await import(
-      '@babylon/training/benchmark/SimulationEngine'
+      '@feed/training/benchmark/SimulationEngine'
     );
     const { SimulationA2AInterface } = await import(
-      '@babylon/training/benchmark/SimulationA2AInterface'
+      '@feed/training/benchmark/SimulationA2AInterface'
     );
 
     const config = {

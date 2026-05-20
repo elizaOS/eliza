@@ -7,8 +7,8 @@
  * Token-aware: Limits context size to prevent LLM token overflows
  */
 
-import { PerpDbAdapter } from '@babylon/core/markets/perps';
-import { maxSafeBuy } from '@babylon/core/markets/prediction/client';
+import { PerpDbAdapter } from '@feed/core/markets/perps';
+import { maxSafeBuy } from '@feed/core/markets/prediction/client';
 import {
   actorRelationships,
   actorState,
@@ -31,8 +31,8 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import {
   getSimulationPrice,
   getSimulationTickers,

@@ -60,10 +60,10 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
-import { asPublic, asUser } from '@babylon/db';
-import { getPostsByTag, StaticDataRegistry } from '@babylon/engine';
-import { toISO } from '@babylon/shared';
+} from '@feed/api';
+import { asPublic, asUser } from '@feed/db';
+import { getPostsByTag, StaticDataRegistry } from '@feed/engine';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

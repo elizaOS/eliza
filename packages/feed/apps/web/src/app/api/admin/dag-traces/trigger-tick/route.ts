@@ -5,9 +5,9 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { executeGameTick } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { executeGameTick } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
 

@@ -33,14 +33,14 @@ import {
   max,
   posts,
   questions,
-} from '@babylon/db';
-import { escapeRegex, logger } from '@babylon/shared';
+} from '@feed/db';
+import { escapeRegex, logger } from '@feed/shared';
 import {
   CONTENT_PACING,
   getTimeOfDayMultiplier,
   shouldActorPost,
 } from '../config/content-pacing';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { getGameDayNumber, toSafeDayNumber } from '../utils/date-utils';
 import {
   secureRandom,
@@ -397,7 +397,7 @@ export function extractEventKeywords(text: string): string[] {
  * @description Generates content in 5-minute windows until target lookahead is reached.
  * Distributes timestamps naturally across windows. Skips windows that already have content.
  *
- * @param {BabylonLLMClient} llmClient - LLM client for content generation
+ * @param {FeedLLMClient} llmClient - LLM client for content generation
  * @param {number} [targetMinutesAhead=15] - How far ahead to generate (default: 15)
  * @returns {Promise<object>} Generation result with success flag, windows generated, and new latest timestamp
  *
@@ -408,7 +408,7 @@ export function extractEventKeywords(text: string): string[] {
  * ```
  */
 export async function generateAheadIfNeeded(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   targetMinutesAhead: number = LOOKAHEAD_MINUTES
 ): Promise<{
   generated: boolean;
@@ -547,14 +547,14 @@ async function checkTimeWindowHasContent(
  * @description Generates posts with timestamps distributed across the window.
  * Uses LLM to generate real post content based on active questions and world context.
  *
- * @param {BabylonLLMClient} llmClient - LLM client for post generation
+ * @param {FeedLLMClient} llmClient - LLM client for post generation
  * @param {Date} windowStart - Start of 5-minute window
  * @param {Date} windowEnd - End of 5-minute window
  * @returns {Promise<void>}
  * @private
  */
 async function generateContentWindow(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   windowStart: Date,
   windowEnd: Date
 ): Promise<void> {

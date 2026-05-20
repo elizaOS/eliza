@@ -1,8 +1,8 @@
 /**
  * Training Module Exports
  *
- * Re-exports from @babylon/training for convenience.
- * The canonical source for all training utilities is @babylon/training.
+ * Re-exports from @feed/training for convenience.
+ * The canonical source for all training utilities is @feed/training.
  *
  * @packageDocumentation
  */
@@ -14,4 +14,4 @@ export {
   logRLModelConfig,
   type ModelArtifact,
   type RLModelConfig,
-} from '@babylon/training';
+} from '@feed/training';

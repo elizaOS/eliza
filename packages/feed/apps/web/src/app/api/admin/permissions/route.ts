@@ -1,7 +1,7 @@
 // GET /api/admin/permissions - Current user's admin permissions
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { ADMIN_PERMISSIONS, ROLE_PERMISSIONS } from '@babylon/db';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { ADMIN_PERMISSIONS, ROLE_PERMISSIONS } from '@feed/db';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

@@ -359,7 +359,7 @@ python packages/training/python/scripts/import_json_trajectories.py \
 The training env automatically uses enhanced rewards when `price_context` is present:
 
 ```python
-# In babylon_env.py
+# In feed_env.py
 regime = extract_regime_from_trajectory(trajectory)
 
 if regime is not None:

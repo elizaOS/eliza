@@ -1,11 +1,11 @@
 /**
  * @packageDocumentation
- * @module @babylon/contracts/deployment/addresses
+ * @module @feed/contracts/deployment/addresses
  *
  * Contract Address Loader
  *
  * Loads deployed contract addresses based on the current network environment.
- * Uses canonical config from @babylon/shared/config for network detection.
+ * Uses canonical config from @feed/shared/config for network detection.
  *
  * @remarks Base mainnet support will be added when contracts are deployed.
  */
@@ -14,7 +14,7 @@ import {
   getCurrentChainId,
   getCurrentRpcUrl,
   PUBLIC_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { Address } from 'viem';
 import baseSepoliaDeployment from '../../deployments/base-sepolia';
 import localDeployment from '../../deployments/local';
@@ -24,14 +24,14 @@ import localDeployment from '../../deployments/local';
  *
  * Architecture:
  * - Diamond: Upgradeable proxy with facets for prediction markets
- * - BabylonGameOracle: The game IS the prediction oracle (IPredictionOracle)
- * - External contracts query: babylonOracle.getOutcome(sessionId)
+ * - FeedGameOracle: The game IS the prediction oracle (IPredictionOracle)
+ * - External contracts query: feedOracle.getOutcome(sessionId)
  */
 export interface DeployedContracts {
   /** Diamond proxy contract address */
   diamond: Address;
-  /** Babylon Game Oracle - THE GAME IS THE PREDICTION ORACLE */
-  babylonOracle: Address;
+  /** Feed Game Oracle - THE GAME IS THE PREDICTION ORACLE */
+  feedOracle: Address;
   /** Prediction Market Facet address */
   predictionMarketFacet: Address;
   /** ERC-8004 Identity Registry contract address */
@@ -65,7 +65,7 @@ export function getContractAddresses(): DeployedContracts {
   if (chainId === 31337) {
     return {
       diamond: localDeployment.contracts.diamond as Address,
-      babylonOracle: localDeployment.contracts.babylonOracle as Address,
+      feedOracle: localDeployment.contracts.feedOracle as Address,
       predictionMarketFacet: localDeployment.contracts
         .predictionMarketFacet as Address,
       identityRegistry: localDeployment.contracts.identityRegistry as Address,
@@ -76,13 +76,13 @@ export function getContractAddresses(): DeployedContracts {
   }
 
   if (chainId === 84532) {
-    // Note: BabylonGameOracle needs to be deployed to Sepolia
+    // Note: FeedGameOracle needs to be deployed to Sepolia
     // Currently using oracleFacet as placeholder until deployed
     return {
       diamond: baseSepoliaDeployment.contracts.diamond as Address,
-      babylonOracle:
+      feedOracle:
         ((baseSepoliaDeployment.contracts as Record<string, string>)
-          .babylonOracle as Address) ||
+          .feedOracle as Address) ||
         (baseSepoliaDeployment.contracts.oracleFacet as Address),
       predictionMarketFacet: baseSepoliaDeployment.contracts
         .predictionMarketFacet as Address,
@@ -100,7 +100,7 @@ export function getContractAddresses(): DeployedContracts {
     const ethContracts = PUBLIC_CONFIG.networks.ethereum.contracts;
     return {
       diamond: '0x0000000000000000000000000000000000000000' as Address,
-      babylonOracle: '0x0000000000000000000000000000000000000000' as Address,
+      feedOracle: '0x0000000000000000000000000000000000000000' as Address,
       predictionMarketFacet:
         '0x0000000000000000000000000000000000000000' as Address,
       identityRegistry: ethContracts.identityRegistry as Address,
@@ -128,7 +128,7 @@ export function getContractAddresses(): DeployedContracts {
 
   return {
     diamond: localDeployment.contracts.diamond as Address,
-    babylonOracle: localDeployment.contracts.babylonOracle as Address,
+    feedOracle: localDeployment.contracts.feedOracle as Address,
     predictionMarketFacet: localDeployment.contracts
       .predictionMarketFacet as Address,
     identityRegistry: localDeployment.contracts.identityRegistry as Address,

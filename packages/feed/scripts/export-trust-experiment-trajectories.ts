@@ -25,12 +25,12 @@ import {
   trajectories,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { config as loadDotenv } from 'dotenv';
 
-const BABYLON_REPO_ROOT = path.resolve(import.meta.dir, '..');
-loadDotenv({ path: path.join(BABYLON_REPO_ROOT, '.env') });
-loadDotenv({ path: path.join(BABYLON_REPO_ROOT, '.env.local') });
+const FEED_REPO_ROOT = path.resolve(import.meta.dir, '..');
+loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env') });
+loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env.local') });
 
 interface ExportOptions {
   manifestPath: string;

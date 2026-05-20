@@ -103,7 +103,7 @@ const mockDbSelect = mock();
 
 // ─── Module mocks (must be declared before dynamic import) ────────────────────
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   // Bypass cache — call factory directly
   getCacheOrFetch: (_key: string, factory: () => Promise<unknown>) => factory(),
   // Controlled authentication
@@ -115,11 +115,11 @@ mock.module('@babylon/api', () => ({
     handler,
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   StaticDataRegistry: { getActor: () => null },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     debug: () => {},
     warn: () => {},
@@ -182,7 +182,7 @@ const positionsMock = {
   questionId: 'positions.questionId',
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: { select: mockDbSelect, execute: mockDbExecute },
   and: (...args: unknown[]) => args,
   desc: (x: unknown) => x,
@@ -215,7 +215,7 @@ const GENERAL_STORY_KEY = '__general__';
 
 const makeRequest = (): NextRequest =>
   ({
-    url: 'https://babylon.market/api/feed/narrative',
+    url: 'https://feed.market/api/feed/narrative',
     headers: { get: () => null },
   }) as unknown as NextRequest;
 
@@ -640,7 +640,7 @@ describe('GET /api/feed/narrative — integration', () => {
         articleTitle: 'The Big Short 2.0',
         fullContent: 'Full article text here...',
         category: 'finance',
-        imageUrl: 'https://cdn.babylon.market/img.jpg',
+        imageUrl: 'https://cdn.feed.market/img.jpg',
       };
 
       selectQueue[0] = [post];
@@ -657,7 +657,7 @@ describe('GET /api/feed/narrative — integration', () => {
       expect(np.articleTitle).toBe('The Big Short 2.0');
       expect(np.fullContent).toBe('Full article text here...');
       expect(np.category).toBe('finance');
-      expect(np.imageUrl).toBe('https://cdn.babylon.market/img.jpg');
+      expect(np.imageUrl).toBe('https://cdn.feed.market/img.jpg');
       expect(np.likeCount).toBe(7);
       expect(np.commentCount).toBe(3);
       expect(np.shareCount).toBe(2);

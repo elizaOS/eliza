@@ -1,5 +1,5 @@
 """
-Babylon Fast Rollout Generator
+Feed Fast Rollout Generator
 
 Generates high-quality rollouts at maximum speed for RL training.
 Captures the COMPLETE agent tick including all thinking, planning, and execution.
@@ -24,7 +24,7 @@ from typing import Protocol
 
 from ..models import (
     Action,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     LLMCall,
 )
@@ -136,7 +136,7 @@ class RolloutResult:
     total_reward: float
     final_pnl: float
     quality_score: float  # 0-1 based on completeness
-    trajectory: BabylonTrajectory | None = None
+    trajectory: FeedTrajectory | None = None
 
 
 class AgentRunner(Protocol):

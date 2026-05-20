@@ -8,14 +8,14 @@
  * - Natural randomness with jitter
  */
 
-import { db } from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+import { db } from '@feed/db';
+import type { JsonValue } from '@feed/shared';
 import {
   generateSnowflakeId,
   isNonEmptyString,
   isPureRepost,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   NPC_DIVERSITY_CONFIG,
   NPC_ENGAGEMENT_CONFIG,
@@ -90,7 +90,7 @@ interface PostContext {
  * NPC Social Engagement Service
  *
  * Injectable service for processing NPC social engagements.
- * Accepts a BabylonLLMClient via constructor for testability and context isolation.
+ * Accepts a FeedLLMClient via constructor for testability and context isolation.
  */
 export class NPCSocialEngagementService {
   constructor(private llmClient: LLMJsonClient | null = null) {}

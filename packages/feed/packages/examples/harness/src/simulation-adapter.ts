@@ -8,7 +8,7 @@
  *
  * @example
  * ```typescript
- * import { SimulationEngine } from '@babylon/training/benchmark';
+ * import { SimulationEngine } from '@feed/training/benchmark';
  * import { SimulationA2AAdapter } from './simulation-adapter';
  *
  * const engine = new SimulationEngine(config);

@@ -9,7 +9,7 @@
  * - Set AGENT_LLM_PROVIDER env var
  *
  * FOR CORE GAME (MarketDecisionEngine, etc.):
- * - Uses BabylonLLMClient (in @babylon/engine)
+ * - Uses FeedLLMClient (in @feed/engine)
  * - Always uses Groq/Claude/OpenAI
  * - Do NOT use agent LLM for core game
  *

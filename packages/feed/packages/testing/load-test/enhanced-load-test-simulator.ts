@@ -10,8 +10,8 @@
  * - Comprehensive reporting
  */
 
-import { performanceMonitor } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { performanceMonitor } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { LoadTestConfig, LoadTestResult } from './load-test-simulator';
 import { ResourceLimiter, type ResourceLimits } from './resource-limiter';
 

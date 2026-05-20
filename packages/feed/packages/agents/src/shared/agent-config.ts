@@ -12,7 +12,7 @@ import {
   type UserAgentConfig,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { generateSnowflakeId } from './snowflake';
 
 /** User with agent configuration attached */

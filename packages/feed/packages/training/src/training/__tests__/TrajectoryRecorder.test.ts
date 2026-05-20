@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Mock ONLY external dependencies - not the code under test
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     insert: mock(() => ({
       values: mock(() => ({
@@ -370,7 +370,7 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(content.trajectory.finalBalance).toBe(10500);
     expect(content.trajectory.finalPnL).toBe(500);
     expect(content.trajectory.aiJudgeReward).toBeGreaterThan(0);
-    expect(content.rewardJudgment.judgeModel).toBe('babylon-deterministic');
+    expect(content.rewardJudgment.judgeModel).toBe('feed-deterministic');
     expect(content.llmCalls).toHaveLength(1);
 
     // Cleanup

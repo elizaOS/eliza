@@ -1,10 +1,10 @@
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
 import {
   DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   logger,
   type NotificationDigestSettings,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getMissingNotificationSchemaErrorCode } from '../schema-compat';

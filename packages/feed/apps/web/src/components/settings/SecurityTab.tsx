@@ -48,22 +48,22 @@ export function SecurityTab() {
         <h3 className="font-semibold">Security Resources</h3>
         <div className="mt-1 space-y-2">
           <a
-            href="https://docs.babylon.market/security"
+            href="https://docs.feed.market/security"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-[#0066FF] text-sm hover:underline"
           >
             <ExternalLink className="h-4 w-4" />
-            Babylon Security Best Practices
+            Feed Security Best Practices
           </a>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
           For security concerns or to report vulnerabilities, contact{' '}
           <a
-            href="mailto:babylon@elizalabs.ai"
+            href="mailto:feed@elizalabs.ai"
             className="text-[#0066FF] hover:underline"
           >
-            babylon@elizalabs.ai
+            feed@elizalabs.ai
           </a>
         </p>
       </div>

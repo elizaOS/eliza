@@ -6,7 +6,7 @@ import {
   cn,
   formatCompactCurrency,
   getAgentDefaultProfileImageUrl,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   Check,
   ChevronLeft,

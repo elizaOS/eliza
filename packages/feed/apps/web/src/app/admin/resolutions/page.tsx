@@ -8,7 +8,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { cn, formatDateTime } from '@babylon/shared';
+import { cn, formatDateTime } from '@feed/shared';
 import {
   ExternalLink,
   Loader2,

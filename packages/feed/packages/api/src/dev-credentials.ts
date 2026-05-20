@@ -12,7 +12,7 @@
  * - In production, this module is essentially a no-op
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { createHash } from 'crypto';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -29,8 +29,8 @@ const HARDHAT_DEV_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
  * Dev admin user ID - consistent across sessions
  */
 const DEV_ADMIN_USER_ID = 'dev-admin-local';
-export const DEV_USER_ID_COOKIE_NAME = 'babylon-dev-user-id';
-export const DEV_ADMIN_TOKEN_COOKIE_NAME = 'babylon-dev-admin-token';
+export const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
+export const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
 const DEV_USER_BEARER_PREFIX = 'dev-user:';
 
 /**
@@ -74,7 +74,7 @@ export function extractDevUserIdFromBearerToken(
  */
 function deriveSecret(seed: string, purpose: string): string {
   const hash = createHash('sha256')
-    .update(`babylon-dev:${seed}:${purpose}`)
+    .update(`feed-dev:${seed}:${purpose}`)
     .digest('hex');
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }

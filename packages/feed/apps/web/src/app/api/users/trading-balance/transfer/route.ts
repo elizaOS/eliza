@@ -1,5 +1,5 @@
-import * as api from '@babylon/api';
-import { TransferTradingBalanceSchema } from '@babylon/shared';
+import * as api from '@feed/api';
+import { TransferTradingBalanceSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const POST = api.withErrorHandling(async (request: NextRequest) => {

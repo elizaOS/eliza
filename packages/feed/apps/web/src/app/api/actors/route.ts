@@ -62,11 +62,11 @@
  * console.log(data.actors); // Array of all actors
  * ```
  *
- * @see {@link @babylon/engine#loadActorsData} Actors data loader (TypeScript imports)
+ * @see {@link @feed/engine#loadActorsData} Actors data loader (TypeScript imports)
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { loadActorsData } from '@babylon/engine';
+import { withErrorHandling } from '@feed/api';
+import { loadActorsData } from '@feed/engine';
 import { NextResponse } from 'next/server';
 
 /**

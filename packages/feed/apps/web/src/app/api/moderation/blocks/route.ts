@@ -53,9 +53,9 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { GetBlocksSchema } from '@babylon/shared';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { GetBlocksSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

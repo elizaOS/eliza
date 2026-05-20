@@ -9,7 +9,7 @@
  * This creates a natural market hierarchy where whales have more influence.
  */
 
-import type { Actor } from '@babylon/shared';
+import type { Actor } from '@feed/shared';
 
 interface CapitalAllocation {
   tradingBalance: number;

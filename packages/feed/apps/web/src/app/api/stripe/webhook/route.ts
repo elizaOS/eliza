@@ -41,9 +41,9 @@
  * - charge.refunded: Reverse funded balance (Phase 2)
  */
 
-import { TradingBalanceFundingService, withErrorHandling } from '@babylon/api';
-import { and, balanceTransactions, db, eq } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { TradingBalanceFundingService, withErrorHandling } from '@feed/api';
+import { and, balanceTransactions, db, eq } from '@feed/db';
+import { logger } from '@feed/shared';
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { trackServerEvent } from '@/lib/posthog/server';
@@ -107,7 +107,7 @@ export const POST = withErrorHandling(async function POST(req: Request) {
     'StripeWebhook'
   );
 
-  // Filter events by app metadata — only process events belonging to this app (babylon).
+  // Filter events by app metadata — only process events belonging to this app (feed).
   // Events without metadata.app are allowed through for backward compatibility with
   // resources created before this tagging was added.
   const eventObject = event.data.object as unknown as Record<string, unknown>;
@@ -118,7 +118,7 @@ export const POST = withErrorHandling(async function POST(req: Request) {
         ?.metadata as Record<string, string> | undefined
     )?.app;
 
-  if (appMetadata && appMetadata !== 'babylon') {
+  if (appMetadata && appMetadata !== 'feed') {
     logger.info(
       `Ignoring Stripe event for different app: ${appMetadata}`,
       { eventId: event.id, type: event.type, app: appMetadata },

@@ -2,13 +2,13 @@ import {
   type AuthResult,
   getServerApiKey,
   validateApiKeyAsync,
-} from '@babylon/a2a';
+} from '@feed/a2a';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 export async function checkApiKey(
   request: NextRequest,
-  realm = 'Babylon'
+  realm = 'Feed'
 ): Promise<{
   error?: NextResponse;
   authResult?: AuthResult;
@@ -37,7 +37,7 @@ export async function checkApiKey(
           headers:
             authResult.statusCode === 401
               ? {
-                  'WWW-Authenticate': `ApiKey realm="${realm}", header="X-Babylon-Api-Key"`,
+                  'WWW-Authenticate': `ApiKey realm="${realm}", header="X-Feed-Api-Key"`,
                 }
               : undefined,
         }

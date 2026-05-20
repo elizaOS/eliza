@@ -18,7 +18,7 @@ import {
   not,
   trainedModels,
   trajectories,
-} from '@babylon/db';
+} from '@feed/db';
 import { logger } from '../utils/logger';
 
 export interface ModelSelectionResult {

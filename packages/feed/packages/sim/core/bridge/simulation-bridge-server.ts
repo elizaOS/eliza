@@ -1,7 +1,7 @@
 /**
  * Simulation Bridge Server
  *
- * HTTP server that exposes the Babylon game engine to the Python online RL
+ * HTTP server that exposes the Feed game engine to the Python online RL
  * training pipeline. The Python client is at:
  *   packages/training/python/src/training/simulation_bridge.py
  *
@@ -31,9 +31,9 @@ import {
   perpPositions,
   positions as positionsTable,
   questions,
-} from '@babylon/db';
-import { executeGameTick } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { executeGameTick } from '@feed/engine';
+import { logger } from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -236,7 +236,7 @@ function generateSyntheticMarkets(): Array<Record<string, unknown>> {
     'Will the AI regulation bill pass in Q2?',
     'Will NVIDIA report earnings above estimates?',
     'Will the Fed cut rates this quarter?',
-    'Will Babylon reach 1000 active traders?',
+    'Will Feed reach 1000 active traders?',
   ];
   const rng = state.tickNumber;
   return questions.map((q, i) => {
@@ -278,7 +278,7 @@ async function buildScenario(npcId: string): Promise<Record<string, unknown>> {
   const news = (newsTemplates[npc.archetype] ?? newsTemplates.gray!).map(
     (n) => ({
       content: n,
-      source: 'babylon-news',
+      source: 'feed-news',
       timestamp: new Date().toISOString(),
       sentiment: 0,
     })

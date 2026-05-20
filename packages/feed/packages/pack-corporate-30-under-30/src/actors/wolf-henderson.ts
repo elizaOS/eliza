@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'wolf-henderson',
@@ -78,7 +78,7 @@ const actor = {
     'Founder @AtlasLogistics | Last Mile Optimization | MIT Operations Research | 4.2M Monthly Deliveries | Efficiency > Everything | The Algorithm Knows Best',
   pfpDescription:
     'White American male in his early 30s with short-cropped light brown hair, pale gray eyes, and a face that expresses efficiency rather than emotion. Clean-shaven, angular jaw. Wearing a plain gray crew-neck. Background: a wall-mounted dashboard showing delivery metrics in real-time, all green except one driver flagged in red.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

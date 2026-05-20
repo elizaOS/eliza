@@ -6,12 +6,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
-import { db } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { NextRequest } from 'next/server';
 
 // Mock agent0 sync to prevent race conditions in tests
-mock.module('@babylon/agents/agent0/reputation/agent0-reputation-sync', () => ({
+mock.module('@feed/agents/agent0/reputation/agent0-reputation-sync', () => ({
   submitFeedbackToAgent0: async () => {
     return { submitted: true };
   },

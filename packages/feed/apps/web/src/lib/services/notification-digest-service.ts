@@ -1,4 +1,4 @@
-import { createNotification, sendNotificationEmail } from '@babylon/api';
+import { createNotification, sendNotificationEmail } from '@feed/api';
 import {
   and,
   db,
@@ -11,7 +11,7 @@ import {
   or,
   positions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   isValidDeliveryChannel,
   isValidDigestFrequency,
@@ -20,7 +20,7 @@ import {
   type NotificationDigestFrequency,
   type NotificationDigestSettings,
   type PerformanceDigestNotificationData,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { groupResolvedMarketOutcomes } from './market-resolution-notifications';
 
 interface DigestCandidateUser {

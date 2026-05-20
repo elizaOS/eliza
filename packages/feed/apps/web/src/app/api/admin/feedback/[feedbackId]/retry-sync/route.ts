@@ -11,9 +11,9 @@ import {
   successResponse,
   syncFeedbackToLinear,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

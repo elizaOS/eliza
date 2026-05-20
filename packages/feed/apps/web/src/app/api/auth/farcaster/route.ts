@@ -3,7 +3,7 @@
  *
  * Called by the Farcaster SignInButton in LoginModal after the user completes
  * the SIWF flow. Verifies the signature server-side, looks up or creates the
- * Babylon user, ensures a Steward user record exists, and returns a Steward-
+ * Feed user, ensures a Steward user record exists, and returns a Steward-
  * compatible JWT that can be stored as the steward-token httpOnly cookie.
  *
  * Client flow:
@@ -13,9 +13,9 @@
  *   4. Client POSTs to /api/auth/session to set the httpOnly cookie
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { createAppClient, viemConnector } from '@farcaster/auth-client';
 import { SignJWT } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
@@ -27,7 +27,7 @@ import {
 
 /** Mint a Steward-compatible HS256 JWT for this user. */
 async function mintToken(stewardUserId: string, fid: number): Promise<string> {
-  return new SignJWT({ userId: stewardUserId, tenantId: 'babylon', fid })
+  return new SignJWT({ userId: stewardUserId, tenantId: 'feed', fid })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuer('steward')
     .setIssuedAt()
@@ -86,7 +86,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     );
   }
 
-  // Look up Babylon user by FID
+  // Look up Feed user by FID
   const [existing] = await db
     .select({
       id: users.id,
@@ -98,11 +98,11 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     .where(eq(users.farcasterFid, String(fid)))
     .limit(1);
 
-  let babylonUserId: string;
+  let feedUserId: string;
   let stewardUserId: string;
 
   if (existing) {
-    babylonUserId = existing.id;
+    feedUserId = existing.id;
 
     if (existing.stewardId) {
       stewardUserId = existing.stewardId;
@@ -112,10 +112,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       await db
         .update(users)
         .set({ stewardId: stewardUserId })
-        .where(eq(users.id, babylonUserId));
+        .where(eq(users.id, feedUserId));
     }
   } else {
-    // New Farcaster user — create Steward record first, then Babylon record
+    // New Farcaster user — create Steward record first, then Feed record
     stewardUserId = await ensureStewardUser();
     const newId = await generateSnowflakeId();
     const [newUser] = await db
@@ -135,7 +135,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         { status: 500 }
       );
     }
-    babylonUserId = newUser.id;
+    feedUserId = newUser.id;
   }
 
   const token = await mintToken(stewardUserId, fid);

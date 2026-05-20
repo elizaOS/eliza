@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Paths
 BASE_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-ADAPTER_PATH = "./trained_models/babylon-v1/adapter"
+ADAPTER_PATH = "./trained_models/feed-v1/adapter"
 
 
 def get_device():

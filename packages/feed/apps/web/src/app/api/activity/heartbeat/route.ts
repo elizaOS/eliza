@@ -13,14 +13,14 @@
  * @module /api/activity/heartbeat
  */
 
-import { checkProgress, optionalAuth, withErrorHandling } from '@babylon/api';
+import { checkProgress, optionalAuth, withErrorHandling } from '@feed/api';
 import {
   db,
   generateSnowflakeId,
   userActivityLogs,
   userSessions,
-} from '@babylon/db';
-import { logger, PATH_TO_ACTIVITY_TYPE } from '@babylon/shared';
+} from '@feed/db';
+import { logger, PATH_TO_ACTIVITY_TYPE } from '@feed/shared';
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -72,7 +72,7 @@ function parseDeviceType(userAgent: string | null): string {
 async function hashIp(ip: string | null): Promise<string | null> {
   if (!ip) return null;
   const encoder = new TextEncoder();
-  const data = encoder.encode(ip + (process.env.IP_HASH_SALT || 'babylon'));
+  const data = encoder.encode(ip + (process.env.IP_HASH_SALT || 'feed'));
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');

@@ -5,7 +5,7 @@
  * by dispatching it to a specific agent in their team.
  *
  * The broadcastFn dependency is injected via state.data from the route layer
- * to avoid importing @babylon/api from packages/agents.
+ * to avoid importing @feed/api from packages/agents.
  *
  * Key implementation notes:
  * - Returns ActionResult AND calls _callback (so processActions can

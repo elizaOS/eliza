@@ -5,12 +5,12 @@
  * This is the proper way to generate training data at scale.
  */
 
-import { closeDatabase, db, eq, users } from '@babylon/db';
+import { closeDatabase, db, eq, users } from '@feed/db';
 import {
   ArchetypeConfigService,
   createParallelGenerator,
   type ParallelGenerationConfig,
-} from '@babylon/training';
+} from '@feed/training';
 import { getFlag, getOption, parseArgs, wantsHelp } from '../lib/args.js';
 import { logger } from '../lib/logger.js';
 
@@ -19,7 +19,7 @@ function printHelp(): void {
 Parallel Training Data Generation
 
 USAGE:
-  babylon train parallel [options]
+  feed train parallel [options]
 
 DESCRIPTION:
   Creates and runs multiple agents in parallel to generate REAL training trajectories.
@@ -40,9 +40,9 @@ ${ArchetypeConfigService.getAvailableArchetypes()
   .join('\n')}
 
 EXAMPLES:
-  babylon train parallel --archetypes trader,degen --num-agents 3 --ticks 20
-  babylon train parallel -a all -n 1 -t 5 -p 10
-  babylon train parallel --dry-run
+  feed train parallel --archetypes trader,degen --num-agents 3 --ticks 20
+  feed train parallel -a all -n 1 -t 5 -p 10
+  feed train parallel --dry-run
 
 NOTES:
   - Creates REAL agents with archetype-specific behaviors
@@ -204,9 +204,9 @@ export async function runParallelGeneration(
   console.log('Trajectories saved to database.');
   console.log();
   console.log('Next steps:');
-  console.log('  1. Score trajectories: babylon train score');
-  console.log('  2. Export for training: babylon train export');
-  console.log('  3. Train model: babylon train pipeline');
+  console.log('  1. Score trajectories: feed train score');
+  console.log('  2. Export for training: feed train export');
+  console.log('  3. Train model: feed train pipeline');
 
   await closeDatabase();
 }

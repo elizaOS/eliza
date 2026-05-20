@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 const mockAuthenticateUser = mock();
 const mockGetAgentSidebarSummary = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticateUser: mockAuthenticateUser,
   withErrorHandling: (
     handler: (

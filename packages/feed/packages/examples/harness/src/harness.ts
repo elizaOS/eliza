@@ -99,7 +99,7 @@ export class AgentHarness {
           });
 
           // getAgentId() exists on HarnessA2AClient but not on all A2AClientInterface
-          // implementations (e.g. BabylonProductionClient, SimulationA2AAdapter).
+          // implementations (e.g. FeedProductionClient, SimulationA2AAdapter).
           const agentId =
             'getAgentId' in client &&
             typeof (client as { getAgentId(): string }).getAgentId ===

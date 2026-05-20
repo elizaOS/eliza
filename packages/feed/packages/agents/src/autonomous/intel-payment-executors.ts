@@ -21,7 +21,7 @@ import {
   messages,
   sql,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { logger } from '../shared/logger';
 import { generateSnowflakeId } from '../shared/snowflake';
 

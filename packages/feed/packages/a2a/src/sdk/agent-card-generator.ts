@@ -4,7 +4,7 @@
  */
 
 import type { AgentCard } from '@a2a-js/sdk';
-import { db, eq, userAgentConfigs, users } from '@babylon/db';
+import { db, eq, userAgentConfigs, users } from '@feed/db';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -25,7 +25,7 @@ const AGENT_CARD_SKILLS: Array<{
     id: 'social',
     name: 'Social Features',
     description:
-      'Post, comment, like, share content. Engage with the Babylon community.',
+      'Post, comment, like, share content. Engage with the Feed community.',
     tags: ['social', 'posts', 'comments'],
     examples: [
       'Create a post about Bitcoin predictions',
@@ -96,8 +96,8 @@ function createAgentCardObject(
     ],
 
     provider: {
-      organization: 'Babylon',
-      url: 'https://babylon.market',
+      organization: 'Feed',
+      url: 'https://feed.market',
     },
 
     iconUrl: profileImageUrl || `${BASE_URL}/logo.svg`,
@@ -163,7 +163,7 @@ export async function generateAgentCard(agentId: string): Promise<AgentCard> {
   const agentDescription =
     user.bio ||
     agentConfig.systemPrompt ||
-    'Autonomous agent on Babylon platform';
+    'Autonomous agent on Feed platform';
 
   return createAgentCardObject(
     agentId,
@@ -187,7 +187,7 @@ export function generateAgentCardSync(agent: {
 }): AgentCard {
   const agentName = agent.displayName || `Agent ${agent.id.substring(0, 8)}`;
   const agentDescription =
-    agent.bio || agent.systemPrompt || 'Autonomous agent on Babylon platform';
+    agent.bio || agent.systemPrompt || 'Autonomous agent on Feed platform';
 
   return createAgentCardObject(
     agent.id,

@@ -8,7 +8,7 @@ import {
   mainnet,
   sepolia,
   ValidationError,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { Address, PublicClient } from 'viem';
 import {
   type Chain,

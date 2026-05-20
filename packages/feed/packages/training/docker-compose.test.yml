@@ -21,21 +21,21 @@
 services:
   postgres-test:
     image: postgres:16-alpine
-    container_name: babylon-postgres-test
+    container_name: feed-postgres-test
     ports:
       - "5434:5432"
     environment:
       # TEST-ONLY credentials - see security note above
-      POSTGRES_USER: babylon_test
+      POSTGRES_USER: feed_test
       POSTGRES_PASSWORD: test_password
-      POSTGRES_DB: babylon_test
+      POSTGRES_DB: feed_test
     command: >
       postgres
         -c max_connections=100
         -c shared_buffers=128MB
         -c log_min_duration_statement=0
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U babylon_test"]
+      test: ["CMD-SHELL", "pg_isready -U feed_test"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -44,7 +44,7 @@ services:
 
   redis-test:
     image: redis:7-alpine
-    container_name: babylon-redis-test
+    container_name: feed-redis-test
     ports:
       - "6381:6379"
     command: redis-server --appendonly no --save ""

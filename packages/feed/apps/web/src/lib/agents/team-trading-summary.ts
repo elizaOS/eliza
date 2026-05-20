@@ -1,4 +1,4 @@
-import { toNumber } from '@babylon/shared';
+import { toNumber } from '@feed/shared';
 import {
   isOpenPredictionPosition,
   type UserPositionsSnapshot,

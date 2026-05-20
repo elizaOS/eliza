@@ -15,7 +15,7 @@ import {
   llmCallLogs,
   trajectories,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type { IAgentRuntime } from '@elizaos/core';
 import { logger } from '../utils/logger';
 

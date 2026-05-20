@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   AGENT_TRANSFER_IN_TRANSACTION_TYPE,
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 let mockRecipientUser: { id: string } | null = { id: 'user-2' };
 let mockSenderBalance = 1000;
@@ -89,7 +89,7 @@ const mockDb = {
   transaction: mock(async () => undefined),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   actorState: {},
   aliasedTable: mock(() => ({})),
   and: (...args: unknown[]) => args,
@@ -124,7 +124,7 @@ mock.module('@babylon/db', () => ({
   ),
 }));
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticate: routeAuthenticateMock,
   BusinessLogicError: class BusinessLogicError extends Error {
     code: string;
@@ -159,17 +159,17 @@ mock.module('@babylon/api', () => ({
   withErrorHandling: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 
-mock.module('@babylon/core/markets/perps', () => ({
+mock.module('@feed/core/markets/perps', () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@babylon/core/markets/prediction', () => ({
+mock.module('@feed/core/markets/prediction', () => ({
   PredictionDbAdapter: class {},
   PredictionMarketService: class {},
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0,
     PLATFORM_SHARE: 0,

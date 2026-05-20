@@ -69,14 +69,14 @@
  *                   type: array
  */
 
-import type { JsonRpcRequest, MCPAuthContext } from '@babylon/mcp';
+import type { JsonRpcRequest, MCPAuthContext } from '@feed/mcp';
 import {
   getAvailableTools,
   getMCPServerInfo,
   MCPRequestHandler,
-} from '@babylon/mcp';
-import type { JsonValue } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+} from '@feed/mcp';
+import type { JsonValue } from '@feed/shared';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -89,8 +89,8 @@ const mcpHandler = new MCPRequestHandler();
  * Extract authentication from request headers
  */
 function extractAuthFromHeaders(request: NextRequest): MCPAuthContext {
-  // Check for X-Babylon-Api-Key header (primary method)
-  const apiKey = request.headers.get('x-babylon-api-key');
+  // Check for X-Feed-Api-Key header (primary method)
+  const apiKey = request.headers.get('x-feed-api-key');
 
   // Also check Authorization header with Bearer token for compatibility
   const authHeader = request.headers.get('authorization');
@@ -100,7 +100,7 @@ function extractAuthFromHeaders(request: NextRequest): MCPAuthContext {
 
   const auth: MCPAuthContext = {};
 
-  // Prefer X-Babylon-Api-Key header, fallback to Authorization Bearer
+  // Prefer X-Feed-Api-Key header, fallback to Authorization Bearer
   if (apiKey) {
     auth.apiKey = apiKey;
   } else if (apiKeyFromAuth) {
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
         error: {
           code: -32001,
           message:
-            'Authentication required: X-Babylon-Api-Key header is required',
+            'Authentication required: X-Feed-Api-Key header is required',
         },
       },
       { status: 401 }

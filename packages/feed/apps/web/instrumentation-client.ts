@@ -132,7 +132,7 @@ if (!sentryDisabled) {
         blockAllMedia: true,
         // Performance settings
         networkDetailAllowUrls: [
-          // Only capture network details for Babylon API calls by default.
+          // Only capture network details for Feed API calls by default.
           // If NEXT_PUBLIC_API_URL is configured, we allow that origin as well.
           /\/api\//,
           ...(process.env.NEXT_PUBLIC_API_URL

@@ -1,5 +1,5 @@
 """
-Tests for BabylonOnlineEnv
+Tests for FeedOnlineEnv
 
 Tests cover:
 - Prompt building
@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 
 from src.training.online_env import (
-    BabylonOnlineEnv,
-    BabylonOnlineEnvConfig,
+    FeedOnlineEnv,
+    FeedOnlineEnvConfig,
     build_observation_prompt,
     build_trading_system_prompt,
     extract_thinking,
@@ -367,11 +367,11 @@ Given the probability of success and managing risk, I'll proceed.
 # =============================================================================
 
 
-class TestBabylonOnlineEnvConfig:
-    """Tests for BabylonOnlineEnvConfig"""
+class TestFeedOnlineEnvConfig:
+    """Tests for FeedOnlineEnvConfig"""
 
     def test_default_config(self):
-        config = BabylonOnlineEnvConfig()
+        config = FeedOnlineEnvConfig()
 
         assert config.group_size == 4
         assert config.max_response_tokens == 512
@@ -379,20 +379,20 @@ class TestBabylonOnlineEnvConfig:
         assert config.default_archetype == "trader"
 
     def test_archetype_distribution(self):
-        config = BabylonOnlineEnvConfig()
+        config = FeedOnlineEnvConfig()
 
         assert "trader" in config.archetype_distribution
         assert "degen" in config.archetype_distribution
         assert sum(config.archetype_distribution.values()) == pytest.approx(1.0)
 
 
-class TestBabylonOnlineEnv:
-    """Tests for BabylonOnlineEnv (mock-based)"""
+class TestFeedOnlineEnv:
+    """Tests for FeedOnlineEnv (mock-based)"""
 
     def test_config_init(self):
-        env_config, server_configs = BabylonOnlineEnv.config_init()
+        env_config, server_configs = FeedOnlineEnv.config_init()
 
-        assert isinstance(env_config, BabylonOnlineEnvConfig)
+        assert isinstance(env_config, FeedOnlineEnvConfig)
         assert len(server_configs) > 0
         assert env_config.group_size >= 2
 
@@ -400,11 +400,11 @@ class TestBabylonOnlineEnv:
     async def test_setup_initializes_pool(self):
         """Test that setup creates and initializes scenario pool"""
         # Use config_init to get proper configs that include server_configs
-        config, server_configs = BabylonOnlineEnv.config_init()
+        config, server_configs = FeedOnlineEnv.config_init()
 
         # Mock the server manager to avoid actual vLLM calls
         with patch("atroposlib.envs.base.ServerManager"):
-            env = BabylonOnlineEnv(config, server_configs, testing=True)
+            env = FeedOnlineEnv(config, server_configs, testing=True)
 
             await env.setup()
 
@@ -414,10 +414,10 @@ class TestBabylonOnlineEnv:
     @pytest.mark.asyncio
     async def test_get_next_item_returns_scenario(self):
         """Test get_next_item returns a scenario and archetype"""
-        config, server_configs = BabylonOnlineEnv.config_init()
+        config, server_configs = FeedOnlineEnv.config_init()
 
         with patch("atroposlib.envs.base.ServerManager"):
-            env = BabylonOnlineEnv(config, server_configs, testing=True)
+            env = FeedOnlineEnv(config, server_configs, testing=True)
 
             await env.setup()
 

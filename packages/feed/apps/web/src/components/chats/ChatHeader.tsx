@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Loader2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ChatFilter } from './types';

@@ -4,9 +4,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { PrivyEmailAccount, PrivyUserWithEmails } from '@babylon/shared';
+import type { PrivyEmailAccount, PrivyUserWithEmails } from '@feed/shared';
 
-// Import from absolute source path with cache-busting to avoid mocked @babylon/shared.
+// Import from absolute source path with cache-busting to avoid mocked @feed/shared.
 const { checkForAdminEmail, findEmailByDomain, getAllVerifiedEmails } =
   await import(
     `${import.meta.dir}/../../../shared/src/auth/privy-email-utils?t=${Date.now()}`

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 import { Check, ExternalLink, Mail, Shield, X as XIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -54,7 +54,7 @@ export function LinkSocialAccountsModal({
   const [confirmUnlinkTwitter, setConfirmUnlinkTwitter] = useState(false);
   const [unlinkingTwitter, setUnlinkingTwitter] = useState(false);
 
-  // Phase 2: Email comes from Babylon user record (set by Steward at login)
+  // Phase 2: Email comes from Feed user record (set by Steward at login)
   const privyEmail = user?.email ?? null;
 
   // Phase 2: Social linking flows are handled via OAuth/SIWF redirects
@@ -165,7 +165,7 @@ export function LinkSocialAccountsModal({
     } else {
       // Phase 2: Telegram linking outside mini-app — not yet implemented
       setLinking(null);
-      toast.info('Open Babylon in Telegram to link your Telegram account.');
+      toast.info('Open Feed in Telegram to link your Telegram account.');
     }
   };
 
@@ -293,7 +293,7 @@ export function LinkSocialAccountsModal({
                 {confirmUnlinkTwitter && (
                   <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
                     <p className="text-muted-foreground text-xs">
-                      This disconnects your X account from Babylon. You can
+                      This disconnects your X account from Feed. You can
                       reconnect a different X account afterwards.
                     </p>
                     <div className="mt-3 flex items-center justify-end gap-2">
@@ -466,7 +466,7 @@ export function LinkSocialAccountsModal({
                   <p className="text-muted-foreground text-xs">
                     {isMiniApp
                       ? 'Link your Telegram account to earn points and unlock rewards.'
-                      : 'Open Babylon in Telegram to seamlessly link your account, or connect via Privy.'}
+                      : 'Open Feed in Telegram to seamlessly link your account, or connect via Privy.'}
                   </p>
                 </div>
                 <button

@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.models import BabylonTrajectory
+from src.models import FeedTrajectory
 from src.training.archetype_trainer import (
     ArchetypeTrainer,
     ArchetypeTrainingConfig,
@@ -19,7 +19,7 @@ from src.training.archetype_trainer import (
 
 def make_trajectory(
     trajectory_id: str, archetype: str | None, step_archetype: str | None = None
-) -> BabylonTrajectory:
+) -> FeedTrajectory:
     parameters = {"size": 1}
     if step_archetype:
         parameters["archetype"] = step_archetype
@@ -62,7 +62,7 @@ def make_trajectory(
         "tradesExecuted": 1,
         "finalStatus": "completed",
     }
-    return BabylonTrajectory.model_validate(payload)
+    return FeedTrajectory.model_validate(payload)
 
 
 def test_extract_trajectory_archetype_falls_back_to_step_parameters():

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TutorialState } from '@/components/tutorial/SpotlightTutorial';
 import { DESKTOP_STEPS, MOBILE_STEPS } from './steps';
 
-const STORAGE_KEY = 'babylon-agents-tutorial-completed';
+const STORAGE_KEY = 'feed-agents-tutorial-completed';
 const AUTO_START_DELAY = 500;
 
 export type AgentsTutorialState = TutorialState;

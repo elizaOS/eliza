@@ -7,7 +7,7 @@ import {
   extractNameParts,
   generateNameVariations,
   replaceNameVariations,
-} from '@babylon/shared/utils/name-replacement';
+} from '@feed/shared/utils/name-replacement';
 
 describe('Name Replacement Utilities', () => {
   describe('generateNameVariations', () => {

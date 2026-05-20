@@ -79,10 +79,10 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
-import type { LoadTestResult } from '@babylon/testing';
-import { LoadTestSimulator, TEST_SCENARIOS } from '@babylon/testing';
+} from '@feed/api';
+import { logger } from '@feed/shared';
+import type { LoadTestResult } from '@feed/testing';
+import { LoadTestSimulator, TEST_SCENARIOS } from '@feed/testing';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

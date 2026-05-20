@@ -38,7 +38,7 @@ import {
   userActivityLogs,
   userChallengeProgress,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   ACHIEVEMENT_DEFINITIONS,
   type AchievementDef,
@@ -53,7 +53,7 @@ import {
   logger,
   POINTS,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { createHash } from 'crypto';
 import { broadcastToChannel } from '../sse/event-broadcaster';
 import { createNotification } from './notification-service';

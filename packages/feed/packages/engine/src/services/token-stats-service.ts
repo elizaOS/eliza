@@ -11,7 +11,7 @@
  * 4. Use TokenStatsService.getStats() to query historical data
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { setTokenUsageCallback } from '../llm/openai-client';
 import {
   calculateEstimatedCost,

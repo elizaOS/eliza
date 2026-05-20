@@ -354,7 +354,7 @@ function pct(n: number): string {
 // Main
 // ---------------------------------------------------------------------------
 
-const ROOT = '/Users/shawwalters/babylon-workspace/babylon';
+const ROOT = '/Users/shawwalters/feed-workspace/feed';
 
 console.log('Scanning TypeScript files...');
 const files = [...walkTs(ROOT)];

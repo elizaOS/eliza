@@ -1,15 +1,15 @@
 /**
  * @packageDocumentation
- * @module @babylon/mcp
+ * @module @feed/mcp
  *
- * MCP Protocol Implementation for Babylon
+ * MCP Protocol Implementation for Feed
  *
- * Babylon implements the Model Context Protocol (MCP) following JSON-RPC 2.0 specification.
+ * Feed implements the Model Context Protocol (MCP) following JSON-RPC 2.0 specification.
  * This package provides a complete MCP server implementation for agent discovery and tool execution.
  *
  * @example
  * ```typescript
- * import { MCPRequestHandler } from '@babylon/mcp';
+ * import { MCPRequestHandler } from '@feed/mcp';
  *
  * const handler = new MCPRequestHandler();
  * const response = await handler.handle({

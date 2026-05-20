@@ -24,7 +24,7 @@ import {
   eq,
   messages as messagesTable,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,

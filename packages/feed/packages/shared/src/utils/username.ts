@@ -1,7 +1,7 @@
 const ONBOARDING_USERNAME_MIN_LENGTH = 3;
 
 /**
- * Normalize a proposed Babylon onboarding username to the existing
+ * Normalize a proposed Feed onboarding username to the existing
  * onboarding/check-username format.
  */
 export function sanitizeOnboardingUsername(username: string): string {

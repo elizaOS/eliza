@@ -6,8 +6,8 @@
  * each user has a unique referral code for tracking referrals.
  */
 
-import { and, dbWrite, eq, ne, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { and, dbWrite, eq, ne, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import { BadRequestError, ConflictError, NotFoundError } from '../errors';
 
 export async function isReferralCodeAvailableForUser(

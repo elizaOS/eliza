@@ -1,11 +1,11 @@
 'use client';
 
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   getReferralUrl,
   logger,
   trackExternalShare,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Download, LogOut, Twitter, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -134,7 +134,7 @@ export function PnLShareModal({
   const shareUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/markets`
-      : 'https://babylon.market';
+      : 'https://feed.market';
 
   const canShare = Boolean(
     user && (type === 'portfolio' ? portfolioData : categoryData)
@@ -155,15 +155,15 @@ export function PnLShareModal({
   const shareText = useMemo(() => {
     const link = shareableLink || shareUrl;
     const standardMessage =
-      'Join me in Babylon, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+      'Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
 
     if (type === 'portfolio' && portfolioData) {
       const sign = portfolioData.totalPnL >= 0 ? '+' : '-';
-      return `My Babylon P&L is ${sign}${BABYLON_POINTS_SYMBOL}${Math.abs(portfolioData.totalPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
+      return `My Feed P&L is ${sign}${FEED_POINTS_SYMBOL}${Math.abs(portfolioData.totalPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
     }
     if (type === 'category' && categoryData) {
       const sign = categoryData.unrealizedPnL >= 0 ? '+' : '-';
-      return `My ${categoryLabel} P&L on Babylon is ${sign}${BABYLON_POINTS_SYMBOL}${Math.abs(categoryData.unrealizedPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
+      return `My ${categoryLabel} P&L on Feed is ${sign}${FEED_POINTS_SYMBOL}${Math.abs(categoryData.unrealizedPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
     }
     return `${standardMessage}\n\n${link}`;
   }, [
@@ -215,7 +215,7 @@ export function PnLShareModal({
 
     const link = document.createElement('a');
     link.href = previewImageUrl;
-    link.download = `babylon-${type === 'portfolio' ? 'pnl' : `${category}-pnl`}-${Date.now()}.png`;
+    link.download = `feed-${type === 'portfolio' ? 'pnl' : `${category}-pnl`}-${Date.now()}.png`;
     link.click();
 
     void trackExternalShare({
@@ -338,8 +338,8 @@ export function PnLShareModal({
 
   const modalSubtitle =
     type === 'portfolio'
-      ? 'Show off your Babylon performance card'
-      : `Show off your Babylon ${category} performance`;
+      ? 'Show off your Feed performance card'
+      : `Show off your Feed ${category} performance`;
 
   return (
     <>

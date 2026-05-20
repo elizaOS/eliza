@@ -18,7 +18,7 @@
  */
 'use client';
 
-import { cn, formatCompactCurrency, formatDate } from '@babylon/shared';
+import { cn, formatCompactCurrency, formatDate } from '@feed/shared';
 import {
   AlertTriangle,
   BarChart2,

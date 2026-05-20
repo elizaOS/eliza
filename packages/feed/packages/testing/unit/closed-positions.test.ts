@@ -5,7 +5,7 @@
  * section in the Wallet Positions tab.
  *
  * Exercises real code paths from:
- *   - @babylon/shared UserPositionsQuerySchema (type normalization, pagination defaults)
+ *   - @feed/shared UserPositionsQuerySchema (type normalization, pagination defaults)
  *   - Closed position parsers (perps + predictions)
  *   - Outcome filtering logic (All / Won / Lost)
  *
@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { UserPositionsQuerySchema } from '@babylon/shared';
+import { UserPositionsQuerySchema } from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // UserPositionsQuerySchema — type normalization

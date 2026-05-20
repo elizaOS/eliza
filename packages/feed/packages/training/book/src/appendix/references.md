@@ -146,9 +146,9 @@ Marketplace for GPU compute.
 
 ## Internal Documentation
 
-### Babylon Main Docs
+### Feed Main Docs
 
-- **Location**: [Mintlify docs](https://github.com/BabylonSocial/mintlify-docs)
+- **Location**: [Mintlify docs](https://github.com/FeedSocial/mintlify-docs)
 - **Topics**: API, agents, contracts
 
 ### Engine Documentation

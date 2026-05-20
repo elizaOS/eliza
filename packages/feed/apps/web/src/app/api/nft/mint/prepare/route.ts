@@ -1,5 +1,5 @@
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { prepareMint } from '@babylon/api/services/nft-mint-service';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { prepareMint } from '@feed/api/services/nft-mint-service';
 import type { NextRequest } from 'next/server';
 
 /**

@@ -12,9 +12,9 @@ import {
   hashApiKey,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, generateSnowflakeId, userApiKeys } from '@babylon/db';
-import { logger, toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/api';
+import { asUser, generateSnowflakeId, userApiKeys } from '@feed/db';
+import { logger, toISO, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

@@ -10,7 +10,7 @@ import {
   calculateLiquidationPrice,
   calculateUnrealizedPnL,
   shouldLiquidate,
-} from '@babylon/shared/perps-types';
+} from '@feed/shared/perps-types';
 
 // ─── Liquidation Boundary Tests ──────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { getProfileUrl } from '@babylon/shared';
+import { getProfileUrl } from '@feed/shared';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, MessageCircle, Share2, TrendingUp } from 'lucide-react';
 import Link from 'next/link';

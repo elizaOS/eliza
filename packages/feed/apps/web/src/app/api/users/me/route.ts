@@ -136,9 +136,9 @@ import {
   InternalServerError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, or, sql, users } from '@babylon/db';
-import { logger, toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, or, sql, users } from '@feed/db';
+import { logger, toISO, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { getOptionalProfileStats } from '@/lib/users/profile-stats';
 import { POST as updateProfilePOST } from '../[userId]/update-profile/route';
@@ -383,7 +383,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Phase 2: Look up by primary key (fastest, works for both Steward and legacy Privy users).
-  // auth-middleware already resolved the correct Babylon user ID into authUser.dbUserId
+  // auth-middleware already resolved the correct Feed user ID into authUser.dbUserId
   // via ensureUserFromSteward / email-bridge / fast-path, so we trust it directly.
   let [dbUser] = await db
     .select(userSelectFields)
@@ -393,7 +393,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Fallback: legacy Privy users whose row predates the stewardId column —
   // find them by privyId in case canonicalUserId resolved to the Steward UUID
-  // rather than the Babylon snowflake on an older session.
+  // rather than the Feed snowflake on an older session.
   if (!dbUser) {
     [dbUser] = await db
       .select(userSelectFields)
@@ -423,7 +423,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     // Check if Farcaster or Twitter account is already linked to an existing user
     // If found, auto-link the new Privy session to the existing account
-    // This allows users to login with their social account and access their existing Babylon account
+    // This allows users to login with their social account and access their existing Feed account
     if (farcasterFid || twitterId) {
       const conditions = [];
       if (farcasterFid) {

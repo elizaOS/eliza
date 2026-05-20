@@ -10,12 +10,12 @@
 export const swaggerDefinition = {
   openapi: '3.0.0',
   info: {
-    title: 'Babylon API',
+    title: 'Feed API',
     version: '1.0.0',
-    description: 'API documentation for Babylon social conspiracy game',
+    description: 'API documentation for Feed social conspiracy game',
     contact: {
       name: 'API Support',
-      url: 'https://github.com/BabylonSocial/babylon',
+      url: 'https://github.com/FeedSocial/feed',
     },
   },
   servers: [
@@ -28,7 +28,7 @@ export const swaggerDefinition = {
       ? []
       : [
           {
-            url: 'https://babylon.market',
+            url: 'https://feed.market',
             description: 'Production server',
           },
         ]),

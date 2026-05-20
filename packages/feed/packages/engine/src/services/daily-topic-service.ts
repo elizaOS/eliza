@@ -9,8 +9,8 @@ import {
   gte,
   parodyHeadlines,
   rssHeadlines,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Topics that should never be selected as the daily topic.
@@ -553,7 +553,7 @@ export class DailyTopicService {
         date: normalizedDate,
         topicKey: 'general',
         topicLabel: 'General',
-        summary: 'General market-moving developments across the Babylon world',
+        summary: 'General market-moving developments across the Feed world',
         sourceType: 'fallback_default',
         sourceHeadlineIds: [],
         selectionReason:

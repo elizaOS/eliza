@@ -1,11 +1,11 @@
 /**
- * `babylon tick` — Execute a single game tick (or loop).
+ * `feed tick` — Execute a single game tick (or loop).
  */
 
 import { resolve } from 'node:path';
 import { defineCommand } from 'citty';
 import consola from 'consola';
-import { loadBabylonConfig } from '../../core/config';
+import { loadFeedConfig } from '../../core/config';
 import { buildEngine, parseInterval } from '../shared';
 
 export default defineCommand({
@@ -37,7 +37,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const rootDir = resolve(args.rootDir);
-    const { config, configFile } = await loadBabylonConfig(rootDir);
+    const { config, configFile } = await loadFeedConfig(rootDir);
     consola.info(`Config: ${configFile ?? 'defaults'}`);
 
     const engine = await buildEngine(config, rootDir, args.legacy);
@@ -58,7 +58,7 @@ export default defineCommand({
 
     // Loop mode
     const intervalSec = parseInterval(args.interval, 'interval');
-    consola.box(`Babylon Runtime — tick loop (${intervalSec}s interval)`);
+    consola.box(`Feed Runtime — tick loop (${intervalSec}s interval)`);
 
     let running = true;
     let tickCount = 0;

@@ -41,7 +41,7 @@ from run_pipeline import CanonicalPipeline, _find_ancestor_with_child
 
 def test_find_ancestor_with_child_resolves_repo_and_workspace_roots(tmp_path: Path):
     workspace_root = tmp_path / "workspace"
-    repo_root = workspace_root / "babylon"
+    repo_root = workspace_root / "feed"
     script_dir = repo_root / "packages" / "training" / "python" / "scripts"
     script_dir.mkdir(parents=True)
     (repo_root / "packages" / "training").mkdir(parents=True, exist_ok=True)
@@ -836,7 +836,7 @@ async def test_served_eval_stage_runs_tinker_remote_comparison(tmp_path: Path):
             "training_backend": "tinker",
             "training_base_model": "Qwen/Qwen3.5-4B",
             "training_remote_base_ref": "tinker://run/train/sampler_weights/000000",
-            "training_remote_ref": "babylon-remote-final",
+            "training_remote_ref": "feed-remote-final",
             "trained_model_path": tmp_path / "tinker_trained",
             "served_eval_path": None,
             "served_eval_summary": None,

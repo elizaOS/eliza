@@ -1,7 +1,7 @@
 'use client';
 
-import type { LeaderboardMetric, LeaderboardScope } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
+import { cn } from '@feed/shared';
 
 interface LeaderboardToggleProps {
   activeMetric: LeaderboardMetric;

@@ -5,7 +5,7 @@
  * Handles database initialization, database readiness checks, and test isolation.
  */
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 
 /**
  * Check if database is available and properly configured

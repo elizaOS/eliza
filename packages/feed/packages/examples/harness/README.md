@@ -1,10 +1,10 @@
-# @babylon/agent-harness
+# @feed/agent-harness
 
-A framework for running autonomous agents against Babylon's prediction markets. Records agent trajectories for training, benchmarking, and ScamBench evaluation.
+A framework for running autonomous agents against Feed's prediction markets. Records agent trajectories for training, benchmarking, and ScamBench evaluation.
 
 ## Overview
 
-The harness connects any `TrainableAgent` implementation to Babylon's A2A (Agent-to-Agent) protocol and runs it through a configurable loop of ticks. Each tick:
+The harness connects any `TrainableAgent` implementation to Feed's A2A (Agent-to-Agent) protocol and runs it through a configurable loop of ticks. Each tick:
 
 1. Gathers context (portfolio, markets, feed) from the A2A server.
 2. Asks the agent to decide an action.
@@ -16,7 +16,7 @@ At the end of the run, trajectories are saved as JSON files for downstream train
 ## Prerequisites
 
 ```bash
-# From the babylon repo root
+# From the feed repo root
 bun install
 bun run agent-frameworks:bootstrap   # clones Hermes, OpenClaw, ElizaOS, ClawBench
 ```
@@ -28,7 +28,7 @@ You'll need one of:
 
 And one of:
 - **Local A2A server** at `localhost:3001` (`bun run dev` in `packages/examples/local-a2a-server`)
-- **Full Babylon dev stack** at `localhost:3000` (`bun run dev` from repo root)
+- **Full Feed dev stack** at `localhost:3000` (`bun run dev` from repo root)
 
 ## Quick Start
 
@@ -37,7 +37,7 @@ import {
   runHarness,
   createLLMAgent,
   getArchetype,
-} from '@babylon/agent-harness';
+} from '@feed/agent-harness';
 
 const result = await runHarness({
   a2aUrl: 'http://localhost:3001',
@@ -68,7 +68,7 @@ bun run test:agents -- --a2a-url http://localhost:3001
 Stochastic baseline that makes uniformly random decisions. Good as a floor for benchmarking.
 
 ```typescript
-import { randomAgent } from '@babylon/agent-harness';
+import { randomAgent } from '@feed/agent-harness';
 ```
 
 ### ArchetypeAgent
@@ -76,7 +76,7 @@ import { randomAgent } from '@babylon/agent-harness';
 Rule-based agent influenced by archetype traits (greed, fear, confidence, ethics). Deterministic-ish — reproducible without an LLM key.
 
 ```typescript
-import { archetypeAgent } from '@babylon/agent-harness';
+import { archetypeAgent } from '@feed/agent-harness';
 ```
 
 ### LLMAgent
@@ -84,7 +84,7 @@ import { archetypeAgent } from '@babylon/agent-harness';
 Sends the full game context to a real LLM and parses its JSON decision. Supports Groq, OpenAI, and Anthropic.
 
 ```typescript
-import { createLLMAgent } from '@babylon/agent-harness';
+import { createLLMAgent } from '@feed/agent-harness';
 
 const agent = createLLMAgent({
   provider: 'groq',                         // 'groq' | 'openai' | 'anthropic'
@@ -100,7 +100,7 @@ Auto-detects the provider from available env keys (`GROQ_API_KEY` takes priority
 Runs [Hermes](https://github.com/NousResearch/hermes-agent) (NousResearch) via the Python bridge script. Requires bootstrap.
 
 ```typescript
-import { createHermesAdapter } from '@babylon/agent-harness';
+import { createHermesAdapter } from '@feed/agent-harness';
 
 const agent = createHermesAdapter({
   model: 'llama-3.3-70b-versatile',
@@ -114,7 +114,7 @@ const agent = createHermesAdapter({
 Runs [OpenClaw](https://openclaw.ai) in CLI mode (`openclaw agent --message ...`) or connects to its HTTP gateway.
 
 ```typescript
-import { createOpenClawAdapter } from '@babylon/agent-harness';
+import { createOpenClawAdapter } from '@feed/agent-harness';
 
 // CLI mode — no gateway required
 const agent = createOpenClawAdapter({ mode: 'cli', model: 'gpt-4o' });
@@ -132,16 +132,16 @@ const agent = createOpenClawAdapter({
 
 JSON-RPC client targeting the local A2A server (`localhost:3001`). Uses Anvil-style private keys for signing. This is the default when no `clientFactory` is provided.
 
-### BabylonProductionClient
+### FeedProductionClient
 
-Official A2A SDK client targeting the real Babylon server (`localhost:3000` or `babylon.market`). Uses the `@a2a-js/sdk` `message/send` protocol.
+Official A2A SDK client targeting the real Feed server (`localhost:3000` or `feed.market`). Uses the `@a2a-js/sdk` `message/send` protocol.
 
 ```typescript
-import { BabylonProductionClient, runHarness, createLLMAgent, getArchetype } from '@babylon/agent-harness';
+import { FeedProductionClient, runHarness, createLLMAgent, getArchetype } from '@feed/agent-harness';
 
-const client = new BabylonProductionClient({
+const client = new FeedProductionClient({
   baseUrl: 'http://localhost:3000',
-  apiKey: process.env.BABYLON_API_KEY!,
+  apiKey: process.env.FEED_API_KEY!,
 });
 
 const result = await runHarness({
@@ -167,7 +167,7 @@ import {
   runHarness,
   createLLMAgent,
   getArchetype,
-} from '@babylon/agent-harness';
+} from '@feed/agent-harness';
 
 let idx = 0;
 
@@ -191,7 +191,7 @@ const result = await runHarness({
 Archetypes define personality traits (greed, fear, patience, confidence, ethics) and action-weight distributions that influence how agents behave.
 
 ```typescript
-import { getArchetype, getAllArchetypes, getArchetypeIds } from '@babylon/agent-harness';
+import { getArchetype, getAllArchetypes, getArchetypeIds } from '@feed/agent-harness';
 
 getArchetypeIds();
 // → ['trader', 'degen', 'hodler', 'scammer', 'whale', 'analyst', ...]
@@ -240,7 +240,7 @@ These are the inputs to the Python ScamBench training pipeline — see `packages
 
 ## ScamBench Integration
 
-The harness is the TypeScript entry point for collecting Babylon-native trajectories for ScamBench:
+The harness is the TypeScript entry point for collecting Feed-native trajectories for ScamBench:
 
 1. **Generate trajectories** using `LLMAgent` or `HermesAdapter` against the real dev server.
 2. **Export** with `scripts/export-trust-experiment-trajectories.ts`.
@@ -271,7 +271,7 @@ Options:
 ## Implementing a Custom Agent
 
 ```typescript
-import type { TrainableAgent, AgentContext, AgentDecision, AgentConfig } from '@babylon/agent-harness';
+import type { TrainableAgent, AgentContext, AgentDecision, AgentConfig } from '@feed/agent-harness';
 
 class MyAgent implements TrainableAgent {
   readonly id = 'my-agent';

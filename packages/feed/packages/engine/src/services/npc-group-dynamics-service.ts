@@ -38,15 +38,15 @@ import {
   sql,
   userInteractions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
   jaccardSimilarity,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { NPC_GROUP_DYNAMICS_CONFIG } from '../config/npc-activity';
-import { BabylonLLMClient } from '../llm/openai-client';
+import { FeedLLMClient } from '../llm/openai-client';
 import { generateWorldContext, validateNoRealNames } from '../prompts';
 import {
   pickRandom,
@@ -117,7 +117,7 @@ export function normalizeNpcGroupMessageResponse(
 }
 
 export class NPCGroupDynamicsService {
-  // User group participation limits - now use GROUP_CONFIG from @babylon/shared
+  // User group participation limits - now use GROUP_CONFIG from @feed/shared
 
   /**
    * Process all NPC group dynamics for one tick
@@ -148,7 +148,7 @@ export class NPCGroupDynamicsService {
 
     // Initialize LLM client for message generation
     // Priority: Groq > Claude > OpenAI
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
 
     // 1. Form new groups
     const newGroups = await NPCGroupDynamicsService.formNewGroups(rng);
@@ -547,7 +547,7 @@ export class NPCGroupDynamicsService {
    * Optimized: Single query with LEFT JOIN to get tier data upfront instead of N+1.
    */
   private static async postGroupMessages(
-    llm: BabylonLLMClient,
+    llm: FeedLLMClient,
     rng: RngFunction
   ): Promise<number> {
     let messagesPosted = 0;

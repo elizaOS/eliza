@@ -58,8 +58,8 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { requireNftChatAccess } from '@babylon/api/services/nft-chat-gating-service';
+} from '@feed/api';
+import { requireNftChatAccess } from '@feed/api/services/nft-chat-gating-service';
 import {
   and,
   asc,
@@ -76,14 +76,14 @@ import {
   messageReactions,
   messages,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import {
   ChatQuerySchema,
   getChainName,
   getCurrentChainId,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { CHAT_PAGE_SIZE } from '@/lib/constants';
 

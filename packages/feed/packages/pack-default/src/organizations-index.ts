@@ -1,4 +1,4 @@
-import type { PackOrganization } from '@babylon/shared';
+import type { PackOrganization } from '@feed/shared';
 
 import ai16z from './organizations/ai16z';
 import aimazon from './organizations/aimazon';

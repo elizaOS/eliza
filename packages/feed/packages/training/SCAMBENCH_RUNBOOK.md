@@ -1,6 +1,6 @@
-# Babylon ScamBench Data Runbook
+# Feed ScamBench Data Runbook
 
-This runbook is for Babylon scam-defense work only.
+This runbook is for Feed scam-defense work only.
 
 - Canonical benchmark: ScamBench
 - Canonical paper theme: gullibility / scam resistance for autonomous agents
@@ -11,16 +11,16 @@ This runbook is for Babylon scam-defense work only.
 
 ## What This Repo Already Has
 
-- Babylon runtime and training code:
-  `/Users/shawwalters/babylon-workspace/babylon`
+- Feed runtime and training code:
+  `/Users/shawwalters/feed-workspace/feed`
 - ScamBench benchmark package:
-  `/Users/shawwalters/babylon-workspace/scambench`
+  `/Users/shawwalters/feed-workspace/scambench`
 - External prompt-injection / jailbreak source mirrors:
-  `/Users/shawwalters/babylon-workspace/external-sources`
+  `/Users/shawwalters/feed-workspace/external-sources`
 - Paper and generated experiment summaries:
-  `/Users/shawwalters/babylon-workspace/paper`
+  `/Users/shawwalters/feed-workspace/paper`
 
-The important point is that Babylon and ScamBench are already connected.
+The important point is that Feed and ScamBench are already connected.
 This is not a blank-slate plan. The job is to make the existing data path
 operational, documented, and adapter-ready.
 
@@ -28,9 +28,9 @@ operational, documented, and adapter-ready.
 
 We need one defensible loop:
 
-1. Generate Babylon-native data.
+1. Generate Feed-native data.
 2. Ingest external prompt-injection and scam datasets.
-3. Re-synthesize them into Babylon / ScamBench formats.
+3. Re-synthesize them into Feed / ScamBench formats.
 4. Export trainable trajectories.
 5. Train Qwen variants, starting with `Qwen/Qwen3.5-9B`.
 6. Benchmark baseline vs trained models on ScamBench.
@@ -38,48 +38,48 @@ We need one defensible loop:
 
 ## Repo Map
 
-- Babylon-native generation:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/engine/examples/generate-training-data.ts`
-- Babylon trust corpus collection:
-  `/Users/shawwalters/babylon-workspace/babylon/scripts/collect-trust-experiment-corpus.ts`
-- Babylon trust trajectory export:
-  `/Users/shawwalters/babylon-workspace/babylon/scripts/export-trust-experiment-trajectories.ts`
-- ScamBench scenario seeding into Babylon chats:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/engine/src/services/scambench-scenario-seeding-service.ts`
+- Feed-native generation:
+  `/Users/shawwalters/feed-workspace/feed/packages/engine/examples/generate-training-data.ts`
+- Feed trust corpus collection:
+  `/Users/shawwalters/feed-workspace/feed/scripts/collect-trust-experiment-corpus.ts`
+- Feed trust trajectory export:
+  `/Users/shawwalters/feed-workspace/feed/scripts/export-trust-experiment-trajectories.ts`
+- ScamBench scenario seeding into Feed chats:
+  `/Users/shawwalters/feed-workspace/feed/packages/engine/src/services/scambench-scenario-seeding-service.ts`
 - Canonical external-data review and materialization:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/review_hf_scam_datasets.py`
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/materialize_external_scam_data.py`
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/materialize_prompt_injection_sources.py`
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/materialize_clawbench_sources.py`
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/merge_materialized_scam_corpora.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/review_hf_scam_datasets.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/materialize_external_scam_data.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/materialize_prompt_injection_sources.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/materialize_clawbench_sources.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/merge_materialized_scam_corpora.py`
 - Lightweight benchmark-only ETL / re-synthesis:
-  `/Users/shawwalters/babylon-workspace/scambench/scripts/hf_etl.py`
-  `/Users/shawwalters/babylon-workspace/scambench/scripts/resynthesize.py`
+  `/Users/shawwalters/feed-workspace/scambench/scripts/hf_etl.py`
+  `/Users/shawwalters/feed-workspace/scambench/scripts/resynthesize.py`
 - ScamBench catalog builder and scorer:
-  `/Users/shawwalters/babylon-workspace/scambench/src/catalog.ts`
-  `/Users/shawwalters/babylon-workspace/scambench/src/index.ts`
-- Babylon export for local fine-tuning:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/export_scam_defense_trajectories.py`
+  `/Users/shawwalters/feed-workspace/scambench/src/catalog.ts`
+  `/Users/shawwalters/feed-workspace/scambench/src/index.ts`
+- Feed export for local fine-tuning:
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/export_scam_defense_trajectories.py`
 - Local training:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/train_local.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/train_local.py`
 - Local direct benchmarking:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/run_scambench_local.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/run_scambench_local.py`
 - Remote unified matrix:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/run_nebius_unified_matrix.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/run_nebius_unified_matrix.py`
 
 ## Data Lanes
 
 There are three data lanes and they should stay distinct until export time.
 
-### 1. Babylon-native trajectories
+### 1. Feed-native trajectories
 
-Use this lane for real Babylon behavior, live chats, runtime rollouts, and
+Use this lane for real Feed behavior, live chats, runtime rollouts, and
 agent interaction traces.
 
 Primary entrypoints:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon
+cd /Users/shawwalters/feed-workspace/feed
 bun run packages/engine/examples/generate-training-data.ts --causal --hours 2
 
 bun run scripts/collect-trust-experiment-corpus.ts
@@ -88,43 +88,43 @@ bun run scripts/export-trust-experiment-trajectories.ts --manifest <manifest-pat
 
 Use this lane for:
 
-- live or simulated Babylon chat behavior
+- live or simulated Feed chat behavior
 - agent gullibility traces from the actual runtime
-- data that should preserve Babylon interaction style
+- data that should preserve Feed interaction style
 
 ### 2. External threat corpora
 
 Use this lane for public scam datasets, prompt-injection datasets, jailbreak
 corpora, and real-world scenario text that must be normalized before training.
 
-Canonical Babylon path:
+Canonical Feed path:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/review_hf_scam_datasets.py
 python scripts/materialize_external_scam_data.py
 python scripts/materialize_prompt_injection_sources.py
 python scripts/materialize_clawbench_sources.py
 python scripts/merge_materialized_scam_corpora.py \
-  --input-dir /Users/shawwalters/babylon-workspace/babylon/training-data/external-scam-materialized/<timestamp> \
-  --input-dir /Users/shawwalters/babylon-workspace/babylon/training-data/prompt-injection-materialized/<timestamp> \
-  --input-dir /Users/shawwalters/babylon-workspace/babylon/training-data/clawbench-materialized/<timestamp>
+  --input-dir /Users/shawwalters/feed-workspace/feed/training-data/external-scam-materialized/<timestamp> \
+  --input-dir /Users/shawwalters/feed-workspace/feed/training-data/prompt-injection-materialized/<timestamp> \
+  --input-dir /Users/shawwalters/feed-workspace/feed/training-data/clawbench-materialized/<timestamp>
 ```
 
 This produces:
 
 - reviewed dataset inventories
-- Babylon-shaped `training_examples.jsonl`
+- Feed-shaped `training_examples.jsonl`
 - curated `scambench_curated_scenarios.json`
 - merged threat bundles for training and evaluation
 
 ### 3. Benchmark-only re-synthesis
 
 Use this when you want fast ScamBench scenario generation without committing the
-result to the canonical Babylon materialization path yet.
+result to the canonical Feed materialization path yet.
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/scambench
+cd /Users/shawwalters/feed-workspace/scambench
 python scripts/hf_etl.py download --output-dir ./hf-raw
 python scripts/resynthesize.py --input ./hf-raw --output ./hf-scenarios/all.json --seed 42
 ```
@@ -156,18 +156,18 @@ ClawBench note:
 The rule is simple:
 
 - detector-style rows do not go directly into policy SFT
-- conversation-style and re-authored rows can become Babylon trajectories
+- conversation-style and re-authored rows can become Feed trajectories
 - benchmark scenarios should stay curated, not raw dumps
 
 ## Build The Unified ScamBench Catalog
 
 Use the merged threat bundle when you want the benchmark to reflect both
-Babylon-native and external material.
+Feed-native and external material.
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/scambench
+cd /Users/shawwalters/feed-workspace/scambench
 bun run src/catalog.ts \
-  --external-scenarios /Users/shawwalters/babylon-workspace/babylon/training-data/merged-threat-materialized/<timestamp>/scambench_curated_scenarios.json \
+  --external-scenarios /Users/shawwalters/feed-workspace/feed/training-data/merged-threat-materialized/<timestamp>/scambench_curated_scenarios.json \
   --output ./generated/scenario-catalog-unified-merged.json
 ```
 
@@ -177,13 +177,13 @@ Use this catalog for:
 - frontier baseline comparisons
 - adapter validation for Hermes / OpenClaw / ElizaOS
 
-## Babylon-Native Red-Team Replay
+## Feed-Native Red-Team Replay
 
-ScamBench is not only offline evaluation. It can also be replayed into Babylon.
+ScamBench is not only offline evaluation. It can also be replayed into Feed.
 
 Use:
 
-- `/Users/shawwalters/babylon-workspace/babylon/packages/engine/src/services/scambench-scenario-seeding-service.ts`
+- `/Users/shawwalters/feed-workspace/feed/packages/engine/src/services/scambench-scenario-seeding-service.ts`
 
 This is the bridge from:
 
@@ -191,24 +191,24 @@ This is the bridge from:
 
 to:
 
-- real Babylon group chats
+- real Feed group chats
 - DMs
 - shared context refresh
 - runtime trajectory collection
 
 Operationally, this is how we should generate interactive red-team data against
-our own agents instead of keeping ScamBench isolated from Babylon.
+our own agents instead of keeping ScamBench isolated from Feed.
 
 ## Export The Training Set
 
 The canonical export script now resolves ScamBench from this workspace layout
-and can combine Babylon-native and external materialized data.
+and can combine Feed-native and external materialized data.
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/export_scam_defense_trajectories.py \
   --include-external-materialized \
-  --external-materialized-dir /Users/shawwalters/babylon-workspace/babylon/training-data/merged-threat-materialized/<timestamp> \
+  --external-materialized-dir /Users/shawwalters/feed-workspace/feed/training-data/merged-threat-materialized/<timestamp> \
   --examples-per-trajectory 8 \
   --held-out-ratio 0.15 \
   --held-out-seed 42 \
@@ -219,7 +219,7 @@ Expected output:
 
 - `trajectories.jsonl`
 - `held-out/trajectories.jsonl`
-- optionally format-recovery examples for Babylon output-shape stability
+- optionally format-recovery examples for Feed output-shape stability
 
 ## Training Plan
 
@@ -252,23 +252,23 @@ Plan the Qwen capacity envelope before changing hardware, sequence length, or
 the base checkpoint:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training
+cd /Users/shawwalters/feed-workspace/feed/packages/training
 make qwen-capacity MODEL=9b CONTEXTS=128k,256k TRAINING_SEQ_LENGTH=8192
 ```
 
 For the planner internals and interpretation notes, use:
 
-- `/Users/shawwalters/babylon-workspace/babylon/packages/training/QWEN_CAPACITY_RUNBOOK.md`
+- `/Users/shawwalters/feed-workspace/feed/packages/training/QWEN_CAPACITY_RUNBOOK.md`
 
 Example MLX-style 9B run:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/train_local.py \
   --backend mlx \
   --model mlx-community/Qwen3.5-9B-MLX-4bit \
-  --source-dir /Users/shawwalters/babylon-workspace/babylon/training-data/scam-defense-export/<timestamp> \
-  --output /Users/shawwalters/babylon-workspace/babylon/trained_models/scam-defense-qwen35-9b \
+  --source-dir /Users/shawwalters/feed-workspace/feed/training-data/scam-defense-export/<timestamp> \
+  --output /Users/shawwalters/feed-workspace/feed/trained_models/scam-defense-qwen35-9b \
   --iters 20 \
   --batch-size 1 \
   --max-seq-length 512 \
@@ -279,12 +279,12 @@ python scripts/train_local.py \
 Example CUDA / Transformers run:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/train_local.py \
   --backend cuda \
   --model Qwen/Qwen3.5-4B \
-  --source-dir /Users/shawwalters/babylon-workspace/babylon/training-data/scam-defense-export/<timestamp> \
-  --output /Users/shawwalters/babylon-workspace/babylon/trained_models/scam-defense-qwen35-4b-qlora \
+  --source-dir /Users/shawwalters/feed-workspace/feed/training-data/scam-defense-export/<timestamp> \
+  --output /Users/shawwalters/feed-workspace/feed/trained_models/scam-defense-qwen35-4b-qlora \
   --auto-detect-held-out \
   --optimizer adamw \
   --quantization nf4 \
@@ -301,12 +301,12 @@ python scripts/train_local.py \
 Example canonical local pipeline run:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/run_pipeline.py \
   --mode train \
   --training-backend local \
   --trajectory-source local_export \
-  --source-dir /Users/shawwalters/babylon-workspace/babylon/training-data/scam-defense-export/<timestamp> \
+  --source-dir /Users/shawwalters/feed-workspace/feed/training-data/scam-defense-export/<timestamp> \
   --local-backend cuda \
   --local-model Qwen/Qwen3.5-4B \
   --local-quantization nf4 \
@@ -322,7 +322,7 @@ python scripts/run_pipeline.py \
 Use Nebius when 9B no longer fits comfortably on the local machine:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/run_nebius_unified_matrix.py \
   --base-model Qwen/Qwen3.5-9B \
   --gpu-type h200 \
@@ -345,14 +345,14 @@ Current operational guidance:
 Use the direct local scorer for baseline vs trained Qwen comparisons:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/run_scambench_local.py \
   --backend cuda \
   --device cuda \
   --base-model Qwen/Qwen3.5-9B \
   --label baseline-qwen35-9b \
-  --output /Users/shawwalters/babylon-workspace/scambench/results/local-eval/baseline-qwen35-9b-decisions.json \
-  --scenario-catalog /Users/shawwalters/babylon-workspace/scambench/generated/scenario-catalog-unified-merged.json \
+  --output /Users/shawwalters/feed-workspace/scambench/results/local-eval/baseline-qwen35-9b-decisions.json \
+  --scenario-catalog /Users/shawwalters/feed-workspace/scambench/generated/scenario-catalog-unified-merged.json \
   --score
 ```
 
@@ -367,7 +367,7 @@ Repeat with the trained adapter or merged checkpoint and compare:
 
 Use:
 
-- `/Users/shawwalters/babylon-workspace/scambench/targets/frontier-baselines.json`
+- `/Users/shawwalters/feed-workspace/scambench/targets/frontier-baselines.json`
 
 That file already includes:
 
@@ -378,11 +378,11 @@ That file already includes:
 Run:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/scambench
+cd /Users/shawwalters/feed-workspace/scambench
 bun run src/index.ts \
   --targets ./targets/frontier-baselines.json \
-  --target-repo /Users/shawwalters/babylon-workspace/babylon \
-  --external-scenarios /Users/shawwalters/babylon-workspace/babylon/training-data/merged-threat-materialized/<timestamp>/scambench_curated_scenarios.json \
+  --target-repo /Users/shawwalters/feed-workspace/feed \
+  --external-scenarios /Users/shawwalters/feed-workspace/feed/training-data/merged-threat-materialized/<timestamp>/scambench_curated_scenarios.json \
   --output-dir ./results/frontier-baselines
 ```
 
@@ -404,23 +404,23 @@ Status:
 Local code:
 
 - bridge client:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/src/training/hermes_bridge.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/src/training/hermes_bridge.py`
 - local ScamBench runner:
-  `/Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts/run_hermes_scambench_local.py`
+  `/Users/shawwalters/feed-workspace/feed/packages/training/python/scripts/run_hermes_scambench_local.py`
 - harness:
-  `/Users/shawwalters/babylon-workspace/scambench/harnesses/hermes_harness.py`
+  `/Users/shawwalters/feed-workspace/scambench/harnesses/hermes_harness.py`
 
 Run:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python
 python scripts/run_hermes_scambench_local.py \
   --model mlx-community/Qwen3.5-4B-MLX-4bit \
   --base-url http://127.0.0.1:8099/v1 \
   --label hermes-qwen35-4b \
-  --output /Users/shawwalters/babylon-workspace/scambench/results/hermes/hermes-qwen35-4b-decisions.json \
-  --score-output-dir /Users/shawwalters/babylon-workspace/scambench/results/hermes/score \
-  --target-repo /Users/shawwalters/babylon-workspace/babylon
+  --output /Users/shawwalters/feed-workspace/scambench/results/hermes/hermes-qwen35-4b-decisions.json \
+  --score-output-dir /Users/shawwalters/feed-workspace/scambench/results/hermes/score \
+  --target-repo /Users/shawwalters/feed-workspace/feed
 ```
 
 Research-backed note:
@@ -438,7 +438,7 @@ Status:
 Local code:
 
 - provisional harness:
-  `/Users/shawwalters/babylon-workspace/scambench/harnesses/openclaw_harness.py`
+  `/Users/shawwalters/feed-workspace/scambench/harnesses/openclaw_harness.py`
 
 What the adapter should do next:
 
@@ -459,7 +459,7 @@ Status:
 Local code:
 
 - harness:
-  `/Users/shawwalters/babylon-workspace/scambench/harnesses/elizaos_harness.py`
+  `/Users/shawwalters/feed-workspace/scambench/harnesses/elizaos_harness.py`
 
 What the adapter should do next:
 
@@ -486,12 +486,12 @@ Reason:
 ## Current Gaps That Matter
 
 - some older docs and scripts assumed `benchmarks/scambench`; this workspace
-  uses `/Users/shawwalters/babylon-workspace/scambench`
+  uses `/Users/shawwalters/feed-workspace/scambench`
 - the 9B path should become the default paper path, but some matrix tooling is
   still named around 4B runs
 - OpenClaw needs a real adapter, not a guessed REST shim
 - ElizaOS needs a first-class recorded-decision runner
-- benchmark replay into live Babylon chats should become a scheduled data source,
+- benchmark replay into live Feed chats should become a scheduled data source,
   not just a manual debugging path
 
 ## External References
@@ -513,7 +513,7 @@ Reason:
 
 When in doubt, do this:
 
-1. Generate or collect Babylon-native gullibility data.
+1. Generate or collect Feed-native gullibility data.
 2. Refresh external scam and prompt-injection materialization.
 3. Merge the threat bundles.
 4. Rebuild the unified ScamBench catalog.
@@ -524,4 +524,4 @@ When in doubt, do this:
 9. Run `gpt-5.4` and `claude-sonnet-4.6` as frontier baselines.
 10. Run Hermes, then ElizaOS, then OpenClaw once the adapters are ready.
 
-That is the Babylon data runbook.
+That is the Feed data runbook.

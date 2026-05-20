@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'kai-zhang',
@@ -78,7 +78,7 @@ const actor = {
     'Founder @DragonPay | Yale & Tsinghua | Bridging Global Finance | Cross-Border Payments | Financial Inclusion Advocate | 4 languages, 1 mission',
   pfpDescription:
     'Chinese-American male in his late 20s with a perfectly tailored navy suit, clean-shaven face, sharp dark eyes, and a diplomatic smile. Black hair styled conservatively. Every detail is precise and deliberate. Background: a panoramic view of a city skyline suggesting multiple continents \u2014 Shanghai meets Manhattan.',
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'scammer',

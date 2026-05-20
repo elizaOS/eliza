@@ -1,7 +1,7 @@
 'use client';
 
-import type { GameOnboardingStep } from '@babylon/shared';
-import { cn, ONBOARDING_STEP_ORDER } from '@babylon/shared';
+import type { GameOnboardingStep } from '@feed/shared';
+import { cn, ONBOARDING_STEP_ORDER } from '@feed/shared';
 import { Check, ChevronRight, Sparkles, X } from 'lucide-react';
 import { STEP_INFO, useGameOnboarding } from './GameOnboardingProvider';
 

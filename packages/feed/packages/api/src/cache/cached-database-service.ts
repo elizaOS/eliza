@@ -8,7 +8,7 @@
  *
  * @usage
  * ```typescript
- * import { cachedDb } from '@babylon/api'
+ * import { cachedDb } from '@feed/api'
  * const posts = await cachedDb.getRecentPosts(100)
  * ```
  */
@@ -36,9 +36,9 @@ import {
   trendingTags,
   userActorFollows,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger, resolveUserIdentifierKind } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger, resolveUserIdentifierKind } from '@feed/shared';
 import {
   CACHE_KEYS,
   DEFAULT_TTLS,

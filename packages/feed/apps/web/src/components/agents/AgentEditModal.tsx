@@ -5,7 +5,7 @@ import {
   getAgentDefaultProfileImageUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   ChevronLeft,
   ChevronRight,

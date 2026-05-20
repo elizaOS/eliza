@@ -6,9 +6,9 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, feedEvents } from '@babylon/db';
-import { type FeedEventPayload, generateSnowflakeId } from '@babylon/shared';
+} from '@feed/api';
+import { db, feedEvents } from '@feed/db';
+import { type FeedEventPayload, generateSnowflakeId } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

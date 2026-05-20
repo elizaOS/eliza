@@ -285,7 +285,7 @@ test.describe('NFT Mint Flow', () => {
     const metadata = await response.json();
     expect(metadata.name).toBeDefined();
     expect(metadata.image).toBeDefined();
-    expect(metadata.external_url).toContain('babylon.market');
+    expect(metadata.external_url).toContain('feed.market');
   });
 });
 

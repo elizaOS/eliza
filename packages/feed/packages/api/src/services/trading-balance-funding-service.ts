@@ -8,8 +8,8 @@ import {
   sql,
   users,
   WELCOME_BONUS_BALANCE_DESCRIPTION,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { CACHE_KEYS, invalidateCache } from '../cache';
 
 const FUNDING_TRANSACTION_TYPES = [

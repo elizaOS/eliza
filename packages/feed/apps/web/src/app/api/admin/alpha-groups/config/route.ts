@@ -15,13 +15,13 @@ import {
   requirePermission,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   ALPHA_GROUP_CONFIG,
   DOMAIN_FOCUS_WEIGHTS,
   TIER_CONFIG,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

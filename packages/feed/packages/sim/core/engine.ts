@@ -1,10 +1,10 @@
 /**
- * BabylonEngine — core runtime that registers systems and executes ticks.
+ * FeedEngine — core runtime that registers systems and executes ticks.
  *
  * Extends Hookable for lifecycle events (engine:boot, tick:before, system:error, etc.)
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { Hookable } from 'hookable';
 import { _engine, _tick } from './composables';
 import {
@@ -18,7 +18,7 @@ import {
   SystemNotFoundError,
 } from './errors';
 import {
-  type BabylonSystem,
+  type FeedSystem,
   type EngineContext,
   type RuntimeHooks,
   type SystemTickResult,
@@ -26,9 +26,9 @@ import {
   TickPhase,
 } from './types';
 
-export class BabylonEngine extends Hookable<RuntimeHooks> {
-  private readonly systems: BabylonSystem[] = [];
-  private sorted: BabylonSystem[] = [];
+export class FeedEngine extends Hookable<RuntimeHooks> {
+  private readonly systems: FeedSystem[] = [];
+  private sorted: FeedSystem[] = [];
   private engineCtx: EngineContext | null = null;
   private tickNumber = 0;
   private booted = false;
@@ -38,7 +38,7 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
     super();
   }
 
-  use(system: BabylonSystem): this {
+  use(system: FeedSystem): this {
     if (this.booted) {
       throw new FrameworkError(
         'Cannot add systems after boot(). Register all systems before calling boot().'
@@ -79,7 +79,7 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
     _engine.set(this.engineCtx);
 
     logger.info(
-      `BabylonEngine booted with ${this.sorted.length} system(s)`,
+      `FeedEngine booted with ${this.sorted.length} system(s)`,
       { systems: this.sorted.map((s) => s.id) },
       'Framework'
     );
@@ -141,7 +141,7 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
   }
 
   private async executeSystem(
-    sys: BabylonSystem,
+    sys: FeedSystem,
     ctx: TickContext
   ): Promise<void> {
     const alwaysRun =
@@ -254,8 +254,8 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
   // Topological sort within phases
   // ---------------------------------------------------------------------------
 
-  private sortSystems(systems: BabylonSystem[]): BabylonSystem[] {
-    const byPhase = new Map<TickPhase, BabylonSystem[]>();
+  private sortSystems(systems: FeedSystem[]): FeedSystem[] {
+    const byPhase = new Map<TickPhase, FeedSystem[]>();
     for (const sys of systems) {
       const group = byPhase.get(sys.phase) ?? [];
       group.push(sys);
@@ -263,7 +263,7 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
     }
 
     const phases = [...byPhase.keys()].sort((a, b) => a - b);
-    const result: BabylonSystem[] = [];
+    const result: FeedSystem[] = [];
     const allIds = new Set(systems.map((s) => s.id));
 
     for (const phase of phases) {
@@ -276,9 +276,9 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
   }
 
   private topoSort(
-    systems: BabylonSystem[],
+    systems: FeedSystem[],
     allIds: Set<string>
-  ): BabylonSystem[] {
+  ): FeedSystem[] {
     const idToSys = new Map(systems.map((s) => [s.id, s]));
     const inDegree = new Map<string, number>();
     const adj = new Map<string, string[]>();
@@ -306,7 +306,7 @@ export class BabylonEngine extends Hookable<RuntimeHooks> {
       if (degree === 0) queue.push(id);
     }
 
-    const sorted: BabylonSystem[] = [];
+    const sorted: FeedSystem[] = [];
     const sortedIds = new Set<string>();
     let qi = 0;
     while (qi < queue.length) {

@@ -18,8 +18,8 @@ import {
   isNull,
   lte,
   reactionTrajectories,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 export interface ReactionDecision {
   eventId: string;

@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * import { ambientPost, renderPrompt } from '@babylon/engine';
+ * import { ambientPost, renderPrompt } from '@feed/engine';
  *
  * const prompt = renderPrompt(ambientPost, {
  *   actorName: 'Alice',
@@ -143,7 +143,7 @@ export {
 /**
  * Usage examples:
  *
- * import { ambientPost, renderPrompt } from '@babylon/engine';
+ * import { ambientPost, renderPrompt } from '@feed/engine';
  *
  * const prompt = renderPrompt(ambientPost, {
  *   actorName: 'Alice',

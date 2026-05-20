@@ -43,7 +43,7 @@ function resolveResolvedBy(
   if (reviewerId === 'system') {
     return {
       id: 'system',
-      displayName: 'Babylon Resolution Engine',
+      displayName: 'Feed Resolution Engine',
       username: null,
       kind: 'system',
     };
@@ -130,7 +130,7 @@ describe('Resolution Audit - resolvedBy logic', () => {
     const result = resolveResolvedBy('system', null);
     expect(result).toEqual({
       id: 'system',
-      displayName: 'Babylon Resolution Engine',
+      displayName: 'Feed Resolution Engine',
       username: null,
       kind: 'system',
     });

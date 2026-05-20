@@ -1,6 +1,6 @@
 'use client';
 
-import type { UserBalanceDataAPI } from '@babylon/shared';
+import type { UserBalanceDataAPI } from '@feed/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiUrl } from '@/utils/api-url';
 

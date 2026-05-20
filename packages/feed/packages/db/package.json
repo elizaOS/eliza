@@ -1,9 +1,9 @@
 {
-  "name": "@babylon/db",
+  "name": "@feed/db",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Babylon Database Layer - Drizzle ORM",
+  "description": "Feed Database Layer - Drizzle ORM",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -31,7 +31,7 @@
     "db:sync-migrations": "tsx scripts/sync-migrations.ts"
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*",
+    "@feed/shared": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "postgres": "^3.4.7"
   },

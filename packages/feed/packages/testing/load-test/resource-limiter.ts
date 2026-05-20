@@ -5,7 +5,7 @@
  * backs off or stops if memory/CPU gets too high
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 export interface ResourceLimits {
   maxMemoryMB: number;

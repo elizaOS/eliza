@@ -4,7 +4,7 @@
  * Runs each unit test file in its own bun subprocess so mock.module()
  * calls in one file cannot leak into another. Bun's test runner shares
  * a single module registry across all files in a single invocation,
- * which means mock.module('@babylon/shared', ...) in file A replaces
+ * which means mock.module('@feed/shared', ...) in file A replaces
  * the real module for file B too. This script works around that by
  * spawning a separate `bun test <file>` for each test file.
  *

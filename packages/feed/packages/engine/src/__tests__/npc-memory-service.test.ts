@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { NpcMemory } from '@babylon/db';
+import type { NpcMemory } from '@feed/db';
 import { npcMemoryService } from '../services/npc-memory-service';
 
 describe('NPC Memory Service - Format Memories For Prompt', () => {

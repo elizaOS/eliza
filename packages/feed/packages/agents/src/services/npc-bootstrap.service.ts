@@ -19,13 +19,13 @@ import {
   loadActorById,
   type StaticActor,
   StaticDataRegistry,
-} from '@babylon/engine';
-import type { ActorData, AgentCapabilities } from '@babylon/shared';
+} from '@feed/engine';
+import type { ActorData, AgentCapabilities } from '@feed/shared';
 import {
   logger,
   mapActorToOASFDomains,
   mapActorToOASFSkills,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';
 import { AgentStatus, AgentType } from '../types/agent-registry';
 import { agentRegistry } from './agent-registry.service';
@@ -245,7 +245,7 @@ export class NPCBootstrapService {
       parts.push(actorData.description);
     } else {
       parts.push(
-        `You are ${actorData.name}, a character in the Babylon prediction market game.`
+        `You are ${actorData.name}, a character in the Feed prediction market game.`
       );
     }
 
@@ -314,7 +314,7 @@ export class NPCBootstrapService {
       x402Support: true,
 
       // Platform and user type
-      platform: 'babylon',
+      platform: 'feed',
       userType: 'npc',
 
       // OASF Taxonomy Support (Agent0 SDK v0.31.0)

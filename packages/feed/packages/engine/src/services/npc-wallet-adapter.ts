@@ -8,7 +8,7 @@
  * Uses atomic SQL operations to prevent race conditions that could
  * lead to negative balances.
  */
-import type { WalletPort } from '@babylon/core/markets/shared';
+import type { WalletPort } from '@feed/core/markets/shared';
 import {
   actorState,
   and,
@@ -17,8 +17,8 @@ import {
   gte,
   sql,
   type Transaction,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 type DbClient = typeof defaultDb | Transaction;
 

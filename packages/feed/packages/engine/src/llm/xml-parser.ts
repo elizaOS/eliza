@@ -10,7 +10,7 @@
  * XML is more forgiving than JSON and easier for LLMs to generate correctly.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { JsonValue } from '../types/common';
 import { formatError } from '../utils/error-utils';
 

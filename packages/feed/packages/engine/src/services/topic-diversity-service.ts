@@ -32,8 +32,8 @@
  * ```
  */
 
-import { and, db, desc, eq, gte, isNull, posts } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { and, db, desc, eq, gte, isNull, posts } from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Editorial beat categories that news outlets can specialize in

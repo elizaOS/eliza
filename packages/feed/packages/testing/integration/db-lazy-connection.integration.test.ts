@@ -6,7 +6,7 @@ import {
   expect,
   it,
 } from 'bun:test';
-import { closeDatabase, db, dbRead, getDatabaseClientState } from '@babylon/db';
+import { closeDatabase, db, dbRead, getDatabaseClientState } from '@feed/db';
 import {
   setupTestEnvironment,
   shouldSkipDatabaseTests,

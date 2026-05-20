@@ -1,6 +1,6 @@
 'use client';
 
-import { getProfileUrl, POINTS } from '@babylon/shared';
+import { getProfileUrl, POINTS } from '@feed/shared';
 import { ArrowRight, Award, TrendingUp, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';

@@ -1,7 +1,7 @@
 {
   "name": "dag-visualizer",
   "version": "1.0.0",
-  "description": "Standalone, zero-dependency visualization of ALL data flowing through the Babylon game engine tick execution.",
+  "description": "Standalone, zero-dependency visualization of ALL data flowing through the Feed game engine tick execution.",
   "main": "index.js",
   "scripts": {
     "test": "npx playwright test --config playwright.config.mjs",

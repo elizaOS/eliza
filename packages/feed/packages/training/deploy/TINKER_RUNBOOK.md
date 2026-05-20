@@ -1,6 +1,6 @@
 # Tinker Runbook
 
-Use this when Babylon training runs on Tinker instead of a self-managed GPU box.
+Use this when Feed training runs on Tinker instead of a self-managed GPU box.
 
 ## Flow
 

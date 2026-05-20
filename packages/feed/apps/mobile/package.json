@@ -17,9 +17,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*",
-    "@babylon/contracts": "workspace:*",
-    "@babylon/core": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "@feed/contracts": "workspace:*",
+    "@feed/core": "workspace:*",
     "@capacitor/app": "^7.0.0",
     "@capacitor/browser": "^7.0.0",
     "@capacitor/core": "^7.0.0",

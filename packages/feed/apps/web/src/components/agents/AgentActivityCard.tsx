@@ -1,10 +1,10 @@
 'use client';
 
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatCompactCurrency,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { memo, useState } from 'react';
 import {
   type AgentActivity,
@@ -121,13 +121,13 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
           </span>
           <span className="text-muted-foreground/60">•</span>
           <span className="font-mono text-foreground">
-            {BABYLON_POINTS_SYMBOL}
+            {FEED_POINTS_SYMBOL}
             {amount.toLocaleString()}
           </span>
           <span className="text-muted-foreground/60">@</span>
           <span className="font-mono text-foreground/80">
             {marketType === 'perp'
-              ? `${BABYLON_POINTS_SYMBOL}${price.toLocaleString()}`
+              ? `${FEED_POINTS_SYMBOL}${price.toLocaleString()}`
               : `${(price * 100).toFixed(1)}%`}
           </span>
         </div>

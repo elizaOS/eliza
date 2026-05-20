@@ -18,7 +18,7 @@ mock.module('ai', () => ({
   generateText: mockGenerateText,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   GROQ_MODELS: {
     FREE: { modelId: 'groq-small-model' },
     PRO: { modelId: 'groq-large-model' },

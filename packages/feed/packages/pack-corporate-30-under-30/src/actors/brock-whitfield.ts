@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'brock-whitfield',
@@ -71,7 +71,7 @@ const actor = {
     "Founder @OmniChain (v4) | 3x Founder (v1-v3 were learnings) | WAGMI | This one's different | DMs open for alpha",
   pfpDescription:
     'White American male in his mid-20s with a backward cap, patchy stubble, and sunglasses worn indoors. Slightly sunburned from the Miami co-working space rooftop. Wearing a wrinkled OmniChain branded hoodie. Eyes are bloodshot from staring at charts. Grinning maniacally.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

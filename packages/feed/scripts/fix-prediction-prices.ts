@@ -18,7 +18,7 @@
  */
 
 import { parseArgs } from 'node:util';
-import { db, eq, poolPositions, sql } from '@babylon/db';
+import { db, eq, poolPositions, sql } from '@feed/db';
 
 const { values: args } = parseArgs({
   options: {

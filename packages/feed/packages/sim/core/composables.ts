@@ -13,12 +13,12 @@
  *   const metrics = useMetrics() // tick metrics
  *   const shared = useShared()   // tick shared data
  *
- * Context is set by BabylonEngine during tick execution using AsyncLocalStorage,
+ * Context is set by FeedEngine during tick execution using AsyncLocalStorage,
  * so it works across async boundaries without build-time transforms.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { DrizzleClient } from '@babylon/db';
+import type { DrizzleClient } from '@feed/db';
 import { createContext } from 'unctx';
 import type {
   EngineContext,
@@ -45,7 +45,7 @@ const tickContext = createContext<TickContext>({
 });
 
 // ---------------------------------------------------------------------------
-// Internal — used by BabylonEngine to set/call context
+// Internal — used by FeedEngine to set/call context
 // ---------------------------------------------------------------------------
 
 export const _engine = engineContext;

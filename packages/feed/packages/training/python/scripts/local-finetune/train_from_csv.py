@@ -124,7 +124,7 @@ def train_local(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="../data/scored_trajectories.csv")
-    parser.add_argument("--output", default="./trained_models/babylon-v1")
+    parser.add_argument("--output", default="./trained_models/feed-v1")
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist

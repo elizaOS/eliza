@@ -5,7 +5,7 @@
  * Provides a unified interface for displaying agent activity in the UI.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Channel, useSSEChannel } from './useSSE';
 

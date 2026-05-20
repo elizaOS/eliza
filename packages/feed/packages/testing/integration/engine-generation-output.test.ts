@@ -39,8 +39,8 @@ import {
   type GameResult,
   GameSimulator,
   type GeneratedGame,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
 // Set timeout to 15 minutes for LLM-based generation

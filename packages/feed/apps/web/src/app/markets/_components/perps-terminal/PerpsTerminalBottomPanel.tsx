@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Minus } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { AssetTradesFeed } from '@/components/markets/AssetTradesFeed';

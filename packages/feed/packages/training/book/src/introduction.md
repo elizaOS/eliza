@@ -1,6 +1,6 @@
-# Babylon RL Training Pipeline
+# Feed RL Training Pipeline
 
-This book documents the reinforcement learning (RL) training system for Babylon agents. The pipeline trains language models to play the Babylon social trading game by learning from agent trajectories.
+This book documents the reinforcement learning (RL) training system for Feed agents. The pipeline trains language models to play the Feed social trading game by learning from agent trajectories.
 
 ## What This System Does
 
@@ -34,7 +34,7 @@ graph TB
     end
     
     subgraph "Training"
-        ENV[BabylonRLAIFEnv<br/>Python]
+        ENV[FeedRLAIFEnv<br/>Python]
         TRAINER[GRPO Trainer]
         VLLM[vLLM Server]
     end

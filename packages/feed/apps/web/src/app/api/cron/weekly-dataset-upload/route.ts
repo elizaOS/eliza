@@ -45,9 +45,9 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
-import { huggingFaceIntegration } from '@babylon/training';
+import { verifyCronAuth, withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
+import { huggingFaceIntegration } from '@feed/training';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

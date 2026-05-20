@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 /**
@@ -141,12 +141,12 @@ export function DiscordActivityProvider({
         // and doesn't need the proxy patches.
         //
         // Example mappings (configure in Developer Portal):
-        //   /api  → babylon.market
+        //   /api  → feed.market
         //   /blob → *.public.blob.vercel-storage.com
         if (process.env.NODE_ENV === 'production') {
           const proxyTarget =
             process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '') ||
-            'babylon.market';
+            'feed.market';
           patchUrlMappings([{ prefix: '/api', target: proxyTarget }]);
         }
 

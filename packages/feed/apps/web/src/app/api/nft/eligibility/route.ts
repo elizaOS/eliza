@@ -1,6 +1,6 @@
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { checkEligibility } from '@babylon/api/services/nft-mint-service';
-import { toISO } from '@babylon/shared';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { checkEligibility } from '@feed/api/services/nft-mint-service';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import type { EligibilityApiResponse, EligibilityResponse } from '@/types/nft';
 

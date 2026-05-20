@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCurrency } from '@babylon/shared';
+import { cn, formatCurrency } from '@feed/shared';
 import type { MarketTab } from '@/types/markets';
 
 // Re-export for backwards compatibility

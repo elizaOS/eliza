@@ -1,4 +1,4 @@
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 /**
@@ -47,7 +47,7 @@ import { NextResponse } from 'next/server';
  * // { status: 'ok', timestamp: '2024-01-15T12:00:00.000Z', env: 'production' }
  * ```
  *
- * @see {@link https://github.com/BabylonSocial/babylon/blob/main/.github/workflows/ci.yml} CI/CD usage
+ * @see {@link https://github.com/FeedSocial/feed/blob/main/.github/workflows/ci.yml} CI/CD usage
  */
 export const GET = withErrorHandling(async function GET() {
   return NextResponse.json(

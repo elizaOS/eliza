@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'max-chen',
@@ -72,7 +72,7 @@ const actor = {
     'Founder @VelocityLabs | shipped! | 4000+ features deployed | testing is optional | velocity > quality | always shipping',
   pfpDescription:
     'Chinese-American male in his mid-20s with messy black hair, dark eyes with visible dark circles from sleep deprivation, and a manic grin. Wearing a hoodie with coffee stains. Multiple monitors visible in the background, all showing deploy logs. Fingers are a blur.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

@@ -4,8 +4,8 @@
  * Returns recent posts for a user (self or another user by ID).
  */
 
-import { db, desc, eq, posts, users } from '@babylon/db';
-import { getTimeAgo } from '@babylon/shared';
+import { db, desc, eq, posts, users } from '@feed/db';
+import { getTimeAgo } from '@feed/shared';
 import type {
   Action,
   ActionResult,

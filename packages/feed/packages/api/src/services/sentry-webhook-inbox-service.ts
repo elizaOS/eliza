@@ -4,8 +4,8 @@ import {
   generateSnowflakeId,
   type JsonValue,
   sentryWebhookInboxes,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 300;
 const HMAC_SHA256_HEX_LENGTH = 64;

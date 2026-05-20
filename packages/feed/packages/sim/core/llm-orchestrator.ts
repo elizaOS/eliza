@@ -1,18 +1,18 @@
 /**
- * LLM Orchestrator — wraps BabylonLLMClient with the prompt system.
+ * LLM Orchestrator — wraps FeedLLMClient with the prompt system.
  */
 
-import { BabylonLLMClient } from '@babylon/engine';
-import type { LLMJsonSchema } from '@babylon/engine/llm/types';
-import { renderPrompt } from '@babylon/engine/prompts';
-import type { JsonValue } from '@babylon/engine/types/common';
+import { FeedLLMClient } from '@feed/engine';
+import type { LLMJsonSchema } from '@feed/engine/llm/types';
+import { renderPrompt } from '@feed/engine/prompts';
+import type { JsonValue } from '@feed/engine/types/common';
 import type { LLMExecuteOptions, LLMOrchestrator } from './types';
 
 export class DefaultLLMOrchestrator implements LLMOrchestrator {
-  private readonly client: BabylonLLMClient;
+  private readonly client: FeedLLMClient;
 
-  constructor(client?: BabylonLLMClient) {
-    this.client = client ?? new BabylonLLMClient();
+  constructor(client?: FeedLLMClient) {
+    this.client = client ?? new FeedLLMClient();
   }
 
   async execute<T>(options: LLMExecuteOptions): Promise<T> {
@@ -28,7 +28,7 @@ export class DefaultLLMOrchestrator implements LLMOrchestrator {
     return result as T;
   }
 
-  getClient(): BabylonLLMClient {
+  getClient(): FeedLLMClient {
     return this.client;
   }
 }

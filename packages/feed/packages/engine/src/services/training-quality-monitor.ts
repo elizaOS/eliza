@@ -12,7 +12,7 @@
  *   trainingQualityMonitor.flushSummary(); // end of tick
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { StaticDataRegistry } from './static-data-registry';
 
 interface QualityAlert {

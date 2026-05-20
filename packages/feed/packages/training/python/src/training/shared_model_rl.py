@@ -251,7 +251,7 @@ class CounterpartyContext:
 
     @classmethod
     def from_camel_dict(cls, d: dict[str, Any]) -> CounterpartyContext:
-        """Construct from camelCase JSON (e.g. from Babylon API responses)."""
+        """Construct from camelCase JSON (e.g. from Feed API responses)."""
         return cls(
             counterparty_id=d.get("counterpartyId"),
             counterparty_alignment=d.get("counterpartyAlignment", "neutral"),
@@ -1594,19 +1594,19 @@ async def run_shared_model_training(
     }
 
 
-# ---- Babylon CRL Mode -------------------------------------------------------
+# ---- Feed CRL Mode -------------------------------------------------------
 #
-# In this mode, Babylon drives agent actions (not Python). The trainer:
+# In this mode, Feed drives agent actions (not Python). The trainer:
 #   1. Starts vLLM to serve the model
-#   2. Babylon agents call vLLM for decisions
-#   3. Babylon logs trajectories with deterministic rewards
+#   2. Feed agents call vLLM for decisions
+#   3. Feed logs trajectories with deterministic rewards
 #   4. Trainer polls /api/crl/trajectories for completed trajectories
 #   5. Tokenizes them into AgentExperience objects
 #   6. Feeds into train_on_tick() (same training mechanics)
 #   7. Saves checkpoint, restarts vLLM with new weights
 #
 # This reuses SharedModelTrainer entirely — the only new code is:
-#   - TrajectoryFetcher (HTTP client for Babylon API)
+#   - TrajectoryFetcher (HTTP client for Feed API)
 #   - tokenize_trajectory() (JSON → AgentExperience)
 #   - vLLM lifecycle management (start/stop/reload)
 
@@ -1617,11 +1617,11 @@ import requests
 
 
 @dataclass
-class BabylonCRLConfig(SharedModelConfig):
-    """Extended config for Babylon-driven CRL mode."""
+class FeedCRLConfig(SharedModelConfig):
+    """Extended config for Feed-driven CRL mode."""
 
-    # Babylon connection
-    babylon_url: str = "http://localhost:3000"
+    # Feed connection
+    feed_url: str = "http://localhost:3000"
     poll_interval: float = 30.0  # seconds between trajectory polls
     min_batch_size: int = 10  # minimum trajectories before training
     max_batch_size: int = 200
@@ -1638,10 +1638,10 @@ class BabylonCRLConfig(SharedModelConfig):
 
 
 class TrajectoryFetcher:
-    """Fetches pre-computed trajectories from Babylon HTTP API."""
+    """Fetches pre-computed trajectories from Feed HTTP API."""
 
-    def __init__(self, babylon_url: str, timeout: float = 30.0):
-        self.babylon_url = babylon_url.rstrip("/")
+    def __init__(self, feed_url: str, timeout: float = 30.0):
+        self.feed_url = feed_url.rstrip("/")
         self.timeout = timeout
         self._last_cursor: str | None = None
         self._last_timestamp: str | None = None
@@ -1656,7 +1656,7 @@ class TrajectoryFetcher:
 
         try:
             resp = requests.get(
-                f"{self.babylon_url}/api/crl/trajectories",
+                f"{self.feed_url}/api/crl/trajectories",
                 params=params,
                 timeout=self.timeout,
             )
@@ -1673,15 +1673,15 @@ class TrajectoryFetcher:
         except requests.exceptions.HTTPError as e:
             status = getattr(e.response, "status_code", 0) if e.response else 0
             if status in (401, 403, 404):
-                logger.error(f"Babylon API error {status} (non-retryable): {e}")
+                logger.error(f"Feed API error {status} (non-retryable): {e}")
                 raise
-            logger.warning(f"Babylon API error {status} (retryable): {e}")
+            logger.warning(f"Feed API error {status} (retryable): {e}")
             return []
         except requests.exceptions.Timeout:
             logger.warning("Trajectory fetch timeout")
             return []
         except requests.exceptions.ConnectionError:
-            logger.warning("Cannot reach Babylon API (connection error)")
+            logger.warning("Cannot reach Feed API (connection error)")
             return []
         except Exception as e:
             logger.error(f"Unexpected trajectory fetch error: {e}")
@@ -1691,7 +1691,7 @@ class TrajectoryFetcher:
         """Mark trajectories as consumed by training."""
         try:
             resp = requests.post(
-                f"{self.babylon_url}/api/crl/trajectories/mark-trained",
+                f"{self.feed_url}/api/crl/trajectories/mark-trained",
                 json={"trajectoryIds": trajectory_ids, "batchId": batch_id},
                 timeout=self.timeout,
             )
@@ -1705,7 +1705,7 @@ class TrajectoryFetcher:
         """Fetch agent identity map (team/alignment assignments)."""
         try:
             resp = requests.get(
-                f"{self.babylon_url}/api/crl/identity-map",
+                f"{self.feed_url}/api/crl/identity-map",
                 timeout=self.timeout,
             )
             resp.raise_for_status()
@@ -1721,7 +1721,7 @@ def tokenize_trajectory(
     device: str,
     max_length: int = 16384,
 ) -> AgentExperience | None:
-    """Convert a Babylon trajectory JSON into an AgentExperience for training.
+    """Convert a Feed trajectory JSON into an AgentExperience for training.
 
     Extracts the first LLM call from the trajectory steps, tokenizes the
     system+user prompt and response, and wraps with metadata.
@@ -1787,7 +1787,7 @@ def tokenize_trajectory(
         if cp_ctx:
             counterparty = CounterpartyContext.from_camel_dict(cp_ctx)
 
-        # Use the pre-computed deterministic reward from Babylon.
+        # Use the pre-computed deterministic reward from Feed.
         # aiJudgeReward is the primary signal (from reward-judgments.ts).
         # Falls back to totalReward (from TrajectoryLoggerService).
         reward = traj.get("aiJudgeReward")
@@ -1821,7 +1821,7 @@ class VLLMLifecycle:
        --enable-lora flag and saving adapters separately.
     """
 
-    def __init__(self, config: BabylonCRLConfig):
+    def __init__(self, config: FeedCRLConfig):
         self.config = config
         self._process: subprocess.Popen | None = None
         self._lora_enabled: bool = False
@@ -1993,11 +1993,11 @@ class VLLMLifecycle:
         return self._process is not None and self._process.poll() is None
 
 
-async def run_babylon_crl(config: BabylonCRLConfig) -> dict[str, Any]:
+async def run_feed_crl(config: FeedCRLConfig) -> dict[str, Any]:
     """
-    Run Babylon-driven Continuous RL.
+    Run Feed-driven Continuous RL.
 
-    The model serves via vLLM while Babylon agents generate trajectories.
+    The model serves via vLLM while Feed agents generate trajectories.
     Periodically: stop serving → train on trajectories → reload weights → resume serving.
 
     This is the production CRL loop for Nebius H100 deployment.
@@ -2006,7 +2006,7 @@ async def run_babylon_crl(config: BabylonCRLConfig) -> dict[str, Any]:
     trainer.setup()
 
     vllm = VLLMLifecycle(config)
-    fetcher = TrajectoryFetcher(config.babylon_url)
+    fetcher = TrajectoryFetcher(config.feed_url)
 
     # Initialize checkpoint syncer if configured
     syncer = None
@@ -2050,8 +2050,8 @@ async def run_babylon_crl(config: BabylonCRLConfig) -> dict[str, Any]:
         vllm.start()
 
         logger.info(
-            f"Babylon CRL running: vLLM on :{config.vllm_port}, "
-            f"polling {config.babylon_url} every {config.poll_interval}s"
+            f"Feed CRL running: vLLM on :{config.vllm_port}, "
+            f"polling {config.feed_url} every {config.poll_interval}s"
         )
 
         while True:

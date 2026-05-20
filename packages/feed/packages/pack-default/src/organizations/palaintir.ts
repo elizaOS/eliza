@@ -1,4 +1,4 @@
-import type { PackOrganization } from '@babylon/shared';
+import type { PackOrganization } from '@feed/shared';
 
 const organization = {
   id: 'palaintir',

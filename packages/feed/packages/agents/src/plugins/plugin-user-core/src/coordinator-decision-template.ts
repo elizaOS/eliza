@@ -115,7 +115,7 @@ Only use these for read-only queries where the user wants data, NOT when they wa
 
 ## Skip Actions (no action needed)
 **Set action to "" and isFinish to true ONLY when:**
-  - The question is purely conversational ("what is Babylon?", "how does this work?")
+  - The question is purely conversational ("what is Feed?", "how does this work?")
   - You already have the data needed from a previous action this turn
   - The user is asking about a previous turn's result
 

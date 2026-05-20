@@ -63,9 +63,9 @@
  * @see {@link /lib/feedback/bias-engine} Bias engine
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { biasEngine } from '@babylon/engine';
-import { toISO } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { biasEngine } from '@feed/engine';
+import { toISO } from '@feed/shared';
 import { NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async function GET() {

@@ -29,26 +29,26 @@
  * require passing referrer context through the MCP API key or session.
  */
 
-import type { JsonRpcParams, JsonRpcRequest } from '@babylon/a2a';
+import type { JsonRpcParams, JsonRpcRequest } from '@feed/a2a';
 import {
   handleAppealBanWithEscrow,
   handleCreateEscrowPayment,
   handleListEscrowPayments,
   handleRefundEscrowPayment,
   handleVerifyEscrowPayment,
-} from '@babylon/a2a';
+} from '@feed/a2a';
 import {
   checkRateLimitAsync,
   logAdminModify,
   RATE_LIMIT_CONFIGS,
   RateLimitError,
-} from '@babylon/api';
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
+} from '@feed/api';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
-import type { FeeProcessor, WalletPort } from '@babylon/core/markets/shared';
+} from '@feed/core/markets/prediction';
+import type { FeeProcessor, WalletPort } from '@feed/core/markets/shared';
 import {
   and,
   db,
@@ -62,7 +62,7 @@ import {
   markets,
   perpMarketSnapshots,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   createPerpPriceImpactPort,
   FEE_CONFIG,
@@ -70,15 +70,15 @@ import {
   invalidateAfterPredictionTrade,
   StaticDataRegistry,
   WalletService,
-} from '@babylon/engine';
-import type { JsonValue, StringRecord } from '@babylon/shared';
+} from '@feed/engine';
+import type { JsonValue, StringRecord } from '@feed/shared';
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
   getAPIBaseUrl,
   logger,
   retryIfRetryable,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 function buildWalletPort(): WalletPort {
   return {
@@ -2782,7 +2782,7 @@ export async function executeGetOrganizations(
 // ============================================================================
 // x402 Micropayments - Reserved Handlers
 // These tools are intentionally not registered in MCP discovery until the
-// Babylon MCP surface supports them end-to-end.
+// Feed MCP surface supports them end-to-end.
 // ============================================================================
 
 /**
@@ -2795,7 +2795,7 @@ export async function executePaymentRequest(
   _args: PaymentRequestArgs
 ): Promise<PaymentRequestResult> {
   throw new Error(
-    'MCP tool payment_request is disabled until x402 support is registered in Babylon MCP discovery.'
+    'MCP tool payment_request is disabled until x402 support is registered in Feed MCP discovery.'
   );
 }
 
@@ -2809,7 +2809,7 @@ export async function executePaymentReceipt(
   _args: PaymentReceiptArgs
 ): Promise<PaymentReceiptResult> {
   throw new Error(
-    'MCP tool payment_receipt is disabled until x402 support is registered in Babylon MCP discovery.'
+    'MCP tool payment_receipt is disabled until x402 support is registered in Feed MCP discovery.'
   );
 }
 

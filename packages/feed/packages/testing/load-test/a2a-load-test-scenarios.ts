@@ -5,7 +5,7 @@
  * to stress test rate limiting and performance under load.
  */
 
-import type { JsonRpcParams } from '@babylon/a2a';
+import type { JsonRpcParams } from '@feed/a2a';
 import type { LoadTestConfig } from './load-test-simulator';
 
 /**
@@ -39,7 +39,7 @@ export function getA2AHeaders(agentId = 'test-agent-1') {
 export const A2A_METHODS = {
   // Agent Discovery (2)
   DISCOVER: { method: 'a2a.discover', params: {} },
-  GET_INFO: { method: 'a2a.getInfo', params: { agentId: 'babylon-agent' } },
+  GET_INFO: { method: 'a2a.getInfo', params: { agentId: 'feed-agent' } },
 
   // Market Operations (3)
   GET_MARKET_DATA: { method: 'a2a.getMarketData', params: { marketId: '1' } },

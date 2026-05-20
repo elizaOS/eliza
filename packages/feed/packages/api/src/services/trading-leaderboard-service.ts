@@ -1,4 +1,4 @@
-import { and, count, db, eq, users } from '@babylon/db';
+import { and, count, db, eq, users } from '@feed/db';
 import type {
   LeaderboardEntry,
   LeaderboardPosition,

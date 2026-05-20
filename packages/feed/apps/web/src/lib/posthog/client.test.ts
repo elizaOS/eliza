@@ -12,7 +12,7 @@ mock.module('posthog-js', () => ({
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: infoMock,
     warn: warnMock,
@@ -56,7 +56,7 @@ it('initializes PostHog without automatic exception capture', async () => {
 
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { location: { origin: 'https://babylon.market' } },
+    value: { location: { origin: 'https://feed.market' } },
   });
 
   const { initPostHog } = await import('./client');

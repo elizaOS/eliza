@@ -41,7 +41,7 @@ graph TD
 
 ## Implementation
 
-Located in `python/src/training/babylon_env.py`:
+Located in `python/src/training/feed_env.py`:
 
 ```python
 def _score_with_judge(
@@ -300,7 +300,7 @@ def _add_tiebreaker(
 ### Enable Verbose Logging
 
 ```python
-# In babylon_env.py
+# In feed_env.py
 logger.setLevel(logging.DEBUG)
 
 # Will show:
@@ -313,7 +313,7 @@ logger.setLevel(logging.DEBUG)
 ### Test Scoring Standalone
 
 ```python
-from training.babylon_env import BabylonRLAIFEnv
+from training.feed_env import FeedRLAIFEnv
 
 # Create mock trajectory
 trajectory = {
@@ -335,7 +335,7 @@ I should buy with 10% of portfolio.
 """
 
 # Score it
-env = BabylonRLAIFEnv(config)
+env = FeedRLAIFEnv(config)
 score = env._score_with_judge(trajectory, response, "trader")
 print(f"Score: {score}")  # e.g., 0.73
 ```

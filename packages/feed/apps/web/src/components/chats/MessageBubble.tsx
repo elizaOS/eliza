@@ -1,6 +1,6 @@
 'use client';
 
-import { ALLOWED_REACTION_EMOJIS, cn, type MessageTag } from '@babylon/shared';
+import { ALLOWED_REACTION_EMOJIS, cn, type MessageTag } from '@feed/shared';
 import { ChevronRight, Plus, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { Response } from '@/components/chat/Response';

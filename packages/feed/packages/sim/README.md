@@ -1,6 +1,6 @@
-# @babylon/sim
+# @feed/sim
 
-A standalone tick engine for the Babylon simulation. Systems are self-contained units of work that run in a defined order each tick. The engine handles scheduling, dependency resolution, deadline gating, metrics, and lifecycle hooks so that each system only has to worry about its own logic.
+A standalone tick engine for the Feed simulation. Systems are self-contained units of work that run in a defined order each tick. The engine handles scheduling, dependency resolution, deadline gating, metrics, and lifecycle hooks so that each system only has to worry about its own logic.
 
 Built on the [UnJS](https://unjs.io) stack: [c12](https://github.com/unjs/c12) for config, [citty](https://github.com/unjs/citty) for CLI, [unimport](https://github.com/unjs/unimport) for auto-discovery, [hookable](https://github.com/unjs/hookable) for lifecycle events, and [unctx](https://github.com/unjs/unctx) for async-safe composables.
 
@@ -8,7 +8,7 @@ Built on the [UnJS](https://unjs.io) stack: [c12](https://github.com/unjs/c12) f
 
 ```ts
 // systems/my-system.ts
-import { defineSystem, TickPhase } from '@babylon/sim';
+import { defineSystem, TickPhase } from '@feed/sim';
 
 export default defineSystem({
   id: 'my-system',
@@ -36,10 +36,10 @@ That is the entire surface area for writing a new system. Drop a file in `system
 
 ```
 packages/sim/
-  babylon.config.ts     Config file (loaded by c12)
+  feed.config.ts     Config file (loaded by c12)
   systems/              Drop systems here; auto-scanned at boot
   core/
-    engine.ts           BabylonEngine runtime
+    engine.ts           FeedEngine runtime
     system.ts           defineSystem() helper
     types.ts            All interfaces and TickPhase enum
     composables.ts      useEngine(), useTick(), useDB(), etc.
@@ -48,7 +48,7 @@ packages/sim/
     context.ts          EngineContext and TickContext factories
     metrics.ts          Per-tick metric accumulator
     service-container.ts  Simple DI container
-    llm-orchestrator.ts LLM wrapper around BabylonLLMClient
+    llm-orchestrator.ts LLM wrapper around FeedLLMClient
     errors.ts           Error types
     bridge/
       legacy-game-tick.ts  Bridge that wraps executeGameTick()
@@ -69,7 +69,7 @@ packages/sim/
 A system is a plain object with an `id`, a `name`, a `phase`, and an `onTick` function. Use `defineSystem()` to get type checking.
 
 ```ts
-import { defineSystem, TickPhase } from '@babylon/sim';
+import { defineSystem, TickPhase } from '@feed/sim';
 
 export default defineSystem({
   id: 'feed-generation',
@@ -156,7 +156,7 @@ defineSystem({
 Instead of threading the context through every function, call these anywhere inside a tick. They use `AsyncLocalStorage` under the hood, so they work across awaits without any build-time transforms.
 
 ```ts
-import { useTick, useEngine, useDB, useLLM, useServices, useMetrics, useShared, useHooks } from '@babylon/sim';
+import { useTick, useEngine, useDB, useLLM, useServices, useMetrics, useShared, useHooks } from '@feed/sim';
 
 // Inside onTick or any function called during a tick:
 const tick = useTick();         // TickContext (tick number, timestamp, deadline, etc.)
@@ -176,7 +176,7 @@ const hooks = useHooks();       // Hook registration
 The engine emits lifecycle events you can listen to. This works from outside the engine or from inside a system's `register()` function.
 
 ```ts
-const engine = new BabylonEngine({ /* ... */ });
+const engine = new FeedEngine({ /* ... */ });
 
 engine.hook('engine:boot', (ctx) => { /* engine just booted */ });
 engine.hook('engine:shutdown', () => { /* about to shut down */ });
@@ -191,12 +191,12 @@ engine.hook('system:error', (systemId, error, ctx) => { /* system threw */ });
 
 ## Config
 
-Create a `babylon.config.ts` in the package root:
+Create a `feed.config.ts` in the package root:
 
 ```ts
-import { defineBabylonConfig } from '@babylon/sim';
+import { defineFeedConfig } from '@feed/sim';
 
-export default defineBabylonConfig({
+export default defineFeedConfig({
   systemsDir: './systems',    // where to scan for systems
   budgetMs: 60_000,           // tick deadline in ms
   disabledSystems: [],        // system ids to skip
@@ -214,24 +214,24 @@ The config interface has `[key: string]: unknown` so you can add your own keys a
 ## CLI
 
 ```
-babylon dev [--interval 60] [--legacy]
+feed dev [--interval 60] [--legacy]
   Start in dev mode. Watches the systems directory for changes and
   hot-reloads the engine. Pass --legacy to include the bridge system
   that wraps the old executeGameTick() function.
 
-babylon tick [--loop] [--interval 60] [--legacy]
+feed tick [--loop] [--interval 60] [--legacy]
   Run a single tick and exit. With --loop, keep running on an interval.
 
-babylon build [--outDir .output] [--minify] [--target bun]
+feed build [--outDir .output] [--minify] [--target bun]
   Discover systems, generate an entry point, and bundle everything
   into a single JS file with bun build. Writes a manifest.json with
   system metadata.
 
-babylon info
+feed info
   Print the current config and list all discovered systems grouped
   by phase.
 
-babylon document [--outDir .docs]
+feed document [--outDir .docs]
   Generate markdown reference pages from system metadata. One page
   per system plus an index. Separate from the hand-written docs.
 ```
@@ -241,9 +241,9 @@ babylon document [--outDir .docs]
 You do not have to use the CLI. The engine works fine as a library:
 
 ```ts
-import { BabylonEngine, defineSystem, TickPhase } from '@babylon/sim';
+import { FeedEngine, defineSystem, TickPhase } from '@feed/sim';
 
-const engine = new BabylonEngine({
+const engine = new FeedEngine({
   config: { budgetMs: 30_000 },
 });
 
@@ -262,12 +262,12 @@ await engine.shutdown();
 
 ## Legacy bridge
 
-The existing `executeGameTick()` function from `@babylon/engine` can run as a system:
+The existing `executeGameTick()` function from `@feed/engine` can run as a system:
 
 ```ts
-import { BabylonEngine, createLegacyGameTickSystem } from '@babylon/sim';
+import { FeedEngine, createLegacyGameTickSystem } from '@feed/sim';
 
-const engine = new BabylonEngine();
+const engine = new FeedEngine();
 engine.use(createLegacyGameTickSystem());
 await engine.boot();
 await engine.tick();

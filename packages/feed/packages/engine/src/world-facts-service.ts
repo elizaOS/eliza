@@ -7,7 +7,7 @@
  * @module services/world-facts-service
  */
 
-import type { WorldFact } from '@babylon/db';
+import type { WorldFact } from '@feed/db';
 import {
   and,
   db,
@@ -18,8 +18,8 @@ import {
   lte,
   or,
   worldFacts,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import {
   buildDailyTopicPromptContext,
   dailyTopicService,

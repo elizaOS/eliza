@@ -15,14 +15,14 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
-import { asSystem, db } from '@babylon/db';
+} from '@feed/core/markets/prediction';
+import { asSystem, db } from '@feed/db';
 import {
   EventMarketLinkerService,
   MarketMetricsService,
   QuestionManager,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 describe('Market-Engine Integration (BAB-5)', () => {
   // Test data tracking for cleanup

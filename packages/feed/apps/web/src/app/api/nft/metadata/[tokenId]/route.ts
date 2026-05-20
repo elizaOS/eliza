@@ -3,8 +3,8 @@ import {
   BadRequestError,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
-import { getTokenMetadata } from '@babylon/api/services/nft-mint-service';
+} from '@feed/api';
+import { getTokenMetadata } from '@feed/api/services/nft-mint-service';
 import { type NextRequest, NextResponse } from 'next/server';
 
 /**

@@ -20,8 +20,8 @@ import {
   gte,
   trainedModels,
   trajectories,
-} from '@babylon/db';
-import { HuggingFaceModelUploader } from '@babylon/training';
+} from '@feed/db';
+import { HuggingFaceModelUploader } from '@feed/training';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { getFlag, getOption, parseArgs, wantsHelp } from '../lib/args.js';
@@ -32,7 +32,7 @@ function printHelp(): void {
 Model Management
 
 USAGE:
-  babylon model <command> [options]
+  feed model <command> [options]
 
 COMMANDS:
   list           List available trained models (database)
@@ -68,16 +68,16 @@ ENVIRONMENT:
   OLLAMA_BASE_URL                 Ollama server URL (default: http://localhost:11434)
 
 EXAMPLES:
-  babylon model list
-  babylon model collect-data --days=7
-  babylon model upload-dataset --repo=babylonlabs/game-data
-  babylon model upload --model=v1 --hf-name=org/model --private
-  babylon model ollama list
-  babylon model ollama pull --name=qwen3.5:4b-instruct
-  babylon model ollama status
+  feed model list
+  feed model collect-data --days=7
+  feed model upload-dataset --repo=feedlabs/game-data
+  feed model upload --model=v1 --hf-name=org/model --private
+  feed model ollama list
+  feed model ollama pull --name=qwen3.5:4b-instruct
+  feed model ollama status
 
 ADVANCED:
-  For full RL pipeline: babylon train pipeline --archetype <name>
+  For full RL pipeline: feed train pipeline --archetype <name>
 `);
 }
 
@@ -100,7 +100,7 @@ async function listModels(): Promise<void> {
   if (models.length === 0) {
     console.log('No trained models found in database.');
     console.log('\nTo train a model:');
-    console.log('  babylon train archetype -a <archetype>');
+    console.log('  feed train archetype -a <archetype>');
     return;
   }
 
@@ -215,7 +215,7 @@ async function collectGameData(
   );
   console.log(`\nTo upload to HuggingFace:`);
   console.log(
-    `  babylon model upload-dataset --source=${outputDir} --repo=<your-repo>`
+    `  feed model upload-dataset --source=${outputDir} --repo=<your-repo>`
   );
 }
 
@@ -267,7 +267,7 @@ async function uploadDataset(
   if (!dirExists) {
     logger.fail(`Source directory not found: ${sourceDir}`);
     console.log('\nCollect data first with:');
-    console.log(`  babylon model collect-data --output=${sourceDir}`);
+    console.log(`  feed model collect-data --output=${sourceDir}`);
     process.exit(1);
   }
 
@@ -423,7 +423,7 @@ async function uploadModel(args: ReturnType<typeof parseArgs>): Promise<void> {
   const result = await uploader.uploadModel({
     modelId,
     modelName: hfModelName,
-    description: description || `Babylon RL agent model: ${modelId}`,
+    description: description || `Feed RL agent model: ${modelId}`,
     private: isPrivate,
     includeWeights,
   });
@@ -485,7 +485,7 @@ async function ollamaList(): Promise<void> {
   if (models.length === 0) {
     console.log('No models installed.\n');
     console.log('To install a model:');
-    console.log('  babylon model ollama pull --name=qwen3.5:4b-instruct');
+    console.log('  feed model ollama pull --name=qwen3.5:4b-instruct');
     console.log('  ollama pull qwen3.5:4b-instruct');
     return;
   }
@@ -512,12 +512,12 @@ async function ollamaList(): Promise<void> {
   console.log(`${'─'.repeat(60)}`);
 
   // Show archetype-specific models
-  const archetypeModels = models.filter((m) => m.name.startsWith('babylon-'));
+  const archetypeModels = models.filter((m) => m.name.startsWith('feed-'));
   if (archetypeModels.length > 0) {
-    console.log('\n🎯 Babylon Trained Models:');
+    console.log('\n🎯 Feed Trained Models:');
     for (const model of archetypeModels) {
       const archetype = model.name
-        .replace('babylon-', '')
+        .replace('feed-', '')
         .replace(':latest', '');
       console.log(`  - ${archetype}: ${model.name}`);
     }
@@ -536,7 +536,7 @@ async function ollamaPull(args: ReturnType<typeof parseArgs>): Promise<void> {
   if (!modelName) {
     logger.fail('--name is required');
     console.log(
-      '\nExample: babylon model ollama pull --name=qwen3.5:4b-instruct'
+      '\nExample: feed model ollama pull --name=qwen3.5:4b-instruct'
     );
     process.exit(1);
   }
@@ -578,7 +578,7 @@ async function ollamaDelete(args: ReturnType<typeof parseArgs>): Promise<void> {
   if (!modelName) {
     logger.fail('--name is required');
     console.log(
-      '\nExample: babylon model ollama delete --name=qwen3.5:4b-instruct'
+      '\nExample: feed model ollama delete --name=qwen3.5:4b-instruct'
     );
     process.exit(1);
   }
@@ -640,7 +640,7 @@ async function ollamaStatus(): Promise<void> {
 
     if (modelCount === 0) {
       console.log('\n📥 To install the default model:');
-      console.log('  babylon model ollama pull --name=qwen3.5:4b-instruct');
+      console.log('  feed model ollama pull --name=qwen3.5:4b-instruct');
     }
   } else {
     logger.fail(`Ollama returned status ${response.status}`);

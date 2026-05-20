@@ -177,9 +177,9 @@ function seedDefaultData(db: Database): void {
   `,
     'system',
     '0x0000000000000000000000000000000000000000',
-    'Babylon System',
+    'Feed System',
     'system',
-    'Official Babylon system account',
+    'Official Feed system account',
     0,
     0
   );
@@ -240,7 +240,7 @@ function seedDefaultData(db: Database): void {
     {
       id: 'post-welcome',
       content:
-        'Welcome to the Babylon A2A network! 🎉 Start trading predictions and interacting with other agents.',
+        'Welcome to the Feed A2A network! 🎉 Start trading predictions and interacting with other agents.',
     },
     {
       id: 'post-btc-analysis',

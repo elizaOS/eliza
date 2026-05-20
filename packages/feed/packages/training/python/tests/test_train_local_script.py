@@ -620,7 +620,7 @@ def test_load_json_training_data_recurses_export_dirs_and_dedupes(tmp_path: Path
 
 
 def test_trajectories_to_training_samples_are_score_ranked_and_keep_provenance():
-    high_reward = train_local.BabylonTrajectory.model_validate(
+    high_reward = train_local.FeedTrajectory.model_validate(
         {
             "trajectoryId": "traj-high",
             "agentId": "agent-1",
@@ -659,7 +659,7 @@ def test_trajectories_to_training_samples_are_score_ranked_and_keep_provenance()
             ],
         }
     )
-    low_reward = train_local.BabylonTrajectory.model_validate(
+    low_reward = train_local.FeedTrajectory.model_validate(
         {
             "trajectoryId": "traj-low",
             "agentId": "agent-2",
@@ -809,7 +809,7 @@ def test_score_action_reason_response_tracks_policy_alignment():
 
 
 def test_trade_canonical_sample_profile_prefers_trade_actions():
-    trajectory = train_local.BabylonTrajectory.model_validate(
+    trajectory = train_local.FeedTrajectory.model_validate(
         {
             "trajectoryId": "traj-trade-1",
             "agentId": "agent-1",
@@ -903,7 +903,7 @@ def test_trade_canonical_sample_profile_adds_policy_curriculum_when_actions_are_
     trajectories = []
     for index in range(8):
         trajectories.append(
-            train_local.BabylonTrajectory.model_validate(
+            train_local.FeedTrajectory.model_validate(
                 {
                     "trajectoryId": f"traj-trade-{index}",
                     "agentId": "agent-1",
@@ -1029,7 +1029,7 @@ def test_build_natural_message_curriculum_samples_produces_text_supervision():
 
 
 def test_build_decision_canonical_messages_supports_natural_safe_responses():
-    trajectory = train_local.BabylonTrajectory.model_validate(
+    trajectory = train_local.FeedTrajectory.model_validate(
         {
             "trajectoryId": "traj-decision-1",
             "agentId": "agent-1",
@@ -1050,7 +1050,7 @@ def test_build_decision_canonical_messages_supports_natural_safe_responses():
                     "llmCalls": [
                         {
                             "model": "tiny-test",
-                            "systemPrompt": "You are an autonomous Babylon agent operating across chats and DMs.",
+                            "systemPrompt": "You are an autonomous Feed agent operating across chats and DMs.",
                             "userPrompt": (
                                 "Runtime context:\n"
                                 '{"currentChannel":"dm","conversationId":"decision-1"}\n\n'
@@ -1090,7 +1090,7 @@ def test_build_decision_canonical_messages_supports_natural_safe_responses():
 
 
 def test_canonical_profile_includes_natural_and_json_decision_variants():
-    trajectory = train_local.BabylonTrajectory.model_validate(
+    trajectory = train_local.FeedTrajectory.model_validate(
         {
             "trajectoryId": "traj-decision-2",
             "agentId": "agent-2",
@@ -1111,7 +1111,7 @@ def test_canonical_profile_includes_natural_and_json_decision_variants():
                     "llmCalls": [
                         {
                             "model": "tiny-test",
-                            "systemPrompt": "You are an autonomous Babylon agent operating across chats and DMs.",
+                            "systemPrompt": "You are an autonomous Feed agent operating across chats and DMs.",
                             "userPrompt": (
                                 "Runtime context:\n"
                                 '{"currentChannel":"group","conversationId":"decision-2"}\n\n'

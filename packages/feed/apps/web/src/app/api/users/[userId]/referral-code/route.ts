@@ -59,9 +59,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**
@@ -114,7 +114,7 @@ export const GET = withErrorHandling(
     return successResponse({
       referralCode,
       referralCount: user.referralCount,
-      referralUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://babylon.market'}?ref=${referralCode}`,
+      referralUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market'}?ref=${referralCode}`,
     });
   }
 );

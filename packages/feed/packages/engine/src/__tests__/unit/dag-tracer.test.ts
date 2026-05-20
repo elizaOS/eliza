@@ -427,13 +427,13 @@ describe('TickTracer', () => {
       const tracer = getActiveTracer()!;
 
       tracer.setEnvironmentFlags({
-        BABYLON_DAG_TRACE: true,
+        FEED_DAG_TRACE: true,
         GAME_TICK_BUDGET_MS: '180000',
       });
 
       const trace = endTrace()!;
       expect(trace.environmentFlags).toBeDefined();
-      expect(trace.environmentFlags!.BABYLON_DAG_TRACE).toBe(true);
+      expect(trace.environmentFlags!.FEED_DAG_TRACE).toBe(true);
       expect(trace.environmentFlags!.GAME_TICK_BUDGET_MS).toBe('180000');
     });
 
@@ -526,7 +526,7 @@ describe('TickTracer', () => {
         reasoning: 'test',
       });
       tracer.setGameTickResult({ success: true });
-      tracer.setEnvironmentFlags({ BABYLON_DAG_TRACE: true });
+      tracer.setEnvironmentFlags({ FEED_DAG_TRACE: true });
 
       const trace = endTrace()!;
 
@@ -543,7 +543,7 @@ describe('TickTracer', () => {
       expect(trace.npcTrajectories.length).toBe(1);
       expect(trace.tokenStats.totalCalls).toBe(1);
       expect(trace.gameTickResult).toEqual({ success: true });
-      expect(trace.environmentFlags).toEqual({ BABYLON_DAG_TRACE: true });
+      expect(trace.environmentFlags).toEqual({ FEED_DAG_TRACE: true });
     });
   });
 

@@ -6,11 +6,11 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 import {
   getWhitelistConfig,
   updateWhitelistConfig,
-} from '@babylon/api/services/whitelist-service';
+} from '@feed/api/services/whitelist-service';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

@@ -1,12 +1,12 @@
 /**
- * LLM Client for Babylon Game Generation
+ * LLM Client for Feed Game Generation
  * Supports multiple providers with intelligent fallback
  * Priority: Groq > Claude > OpenAI
  */
 
 import OpenAI from 'openai';
 import 'dotenv/config';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { JsonValue } from '../types/common';
 import type { LLMCallTokenUsage } from '../types/token-stats';
 import { first } from '../utils/array-utils';
@@ -83,7 +83,7 @@ function resolveGroqDefaultModel(): string {
  */
 // NOTE: Schema types are shared via ./types to avoid duplicating shapes across the engine.
 
-export class BabylonLLMClient {
+export class FeedLLMClient {
   private client: OpenAI | null = null;
   private provider: LLMProvider = 'openai';
   private groqKey: string | undefined;
@@ -92,42 +92,42 @@ export class BabylonLLMClient {
   private missingKeyContext: LLMDisabledContext = 'default';
 
   /**
-   * Create a BabylonLLMClient configured to use ElizaCloud (Priority #1)
+   * Create a FeedLLMClient configured to use ElizaCloud (Priority #1)
    */
-  static forElizaCloud(): BabylonLLMClient {
-    return new BabylonLLMClient('', 'elizacloud');
+  static forElizaCloud(): FeedLLMClient {
+    return new FeedLLMClient('', 'elizacloud');
   }
 
   /**
-   * Create a BabylonLLMClient configured to use Groq provider (Priority #2)
+   * Create a FeedLLMClient configured to use Groq provider (Priority #2)
    * This is a convenience factory method for forcing Groq without passing undefined parameters
    */
-  static forGroq(): BabylonLLMClient {
-    return new BabylonLLMClient('', 'groq');
+  static forGroq(): FeedLLMClient {
+    return new FeedLLMClient('', 'groq');
   }
 
   /**
-   * Create a BabylonLLMClient configured to use Anthropic/Claude provider (Priority #3)
+   * Create a FeedLLMClient configured to use Anthropic/Claude provider (Priority #3)
    * This is a convenience factory method for forcing Claude without passing undefined parameters
    */
-  static forClaude(): BabylonLLMClient {
-    return new BabylonLLMClient('', 'claude');
+  static forClaude(): FeedLLMClient {
+    return new FeedLLMClient('', 'claude');
   }
 
   /**
-   * Create a BabylonLLMClient configured to use OpenAI provider (Priority #4 - fallback)
+   * Create a FeedLLMClient configured to use OpenAI provider (Priority #4 - fallback)
    * This is a convenience factory method for forcing OpenAI without passing undefined parameters
    */
-  static forOpenAI(apiKey?: string): BabylonLLMClient {
-    return new BabylonLLMClient(apiKey || '', 'openai');
+  static forOpenAI(apiKey?: string): FeedLLMClient {
+    return new FeedLLMClient(apiKey || '', 'openai');
   }
 
   /**
-   * Create a BabylonLLMClient for game tick operations
+   * Create a FeedLLMClient for game tick operations
    * Priority: ElizaCloud > Groq > Claude > OpenAI
    */
-  static forGameTick(): BabylonLLMClient {
-    return new BabylonLLMClient('', undefined, 'gameTick');
+  static forGameTick(): FeedLLMClient {
+    return new FeedLLMClient('', undefined, 'gameTick');
   }
 
   constructor(
@@ -157,7 +157,7 @@ export class BabylonLLMClient {
 
     // Force specific provider if requested
     if (forceProvider === 'elizacloud' && elizaCloud) {
-      logger.info('Using ElizaCloud (forced)', undefined, 'BabylonLLMClient');
+      logger.info('Using ElizaCloud (forced)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: elizaCloud.apiKey,
         baseURL: elizaCloud.baseURL,
@@ -167,7 +167,7 @@ export class BabylonLLMClient {
       });
       this.provider = 'elizacloud';
     } else if (forceProvider === 'groq' && this.groqKey) {
-      logger.info('Using Groq (forced)', undefined, 'BabylonLLMClient');
+      logger.info('Using Groq (forced)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: this.groqKey,
         baseURL: resolveGroqBaseURL(),
@@ -176,7 +176,7 @@ export class BabylonLLMClient {
       });
       this.provider = 'groq';
     } else if (forceProvider === 'claude' && this.claudeKey) {
-      logger.info('Using Claude (forced)', undefined, 'BabylonLLMClient');
+      logger.info('Using Claude (forced)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: this.claudeKey,
         baseURL: 'https://api.anthropic.com/v1',
@@ -185,7 +185,7 @@ export class BabylonLLMClient {
       });
       this.provider = 'claude';
     } else if (forceProvider === 'openai' && this.openaiKey) {
-      logger.info('Using OpenAI (forced)', undefined, 'BabylonLLMClient');
+      logger.info('Using OpenAI (forced)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: this.openaiKey,
         timeout: timeoutMs,
@@ -196,7 +196,7 @@ export class BabylonLLMClient {
       logger.info(
         'Using ElizaCloud (unified inference)',
         undefined,
-        'BabylonLLMClient'
+        'FeedLLMClient'
       );
       this.client = new OpenAI({
         apiKey: elizaCloud.apiKey,
@@ -207,7 +207,7 @@ export class BabylonLLMClient {
       });
       this.provider = 'elizacloud';
     } else if (this.groqKey) {
-      logger.info('Using Groq (fast inference)', undefined, 'BabylonLLMClient');
+      logger.info('Using Groq (fast inference)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: this.groqKey,
         baseURL: resolveGroqBaseURL(),
@@ -219,7 +219,7 @@ export class BabylonLLMClient {
       logger.info(
         'Using Claude via OpenAI-compatible API',
         undefined,
-        'BabylonLLMClient'
+        'FeedLLMClient'
       );
       this.client = new OpenAI({
         apiKey: this.claudeKey,
@@ -229,7 +229,7 @@ export class BabylonLLMClient {
       });
       this.provider = 'claude';
     } else if (this.openaiKey) {
-      logger.info('Using OpenAI (fallback)', undefined, 'BabylonLLMClient');
+      logger.info('Using OpenAI (fallback)', undefined, 'FeedLLMClient');
       this.client = new OpenAI({
         apiKey: this.openaiKey,
         timeout: timeoutMs,
@@ -239,15 +239,15 @@ export class BabylonLLMClient {
     } else {
       this.client = null;
       const suppressOptionalWarnings = ['1', 'true', 'yes'].includes(
-        (process.env.BABYLON_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
+        (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
           .trim()
           .toLowerCase()
       );
       if (!suppressOptionalWarnings) {
         logger.warn(
-          'No LLM API key configured - BabylonLLMClient is disabled',
+          'No LLM API key configured - FeedLLMClient is disabled',
           { missingKeyContext: this.missingKeyContext },
-          'BabylonLLMClient'
+          'FeedLLMClient'
         );
       }
     }
@@ -316,8 +316,8 @@ export class BabylonLLMClient {
         ? { type: 'json_object' as const }
         : undefined;
 
-    // Babylon world context - pre-condition LLM to expect parody names
-    const babylonContext = `You are generating content for Babylon, a satirical prediction market game.
+    // Feed world context - pre-condition LLM to expect parody names
+    const feedContext = `You are generating content for Feed, a satirical prediction market game.
 WORLD RULES:
 - Use ONLY parody names (e.g., "AIlon Musk" not "Elon Musk", "TeslAI" not "Tesla", "OpenAGI" not "OpenAI")
 - NEVER use real-world person or organization names
@@ -329,7 +329,7 @@ WORLD RULES:
 
     const systemContent =
       format === 'xml'
-        ? babylonContext +
+        ? feedContext +
           'You are an XML-only assistant. CRITICAL INSTRUCTIONS:\n' +
           '1. Respond ONLY with valid XML - NO explanations, NO reasoning, NO markdown\n' +
           '2. Start your response IMMEDIATELY with < (the opening tag)\n' +
@@ -339,7 +339,7 @@ WORLD RULES:
           '6. Just output the pure XML structure directly\n' +
           'WRONG: "Okay, let\'s see. I need to..."\n' +
           'CORRECT: "<decisions><decision>..."'
-        : babylonContext +
+        : feedContext +
           'You are a JSON-only assistant. You must respond ONLY with valid JSON. No explanations, no markdown, no other text.';
 
     const messages = [
@@ -412,7 +412,7 @@ WORLD RULES:
               model,
               tokensUsed: maxTokens,
             },
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
 
           // Try to continue generation up to 2 more times
@@ -444,7 +444,7 @@ WORLD RULES:
               {
                 contentLength: content.length,
               },
-              'BabylonLLMClient'
+              'FeedLLMClient'
             );
 
             const continuationResponse =
@@ -476,7 +476,7 @@ WORLD RULES:
                   attempts: continuationAttempts,
                   finalLength: content.length,
                 },
-                'BabylonLLMClient'
+                'FeedLLMClient'
               );
               break;
             }
@@ -505,7 +505,7 @@ WORLD RULES:
               hasData: xmlResult.data !== null,
               isArray: Array.isArray(xmlResult.data),
             },
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
 
           // Log parsed output for monitoring
@@ -560,7 +560,7 @@ WORLD RULES:
                 isArray: Array.isArray(parsed),
                 items: Array.isArray(parsed) ? parsed.length : 'N/A',
               },
-              'BabylonLLMClient'
+              'FeedLLMClient'
             );
 
             // Report token usage via callback
@@ -606,7 +606,7 @@ WORLD RULES:
             {
               contentPreview: content.substring(0, 200),
             },
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
         }
 
@@ -708,7 +708,7 @@ WORLD RULES:
                 delay,
                 isTestEnv,
               },
-              'BabylonLLMClient'
+              'FeedLLMClient'
             );
 
             await new Promise((resolve) => setTimeout(resolve, delay));
@@ -736,7 +736,7 @@ WORLD RULES:
               maxRetries,
               error: err.message,
             },
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -763,7 +763,7 @@ WORLD RULES:
               maxRetries,
               error: err.message,
             },
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -811,7 +811,7 @@ WORLD RULES:
         promptType,
         dataType: Array.isArray(data) ? 'array' : typeof data,
       },
-      'BabylonLLMClient'
+      'FeedLLMClient'
     );
   }
 
@@ -864,7 +864,7 @@ WORLD RULES:
           logger.error(
             `Missing required field: ${field}`,
             undefined,
-            'BabylonLLMClient'
+            'FeedLLMClient'
           );
           return false;
         }

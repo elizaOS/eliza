@@ -115,7 +115,7 @@ function orgTypeToDomains(type: string): string[] {
 function buildOrgSystemPrompt(org: OrgData): string {
   const parts: string[] = [];
   parts.push(
-    `You are the official voice of ${org.name}${org.ticker ? ` (${org.ticker})` : ''}, a ${org.type} in the Babylon prediction market simulation.`
+    `You are the official voice of ${org.name}${org.ticker ? ` (${org.ticker})` : ''}, a ${org.type} in the Feed prediction market simulation.`
   );
   if (org.description) parts.push(org.description);
   if (org.postStyle) parts.push(`Your posting style: ${org.postStyle}`);
@@ -135,7 +135,7 @@ function buildOrgBio(org: OrgData): string[] {
     bio.push(`Visual identity: ${org.profileDescription}`);
   return bio.length > 0
     ? bio
-    : [`${org.name} — a ${org.type} in the Babylon universe.`];
+    : [`${org.name} — a ${org.type} in the Feed universe.`];
 }
 
 function getTier(org: OrgData): string {
@@ -215,7 +215,7 @@ async function generateOrgActors(packDir: string) {
       profileDescription: org.profileDescription,
       pfpDescription: org.pfpDescription ?? `Logo of ${org.name}`,
       profileBanner: org.bannerDescription,
-      babylon: {
+      feed: {
         alignment: 'neutral' as const,
         team: 'gray' as const,
         scamProfile: 'wary',
@@ -246,7 +246,7 @@ async function generateOrgActors(packDir: string) {
     };
 
     // Write as TypeScript file matching the existing pattern
-    const content = `import type { PackActor } from '@babylon/shared';
+    const content = `import type { PackActor } from '@feed/shared';
 
 const actor = ${JSON.stringify(packActor, null, 2)} as const satisfies PackActor;
 

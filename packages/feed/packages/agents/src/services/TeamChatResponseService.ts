@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import { broadcastTypingIndicator } from '@babylon/api';
+import { broadcastTypingIndicator } from '@feed/api';
 import {
   and,
   chats,
@@ -19,7 +19,7 @@ import {
   messages,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { executeDirectMessage } from '../autonomous/DirectExecutors';
 import { callGroqDirect } from '../llm/direct-groq';
 import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';

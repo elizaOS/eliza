@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { renderPrompt } from '@babylon/engine';
+import { renderPrompt } from '@feed/engine';
 
 const testPrompt = {
   id: 'test-market-signals',

@@ -52,11 +52,11 @@
  * ```
  */
 
-import { generateAgentCardSync } from '@babylon/a2a';
-import { getAgentConfig } from '@babylon/agents';
-import { withErrorHandling } from '@babylon/api';
-import { agentRegistries, db, eq } from '@babylon/db';
-import { toISOOrNull } from '@babylon/shared';
+import { generateAgentCardSync } from '@feed/a2a';
+import { getAgentConfig } from '@feed/agents';
+import { withErrorHandling } from '@feed/api';
+import { agentRegistries, db, eq } from '@feed/db';
+import { toISOOrNull } from '@feed/shared';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';

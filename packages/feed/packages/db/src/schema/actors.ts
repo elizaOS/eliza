@@ -14,7 +14,7 @@ import type { JsonValue } from '../types';
  * Actor-related tables for NPC interactions and relationships.
  *
  * Note: Static actor data (name, personality, tier, etc.) is stored in TypeScript
- * files and accessed via StaticDataRegistry from @babylon/engine.
+ * files and accessed via StaticDataRegistry from @feed/engine.
  *
  * Dynamic actor state (tradingBalance, reputationPoints, hasPool) is stored
  * in the `actorState` table (see actor-state.ts).

@@ -34,7 +34,7 @@
  *         description: Admin access required
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
 import {
   and,
   comments,
@@ -47,8 +47,8 @@ import {
   reactions,
   sql,
   users,
-} from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 type PeriodType = 'day' | 'week' | 'month';

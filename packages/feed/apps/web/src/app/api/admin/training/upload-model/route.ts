@@ -55,9 +55,9 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
-import { modelStorage } from '@babylon/training';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
+import { modelStorage } from '@feed/training';
 import fs from 'fs/promises';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

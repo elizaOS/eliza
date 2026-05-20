@@ -4,25 +4,25 @@
  * For production use with PostgreSQL database.
  *
  * ARCHITECTURE NOTE:
- * This provider is intentionally a thin wrapper that delegates to @babylon/db.
+ * This provider is intentionally a thin wrapper that delegates to @feed/db.
  * The port-based abstraction is primarily useful for:
  * - JSON mode: Simulation/training without a database
  * - Memory mode: Fast unit testing
  *
- * For production PostgreSQL access, most code uses @babylon/db directly because:
+ * For production PostgreSQL access, most code uses @feed/db directly because:
  * 1. The Drizzle ORM provides excellent type safety
  * 2. Complex queries benefit from direct SQL access
  * 3. The db client has built-in connection pooling, retries, and RLS support
  *
  * If you need the port abstraction for production, consider:
- * - Using @babylon/db directly (recommended)
+ * - Using @feed/db directly (recommended)
  * - Implementing specific adapters as needed
  *
  * The JSON storage provider (packages/core/storage/adapters/json) provides a
  * complete implementation of all ports for offline simulation and training.
  */
 
-import { checkDatabaseHealth, closeDatabase } from '@babylon/db';
+import { checkDatabaseHealth, closeDatabase } from '@feed/db';
 import type { ActorPort, OrganizationPort } from '../../ports/actors';
 import type { AgentPort } from '../../ports/agents';
 import type { GamePort } from '../../ports/game';
@@ -38,7 +38,7 @@ import type { UserPort } from '../../ports/users';
 
 const NOT_IMPLEMENTED_MSG =
   'PostgresStorageProvider port methods are not implemented. ' +
-  'For production, use @babylon/db directly which provides: ' +
+  'For production, use @feed/db directly which provides: ' +
   '• Full Drizzle ORM type safety ' +
   '• Connection pooling and retries ' +
   '• RLS context support (asUser, asSystem) ' +

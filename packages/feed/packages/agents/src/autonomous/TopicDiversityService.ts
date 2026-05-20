@@ -12,9 +12,9 @@
  * 5. Domain-aware limits - NPCs in different domains have separate topic pools
  */
 
-import { db, desc, gte, posts } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { jaccardSimilarity } from '@babylon/shared';
+import { db, desc, gte, posts } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { jaccardSimilarity } from '@feed/shared';
 import { logger } from '../shared/logger';
 
 // =============================================================================

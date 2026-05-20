@@ -63,7 +63,7 @@
  *         description: Post not found
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   addPublicReadHeaders,
   authenticate,
@@ -72,7 +72,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   comments,
@@ -85,9 +85,9 @@ import {
   reactions,
   shares,
   users,
-} from '@babylon/db';
-import { gameService, StaticDataRegistry } from '@babylon/engine';
-import { logger, PostIdParamSchema, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { gameService, StaticDataRegistry } from '@feed/engine';
+import { logger, PostIdParamSchema, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { POST as likePost } from './like/route';
 
@@ -356,7 +356,7 @@ export const GET = withErrorHandling(
       }
 
       let authorId = 'system';
-      let gameId = 'babylon';
+      let gameId = 'feed';
       let timestamp = new Date();
 
       const isoTimestampMatch = postId.match(

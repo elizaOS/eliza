@@ -4,7 +4,7 @@
  * API Fetch Options
  *
  * @description Extended fetch options with authentication and retry configuration.
- * Extends standard RequestInit with Babylon-specific options for cookie-based
+ * Extends standard RequestInit with Feed-specific options for cookie-based
  * authentication and 401 retry logic.
  *
  * Authentication is handled via Steward JWT tokens, either through an HTTP-only

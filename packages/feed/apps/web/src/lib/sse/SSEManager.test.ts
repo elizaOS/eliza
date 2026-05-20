@@ -53,7 +53,7 @@ describe('SSEManager token recovery', () => {
         addEventListener: () => {},
         removeEventListener: () => {},
         location: {
-          origin: 'https://babylon.test',
+          origin: 'https://feed.test',
         },
       },
     });

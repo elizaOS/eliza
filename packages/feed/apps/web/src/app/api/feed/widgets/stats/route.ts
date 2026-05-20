@@ -75,7 +75,7 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
 import {
   actorState,
   and,
@@ -89,12 +89,12 @@ import {
   sum,
   userActivityLogs,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger, StatsQuerySchema } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger, StatsQuerySchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
-interface BabylonStats {
+interface FeedStats {
   activePlayers: number;
   aiAgents: number;
   totalHoots: number;
@@ -161,7 +161,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     Number(statsResult.userPoints) + Number(statsResult.actorPoints);
   const pointsInCirculation = formatPoints(totalPoints);
 
-  const finalStats: BabylonStats = {
+  const finalStats: FeedStats = {
     activePlayers: statsResult.activePlayers,
     aiAgents: statsResult.aiAgents,
     totalHoots: statsResult.totalHoots,
@@ -169,7 +169,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   };
 
   logger.info(
-    'Babylon stats fetched successfully',
+    'Feed stats fetched successfully',
     finalStats,
     'GET /api/feed/widgets/stats'
   );

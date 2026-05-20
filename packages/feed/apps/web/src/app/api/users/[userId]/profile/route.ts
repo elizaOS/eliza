@@ -115,8 +115,8 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { logger, toISO, toISOOrNull, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { logger, toISO, toISOOrNull, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { sanitizeForJson } from '@/lib/json/sanitize';
 import { getOptionalProfileStats } from '@/lib/users/profile-stats';

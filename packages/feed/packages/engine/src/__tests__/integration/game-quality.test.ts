@@ -21,7 +21,7 @@
  */
 
 import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { existsSync, readFileSync } from 'fs';
 import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
 import { GameGenerator } from '../../GameGenerator';

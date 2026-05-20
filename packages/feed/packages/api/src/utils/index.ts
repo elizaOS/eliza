@@ -2,7 +2,7 @@
  * API Utilities
  *
  * Server-side utilities that require Node.js crypto module.
- * These are exported from @babylon/api for server-side use only.
+ * These are exported from @feed/api for server-side use only.
  */
 
 export {
@@ -42,7 +42,7 @@ export {
   hashIpAddress,
 } from './ip-utils';
 
-// Token counter utilities (moved from @babylon/shared)
+// Token counter utilities (moved from @feed/shared)
 export {
   budgetTokens,
   countTokens,

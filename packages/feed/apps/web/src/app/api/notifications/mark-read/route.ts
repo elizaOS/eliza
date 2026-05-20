@@ -52,8 +52,8 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { and, db, eq, inArray, notifications } from '@babylon/db';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { and, db, eq, inArray, notifications } from '@feed/db';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

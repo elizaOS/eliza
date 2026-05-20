@@ -113,10 +113,10 @@ import {
   getCacheOrFetch,
   rateLimitError,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, desc, gte, tickTokenStats } from '@babylon/db';
-import { tokenStatsService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, desc, gte, tickTokenStats } from '@feed/db';
+import { tokenStatsService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

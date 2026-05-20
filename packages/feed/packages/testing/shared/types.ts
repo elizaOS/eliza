@@ -5,7 +5,7 @@
  * and eliminate use of 'any' types.
  */
 
-import type { Database, JsonValue } from '@babylon/db';
+import type { Database, JsonValue } from '@feed/db';
 import type { Page, Route } from '@playwright/test';
 
 /**

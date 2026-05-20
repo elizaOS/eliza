@@ -73,14 +73,14 @@ export interface IStorageProvider {
  */
 declare global {
   // eslint-disable-next-line no-var
-  var __babylon_storage_provider__: IStorageProvider | undefined;
+  var __feed_storage_provider__: IStorageProvider | undefined;
 }
 
 /**
  * Set the global storage provider.
  */
 export function setStorageProvider(provider: IStorageProvider): void {
-  globalThis.__babylon_storage_provider__ = provider;
+  globalThis.__feed_storage_provider__ = provider;
 }
 
 /**
@@ -88,7 +88,7 @@ export function setStorageProvider(provider: IStorageProvider): void {
  * Throws if not initialized.
  */
 export function getStorageProvider(): IStorageProvider {
-  const provider = globalThis.__babylon_storage_provider__;
+  const provider = globalThis.__feed_storage_provider__;
   if (!provider) {
     throw new Error(
       'Storage provider not initialized. Call setStorageProvider() first, or use createStorageProvider().'
@@ -101,14 +101,14 @@ export function getStorageProvider(): IStorageProvider {
  * Check if a storage provider is set.
  */
 export function hasStorageProvider(): boolean {
-  return globalThis.__babylon_storage_provider__ !== undefined;
+  return globalThis.__feed_storage_provider__ !== undefined;
 }
 
 /**
  * Clear the global storage provider (for testing).
  */
 export function clearStorageProvider(): void {
-  globalThis.__babylon_storage_provider__ = undefined;
+  globalThis.__feed_storage_provider__ = undefined;
 }
 
 /**

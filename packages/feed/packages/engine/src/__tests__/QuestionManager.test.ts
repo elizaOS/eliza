@@ -32,7 +32,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { QuestionManager } from '../QuestionManager';
 import type { Question } from '../types/shared';
 import { toDateString } from '../utils/date-utils';
@@ -42,7 +42,7 @@ import { toDateString } from '../utils/date-utils';
  * Only implements the methods required by QuestionManager
  */
 interface MockLLMClient
-  extends Pick<BabylonLLMClient, 'generateJSON' | 'getProvider' | 'getStats'> {}
+  extends Pick<FeedLLMClient, 'generateJSON' | 'getProvider' | 'getStats'> {}
 
 // Mock LLM client for testing - implements MockLLMClient interface
 const mockLLMImpl: MockLLMClient = {
@@ -58,8 +58,8 @@ const mockLLMImpl: MockLLMClient = {
   }),
 };
 
-// Cast to full BabylonLLMClient type for QuestionManager compatibility
-const mockLLM = mockLLMImpl as BabylonLLMClient;
+// Cast to full FeedLLMClient type for QuestionManager compatibility
+const mockLLM = mockLLMImpl as FeedLLMClient;
 
 describe('QuestionManager', () => {
   test('detects questions that should be resolved', () => {

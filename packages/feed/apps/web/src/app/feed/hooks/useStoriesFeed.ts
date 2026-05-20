@@ -1,5 +1,5 @@
-import type { NarrativeStory } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+import type { NarrativeStory } from '@feed/shared';
+import { logger } from '@feed/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSSEChannel } from '@/hooks/useSSE';

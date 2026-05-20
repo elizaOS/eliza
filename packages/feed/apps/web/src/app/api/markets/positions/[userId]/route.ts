@@ -5,8 +5,8 @@
  * @access Public (RLS applies)
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
-import { UserIdParamSchema, UserPositionsQuerySchema } from '@babylon/shared';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { UserIdParamSchema, UserPositionsQuerySchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { getUserPositionsSnapshot } from '@/lib/markets/user-positions';
 

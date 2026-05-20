@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   calculateModelPilotEstimateRange,
   modelPilotDeliverableAffectsEstimate,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('model pilot inquiry helpers', () => {
   it('treats lowercase fine-tuned deliverables as estimate-affecting', () => {

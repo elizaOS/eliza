@@ -11,7 +11,7 @@ import {
   getUserChallenges,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

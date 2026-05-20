@@ -13,7 +13,7 @@ import {
   DUPLICATE_DETECTION_CONFIGS,
   getRateLimitStatus,
   RATE_LIMIT_CONFIGS,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('Rate Limiting', () => {
   beforeEach(() => {

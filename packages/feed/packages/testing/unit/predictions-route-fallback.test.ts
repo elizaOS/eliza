@@ -7,7 +7,7 @@ const mockPublicRateLimit = mock();
 const mockListMarkets = mock();
 const mockListUserPositions = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   ...apiActual,
   addPublicReadHeaders: () => {},
   publicRateLimit: mockPublicRateLimit,
@@ -16,7 +16,7 @@ mock.module('@babylon/api', () => ({
     handler,
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   ...dbActual,
   db: {
     user: {
@@ -25,7 +25,7 @@ mock.module('@babylon/db', () => ({
   },
 }));
 
-mock.module('@babylon/core/markets/prediction', () => ({
+mock.module('@feed/core/markets/prediction', () => ({
   ...predictionCoreActual,
   PredictionDbAdapter: class PredictionDbAdapter {},
   PredictionMarketService: class PredictionMarketService extends predictionCoreActual.PredictionMarketService {

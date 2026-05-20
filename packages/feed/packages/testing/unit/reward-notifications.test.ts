@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildAchievementUnlockedNotification,
   buildChallengeCompletedNotification,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('reward notification builders', () => {
   test('builds achievement notification copy with structured data', () => {

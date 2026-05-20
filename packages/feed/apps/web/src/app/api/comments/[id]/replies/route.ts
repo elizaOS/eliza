@@ -88,14 +88,14 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, comments, eq, posts, users } from '@babylon/db';
+} from '@feed/api';
+import { asUser, comments, eq, posts, users } from '@feed/db';
 import {
   CreateCommentSchema,
   generateSnowflakeId,
   IdParamSchema,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

@@ -18,8 +18,8 @@ import {
   posts,
   reactions,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { eq } from 'drizzle-orm';
 
 // Sample post content for realistic feed
@@ -327,7 +327,7 @@ async function main(): Promise<void> {
     undefined,
     'SeedFeed'
   );
-  logger.info('Babylon Feed Seeder', { count, shouldClear }, 'SeedFeed');
+  logger.info('Feed Feed Seeder', { count, shouldClear }, 'SeedFeed');
   logger.info(
     '════════════════════════════════════════════════════════════',
     undefined,

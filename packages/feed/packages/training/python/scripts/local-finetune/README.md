@@ -1,6 +1,6 @@
 # Local Fine-Tuning Pipeline
 
-This directory contains scripts to train RL adapters from Babylon simulation logs.
+This directory contains scripts to train RL adapters from Feed simulation logs.
 
 ## Workflow
 

@@ -65,7 +65,7 @@ def fake_trainer(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(tinker_trainer_module, "TINKER_AVAILABLE", True)
     monkeypatch.setattr(
         tinker_trainer_module,
-        "BabylonTinkerClient",
+        "FeedTinkerClient",
         _FakeTinkerClient,
     )
     config = tinker_trainer_module.TinkerTrainingConfig(
@@ -79,7 +79,7 @@ def fake_trainer(monkeypatch: pytest.MonkeyPatch):
         decision_alignment_score=0.4,
         max_trade_examples_per_trajectory=2,
     )
-    trainer = tinker_trainer_module.BabylonTinkerTrainer(config)
+    trainer = tinker_trainer_module.FeedTinkerTrainer(config)
     return trainer
 
 
@@ -364,10 +364,10 @@ async def test_train_on_group_keeps_scores_aligned_when_downsampling(
     monkeypatch.setattr(tinker_trainer_module, "TINKER_AVAILABLE", True)
     monkeypatch.setattr(
         tinker_trainer_module,
-        "BabylonTinkerClient",
+        "FeedTinkerClient",
         _FakeTinkerClient,
     )
-    trainer = tinker_trainer_module.BabylonTinkerTrainer(
+    trainer = tinker_trainer_module.FeedTinkerTrainer(
         tinker_trainer_module.TinkerTrainingConfig(
             base_model="Qwen/Qwen3.5-4B",
             training_steps=1,

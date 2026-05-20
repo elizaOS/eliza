@@ -16,9 +16,9 @@ import {
   posts,
   shares,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import type { MessageTag } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,

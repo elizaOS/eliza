@@ -1,4 +1,4 @@
-# Babylon Training Base Image
+# Feed Training Base Image
 #
 # Uses the official vLLM OpenAI image as base, which includes:
 # - CUDA runtime
@@ -6,8 +6,8 @@
 # - vLLM with FlashInfer attention backend (no flash-attn compilation needed!)
 #
 # Build this ONCE and push to your registry:
-#   docker build -f deploy/docker/Dockerfile.base -t yourorg/babylon-base:0.2.0 .
-#   docker push yourorg/babylon-base:0.2.0
+#   docker build -f deploy/docker/Dockerfile.base -t yourorg/feed-base:0.2.0 .
+#   docker push yourorg/feed-base:0.2.0
 #
 # Then use Dockerfile which extends this and builds in ~2 minutes.
 #
@@ -73,7 +73,7 @@ ENV VLLM_ATTENTION_BACKEND="FLASHINFER"
 RUN mkdir -p /app/trained_models /app/logs /app/data /app/rollout_dumps /app/.cache
 
 # Labels for tracking
-LABEL maintainer="babylon-team"
+LABEL maintainer="feed-team"
 LABEL version="0.2.1"
-LABEL description="Babylon Training Base Image - vLLM with FlashInfer"
+LABEL description="Feed Training Base Image - vLLM with FlashInfer"
 LABEL vllm.version="0.14.0"

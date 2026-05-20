@@ -1,4 +1,4 @@
-import type { PerpsTagData } from '@babylon/shared';
+import type { PerpsTagData } from '@feed/shared';
 import type { TutorialStep } from '@/components/tutorial/SpotlightTutorial';
 
 export type { TutorialStep };

@@ -9,9 +9,9 @@
  * - Resolution outcome (if resolved)
  */
 
-import { PredictionPricing } from '@babylon/core/markets/prediction/client';
-import { db, desc, eq, gte, markets } from '@babylon/db';
-import type { MessageTag } from '@babylon/shared';
+import { PredictionPricing } from '@feed/core/markets/prediction/client';
+import { db, desc, eq, gte, markets } from '@feed/db';
+import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,

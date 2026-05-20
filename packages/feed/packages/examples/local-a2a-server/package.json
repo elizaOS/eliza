@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/local-a2a-server",
+  "name": "@feed/local-a2a-server",
   "version": "0.1.0",
   "description": "Standalone A2A server for local agent development",
   "type": "module",

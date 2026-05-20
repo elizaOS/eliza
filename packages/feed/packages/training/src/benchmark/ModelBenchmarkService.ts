@@ -20,7 +20,7 @@ import {
   trainedModels,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { ethers } from 'ethers';
 import { promises as fs } from 'fs';
@@ -644,7 +644,7 @@ export class ModelBenchmarkService {
 
     if (standardBenchmarks.length === 0) {
       logger.warn(
-        'No standard benchmarks found. Generate with: babylon train generate'
+        'No standard benchmarks found. Generate with: feed train generate'
       );
     }
 

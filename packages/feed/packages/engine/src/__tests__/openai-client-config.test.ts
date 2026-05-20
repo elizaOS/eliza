@@ -23,7 +23,7 @@ mock.module('openai', () => ({
   },
 }));
 
-describe('BabylonLLMClient configuration', () => {
+describe('FeedLLMClient configuration', () => {
   const originalGroqApiKey = process.env.GROQ_API_KEY;
   const originalGroqBaseURL = process.env.GROQ_BASE_URL;
   const originalMarketDecisionModel = process.env.MARKET_DECISION_MODEL;
@@ -60,8 +60,8 @@ describe('BabylonLLMClient configuration', () => {
     process.env.GROQ_BASE_URL = 'http://127.0.0.1:8099/v1';
     process.env.MARKET_DECISION_MODEL = 'adapter';
 
-    const { BabylonLLMClient } = await import('../llm/openai-client');
-    const client = BabylonLLMClient.forGameTick();
+    const { FeedLLMClient } = await import('../llm/openai-client');
+    const client = FeedLLMClient.forGameTick();
 
     expect(openAiConfigs.at(-1)).toMatchObject({
       apiKey: 'test-groq-key',

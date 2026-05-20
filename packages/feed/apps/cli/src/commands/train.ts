@@ -18,7 +18,7 @@ import {
   getPriorityMetrics,
   getRubric,
   hasCustomRubric,
-} from '@babylon/training/rubrics/index';
+} from '@feed/training/rubrics/index';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -75,7 +75,7 @@ function resolvePythonCommand(workspaceRoot: string): PythonCommand {
 
 // Heavy imports loaded lazily to avoid initializing connections for simple commands
 async function getDbImports() {
-  const dbMod = await import('@babylon/db');
+  const dbMod = await import('@feed/db');
   return {
     db: dbMod.db,
     eq: dbMod.eq,
@@ -91,7 +91,7 @@ async function getDbImports() {
 }
 
 async function getTrainingImports() {
-  const trainingMod = await import('@babylon/training');
+  const trainingMod = await import('@feed/training');
   return {
     archetypeScoringService: trainingMod.archetypeScoringService,
     trajectoryMetricsExtractor: trainingMod.trajectoryMetricsExtractor,
@@ -100,11 +100,11 @@ async function getTrainingImports() {
 }
 
 async function configureLLMCaller() {
-  const { BabylonLLMClient } = await import('@babylon/engine');
+  const { FeedLLMClient } = await import('@feed/engine');
   const { configureTrainingDependencies } = await getTrainingImports();
 
   // Create LLM client for scoring
-  const llmClient = BabylonLLMClient.forGameTick();
+  const llmClient = FeedLLMClient.forGameTick();
 
   // Create adapter that implements ILLMCaller interface
   const llmCaller = {
@@ -135,7 +135,7 @@ async function configureLLMCaller() {
 }
 
 async function getAgentImports() {
-  const agentsMod = await import('@babylon/agents');
+  const agentsMod = await import('@feed/agents');
   return {
     agentService: agentsMod.agentService,
     agentRuntimeManager: agentsMod.agentRuntimeManager,
@@ -166,7 +166,7 @@ function printHelp(): void {
 Training Commands
 
 USAGE:
-  babylon train <command> [options]
+  feed train <command> [options]
 
 COMMANDS:
   list        List available archetypes with details
@@ -246,19 +246,19 @@ ONLINE RL OPTIONS:
   --kondo-gate-rate=N      Fraction of backward passes to keep (default: 0.03)
   --turboquant             Enable TurboQuant KV cache compression
   --pbt                    Enable population-based training (multi mode)
-  --bridge-url=URL         Babylon simulation bridge URL
+  --bridge-url=URL         Feed simulation bridge URL
   --max-ticks=N            Maximum training ticks (0 = unlimited)
 
 EXAMPLES:
-  babylon train list                          # List all archetypes
-  babylon train list --verbose                # Show rubric previews
-  babylon train pipeline -a trader            # Train trader archetype
-  babylon train pipeline --archetypes=trader,scammer,degen
-  babylon train run -a all                    # Train all archetypes
-  babylon train archetype -a scammer          # Score & export scammer data
-  babylon train collect --count=100           # Collect 100 trajectories
-  babylon train generate --episodes=5         # Generate 5 game episodes
-  babylon train online --optimizer=apollo --kondo --turboquant --pbt
+  feed train list                          # List all archetypes
+  feed train list --verbose                # Show rubric previews
+  feed train pipeline -a trader            # Train trader archetype
+  feed train pipeline --archetypes=trader,scammer,degen
+  feed train run -a all                    # Train all archetypes
+  feed train archetype -a scammer          # Score & export scammer data
+  feed train collect --count=100           # Collect 100 trajectories
+  feed train generate --episodes=5         # Generate 5 game episodes
+  feed train online --optimizer=apollo --kondo --turboquant --pbt
 `);
 }
 
@@ -466,9 +466,9 @@ To generate trajectories:
   3. Re-run this command
 
 Example:
-  babylon agent spawn --archetype ${archetype} --count 5
-  babylon train collect --count 100
-  babylon train archetype -a ${archetype}
+  feed agent spawn --archetype ${archetype} --count 5
+  feed train collect --count 100
+  feed train archetype -a ${archetype}
 `);
     process.exit(1);
   }
@@ -512,7 +512,7 @@ Next steps:
        --archetype ${archetype}
 
   2. Or run the full pipeline:
-     babylon train pipeline --archetype ${archetype}
+     feed train pipeline --archetype ${archetype}
 `);
     }
   } else {
@@ -521,7 +521,7 @@ Next steps:
     );
     console.log(`
 To export for training, run without --score-only:
-  babylon train archetype -a ${archetype}
+  feed train archetype -a ${archetype}
 `);
   }
 }
@@ -574,7 +574,7 @@ async function collectTrajectories(
    - virtualBalance >= 1
    - At least one autonomous feature enabled
 
-   Create agents with: babylon agent spawn
+   Create agents with: feed agent spawn
 `);
     process.exit(1);
   }
@@ -1457,7 +1457,7 @@ async function generateTrajectories(
   const archetypes = getAvailableArchetypes();
 
   const { db, trajectories } = await getDbImports();
-  const { generateSnowflakeId } = await import('@babylon/training');
+  const { generateSnowflakeId } = await import('@feed/training');
 
   logger.header('Multi-Archetype Trajectory Generator');
 
@@ -1467,7 +1467,7 @@ async function generateTrajectories(
   console.log('   - Decisions use Math.random(), not real LLM calls');
   console.log('   - This is for TESTING ONLY, not real training');
   console.log();
-  console.log('   For REAL data, use: babylon train parallel');
+  console.log('   For REAL data, use: feed train parallel');
   console.log();
   console.log('Configuration:');
   console.log(`  Episodes: ${episodes}`);
@@ -1603,8 +1603,8 @@ async function generateTrajectories(
   console.log(`  Archetypes: ${archetypes.join(', ')}`);
   console.log();
   console.log('Next steps:');
-  console.log('  1. babylon train archetype -a <archetype>');
-  console.log('  2. babylon train pipeline -a all');
+  console.log('  1. feed train archetype -a <archetype>');
+  console.log('  2. feed train pipeline -a all');
 }
 
 async function listArchetypes(
@@ -1640,9 +1640,9 @@ async function listArchetypes(
   console.log(`Total: ${archetypes.length} archetypes`);
   console.log();
   console.log('To train an archetype:');
-  console.log('  babylon train pipeline -a <archetype>');
-  console.log('  babylon train pipeline --archetypes=trader,scammer,degen');
-  console.log('  babylon train pipeline -a all  # Train all archetypes');
+  console.log('  feed train pipeline -a <archetype>');
+  console.log('  feed train pipeline --archetypes=trader,scammer,degen');
+  console.log('  feed train pipeline -a all  # Train all archetypes');
 }
 
 async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
@@ -1687,7 +1687,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
   const rewardProfile = getOption(args, 'reward-profile', '');
   const skipScamBench = getFlag(args, 'skip-scambench', '');
 
-  logger.header('Babylon Training Pipeline');
+  logger.header('Feed Training Pipeline');
 
   if (noBenchmark && benchmarkOnly) {
     logger.fail('--no-benchmark and --benchmark-only cannot be used together');
@@ -1935,7 +1935,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
       '\nSet TINKER_API_KEY in your shell or .env before running this command.'
     );
     throw createCliUsageError(
-      'TINKER_API_KEY is required for babylon train pipeline with --training-backend=tinker'
+      'TINKER_API_KEY is required for feed train pipeline with --training-backend=tinker'
     );
   }
 
@@ -1951,7 +1951,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
       '\nSet --hf-dataset or HF_TRAJECTORY_DATASET before running this command.'
     );
     throw createCliUsageError(
-      'HF_TRAJECTORY_DATASET is required for babylon train pipeline with trajectory-source=huggingface'
+      'HF_TRAJECTORY_DATASET is required for feed train pipeline with trajectory-source=huggingface'
     );
   }
 
@@ -1965,7 +1965,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
       '\nSet --source-dir to a local export directory before running this command.'
     );
     throw createCliUsageError(
-      'source-dir is required for babylon train pipeline with trajectory-source=local_export'
+      'source-dir is required for feed train pipeline with trajectory-source=local_export'
     );
   }
 
@@ -1980,7 +1980,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
       '\nSet DATABASE_URL in your shell or .env before running this command, or use --trajectory-source=huggingface or --trajectory-source=local_export.'
     );
     throw createCliUsageError(
-      'DATABASE_URL is required for babylon train pipeline unless trajectory-source=huggingface or trajectory-source=local_export'
+      'DATABASE_URL is required for feed train pipeline unless trajectory-source=huggingface or trajectory-source=local_export'
     );
   }
 
@@ -2026,9 +2026,9 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
         } else {
           console.log(`  1. Check results in ${output}/`);
           console.log(`  2. Review ${output}/pipeline_report.json`);
-          console.log('  3. Upload model: babylon model upload --model <path>');
+          console.log('  3. Upload model: feed model upload --model <path>');
           console.log(
-            '  4. Run benchmark: babylon train pipeline --benchmark-only'
+            '  4. Run benchmark: feed train pipeline --benchmark-only'
           );
         }
         resolve();
@@ -2047,7 +2047,7 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
  */
 
 async function runOnlineRL(args: ReturnType<typeof parseArgs>): Promise<void> {
-  logger.header('Babylon Online RL Training');
+  logger.header('Feed Online RL Training');
 
   const workspaceRoot = join(import.meta.dir, '..', '..', '..', '..');
   const scriptPath = join(

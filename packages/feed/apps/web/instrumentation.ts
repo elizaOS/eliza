@@ -30,7 +30,7 @@ export async function register() {
       ReputationService,
       createNotification,
       logDevCredentials,
-    } = await import('@babylon/api');
+    } = await import('@feed/api');
     const { createSentryApiRouteCapture } = await import(
       './src/lib/sentry/api-route-capture'
     );
@@ -47,7 +47,7 @@ export async function register() {
     // Initialize agent service container with required services
     // Uses globalThis to persist across module instances
     const { setServiceContainer, agentRegistry, npcBootstrapService } =
-      await import('@babylon/agents');
+      await import('@feed/agents');
     setServiceContainer({
       agentRegistry,
     });
@@ -94,7 +94,7 @@ export async function register() {
       __lastUsedFlusherStarted?: boolean;
     };
     if (!g.__lastUsedFlusherStarted) {
-      const { startLastUsedFlusher } = await import('@babylon/api');
+      const { startLastUsedFlusher } = await import('@feed/api');
       startLastUsedFlusher();
       g.__lastUsedFlusherStarted = true;
     }

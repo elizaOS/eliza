@@ -9,7 +9,7 @@ Environment variables:
     CHECKPOINT_SYNC_BACKEND   "s3" or "rsync" (default: "s3")
 
     # S3 backend:
-    CHECKPOINT_S3_BUCKET      Bucket name (default: "babylon-checkpoints")
+    CHECKPOINT_S3_BUCKET      Bucket name (default: "feed-checkpoints")
     CHECKPOINT_S3_PREFIX      Key prefix (default: "training/")
     CHECKPOINT_S3_ENDPOINT    S3 endpoint URL (for MinIO/Nebius)
     AWS_ACCESS_KEY_ID         S3 credentials
@@ -17,7 +17,7 @@ Environment variables:
 
     # rsync backend:
     CHECKPOINT_RSYNC_HOST     Remote host (e.g., "shaw@89.169.123.213")
-    CHECKPOINT_RSYNC_PATH     Remote directory (default: "~/babylon-checkpoints/")
+    CHECKPOINT_RSYNC_PATH     Remote directory (default: "~/feed-checkpoints/")
     CHECKPOINT_RSYNC_KEY      SSH key path (optional)
 """
 
@@ -81,7 +81,7 @@ class S3SyncBackend(CheckpointSyncBackend):
 
     def __init__(
         self,
-        bucket: str = "babylon-checkpoints",
+        bucket: str = "feed-checkpoints",
         prefix: str = "training/",
         endpoint_url: str | None = None,
     ):
@@ -196,7 +196,7 @@ class RsyncSyncBackend(CheckpointSyncBackend):
     def __init__(
         self,
         host: str,
-        remote_path: str = "~/babylon-checkpoints/",
+        remote_path: str = "~/feed-checkpoints/",
         ssh_key: str | None = None,
     ):
         self.host = host
@@ -332,12 +332,12 @@ class CheckpointSyncer:
                 raise ValueError("CHECKPOINT_RSYNC_HOST is required for rsync backend")
             backend: CheckpointSyncBackend = RsyncSyncBackend(
                 host=host,
-                remote_path=os.environ.get("CHECKPOINT_RSYNC_PATH", "~/babylon-checkpoints/"),
+                remote_path=os.environ.get("CHECKPOINT_RSYNC_PATH", "~/feed-checkpoints/"),
                 ssh_key=os.environ.get("CHECKPOINT_RSYNC_KEY"),
             )
         elif backend_type == "s3":
             backend = S3SyncBackend(
-                bucket=os.environ.get("CHECKPOINT_S3_BUCKET", "babylon-checkpoints"),
+                bucket=os.environ.get("CHECKPOINT_S3_BUCKET", "feed-checkpoints"),
                 prefix=os.environ.get("CHECKPOINT_S3_PREFIX", "training/"),
                 endpoint_url=os.environ.get("CHECKPOINT_S3_ENDPOINT"),
             )

@@ -6,7 +6,7 @@
  * Provides high-level functions for broadcasting to channels and chat rooms.
  */
 
-import { logger, type MessageMetadata } from '@babylon/shared';
+import { logger, type MessageMetadata } from '@feed/shared';
 import { publishEvent, type RealtimeChannel } from '../realtime';
 import type { JsonValue } from '../types';
 

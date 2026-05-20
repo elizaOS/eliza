@@ -13,7 +13,7 @@ import {
   OpenPositionParamsSchema,
   PaymentRequestParamsSchema,
   SearchUsersParamsSchema,
-} from '@babylon/a2a';
+} from '@feed/a2a';
 
 describe('A2A Validation Schemas', () => {
   describe('DiscoverParamsSchema', () => {

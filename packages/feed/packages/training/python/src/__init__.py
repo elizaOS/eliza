@@ -1,7 +1,7 @@
 """
-Babylon RL Training System - Atropos + Tinker Framework
+Feed RL Training System - Atropos + Tinker Framework
 
-This package provides training infrastructure for Babylon trading agents:
+This package provides training infrastructure for Feed trading agents:
 
 1. **Tinker Training** (RECOMMENDED - Cloud-based)
    - `tinker_client.py` - Unified Tinker API wrapper
@@ -10,7 +10,7 @@ This package provides training infrastructure for Babylon trading agents:
 
 2. **Atropos Training** (Local GPU)
    - `atropos_trainer.py` - Local GRPO trainer with vLLM
-   - `babylon_env.py` - RLAIF environment with LLM-as-judge
+   - `feed_env.py` - RLAIF environment with LLM-as-judge
 
 3. **Data & Utilities**
    - `rollout_generator.py` - Fast rollout generation
@@ -22,14 +22,14 @@ __version__ = "3.0.0"  # Major version bump for Tinker integration
 
 # Import and re-export main components
 from .data_bridge import (
-    BabylonToAtroposConverter,
+    FeedToAtroposConverter,
     PostgresTrajectoryReader,
     ScoredGroupResult,
     calculate_dropout_rate,
 )
 from .models import (
     AtroposScoredGroup,
-    BabylonTrajectory,
+    FeedTrajectory,
     JudgeResponse,
     MarketOutcomes,
     TrainingBatchSummary,
@@ -64,30 +64,30 @@ def __getattr__(name: str):
     """Lazy import for torch/tinker-dependent modules."""
     # Atropos trainer (requires torch)
     if name in (
-        "BabylonAtroposTrainer",
+        "FeedAtroposTrainer",
         "AtroposTrainingConfig",
     ):
         from .training.atropos_trainer import (
             AtroposTrainingConfig,
-            BabylonAtroposTrainer,
+            FeedAtroposTrainer,
         )
 
         return locals()[name]
 
     if name in (
-        "BabylonRLAIFEnv",
-        "BabylonEnvConfig",
+        "FeedRLAIFEnv",
+        "FeedEnvConfig",
     ):
-        from .training.babylon_env import (
-            BabylonEnvConfig,
-            BabylonRLAIFEnv,
+        from .training.feed_env import (
+            FeedEnvConfig,
+            FeedRLAIFEnv,
         )
 
         return locals()[name]
 
     # Tinker trainer (requires tinker)
     if name in (
-        "BabylonTinkerClient",
+        "FeedTinkerClient",
         "TinkerConfig",
         "TinkerDatum",
         "TrainStepResult",
@@ -96,7 +96,7 @@ def __getattr__(name: str):
     ):
         from .training.tinker_client import (
             TINKER_AVAILABLE,
-            BabylonTinkerClient,
+            FeedTinkerClient,
             SampleResult,
             TinkerConfig,
             TinkerDatum,
@@ -106,11 +106,11 @@ def __getattr__(name: str):
         return locals()[name]
 
     if name in (
-        "BabylonTinkerTrainer",
+        "FeedTinkerTrainer",
         "TinkerTrainingConfig",
     ):
         from .training.tinker_trainer import (
-            BabylonTinkerTrainer,
+            FeedTinkerTrainer,
             TinkerTrainingConfig,
         )
 
@@ -124,15 +124,15 @@ __all__ = [
     "AtroposScoredGroup",
     "AtroposTrainingConfig",
     # Atropos Training (lazy - requires torch) - Local fallback
-    "BabylonAtroposTrainer",
-    "BabylonEnvConfig",
-    "BabylonRLAIFEnv",
+    "FeedAtroposTrainer",
+    "FeedEnvConfig",
+    "FeedRLAIFEnv",
     # Tinker Training (lazy - requires tinker) - RECOMMENDED
-    "BabylonTinkerClient",
-    "BabylonTinkerTrainer",
-    "BabylonToAtroposConverter",
+    "FeedTinkerClient",
+    "FeedTinkerTrainer",
+    "FeedToAtroposConverter",
     # Models
-    "BabylonTrajectory",
+    "FeedTrajectory",
     "CallPurpose",
     "JudgeResponse",
     "MarketOutcomes",

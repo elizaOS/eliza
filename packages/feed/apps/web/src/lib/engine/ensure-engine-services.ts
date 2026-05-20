@@ -7,7 +7,7 @@ import {
   getRateLimitStatus as apiGetRateLimitStatus,
   notifyGroupChatInvite as apiNotifyGroupChatInvite,
   resetRateLimit as apiResetRateLimit,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   type DistributedLockProvider,
   type RateLimitProvider,
@@ -15,14 +15,14 @@ import {
   setDistributedLockProvider,
   setNotifyGroupChatInvite,
   setRateLimitProvider,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 let initialized = false;
 
 /**
  * Wire engine-side abstractions to API implementations.
  *
- * The engine package is intentionally decoupled from `@babylon/api`. In the web
+ * The engine package is intentionally decoupled from `@feed/api`. In the web
  * runtime we provide the concrete implementations (SSE broadcaster, distributed
  * locks, notifications) so engine services can perform side effects.
  */

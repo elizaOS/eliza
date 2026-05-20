@@ -5,7 +5,7 @@
  * only runs on production deployments. This allows staging to run all crons.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 interface CronSchedule {
   path: string;

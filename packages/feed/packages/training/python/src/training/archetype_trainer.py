@@ -166,7 +166,7 @@ class ArchetypeTrainer:
 
     async def _load_trajectories(self) -> list:
         from src.data_bridge import PostgresTrajectoryReader
-        from src.models import BabylonTrajectory
+        from src.models import FeedTrajectory
 
         database_url = self.config.database_url or os.getenv("DATABASE_URL", "")
         if not database_url:
@@ -190,7 +190,7 @@ class ArchetypeTrainer:
                     try:
                         steps = json.loads(row.steps_json)
                         trajectories.append(
-                            BabylonTrajectory.model_validate(
+                            FeedTrajectory.model_validate(
                                 {
                                     "id": row.trajectory_id,
                                     "trajectory_id": row.trajectory_id,

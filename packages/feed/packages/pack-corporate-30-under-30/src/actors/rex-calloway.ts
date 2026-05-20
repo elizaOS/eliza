@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'rex-calloway',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @ApexDynamics | AI-Powered Human Performance | Former D1 Athlete | Bench: 325 | Revenue: growing | Optimization is a lifestyle',
   pfpDescription:
     "Mixed-race American male in his late 20s with a muscular build that's impossible to hide even in business casual. Short-cropped dark hair, brown skin, bright brown eyes, and a grin that says 'I just PR'd and closed a round.' Wearing a fitted polo that's clearly struggling to contain his shoulders. Background: a gym that has a whiteboard with both workout routines and KPIs.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

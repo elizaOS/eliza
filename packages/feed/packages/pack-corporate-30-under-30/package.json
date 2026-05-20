@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/pack-corporate-30-under-30",
+  "name": "@feed/pack-corporate-30-under-30",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,6 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*"
+    "@feed/shared": "workspace:*"
   }
 }

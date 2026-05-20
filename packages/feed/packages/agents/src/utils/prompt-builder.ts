@@ -11,7 +11,7 @@ import {
   countTokensSync,
   getModelTokenLimit,
   truncateToTokenLimitSync,
-} from '@babylon/api';
+} from '@feed/api';
 import { logger } from '../shared/logger';
 
 export interface PromptSection {

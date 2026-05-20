@@ -46,9 +46,9 @@ def test_relative_bundle_paths_cover_training_and_catalog_exports():
 
     paths = nebius_script.relative_bundle_paths(weighted, unweighted, catalog)
 
-    assert Path("babylon/packages/training/python/scripts") in paths
-    assert Path("babylon/packages/training/python/src") in paths
-    assert Path("babylon/packages/training/python/requirements.txt") in paths
+    assert Path("feed/packages/training/python/scripts") in paths
+    assert Path("feed/packages/training/python/src") in paths
+    assert Path("feed/packages/training/python/requirements.txt") in paths
     assert weighted.resolve().relative_to(nebius_script.WORKSPACE_ROOT) in paths
     assert unweighted.resolve().relative_to(nebius_script.WORKSPACE_ROOT) in paths
     assert catalog.resolve().relative_to(nebius_script.WORKSPACE_ROOT) in paths
@@ -76,18 +76,18 @@ def test_remote_workspace_path_uses_staged_location_for_external_inputs(tmp_path
     external_catalog.write_text("{}", encoding="utf-8")
 
     remote_path = nebius_script.remote_workspace_path(
-        "/home/trainer/babylon-workspace",
+        "/home/trainer/feed-workspace",
         external_catalog,
     )
 
-    assert remote_path.startswith("/home/trainer/babylon-workspace/")
-    assert "/babylon/runs/nebius-unified/_inputs/" in remote_path
+    assert remote_path.startswith("/home/trainer/feed-workspace/")
+    assert "/feed/runs/nebius-unified/_inputs/" in remote_path
 
 
 def test_render_remote_script_contains_baseline_lora_and_apollo_steps():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -157,8 +157,8 @@ def test_score_output_path_uses_decisions_suffix():
 
 def test_build_matrix_filters_to_requested_variants():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -192,8 +192,8 @@ def test_build_matrix_filters_to_requested_variants():
 
 def test_build_matrix_uses_adapter_only_for_lora_variants():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -227,8 +227,8 @@ def test_build_matrix_uses_adapter_only_for_lora_variants():
 
 def test_render_remote_script_uses_variant_subset():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -261,8 +261,8 @@ def test_render_remote_script_uses_variant_subset():
 
 def test_render_remote_script_interpolates_resume_logging_values():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -297,8 +297,8 @@ def test_render_remote_script_interpolates_resume_logging_values():
 
 def test_build_matrix_sets_nf4_only_for_lora_variants():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -330,8 +330,8 @@ def test_build_matrix_sets_nf4_only_for_lora_variants():
 
 def test_build_matrix_adds_turboquant_eval_flags_when_requested():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,
@@ -408,8 +408,8 @@ def test_build_model_download_command_uses_partial_noncompressed_filtered_rsync(
 
 def test_build_matrix_uses_model_slug_for_non_4b_models():
     args = argparse.Namespace(
-        remote_workspace="/home/trainer/babylon-workspace",
-        remote_results_dir="babylon/runs/nebius-unified/latest",
+        remote_workspace="/home/trainer/feed-workspace",
+        remote_results_dir="feed/runs/nebius-unified/latest",
         weighted_export_dir=nebius_script.DEFAULT_WEIGHTED_EXPORT,
         unweighted_export_dir=nebius_script.DEFAULT_UNWEIGHTED_EXPORT,
         scenario_catalog=nebius_script.DEFAULT_SCENARIO_CATALOG,

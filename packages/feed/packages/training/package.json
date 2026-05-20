@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/training",
+  "name": "@feed/training",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon Training Pipeline - RL training, benchmarking, and HuggingFace integration",
+  "description": "Feed Training Pipeline - RL training, benchmarking, and HuggingFace integration",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -33,9 +33,9 @@
     "uuid": "^11.1.0"
   },
   "peerDependencies": {
-    "@babylon/core": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/shared": "workspace:*",
     "@elizaos/core": "2.0.0-alpha.109",
     "drizzle-orm": "^0.44.7"
   },

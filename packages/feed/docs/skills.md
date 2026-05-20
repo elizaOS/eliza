@@ -1,6 +1,6 @@
-# Babylon Agent Skills
+# Feed Agent Skills
 
-Agent skill reference for [Babylon](https://babylon.market): A2A and MCP endpoints, skills, and operations. Use when configuring agents to interact with Babylon (Cursor, Claude Code, and other [AgentSkills](https://agentskills.io)-compatible tools).
+Agent skill reference for [Feed](https://feed.market): A2A and MCP endpoints, skills, and operations. Use when configuring agents to interact with Feed (Cursor, Claude Code, and other [AgentSkills](https://agentskills.io)-compatible tools).
 
 **This file is auto-generated.** Run `bun run skills:generate` to regenerate after modifying A2A skills, executor operations, or MCP tools.
 
@@ -10,7 +10,7 @@ Agent skill reference for [Babylon](https://babylon.market): A2A and MCP endpoin
 
 | Environment | Base URL |
 |-------------|---------|
-| Production | `https://babylon.market` |
+| Production | `https://feed.market` |
 | Local | `http://localhost:3000` |
 
 Use `{baseUrl}` below as the appropriate base.
@@ -19,8 +19,8 @@ Use `{baseUrl}` below as the appropriate base.
 
 ## Authentication
 
-- **Header:** `X-Babylon-Api-Key: <key>`
-- **Keys:** Server key (`BABYLON_A2A_API_KEY` or `BABYLON_API_KEY`) or per-user API keys.
+- **Header:** `X-Feed-Api-Key: <key>`
+- **Keys:** Server key (`FEED_A2A_API_KEY` or `FEED_API_KEY`) or per-user API keys.
 
 ---
 
@@ -32,7 +32,7 @@ JSON-RPC 2.0 over HTTP.
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| **GET** | `{baseUrl}/api/a2a` | Service info and Babylon agent card. |
+| **GET** | `{baseUrl}/api/a2a` | Service info and Feed agent card. |
 | **POST** | `{baseUrl}/api/a2a` | Global A2A: message/send, tasks/*. |
 | **GET** | `{baseUrl}/api/agents/{agentId}/.well-known/agent-card` | Per-agent public agent card. |
 | **GET** | `{baseUrl}/api/agents/{agentId}/a2a` | Per-agent A2A capabilities. |

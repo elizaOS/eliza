@@ -2,9 +2,9 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@babylon/agents';
-import { calculatePortfolioBreakdown } from '@babylon/engine';
-import { toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/agents';
+import { calculatePortfolioBreakdown } from '@feed/engine';
+import { toISO, toISOOrNull } from '@feed/shared';
 import { getUserPositionsSnapshot } from '@/lib/markets/user-positions';
 
 function normalizeModelTier(value: string | null | undefined): 'free' | 'pro' {

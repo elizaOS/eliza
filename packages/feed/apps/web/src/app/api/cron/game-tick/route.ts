@@ -56,18 +56,18 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { asSystem } from '@babylon/db';
+} from '@feed/api';
+import { asSystem } from '@feed/db';
 import {
-  BabylonLLMClient,
+  FeedLLMClient,
   bootstrapGameIfNeeded,
   checkLookaheadStatus,
   executeGameTick,
   generateAheadIfNeeded,
   StaticDataRegistry,
   WorldStateSnapshotService,
-} from '@babylon/engine';
-import { logger, toISOOrNull } from '@babylon/shared';
+} from '@feed/engine';
+import { logger, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import {
   isInternalCronSchedulerEnabled,
@@ -339,7 +339,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
 
     // Use game tick LLM client
-    const llmClient = BabylonLLMClient.forGameTick();
+    const llmClient = FeedLLMClient.forGameTick();
     const lookaheadResult = await generateAheadIfNeeded(llmClient, 15);
 
     logger.info(

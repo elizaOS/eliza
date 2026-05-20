@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'bun:test';
-import { RateLimiter } from '@babylon/a2a';
+import { RateLimiter } from '@feed/a2a';
 
 describe('A2A RateLimiter', () => {
   let limiter: RateLimiter;

@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import { ArrowUpDown, Search, TrendingDown, TrendingUp } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -378,7 +378,7 @@ const PerpsTable = memo(function PerpsTable({
                 </div>
               </td>
               <td className="px-3 py-3 text-right font-mono tabular-nums">
-                {BABYLON_POINTS_SYMBOL}
+                {FEED_POINTS_SYMBOL}
                 {m.currentPrice.toFixed(2)}
               </td>
               <td className="px-3 py-3 text-right">

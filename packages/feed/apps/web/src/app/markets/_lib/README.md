@@ -2,9 +2,9 @@
 
 ## `formatters.ts`
 
-**Purpose:** Format Babylon points, volumes, and percentages for **dense tables** (trending screener, prediction volume column, etc.).
+**Purpose:** Format Feed points, volumes, and percentages for **dense tables** (trending screener, prediction volume column, etc.).
 
-**WHY not only `@babylon/shared`:**
+**WHY not only `@feed/shared`:**
 
 - Screener-specific rules: **ƀ** prefix, **T/Q** volume tiers (so OI and 24h vol never print 15-digit `…B` strings), and **em dash** for non-finite API values.
 - Shared `formatCompactCurrency` / `formatCompactNumber` serve **engine and prompts** with slightly different defaults (e.g. decimal places). Keeping web table rules here avoids coupling every UI tweak to NPC context.

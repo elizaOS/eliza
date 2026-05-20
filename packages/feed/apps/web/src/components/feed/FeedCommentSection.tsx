@@ -1,7 +1,7 @@
 'use client';
 
-import type { CommentData, CommentWithReplies } from '@babylon/shared';
-import { cn, getProfileUrl } from '@babylon/shared';
+import type { CommentData, CommentWithReplies } from '@feed/shared';
+import { cn, getProfileUrl } from '@feed/shared';
 import { MessageCircle, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

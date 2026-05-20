@@ -1,5 +1,5 @@
 """
-GHOST VARIABLE DETECTION TESTS for Babylon Engine Prompts
+GHOST VARIABLE DETECTION TESTS for Feed Engine Prompts
 
 These tests parse every prompt template in the engine, extract all {{variable}}
 patterns, and verify that every variable is either:

@@ -4,9 +4,9 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { NarrativeStory } from '@babylon/shared';
-import { toISO } from '@babylon/shared';
+} from '@feed/api';
+import type { NarrativeStory } from '@feed/shared';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { decodeCursor, encodeCursor, findCursorIndex } from '../feed-cursor';
 import { buildForYouFeed } from './pipeline';

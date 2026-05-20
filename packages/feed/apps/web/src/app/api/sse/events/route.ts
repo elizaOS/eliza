@@ -8,8 +8,8 @@ import {
   toStreamKey,
   verifyRealtimeToken,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 // Vercel function configuration

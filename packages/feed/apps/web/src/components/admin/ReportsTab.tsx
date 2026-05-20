@@ -20,7 +20,7 @@
  */
 'use client';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 import { AlertCircle, CheckCircle, Clock, Flag, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';

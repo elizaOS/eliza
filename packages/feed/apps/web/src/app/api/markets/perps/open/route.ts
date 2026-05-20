@@ -7,13 +7,13 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { handlePlayerTrade } from '@babylon/engine';
+} from '@feed/api';
+import { handlePlayerTrade } from '@feed/engine';
 import {
   fireAndForgetWithRetry,
   logger,
   PerpOpenPositionSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 import { createPerpMarketService } from '../_adapters';

@@ -1,27 +1,27 @@
-# Babylon Training Production Image
+# Feed Training Production Image
 #
 # FAST BUILD (~2 minutes) - extends pre-built base image
 #
 # Prerequisites:
 #   1. Build and push the base image first:
-#      docker build -f deploy/docker/Dockerfile.base -t yourorg/babylon-base:0.2.0 .
-#      docker push yourorg/babylon-base:0.2.0
+#      docker build -f deploy/docker/Dockerfile.base -t yourorg/feed-base:0.2.0 .
+#      docker push yourorg/feed-base:0.2.0
 #
 #   2. Set the BASE_IMAGE build arg or update the default below
 #
 # Build:
 #   docker build -f deploy/docker/Dockerfile \
-#     --build-arg BASE_IMAGE=yourorg/babylon-base:0.2.0 \
-#     -t babylon-training:latest .
+#     --build-arg BASE_IMAGE=yourorg/feed-base:0.2.0 \
+#     -t feed-training:latest .
 #
 # Build with model pre-download:
 #   docker build -f deploy/docker/Dockerfile \
-#     --build-arg BASE_IMAGE=yourorg/babylon-base:0.2.0 \
+#     --build-arg BASE_IMAGE=yourorg/feed-base:0.2.0 \
 #     --build-arg PRELOAD_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
-#     -t babylon-training:0.5b .
+#     -t feed-training:0.5b .
 #
 # ============================================================================
-ARG BASE_IMAGE=revlentless/babylon-base:0.2.0
+ARG BASE_IMAGE=revlentless/feed-base:0.2.0
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
@@ -95,7 +95,7 @@ RUN if [ -n "$PRELOAD_MODEL" ]; then \
 # Runtime environment
 ENV DATABASE_URL=""
 ENV WANDB_API_KEY=""
-ENV WANDB_PROJECT="babylon-training"
+ENV WANDB_PROJECT="feed-training"
 ENV WANDB_MODE="offline"
 
 # Health check

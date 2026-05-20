@@ -10,14 +10,14 @@
  * (not per-platform) — logout should silence push across all sessions.
  */
 
-import { authenticate, withErrorHandling } from '@babylon/api';
+import { authenticate, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 const DEVICE_TOKEN_PREFIX = 'push:device:';
 
 async function getRedis() {
-  const { getRedisClient } = await import('@babylon/api');
+  const { getRedisClient } = await import('@feed/api');
   return getRedisClient();
 }
 

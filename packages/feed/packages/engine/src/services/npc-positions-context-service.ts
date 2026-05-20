@@ -9,7 +9,7 @@
  * IMPORTANT: Must work in both PostgreSQL and JSON modes (no raw Drizzle queries).
  */
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 
 export interface PositionsContextOptions {
   maxPredictionPositionsPerActor?: number;

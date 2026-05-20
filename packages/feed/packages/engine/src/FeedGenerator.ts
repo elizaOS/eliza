@@ -12,11 +12,11 @@
  * This ensures each post matches the character's unique voice and style.
  */
 
-import type { WorldEvent } from '@babylon/shared';
-import { ContentValidator, type JsonValue, logger } from '@babylon/shared';
+import type { WorldEvent } from '@feed/shared';
+import { ContentValidator, type JsonValue, logger } from '@feed/shared';
 import { EventEmitter } from 'events';
 import { generateActorContext } from './EmotionSystem';
-import type { BabylonLLMClient } from './llm/openai-client';
+import type { FeedLLMClient } from './llm/openai-client';
 import {
   ambientPosts,
   analystReaction,
@@ -140,7 +140,7 @@ type ConspiracyResponse = ConspiracyResponseFormat1 | ConspiracyResponseFormat2;
 
 /** Generates social media posts from world events using LLM-powered content. */
 export class FeedGenerator extends EventEmitter {
-  private llm?: BabylonLLMClient;
+  private llm?: FeedLLMClient;
   private actorStates: Map<string, ActorState> = new Map();
   private relationships: ActorRelationship[] | ActorConnection[] = [];
   private relationshipContextCache: Map<string, string> = new Map(); // Cache relationship prompts
@@ -255,7 +255,7 @@ export class FeedGenerator extends EventEmitter {
    * If LLM is not provided, generation methods will return empty arrays or throw.
    * In production, always provide an LLM client.
    */
-  constructor(llm?: BabylonLLMClient) {
+  constructor(llm?: FeedLLMClient) {
     super();
     this.llm = llm;
   }

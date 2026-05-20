@@ -10,9 +10,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { asSystem, db } from '@babylon/db';
-import { executeGameTick, StaticDataRegistry } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { asSystem, db } from '@feed/db';
+import { executeGameTick, StaticDataRegistry } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();

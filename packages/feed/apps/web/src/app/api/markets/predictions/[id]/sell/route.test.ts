@@ -18,7 +18,7 @@ class BusinessLogicError extends Error {
   }
 }
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticate: mockAuthenticate,
   BusinessLogicError,
   broadcastToChannel: mockBroadcastToChannel,
@@ -60,7 +60,7 @@ mock.module('@babylon/api', () => ({
     },
 }));
 
-mock.module('@babylon/core/markets/prediction', () => ({
+mock.module('@feed/core/markets/prediction', () => ({
   PredictionDbAdapter: class PredictionDbAdapter {},
   PredictionMarketService: class PredictionMarketService {
     getMarket = mockGetMarket;
@@ -68,7 +68,7 @@ mock.module('@babylon/core/markets/prediction', () => ({
   },
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0.02,
     PLATFORM_SHARE: 0.5,
@@ -88,7 +88,7 @@ mock.module('@babylon/engine', () => ({
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     warn: mock(() => undefined),
     debug: mock(() => undefined),

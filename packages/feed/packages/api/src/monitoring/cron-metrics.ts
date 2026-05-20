@@ -7,7 +7,7 @@
  * @module monitoring/cron-metrics
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 export interface CronExecutionMetrics {
   jobName: string;

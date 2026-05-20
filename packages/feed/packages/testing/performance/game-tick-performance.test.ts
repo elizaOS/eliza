@@ -8,9 +8,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { asSystem } from '@babylon/db';
-import { executeGameTick } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { asSystem } from '@feed/db';
+import { executeGameTick } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Performance thresholds (in milliseconds)
 const PERFORMANCE_THRESHOLDS = {

@@ -1,4 +1,4 @@
-# Babylon + ScamBench: End-to-End Research Report
+# Feed + ScamBench: End-to-End Research Report
 
 **Date**: 2026-04-02
 **Purpose**: Full audit of simulation, training, and evaluation pipeline for red-team and blue-team social engineering RL
@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-We have a multi-agent simulation (Babylon) that generates social interaction trajectories, a benchmark (ScamBench) that evaluates scam resistance, and an RL training pipeline (shared-model with Kondo gate + APOLLO + TurboQuant) that improves models at both attacking and defending. The goal is to demonstrate:
+We have a multi-agent simulation (Feed) that generates social interaction trajectories, a benchmark (ScamBench) that evaluates scam resistance, and an RL training pipeline (shared-model with Kondo gate + APOLLO + TurboQuant) that improves models at both attacking and defending. The goal is to demonstrate:
 
 1. **Red-team**: Our trained model can scam/jailbreak frontier models (Sonnet, GPT-5.4) better than baseline
 2. **Blue-team**: Our trained model resists attacks from both our red-team and frontier models better than baseline
@@ -17,7 +17,7 @@ We have a multi-agent simulation (Babylon) that generates social interaction tra
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Babylon simulation engine | Working | Cron-driven ticks, 43 NPCs, all action types |
+| Feed simulation engine | Working | Cron-driven ticks, 43 NPCs, all action types |
 | Agent alignment (NPCs) | Working | 15 blue, 21 gray, 7 red in character JSON |
 | Agent alignment (user agents) | **Fixed** | DB columns added, helpers implemented |
 | Identity map population | **Fixed** | buildAgentIdentityMap() queries NPCs + DB |
@@ -42,7 +42,7 @@ We have a multi-agent simulation (Babylon) that generates social interaction tra
 
 ## 2. What We Have
 
-### 2.1 Babylon Simulation
+### 2.1 Feed Simulation
 
 **43 NPCs** across 3 teams:
 - **Blue (15)**: Good alignment, scam hunters/wary, high competence
@@ -151,22 +151,22 @@ ScamBenchAttackerScore {
 
 **What we need to run**:
 
-| Target (Blue) ↓ / Attacker (Red) → | Scripted | Baseline Qwen-4B | Babylon Red-4B | Babylon Red-9B | Babylon Red-27B |
+| Target (Blue) ↓ / Attacker (Red) → | Scripted | Baseline Qwen-4B | Feed Red-4B | Feed Red-9B | Feed Red-27B |
 |-------------------------------------|----------|-------------------|----------------|----------------|-----------------|
 | GPT-5.4 | ? | ? | ? | ? | ? |
 | Sonnet 4.5 | ? | ? | ? | ? | ? |
 | Baseline Qwen-4B | ✓ | ? | ? | ? | ? |
-| Babylon Blue-4B | ✓ | ? | ? | ? | ? |
-| Babylon Blue-9B | ? | ? | ? | ? | ? |
+| Feed Blue-4B | ✓ | ? | ? | ? | ? |
+| Feed Blue-9B | ? | ? | ? | ? | ? |
 
 Each cell = (target_resistance_score, attacker_success_rate)
 
 **CLI to populate one cell**:
 ```bash
 bun run src/index.ts \
-  --name "gpt5.4-vs-babylon-red-9b" \
+  --name "gpt5.4-vs-feed-red-9b" \
   --model gpt-5.4 --base-url https://api.openai.com/v1 --api-key-env OPENAI_API_KEY \
-  --attacker-model babylon-red-9b --attacker-base-url http://nebius-vm:8001/v1 \
+  --attacker-model feed-red-9b --attacker-base-url http://nebius-vm:8001/v1 \
   --score-attacker
 ```
 
@@ -179,7 +179,7 @@ bun run src/index.ts \
 - Python bridge client (supports remote `--bridge-url`)
 
 **What's missing**:
-1. **Standalone bridge server deployment** — Currently embedded in Babylon web app
+1. **Standalone bridge server deployment** — Currently embedded in Feed web app
 2. **Remote networking** — Bridge binds to localhost, needs 0.0.0.0
 3. **Model checkpoint syncing** — Local filesystem only, need S3/rsync back
 4. **Unified Nebius RL script** — Current matrix only does SFT, not continuous RL
@@ -189,7 +189,7 @@ bun run src/index.ts \
 ┌────────────────────┐         ┌──────────────────────┐
 │ Nebius H100/H200   │   HTTP  │ Game Server           │
 │                    │◄───────►│ (sim bridge :3001)    │
-│ Python Training    │         │ Babylon engine +      │
+│ Python Training    │         │ Feed engine +      │
 │ - Shared model     │         │ 43 NPCs + markets     │
 │ - APOLLO optimizer │         │ PostgreSQL             │
 │ - Kondo gate 3%   │         └──────────────────────┘
@@ -258,12 +258,12 @@ attacker_score = 0.5 * attack_success_rate + 0.3 * secret_extraction_rate + 0.2 
 
 **Experiment 1: Can we train a better scammer?**
 - Baseline: Qwen-4B (untrained) as attacker vs GPT-5.4 as target
-- Trained: Babylon-Red-9B as attacker vs GPT-5.4 as target
+- Trained: Feed-Red-9B as attacker vs GPT-5.4 as target
 - Metric: attacker_success_rate improvement
 
 **Experiment 2: Can we train better defense?**
-- Baseline: Qwen-4B (untrained) as target vs Babylon-Red-9B as attacker
-- Trained: Babylon-Blue-9B as target vs Babylon-Red-9B as attacker
+- Baseline: Qwen-4B (untrained) as target vs Feed-Red-9B as attacker
+- Trained: Feed-Blue-9B as target vs Feed-Red-9B as attacker
 - Metric: target_resistance_score improvement
 
 **Experiment 3: Arms race dynamics**
@@ -273,7 +273,7 @@ attacker_score = 0.5 * attack_success_rate + 0.3 * secret_extraction_rate + 0.2 
 - Track: How scores evolve across rounds (both sides should improve)
 
 **Experiment 4: Cross-model generalization**
-- Train on Babylon simulation (red+blue shared model)
+- Train on Feed simulation (red+blue shared model)
 - Evaluate red-team against models never seen in training (Sonnet, GPT-5.4, Llama)
 - Metric: Does red-team transfer to unseen targets?
 
@@ -281,7 +281,7 @@ attacker_score = 0.5 * attack_success_rate + 0.3 * secret_extraction_rate + 0.2 
 
 The paper's main claim becomes:
 
-> "A 9B parameter model trained with shared-model continuous RL on Babylon achieves X% attack success rate against GPT-5.4, compared to Y% for baseline Qwen-9B. The same training process produces a blue-team model that resists attacks from both the trained red-team and frontier models, achieving Z% resistance vs W% for untrained baseline."
+> "A 9B parameter model trained with shared-model continuous RL on Feed achieves X% attack success rate against GPT-5.4, compared to Y% for baseline Qwen-9B. The same training process produces a blue-team model that resists attacks from both the trained red-team and frontier models, achieving Z% resistance vs W% for untrained baseline."
 
 ---
 
@@ -289,7 +289,7 @@ The paper's main claim becomes:
 
 ### Phase 1: Validation (This Week)
 
-1. **Run Babylon simulation for 100 ticks with trajectory recording**
+1. **Run Feed simulation for 100 ticks with trajectory recording**
    - Verify identity map is populated (log sizes)
    - Verify counterpartyContext appears on trajectory steps
    - Verify interaction labels are non-empty

@@ -1,7 +1,7 @@
 /**
  * DAG Trace - Full observability for game tick execution.
  *
- * Enable with BABYLON_DAG_TRACE=true environment variable.
+ * Enable with FEED_DAG_TRACE=true environment variable.
  * Captures all inputs/outputs at every DAG node, full LLM prompts/responses,
  * and per-NPC agent trajectories.
  */

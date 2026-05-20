@@ -2,7 +2,7 @@
 /**
  * One-time tenant provisioning script for Steward.
  *
- * Run this once after first-booting Steward to create the "babylon" tenant
+ * Run this once after first-booting Steward to create the "feed" tenant
  * and obtain the API key. Copy the output into .env.
  *
  * Usage:
@@ -54,7 +54,7 @@ if (!PLATFORM_KEY) {
   process.exit(1);
 }
 
-console.info(`Provisioning babylon tenant on ${STEWARD_API_URL}...`);
+console.info(`Provisioning feed tenant on ${STEWARD_API_URL}...`);
 
 // Check Steward is reachable
 const healthOk = await fetch(`${STEWARD_API_URL}/health`)
@@ -75,7 +75,7 @@ const res = await fetch(`${STEWARD_API_URL}/platform/tenants`, {
     'Content-Type': 'application/json',
     'X-Steward-Platform-Key': PLATFORM_KEY,
   },
-  body: JSON.stringify({ id: 'babylon', name: 'Babylon Social' }),
+  body: JSON.stringify({ id: 'feed', name: 'Feed Social' }),
 });
 
 const data = (await res.json()) as {
@@ -86,7 +86,7 @@ const data = (await res.json()) as {
 };
 
 if (res.status === 409) {
-  console.info('ℹ️  Tenant "babylon" already exists in Steward.');
+  console.info('ℹ️  Tenant "feed" already exists in Steward.');
   console.info('   The API key is not re-returned for security.');
   console.info(
     '   If you lost the key, check your existing .env for STEWARD_TENANT_API_KEY.'
@@ -101,7 +101,7 @@ if (!res.ok || !data.ok) {
 
 const apiKey = data.apiKey ?? data.data?.apiKey ?? '';
 
-console.info('\n✅ Babylon tenant provisioned. Add these to .env:\n');
-console.info(`STEWARD_TENANT_ID=babylon`);
+console.info('\n✅ Feed tenant provisioned. Add these to .env:\n');
+console.info(`STEWARD_TENANT_ID=feed`);
 console.info(`STEWARD_TENANT_API_KEY=${apiKey}`);
 console.info('\n⚠️  Keep the API key secret — it grants full tenant access.');

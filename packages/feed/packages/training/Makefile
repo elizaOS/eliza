@@ -1,4 +1,4 @@
-# Babylon Training Pipeline - Developer Makefile
+# Feed Training Pipeline - Developer Makefile
 #
 # Quick reference:
 #   make help       - Show all commands
@@ -52,7 +52,7 @@ PIP := $(VENV_BIN)/pip
 PYTEST := $(VENV_BIN)/pytest
 
 # Database
-DB_URL := postgresql://babylon_test:test_password@localhost:5434/babylon_test
+DB_URL := postgresql://feed_test:test_password@localhost:5434/feed_test
 DB_COMPOSE := docker-compose.test.yml
 
 # Docker settings
@@ -80,7 +80,7 @@ TRAJECTORY_SOURCE ?= db
 
 help:
 	@echo ""
-	@echo "$(CYAN)Babylon Training Pipeline$(RESET)"
+	@echo "$(CYAN)Feed Training Pipeline$(RESET)"
 	@echo "=========================="
 	@echo ""
 	@echo "$(GREEN)Testing Tiers:$(RESET)"
@@ -317,7 +317,7 @@ local-shell:
 # Default RunPod settings
 GPU ?= h100
 GPUS ?= 1
-RUNPOD_IMAGE ?= $(DOCKER_ORG)/babylon-training:$(DOCKER_TAG)
+RUNPOD_IMAGE ?= $(DOCKER_ORG)/feed-training:$(DOCKER_TAG)
 
 runpod-train:
 	@echo "$(CYAN)Deploying training to RunPod...$(RESET)"
@@ -530,7 +530,7 @@ SEED ?= 42
 #---------------------------------------------------------------------------
 
 # Default W&B settings
-WANDB_PROJECT ?= babylon-training
+WANDB_PROJECT ?= feed-training
 WANDB_ENTITY ?= 
 WANDB_RUN_NAME ?= 
 

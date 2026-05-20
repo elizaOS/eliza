@@ -12,12 +12,12 @@ import type {
   GameNetworkInfo,
   JsonRpcParams,
   JsonValue,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   AgentCapabilitiesSchema,
   GameNetworkInfoSchema,
   JsonValueSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { z } from 'zod';
 
 /**

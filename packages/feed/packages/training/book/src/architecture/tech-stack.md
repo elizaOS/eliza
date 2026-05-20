@@ -39,7 +39,7 @@ graph TB
 |-----------|---------|---------|
 | Runtime | Bun | Fast JS/TS runtime |
 | Database | Drizzle ORM | Type-safe DB access |
-| LLM Client | BabylonLLMClient | Multi-provider (Groq, OpenAI, Anthropic) |
+| LLM Client | FeedLLMClient | Multi-provider (Groq, OpenAI, Anthropic) |
 | Testing | Vitest | Unit/integration tests |
 | Build | tsup | TypeScript bundling |
 
@@ -88,7 +88,7 @@ packages/training/src/
 packages/training/python/
 ├── src/
 │   ├── training/
-│   │   ├── babylon_env.py      # Atropos environment
+│   │   ├── feed_env.py      # Atropos environment
 │   │   ├── atropos_trainer.py  # GRPO training loop
 │   │   ├── rewards.py          # Reward functions
 │   │   ├── rubric_loader.py    # Load rubrics.json
@@ -103,7 +103,7 @@ packages/training/python/
 │   ├── import_json_trajectories.py
 │   └── train_local.py          # Local training
 ├── config/
-│   ├── babylon_atropos.yaml    # Atropos config
+│   ├── feed_atropos.yaml    # Atropos config
 │   └── profiles/               # GPU profiles
 └── tests/
     ├── test_rewards.py
@@ -141,7 +141,7 @@ vllm_cmd = [
 
 ### PostgreSQL
 
-Trajectory storage using the main Babylon database:
+Trajectory storage using the main Feed database:
 
 ```sql
 -- Simplified schema

@@ -5,13 +5,13 @@ import {
   classifyBalanceTransaction,
   getCapitalBaseContributionAmount,
   WELCOME_BONUS_BALANCE_DESCRIPTION,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   AGENT_TRANSFER_IN_TRANSACTION_TYPE,
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('balance transaction capital-base classification', () => {
   it('includes external funding in both wallet and team capital base', () => {

@@ -1,5 +1,5 @@
 /**
- * Babylon Training Package
+ * Feed Training Package
  *
  * A comprehensive training pipeline for RL agents including:
  * - Benchmarking and evaluation

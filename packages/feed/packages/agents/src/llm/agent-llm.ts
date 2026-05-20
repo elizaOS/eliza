@@ -9,7 +9,7 @@
  *
  * @remarks
  * This provider is exclusively for autonomous agents. Core game systems
- * (MarketDecisionEngine, etc.) use BabylonLLMClient with Groq/Claude/OpenAI.
+ * (MarketDecisionEngine, etc.) use FeedLLMClient with Groq/Claude/OpenAI.
  *
  * @example
  * ```typescript
@@ -243,8 +243,8 @@ async function callPhala(params: AgentLLMParams): Promise<string> {
     },
     body: JSON.stringify({
       model: params.archetype
-        ? `babylon-${params.archetype}`
-        : 'babylon-default',
+        ? `feed-${params.archetype}`
+        : 'feed-default',
       messages: [
         ...(params.system ? [{ role: 'system', content: params.system }] : []),
         { role: 'user', content: params.prompt },
@@ -358,7 +358,7 @@ async function logToTrajectory(
 
   // Forward to DAG trace bridge if active (game-tick observability)
   try {
-    const { getAgentLLMBridge } = require('@babylon/shared');
+    const { getAgentLLMBridge } = require('@feed/shared');
     const bridge = getAgentLLMBridge();
     if (bridge) {
       bridge({

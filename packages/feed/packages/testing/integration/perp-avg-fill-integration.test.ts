@@ -9,7 +9,7 @@
  * 5. Partial closes work correctly with impact adjustment
  * 6. Wallet balances are consistent throughout
  *
- * Run with: DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon" bun test packages/testing/integration/perp-avg-fill-integration.test.ts
+ * Run with: DATABASE_URL="postgresql://feed:feed_dev_password@localhost:5433/feed" bun test packages/testing/integration/perp-avg-fill-integration.test.ts
  */
 
 import {
@@ -20,14 +20,14 @@ import {
   expect,
   it,
 } from 'bun:test';
-import type { WalletPort } from '@babylon/core/markets/perps';
+import type { WalletPort } from '@feed/core/markets/perps';
 import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   PerpMarketService,
   type PerpServiceDeps,
   type PriceImpactPort,
-} from '@babylon/core/markets/perps';
+} from '@feed/core/markets/perps';
 import {
   and,
   db,
@@ -36,12 +36,12 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   calculatePriceFromHoldings,
   calculateTradeImpact,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // Test-local wallet (in-memory, no real wallet service needed)

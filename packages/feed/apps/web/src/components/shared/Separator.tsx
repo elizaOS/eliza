@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 
 interface SeparatorProps {
   className?: string;

@@ -1,4 +1,4 @@
-import { PredictionPricing } from '@babylon/core/markets/prediction/client';
+import { PredictionPricing } from '@feed/core/markets/prediction/client';
 import {
   buildPredictionMarketProfile,
   getPredictionMarketLiquidityTier,

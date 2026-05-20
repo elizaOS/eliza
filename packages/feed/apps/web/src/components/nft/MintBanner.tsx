@@ -31,7 +31,7 @@ export function MintBanner({ onMintClick }: MintBannerProps) {
           <div className="mb-4 flex items-center justify-center gap-2">
             <Sparkles className="h-6 w-6 text-[#0066FF]" />
             <h2 className="font-bold text-foreground text-xl">
-              Babylon Top 100 NFT Collection
+              Feed Top 100 NFT Collection
             </h2>
           </div>
           <p className="mb-4 text-muted-foreground">
@@ -68,7 +68,7 @@ export function MintBanner({ onMintClick }: MintBannerProps) {
           <div className="mb-4 flex items-center justify-center gap-2">
             <Trophy className="h-6 w-6 text-muted-foreground" />
             <h2 className="font-bold text-foreground text-xl">
-              Babylon Top 100 NFT Collection
+              Feed Top 100 NFT Collection
             </h2>
           </div>
           <p className="mb-2 text-muted-foreground">
@@ -147,7 +147,7 @@ export function MintBanner({ onMintClick }: MintBannerProps) {
           <span className="font-bold text-[#0066FF]">
             #{eligibility.snapshotRank}
           </span>{' '}
-          in the Babylon Leaderboard!
+          in the Feed Leaderboard!
         </p>
 
         <p className="mb-6 text-muted-foreground">

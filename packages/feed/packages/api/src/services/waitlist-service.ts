@@ -20,8 +20,8 @@ import {
   pointsTransactions,
   referrals,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger, POINTS } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger, POINTS } from '@feed/shared';
 import { nanoid } from 'nanoid';
 import { NotFoundError } from '../errors';
 import { getOrCreateReferralCode } from './referral-service';

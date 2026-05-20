@@ -16,7 +16,7 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   chatParticipants,
@@ -28,8 +28,8 @@ import {
   messages,
   toDatabaseErrorType,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

@@ -71,9 +71,9 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, desc, eq, referrals, users } from '@babylon/db';
-import { logger, toISO, toISOOrNull } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, desc, eq, referrals, users } from '@feed/db';
+import { logger, toISO, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 type PositionResponse = {

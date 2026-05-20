@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, type MessageTag } from '@babylon/shared';
+import { cn, type MessageTag } from '@feed/shared';
 import {
   ArrowDown,
   Brain,

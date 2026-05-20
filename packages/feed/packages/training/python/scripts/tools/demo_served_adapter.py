@@ -139,7 +139,7 @@ def main() -> int:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a Babylon trading agent. Reply concisely in 2-4 sentences.",
+                    "content": "You are a Feed trading agent. Reply concisely in 2-4 sentences.",
                 },
                 {
                     "role": "user",

@@ -1,6 +1,6 @@
 'use client';
 
-import { POINTS } from '@babylon/shared';
+import { POINTS } from '@feed/shared';
 import {
   Calendar,
   CheckCircle2,

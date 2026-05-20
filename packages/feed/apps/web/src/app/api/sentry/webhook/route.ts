@@ -1,5 +1,5 @@
-import { ingestSentryWebhook, withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { ingestSentryWebhook, withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import { NextResponse } from 'next/server';
 
 const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 300;

@@ -1,9 +1,9 @@
-"""Setup file for Babylon RL Training with Atropos"""
+"""Setup file for Feed RL Training with Atropos"""
 
 from setuptools import find_packages, setup
 
 setup(
-    name="babylon-training",
+    name="feed-training",
     version="1.0.0",
     packages=find_packages(where="src"),
     package_dir={"": "src"},

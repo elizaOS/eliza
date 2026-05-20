@@ -57,17 +57,17 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import type { ParodyHeadline } from '@babylon/db';
+} from '@feed/api';
+import type { ParodyHeadline } from '@feed/db';
 import {
-  BabylonLLMClient,
+  FeedLLMClient,
   createParodyHeadlineGenerator,
   dailyTopicService,
   rssFeedService,
   WorldFactsConsolidator,
   worldFactsGenerator,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -160,7 +160,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Step 5: Consolidate similar world facts to reduce context bloat
   let consolidationResult = { consolidated: 0, archived: 0, skipped: 0 };
   try {
-    const llm = BabylonLLMClient.forGameTick();
+    const llm = FeedLLMClient.forGameTick();
     const consolidator = new WorldFactsConsolidator(llm);
     consolidationResult = await consolidator.consolidateFacts();
     logger.info('World facts consolidated', consolidationResult, 'Cron');

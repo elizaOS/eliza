@@ -2,8 +2,8 @@ import {
   calculatePredictionPositionSnapshot,
   type PredictionMarketRecord,
   type PredictionPositionRecord,
-} from '@babylon/core/markets/prediction';
-import { FEE_CONFIG } from '@babylon/engine';
+} from '@feed/core/markets/prediction';
+import { FEE_CONFIG } from '@feed/engine';
 
 export interface PredictionUserPositionSnapshot {
   id: string;

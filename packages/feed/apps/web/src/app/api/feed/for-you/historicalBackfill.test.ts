@@ -36,7 +36,7 @@ function makeChain(result: unknown[]) {
   return chain;
 }
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   and: (...args: unknown[]) => args,
   db: { select: mockDbSelect },
   gte: (a: unknown, b: unknown) => [a, b],

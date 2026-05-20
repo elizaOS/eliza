@@ -91,7 +91,7 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   actorState,
   db,
@@ -100,14 +100,14 @@ import {
   perpPositions,
   poolPositions,
   pools,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   buildFallbackMetricsByPool,
   NPCInvestmentManager,
   type PoolMetrics,
   StaticDataRegistry,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

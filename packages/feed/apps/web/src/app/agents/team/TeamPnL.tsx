@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCompactCurrency } from '@babylon/shared';
+import { cn, formatCompactCurrency } from '@feed/shared';
 import { Loader2, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { useMemo } from 'react';
 import type {

@@ -1,4 +1,4 @@
-import { StaticDataRegistry } from '@babylon/engine';
+import { StaticDataRegistry } from '@feed/engine';
 
 export interface ResolvedPerpMarket {
   ticker: string;

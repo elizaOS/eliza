@@ -1,6 +1,6 @@
-# Babylon Training - Docker
+# Feed Training - Docker
 
-Production Docker images for Babylon RL training with GPU support.
+Production Docker images for Feed RL training with GPU support.
 
 ## Build Strategy
 
@@ -43,19 +43,19 @@ cd packages/training/deploy/docker
 cd packages/training
 
 # Step 1: Build base image (do once)
-docker build -f deploy/docker/Dockerfile.base -t yourorg/babylon-base:0.2.0 .
-docker push yourorg/babylon-base:0.2.0
+docker build -f deploy/docker/Dockerfile.base -t yourorg/feed-base:0.2.0 .
+docker push yourorg/feed-base:0.2.0
 
 # Step 2: Build training image (fast)
 docker build -f deploy/docker/Dockerfile \
-  --build-arg BASE_IMAGE=yourorg/babylon-base:0.2.0 \
-  -t babylon-training .
+  --build-arg BASE_IMAGE=yourorg/feed-base:0.2.0 \
+  -t feed-training .
 
 # Step 3: Run
 docker run --gpus all --network host \
   --env-file deploy/.env \
   -v $(pwd)/trained_models:/app/trained_models \
-  babylon-training \
+  feed-training \
   python3 python/scripts/run_training.py --profile 12gb --steps 100
 ```
 
@@ -86,7 +86,7 @@ cp deploy/env.example deploy/.env
 docker run --gpus all --network host \
   --env-file deploy/.env \
   -v $(pwd)/trained_models:/app/trained_models \
-  babylon-training \
+  feed-training \
   python3 python/scripts/run_training.py --profile 12gb --steps 100
 ```
 
@@ -97,7 +97,7 @@ docker run --gpus all --network host \
   -e DATABASE_URL="postgresql://user:pass@localhost:5432/db" \
   -e WANDB_API_KEY="your-key" \
   -e WANDB_MODE="online" \
-  babylon-training \
+  feed-training \
   python3 python/scripts/run_training.py --profile h100 --steps 5000
 ```
 
@@ -106,7 +106,7 @@ docker run --gpus all --network host \
 ```bash
 docker run --gpus all --network host -it \
   --env-file deploy/.env \
-  babylon-training bash
+  feed-training bash
 ```
 
 ## Pre-downloading Models
@@ -115,9 +115,9 @@ Pre-download model weights to speed up first run (increases image size):
 
 ```bash
 docker build -f deploy/docker/Dockerfile \
-  --build-arg BASE_IMAGE=yourorg/babylon-base:0.2.0 \
+  --build-arg BASE_IMAGE=yourorg/feed-base:0.2.0 \
   --build-arg PRELOAD_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
-  -t babylon-training:with-model .
+  -t feed-training:with-model .
 ```
 
 ## Benchmark Image
@@ -133,7 +133,7 @@ cd packages/training/deploy/docker
 
 # Or manually
 docker build -f packages/training/deploy/docker/Dockerfile.bench \
-  -t babylon-benchmark:latest .
+  -t feed-benchmark:latest .
 ```
 
 ### Run
@@ -144,25 +144,25 @@ docker run --gpus all \
   -v $(pwd)/trained_models:/models \
   -v $(pwd)/benchmark-results:/benchmark-results \
   -e MODEL_PATH=/models/final_model \
-  babylon-benchmark:latest
+  feed-benchmark:latest
 
 # With HuggingFace model
 docker run --gpus all \
   -e HF_MODEL=elizaos/ishtar-v0.1 \
   -e HF_TOKEN=hf_xxx \
-  babylon-benchmark:latest
+  feed-benchmark:latest
 
 # Quick mode (shorter scenarios)
 docker run --gpus all \
   -v $(pwd)/trained_models:/models \
   -e MODEL_PATH=/models/final_model \
-  babylon-benchmark:latest --quick
+  feed-benchmark:latest --quick
 
 # Specific scenario
 docker run --gpus all \
   -v $(pwd)/trained_models:/models \
   -e MODEL_PATH=/models/final_model \
-  babylon-benchmark:latest --scenario bear-market --quick
+  feed-benchmark:latest --scenario bear-market --quick
 ```
 
 ### Benchmark Options
@@ -233,11 +233,11 @@ Using build.sh (recommended):
 Manual:
 ```bash
 # DockerHub
-docker push yourorg/babylon-training:latest
+docker push yourorg/feed-training:latest
 
 # GitHub Container Registry
-docker tag babylon-training ghcr.io/yourorg/babylon-training:latest
-docker push ghcr.io/yourorg/babylon-training:latest
+docker tag feed-training ghcr.io/yourorg/feed-training:latest
+docker push ghcr.io/yourorg/feed-training:latest
 ```
 
 ## Environment Variables
@@ -267,7 +267,7 @@ Runs on container startup:
 
 Quick environment validation (optional):
 ```bash
-docker run --gpus all babylon-training /app/scripts/validate.sh
+docker run --gpus all feed-training /app/scripts/validate.sh
 ```
 
 ## Image Details

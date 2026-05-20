@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatDate } from '@babylon/shared';
+import { cn, formatDate } from '@feed/shared';
 import {
   Ban,
   CheckCircle,

@@ -9,8 +9,8 @@
  * Run once during game bootstrap or on demand.
  */
 
-import { actorFollows, db } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { actorFollows, db } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { StaticDataRegistry } from './static-data-registry';
 
 export async function bootstrapNpcFollows(): Promise<number> {

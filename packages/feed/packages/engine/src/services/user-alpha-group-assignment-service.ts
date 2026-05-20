@@ -27,13 +27,13 @@ import {
   groups,
   isNotNull,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
   logger,
   type TierLevel,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { StaticDataRegistry } from './static-data-registry';
 import { TIER_CONFIG } from './tier-config';
 import { TieredGroupService } from './tiered-group-service';

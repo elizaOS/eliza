@@ -9,8 +9,8 @@
  * @module engine/services/fee-redistribution-service
  */
 
-import { actorState, Decimal, db, eq, gameConfigs } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { actorState, Decimal, db, eq, gameConfigs } from '@feed/db';
+import { logger } from '@feed/shared';
 import { StaticDataRegistry } from './static-data-registry';
 
 /**

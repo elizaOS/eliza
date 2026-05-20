@@ -106,8 +106,8 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { requireNftChatAccess } from '@babylon/api/services/nft-chat-gating-service';
+} from '@feed/api';
+import { requireNftChatAccess } from '@feed/api/services/nft-chat-gating-service';
 import {
   and,
   asUser,
@@ -118,18 +118,18 @@ import {
   hasBlocked,
   messages,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   GroupChatService,
   MessageQualityChecker,
   type SweepDecision,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   ChatMessageCreateSchema,
   generateSnowflakeId,
   logger,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 import { getOtherDmParticipantId } from '../../_lib/dm-chat-id';

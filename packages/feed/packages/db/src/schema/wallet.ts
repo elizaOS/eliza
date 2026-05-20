@@ -10,7 +10,7 @@ import {
 import { users } from './users';
 
 /**
- * Wallet Transfer Log — Audit trail for all on-chain transfers initiated through Babylon.
+ * Wallet Transfer Log — Audit trail for all on-chain transfers initiated through Feed.
  * Records both pending and completed/failed transfers for user-facing transaction history
  * and security auditing.
  */

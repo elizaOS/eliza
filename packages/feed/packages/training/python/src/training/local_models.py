@@ -12,9 +12,9 @@ DEFAULT_LOCAL_MODELS: dict[LocalTrainingBackend, str] = {
 }
 
 DEFAULT_LOCAL_MODEL_ENV_VARS: dict[LocalTrainingBackend, str] = {
-    "mlx": "BABYLON_LOCAL_MLX_MODEL",
-    "cuda": "BABYLON_LOCAL_CUDA_MODEL",
-    "cpu": "BABYLON_LOCAL_CPU_MODEL",
+    "mlx": "FEED_LOCAL_MLX_MODEL",
+    "cuda": "FEED_LOCAL_CUDA_MODEL",
+    "cpu": "FEED_LOCAL_CPU_MODEL",
 }
 
 

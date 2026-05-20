@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { maxSafeBuy } from '@babylon/core/markets/prediction/client';
+import { maxSafeBuy } from '@feed/core/markets/prediction/client';
 import {
   buildPerpMarketSnapshot,
   buildPredictionMarketSnapshot,

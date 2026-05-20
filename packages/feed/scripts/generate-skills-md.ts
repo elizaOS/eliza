@@ -7,8 +7,8 @@
  * keeps published skills and in-repo docs in sync with the API.
  *
  * Reads:
- *   - packages/a2a/src/babylon-agent-card.ts (skills)
- *   - packages/a2a/src/executors/babylon-executor.ts (A2A operation names)
+ *   - packages/a2a/src/feed-agent-card.ts (skills)
+ *   - packages/a2a/src/executors/feed-executor.ts (A2A operation names)
  *   - packages/mcp/src/server/mcp-server.ts (MCP tools)
  *
  * Usage:
@@ -17,9 +17,9 @@
  *   bun run scripts/generate-skills-md.ts --output path/skills.md
  *     → writes markdown to path
  *   bun run scripts/generate-skills-md.ts --package
- *     → writes a full Agent Skills package to skills/babylon/ (SKILL.md + claw.json)
+ *     → writes a full Agent Skills package to skills/feed/ (SKILL.md + claw.json)
  *   bun run scripts/generate-skills-md.ts --package --output my-skill-dir
- *     → writes package to my-skill-dir/babylon/
+ *     → writes package to my-skill-dir/feed/
  *
  * Agent Skills format (agentskills.io):
  *   - Skill = directory with SKILL.md. Required frontmatter: name (match dir, lowercase, hyphens), description (≤1024 chars).
@@ -31,10 +31,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
-const A2A_AGENT_CARD = join(ROOT, 'packages/a2a/src/babylon-agent-card.ts');
+const A2A_AGENT_CARD = join(ROOT, 'packages/a2a/src/feed-agent-card.ts');
 const A2A_EXECUTOR = join(
   ROOT,
-  'packages/a2a/src/executors/babylon-executor.ts'
+  'packages/a2a/src/executors/feed-executor.ts'
 );
 const MCP_SERVER = join(ROOT, 'packages/mcp/src/server/mcp-server.ts');
 const DEFAULT_OUTPUT = join(ROOT, 'docs/skills.md');
@@ -196,7 +196,7 @@ function getOperationsForSkill(
 }
 
 // --- Parse MCP server: extract tool name + description ---
-// WHY: MCP tool list is the source of truth; parsing the server file avoids importing @babylon/mcp (and its heavy deps) in this script.
+// WHY: MCP tool list is the source of truth; parsing the server file avoids importing @feed/mcp (and its heavy deps) in this script.
 export function parseMCPTools(
   content: string
 ): Array<{ name: string; description: string }> {
@@ -228,10 +228,10 @@ export function generateSkillsMarkdown(
 ): string {
   const lines: string[] = [];
 
-  lines.push('# Babylon Agent Skills');
+  lines.push('# Feed Agent Skills');
   lines.push('');
   lines.push(
-    'Agent skill reference for [Babylon](https://babylon.market): A2A and MCP endpoints, skills, and operations. Use when configuring agents to interact with Babylon (Cursor, Claude Code, and other [AgentSkills](https://agentskills.io)-compatible tools).'
+    'Agent skill reference for [Feed](https://feed.market): A2A and MCP endpoints, skills, and operations. Use when configuring agents to interact with Feed (Cursor, Claude Code, and other [AgentSkills](https://agentskills.io)-compatible tools).'
   );
   if (!opts.skipGeneratedNotice) {
     lines.push('');
@@ -246,7 +246,7 @@ export function generateSkillsMarkdown(
   lines.push('');
   lines.push('| Environment | Base URL |');
   lines.push('|-------------|---------|');
-  lines.push('| Production | `https://babylon.market` |');
+  lines.push('| Production | `https://feed.market` |');
   lines.push('| Local | `http://localhost:3000` |');
   lines.push('');
   lines.push('Use `{baseUrl}` below as the appropriate base.');
@@ -255,9 +255,9 @@ export function generateSkillsMarkdown(
   lines.push('');
   lines.push('## Authentication');
   lines.push('');
-  lines.push('- **Header:** `X-Babylon-Api-Key: <key>`');
+  lines.push('- **Header:** `X-Feed-Api-Key: <key>`');
   lines.push(
-    '- **Keys:** Server key (`BABYLON_A2A_API_KEY` or `BABYLON_API_KEY`) or per-user API keys.'
+    '- **Keys:** Server key (`FEED_A2A_API_KEY` or `FEED_API_KEY`) or per-user API keys.'
   );
   lines.push('');
   lines.push('---');
@@ -271,7 +271,7 @@ export function generateSkillsMarkdown(
   lines.push('| Method | URL | Description |');
   lines.push('|--------|-----|-------------|');
   lines.push(
-    '| **GET** | `{baseUrl}/api/a2a` | Service info and Babylon agent card. |'
+    '| **GET** | `{baseUrl}/api/a2a` | Service info and Feed agent card. |'
   );
   lines.push(
     '| **POST** | `{baseUrl}/api/a2a` | Global A2A: message/send, tasks/*. |'
@@ -345,9 +345,9 @@ export function generateSkillsMarkdown(
   return lines.join('\n');
 }
 
-const SKILL_NAME = 'babylon';
+const SKILL_NAME = 'feed';
 const SKILL_DESCRIPTION =
-  'Interact with Babylon (babylon.market): A2A and MCP endpoints for prediction markets, perpetuals, social feed, messaging, portfolio, and more. Use when the user wants to trade, post, chat, or query Babylon via API key.';
+  'Interact with Feed (feed.market): A2A and MCP endpoints for prediction markets, perpetuals, social feed, messaging, portfolio, and more. Use when the user wants to trade, post, chat, or query Feed via API key.';
 
 function buildSkillMdFrontmatter(): string {
   return `---
@@ -356,13 +356,13 @@ description: ${SKILL_DESCRIPTION}
 license: MIT
 compatibility: Requires network. Use with agents that support MCP or A2A (Cursor, Claude Code, etc.).
 metadata:
-  author: babylon
+  author: feed
   version: "1.0"
   openclaw:
-    homepage: "https://babylon.market"
+    homepage: "https://feed.market"
     requires:
-      env: ["BABYLON_API_KEY", "BABYLON_A2A_API_KEY"]
-    primaryEnv: "BABYLON_A2A_API_KEY"
+      env: ["FEED_API_KEY", "FEED_A2A_API_KEY"]
+    primaryEnv: "FEED_A2A_API_KEY"
 ---
 `;
 }
@@ -374,12 +374,12 @@ function buildClawJson(): string {
         name: SKILL_NAME,
         version: '1.0.0',
         description: SKILL_DESCRIPTION,
-        author: 'babylon',
+        author: 'feed',
         license: 'MIT',
         permissions: ['network'],
         entry: 'SKILL.md',
         tags: [
-          'babylon',
+          'feed',
           'trading',
           'prediction-markets',
           'a2a',
@@ -439,7 +439,7 @@ function main() {
     writeFileSync(join(skillDir, 'claw.json'), buildClawJson(), 'utf-8');
     writeFileSync(
       join(skillDir, 'README.md'),
-      `# Babylon Agent Skill\n\n${SKILL_DESCRIPTION}\n\n**This package is auto-generated.** Regenerate with \`bun run skills:package\`.\n\nSee SKILL.md for full A2A/MCP reference.\n`,
+      `# Feed Agent Skill\n\n${SKILL_DESCRIPTION}\n\n**This package is auto-generated.** Regenerate with \`bun run skills:package\`.\n\nSee SKILL.md for full A2A/MCP reference.\n`,
       'utf-8'
     );
     console.log(

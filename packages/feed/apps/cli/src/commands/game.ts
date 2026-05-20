@@ -11,7 +11,7 @@
  *   validate  - Validate actor data integrity
  */
 
-import type { JsonValue } from '@babylon/db';
+import type { JsonValue } from '@feed/db';
 import {
   and,
   closeDatabase,
@@ -23,9 +23,9 @@ import {
   games,
   isNull,
   posts,
-} from '@babylon/db';
-import type { GameHistory, GroupMessage } from '@babylon/engine';
-import { GameGenerator, loadActorsData } from '@babylon/engine';
+} from '@feed/db';
+import type { GameHistory, GroupMessage } from '@feed/engine';
+import { GameGenerator, loadActorsData } from '@feed/engine';
 import { nanoid } from 'nanoid';
 import { getFlag, parseArgs, wantsHelp } from '../lib/args.js';
 import { logger } from '../lib/logger.js';
@@ -35,7 +35,7 @@ function printHelp(): void {
 Game Commands
 
 USAGE:
-  babylon game <command> [options]
+  feed game <command> [options]
 
 COMMANDS:
   start       Start the continuous game
@@ -48,11 +48,11 @@ OPTIONS (generate):
   -v, --verbose    Enable detailed logging
 
 EXAMPLES:
-  babylon game start              Start the game
-  babylon game pause              Pause the game
-  babylon game status             Check if game is running
-  babylon game generate           Generate new game content
-  babylon game validate           Validate actor affiliations
+  feed game start              Start the game
+  feed game pause              Pause the game
+  feed game status             Check if game is running
+  feed game generate           Generate new game content
+  feed game validate           Validate actor affiliations
 `);
 }
 
@@ -143,7 +143,7 @@ async function showGameStatus(): Promise<void> {
 
   if (!game) {
     console.log('No continuous game found.');
-    console.log('\nCreate one with: babylon game start');
+    console.log('\nCreate one with: feed game start');
     return;
   }
 
@@ -165,7 +165,7 @@ async function showGameStatus(): Promise<void> {
   }
 
   if (!game.isRunning) {
-    console.log('\n💡 To start the game: babylon game start');
+    console.log('\n💡 To start the game: feed game start');
   }
 }
 
@@ -299,7 +299,7 @@ async function validateActorsData(): Promise<void> {
 async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
   const verbose = getFlag(args, 'verbose', 'v');
 
-  logger.header('Babylon Game Generator');
+  logger.header('Feed Game Generator');
 
   // Validate actors
   logger.step('Validating actors...');
@@ -481,7 +481,7 @@ async function runSimulation(
   _args: ReturnType<typeof parseArgs>
 ): Promise<void> {
   throw new Error(
-    'Game simulation is not available in this CLI. Use "babylon game generate" or the training/benchmark tooling instead.'
+    'Game simulation is not available in this CLI. Use "feed game generate" or the training/benchmark tooling instead.'
   );
 }
 

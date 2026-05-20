@@ -4,8 +4,8 @@
  * Provides helpers to apply rate limiting and duplicate detection to API routes
  */
 
-import type { AuthenticatedUser } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+import type { AuthenticatedUser } from '@feed/shared';
+import { logger } from '@feed/shared';
 
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

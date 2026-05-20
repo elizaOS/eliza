@@ -29,7 +29,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { shuffleArray } from './utils/randomization';
 
 /**

@@ -5,19 +5,19 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
-  BabylonLLMClient,
+  FeedLLMClient,
   FeedGenerator,
   RelationshipEvolutionEngine,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('Relationship Context Efficiency', () => {
-  let llmClient: BabylonLLMClient;
+  let llmClient: FeedLLMClient;
 
   beforeAll(async () => {
     try {
-      llmClient = new BabylonLLMClient();
+      llmClient = new FeedLLMClient();
     } catch {
       console.log('⚠️  No LLM client');
     }

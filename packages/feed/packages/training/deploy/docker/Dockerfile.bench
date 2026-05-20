@@ -1,5 +1,5 @@
 # =============================================================================
-# Babylon Benchmark Docker Image
+# Feed Benchmark Docker Image
 # =============================================================================
 #
 # Multi-stage build for running benchmarks against trained models using vLLM.
@@ -12,19 +12,19 @@
 # - Full benchmark suite with scenario generation
 #
 # Build:
-#   docker build -f deploy/docker/Dockerfile.bench -t babylon-benchmark:latest ../../..
+#   docker build -f deploy/docker/Dockerfile.bench -t feed-benchmark:latest ../../..
 #
 # Run with local model:
 #   docker run --gpus all \
 #     -v ./trained_models:/models \
 #     -e MODEL_PATH=/models/final_model \
-#     babylon-benchmark:latest
+#     feed-benchmark:latest
 #
 # Run with HuggingFace model:
 #   docker run --gpus all \
 #     -e HF_MODEL=elizaos/ishtar-v0.1 \
 #     -e HF_TOKEN=hf_xxx \
-#     babylon-benchmark:latest
+#     feed-benchmark:latest
 #
 # =============================================================================
 
@@ -93,7 +93,7 @@ RUN bun run typecheck
 FROM vllm-base AS benchmark
 
 LABEL maintainer="Eliza Labs"
-LABEL description="Babylon benchmark image with vLLM for trained model evaluation"
+LABEL description="Feed benchmark image with vLLM for trained model evaluation"
 LABEL version="1.0.0"
 
 # Set working directory

@@ -8,7 +8,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { cn, formatDate } from '@babylon/shared';
+import { cn, formatDate } from '@feed/shared';
 import { Ban, Trash2, UserX, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';

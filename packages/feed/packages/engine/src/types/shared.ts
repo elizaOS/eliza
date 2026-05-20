@@ -1,10 +1,10 @@
 /**
- * Shared Type Definitions for Babylon Game Engine
+ * Shared Type Definitions for Feed Game Engine
  *
- * Re-exports from @babylon/shared for convenience, plus engine-specific types
+ * Re-exports from @feed/shared for convenience, plus engine-specific types
  */
 
-// Re-export all types from @babylon/shared
+// Re-export all types from @feed/shared
 export type {
   Actor,
   ActorConnection,
@@ -43,9 +43,9 @@ export type {
   SelectedActor,
   StockPrice,
   WorldEvent,
-} from '@babylon/shared';
+} from '@feed/shared';
 
-// Re-export all constants from @babylon/shared
+// Re-export all constants from @feed/shared
 export {
   ACTOR_COUNTS,
   ACTOR_TIERS,
@@ -57,7 +57,7 @@ export {
   ORG_TYPES,
   POST_TYPES,
   RELATIONSHIP_TYPES,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // NOTE: WorldContext removed - use WorldFactsContext from world-facts-service.ts
 // or WorldContext from prompts/world-context.ts depending on use case

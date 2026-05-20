@@ -1,13 +1,13 @@
 'use client';
 
-import type { OnboardingProfilePayload } from '@babylon/shared';
+import type { OnboardingProfilePayload } from '@feed/shared';
 import {
   cn,
   getAgentDefaultProfileImageUrl,
   logger,
   sanitizeOnboardingUsername,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
@@ -641,7 +641,7 @@ export function UserOnboardingFlow({
         )}
         {!usernameStatus && username.length === 0 && (
           <p className="text-center text-muted-foreground text-sm">
-            This will be your unique handle on Babylon
+            This will be your unique handle on Feed
           </p>
         )}
       </div>
@@ -664,7 +664,7 @@ export function UserOnboardingFlow({
           <span className="text-muted-foreground text-sm leading-relaxed group-hover:text-foreground">
             I accept the{' '}
             <a
-              href="https://docs.babylon.market/legal/terms-of-service/"
+              href="https://docs.feed.market/legal/terms-of-service/"
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-[#0066FF] hover:underline"
@@ -674,7 +674,7 @@ export function UserOnboardingFlow({
             </a>{' '}
             and{' '}
             <a
-              href="https://docs.babylon.market/legal/privacy-policy/"
+              href="https://docs.feed.market/legal/privacy-policy/"
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-[#0066FF] hover:underline"
@@ -811,7 +811,7 @@ export function UserOnboardingFlow({
       ? 'Set up your profile'
       : isReplayGuide
         ? 'Game guide'
-        : 'Welcome to Babylon';
+        : 'Welcome to Feed';
 
   return (
     <div

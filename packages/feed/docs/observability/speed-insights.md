@@ -1,6 +1,6 @@
 # Vercel Speed Insights (real user monitoring)
 
-Babylon uses [@vercel/speed-insights](https://vercel.com/docs/speed-insights) on the Next.js app (`apps/web`) to collect **Core Web Vitals** and related performance signals from real browsers.
+Feed uses [@vercel/speed-insights](https://vercel.com/docs/speed-insights) on the Next.js app (`apps/web`) to collect **Core Web Vitals** and related performance signals from real browsers.
 
 Instrumentation is implemented in **`GatedSpeedInsights`** (`apps/web/src/components/observability/GatedSpeedInsights.tsx`) and mounted from the root layout (and mirrored in the legacy full shell client for consistency).
 

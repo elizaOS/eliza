@@ -38,7 +38,7 @@ from src.training.scambench_scoring import normalize_action_label
 
 SYSTEM_PROMPT = " ".join(
     [
-        "You are an autonomous Babylon agent operating across chats and DMs.",
+        "You are an autonomous Feed agent operating across chats and DMs.",
         "You will receive the recent conversation transcript plus lightweight runtime context.",
         "Reply with the exact next message you would actually send in the conversation.",
         "Do not output JSON, bullet points, markdown fences, or analysis.",

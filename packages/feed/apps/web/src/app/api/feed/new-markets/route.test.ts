@@ -25,7 +25,7 @@ const makeChain = (data: unknown[]) => {
   return chain;
 };
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   getCacheOrFetch: mockGetCacheOrFetch,
   publicRateLimit: mockPublicRateLimit,
   successResponse: (data: unknown) =>
@@ -36,7 +36,7 @@ mock.module('@babylon/api', () => ({
     handler,
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   and: (...args: unknown[]) => args,
   arcStates: {
     questionId: 'arcStates.questionId',
@@ -67,7 +67,7 @@ mock.module('@babylon/db', () => ({
   }),
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   toISO: (value: Date | string) => new Date(value).toISOString(),
 }));
 

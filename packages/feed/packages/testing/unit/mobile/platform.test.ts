@@ -42,7 +42,7 @@ describe('platform detection', () => {
     it('detects web platform', async () => {
       // biome-ignore lint/suspicious/noExplicitAny: test mocking
       (globalThis as any).window = {
-        location: { origin: 'https://babylon.market' },
+        location: { origin: 'https://feed.market' },
         navigator: { userAgent: 'Mozilla/5.0 Chrome/120' },
       };
 

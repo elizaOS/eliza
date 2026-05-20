@@ -85,7 +85,7 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   db,
@@ -94,8 +94,8 @@ import {
   lte,
   type SystemMetricsSnapshot,
   systemMetricsSnapshots,
-} from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 const VALID_GRANULARITIES = ['hourly', 'daily'] as const;

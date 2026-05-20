@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCurrency } from '@babylon/shared';
+import { cn, formatCurrency } from '@feed/shared';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { BuyPointsModal } from '@/components/points/BuyPointsModal';

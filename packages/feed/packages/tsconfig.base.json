@@ -8,6 +8,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
+    "ignoreDeprecations": "6.0",
 
     // Type Checking - Strict
     "strict": true,

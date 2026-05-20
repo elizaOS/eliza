@@ -10,7 +10,7 @@ const mockGetCacheOrFetch = mock(
   async <T>(_key: string, fetchFn: () => Promise<T>) => fetchFn()
 );
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   addPublicReadHeaders: (
     response: Response,
     rateLimitInfo: { limit: number }
@@ -44,7 +44,7 @@ function encodeCursor(score: number, storyKey: string): string {
 const makeRequest = (params: Record<string, string> = {}): NextRequest => {
   const searchParams = new URLSearchParams(params);
   return {
-    url: 'https://babylon.market/api/feed/for-you',
+    url: 'https://feed.market/api/feed/for-you',
     headers: { get: () => null },
     nextUrl: { searchParams },
   } as unknown as NextRequest;

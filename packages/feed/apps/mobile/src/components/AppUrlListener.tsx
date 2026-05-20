@@ -47,7 +47,7 @@ export function AppUrlListener({
           return;
         }
 
-        // Handle app deep links (e.g., babylon.market/post/123)
+        // Handle app deep links (e.g., feed.market/post/123)
         const path = deepLinkUrl.pathname + deepLinkUrl.search;
         if (path && path !== '/') {
           if (onNavigate) {

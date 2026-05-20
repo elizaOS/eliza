@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/e2e",
+  "name": "@feed/e2e",
   "private": true,
   "scripts": {
     "test": "npx playwright test --config playwright.config.mjs",

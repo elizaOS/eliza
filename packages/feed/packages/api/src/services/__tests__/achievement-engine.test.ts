@@ -1,7 +1,7 @@
 /**
  * Unit tests for the achievement & challenge engine (checkProgress, getUserAchievements, getUserChallenges).
  *
- * Mocks @babylon/db, notification-service, points-service, and SSE broadcaster
+ * Mocks @feed/db, notification-service, points-service, and SSE broadcaster
  * to test core logic in isolation.
  */
 
@@ -21,7 +21,7 @@ import {
   DAILY_CHALLENGE_DEFINITIONS,
   POINTS,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // ── Mock state ────────────────────────────────────────────────────
 
@@ -155,8 +155,8 @@ describe('Achievement Engine (checkProgress)', () => {
       broadcastToChannel: mockBroadcastToChannel,
     }));
 
-    // Mock @babylon/db
-    mock.module('@babylon/db', () => {
+    // Mock @feed/db
+    mock.module('@feed/db', () => {
       const createSelectChain = (selectIsCount: boolean) => {
         let fromTable = '';
         const chain: Record<string, unknown> = {};

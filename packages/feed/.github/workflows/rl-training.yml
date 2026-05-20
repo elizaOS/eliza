@@ -1,4 +1,4 @@
-name: Babylon RL Training
+name: Feed RL Training
 
 # Trigger options:
 # 1. On schedule (daily training at 2 AM UTC)
@@ -343,7 +343,7 @@ jobs:
           echo "Bundle count: ${{ steps.model_selection.outputs.bundle_count }}"
           
           # Run trainer
-          python src/training/babylon_trainer.py
+          python src/training/feed_trainer.py
       
       - name: Update batch status to completed
         if: success() && (steps.readiness.outputs.ready == 'true' || steps.batch.outputs.force == 'true')

@@ -22,9 +22,9 @@ import {
   groupMembers,
   groups,
   isNull,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 async function main() {
   const args = process.argv.slice(2);

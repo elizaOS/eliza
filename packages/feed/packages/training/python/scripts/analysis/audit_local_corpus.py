@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Audit a local Babylon trust corpus.
+Audit a local Feed trust corpus.
 
 This script recursively scans a local export root, dedupes trajectories by
 trajectory id, and produces a quality report suitable for deciding whether the
@@ -63,7 +63,7 @@ EXPECTED_MODEL_SIZES = {"0.5b", "1.5b", "3b", "7b", "14b", "30b"}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Audit a local Babylon trust corpus")
+    parser = argparse.ArgumentParser(description="Audit a local Feed trust corpus")
     parser.add_argument("--source-dir", required=True, help="Local export root")
     parser.add_argument(
         "--output",

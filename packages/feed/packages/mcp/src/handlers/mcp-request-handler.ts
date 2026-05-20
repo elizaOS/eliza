@@ -5,7 +5,7 @@
  * Similar to A2A's JsonRpcTransportHandler
  */
 
-import type { JsonValue, StringRecord } from '@babylon/shared';
+import type { JsonValue, StringRecord } from '@feed/shared';
 import { authenticateAgent } from '../auth/agent-auth';
 import { getAvailableTools, getInitializeResult } from '../server/mcp-server';
 import type {

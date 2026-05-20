@@ -60,17 +60,17 @@ import {
   getAutonomousFeatures,
   hasAnyAutonomousFeature,
   releaseAgentLock,
-} from '@babylon/agents';
+} from '@feed/agents';
 import {
   DistributedLockService,
   recordCronExecution,
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import type { User, UserAgentConfig } from '@babylon/db';
-import { db, eq, inArray, userAgentConfigs, users } from '@babylon/db';
-import { GROQ_MODELS, logger } from '@babylon/shared';
+} from '@feed/api';
+import type { User, UserAgentConfig } from '@feed/db';
+import { db, eq, inArray, userAgentConfigs, users } from '@feed/db';
+import { GROQ_MODELS, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';

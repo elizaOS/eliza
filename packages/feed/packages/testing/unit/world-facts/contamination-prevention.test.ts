@@ -27,7 +27,7 @@ import {
   filterIncoherent,
   getEmbedding,
   validateGrounding,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 // ─── Helper: check if embeddings are available ──────────────────────────────
 

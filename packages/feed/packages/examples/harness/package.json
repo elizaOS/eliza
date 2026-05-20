@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/agent-harness",
+  "name": "@feed/agent-harness",
   "version": "0.1.0",
   "private": true,
   "description": "Training harness for wiring in and testing agents with different archetypes",
@@ -12,7 +12,7 @@
     "test:agents": "bun run src/cli.ts test"
   },
   "dependencies": {
-    "@babylon/engine": "workspace:*",
+    "@feed/engine": "workspace:*",
     "@a2a-js/sdk": "^0.3.5",
     "ethers": "^6.16.0",
     "dotenv": "^16.4.7"

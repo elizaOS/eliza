@@ -270,7 +270,7 @@ export function App() {
         }}
       >
         <span style={{ color: '#f1f5f9', fontSize: 16, fontWeight: 700 }}>
-          Babylon DAG
+          Feed DAG
         </span>
 
         {/* Tick selector */}
@@ -541,7 +541,7 @@ export function App() {
                   borderRadius: 4,
                 }}
               >
-                BABYLON_DAG_TRACE=true bun run scripts/run-traced-tick.ts
+                FEED_DAG_TRACE=true bun run scripts/run-traced-tick.ts
               </code>
             </div>
           </div>

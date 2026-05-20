@@ -5,7 +5,7 @@
  * unit tests can import the real implementation rather than maintaining copies.
  */
 
-import type { FeedPost, NarrativePost, NarrativeStory } from '@babylon/shared';
+import type { FeedPost, NarrativePost, NarrativeStory } from '@feed/shared';
 import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';
 
 // ─── flattenStories ───────────────────────────────────────────────────────────

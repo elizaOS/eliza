@@ -21,8 +21,8 @@ import {
   type Transaction,
   users,
   withTransaction,
-} from '@babylon/db';
-import { generateSnowflakeId, InsufficientFundsError } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, InsufficientFundsError } from '@feed/shared';
 import { EarnedPointsService } from './earned-points-service';
 
 /**
@@ -479,7 +479,7 @@ export class WalletService {
           amount: String(WalletService.STARTING_BALANCE),
           balanceBefore: '0',
           balanceAfter: String(WalletService.STARTING_BALANCE),
-          description: 'Initial deposit - Welcome to Babylon!',
+          description: 'Initial deposit - Welcome to Feed!',
         });
       });
     }

@@ -12,9 +12,9 @@ import {
   DAILY_CHALLENGE_DEFINITIONS,
   EVENT_TO_TRACKING_TYPES,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@babylon/shared';
+} from '@feed/shared';
 
-// Import the functions we need to test — these are re-exported from @babylon/api
+// Import the functions we need to test — these are re-exported from @feed/api
 import {
   getActiveDailyChallengeIds,
   getActiveWeeklyChallengeIds,

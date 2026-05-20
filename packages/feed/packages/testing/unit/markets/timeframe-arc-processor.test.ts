@@ -25,8 +25,8 @@ function resetDbMocks() {
 
 resetDbMocks();
 
-const _actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const _actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ..._actualDb,
   db: {
     get select() {
@@ -46,8 +46,8 @@ mock.module('@babylon/db', () => ({
 
 const mockLoggerInfo = mock();
 
-const _actualShared = await import('@babylon/shared');
-mock.module('@babylon/shared', () => ({
+const _actualShared = await import('@feed/shared');
+mock.module('@feed/shared', () => ({
   ..._actualShared,
   logger: {
     debug: mock(),

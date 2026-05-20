@@ -20,7 +20,7 @@ cd packages/training
 make docker-build
 ```
 
-This creates `babylon-training:latest` from the Dockerfile.
+This creates `feed-training:latest` from the Dockerfile.
 
 ### Dockerfile Overview
 
@@ -52,10 +52,10 @@ CMD ["python", "scripts/run_training.py", "--profile", "l40"]
 
 ```bash
 # Tag for your registry
-docker tag babylon-training:latest your-registry/babylon-training:latest
+docker tag feed-training:latest your-registry/feed-training:latest
 
 # Push
-docker push your-registry/babylon-training:latest
+docker push your-registry/feed-training:latest
 ```
 
 ## RunPod Setup
@@ -76,14 +76,14 @@ ssh root@<pod-ip> -p <port>
 ### 3. Clone and Setup
 
 ```bash
-git clone https://github.com/BabylonSocial/babylon.git
-cd babylon/packages/training
+git clone https://github.com/FeedSocial/feed.git
+cd feed/packages/training
 
 # Setup Python
 make venv
 
 # Or use Docker
-docker run --gpus all -it babylon-training:latest
+docker run --gpus all -it feed-training:latest
 ```
 
 ### 4. Configure Environment
@@ -126,7 +126,7 @@ make train-cloud PROFILE=l40
 Point `DATABASE_URL` to your staging/production database:
 
 ```bash
-export DATABASE_URL=postgresql://user:pass@staging.example.com:5432/babylon
+export DATABASE_URL=postgresql://user:pass@staging.example.com:5432/feed
 ```
 
 ### Option 2: Export Data Locally
@@ -152,7 +152,7 @@ SSH tunnel to database:
 ssh -L 5432:db-host:5432 bastion-host
 
 # Then use localhost
-export DATABASE_URL=postgresql://user:pass@localhost:5432/babylon
+export DATABASE_URL=postgresql://user:pass@localhost:5432/feed
 ```
 
 ## Multi-GPU Training
@@ -193,11 +193,11 @@ Best for cloud training - all metrics logged remotely:
 ```bash
 export WANDB_API_KEY=your_key
 python scripts/run_training.py --profile l40 \
-  --wandb-project babylon-training \
+  --wandb-project feed-training \
   --wandb-entity your-team
 ```
 
-View at: https://wandb.ai/your-team/babylon-training
+View at: https://wandb.ai/your-team/feed-training
 
 ### SSH + tmux
 
@@ -300,6 +300,6 @@ pip install huggingface_hub
 huggingface-cli login
 
 # Upload
-huggingface-cli upload your-org/babylon-trader ./trained_models/final_model
+huggingface-cli upload your-org/feed-trader ./trained_models/final_model
 ```
 

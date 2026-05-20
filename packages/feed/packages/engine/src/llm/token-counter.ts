@@ -2,7 +2,7 @@
  * Token counter utilities (sync-only)
  *
  * These helpers are used by engine-side batching logic (e.g. MarketDecisionEngine)
- * without depending on `@babylon/api` (to avoid circular dependencies).
+ * without depending on `@feed/api` (to avoid circular dependencies).
  */
 
 /**

@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { ArrowDownRight, ArrowUpRight, RefreshCcw, Share2 } from 'lucide-react';
 import { formatCurrencyDisplay } from '@/lib/format';
 

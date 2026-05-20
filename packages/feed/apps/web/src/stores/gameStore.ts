@@ -1,4 +1,4 @@
-import type { GeneratedGame } from '@babylon/engine/client';
+import type { GeneratedGame } from '@feed/engine/client';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -101,7 +101,7 @@ export const useGameStore = create<GameState>()(
         }),
     }),
     {
-      name: 'babylon-game',
+      name: 'feed-game',
       partialize: (state) => ({
         // Only persist some state
         speed: state.speed,

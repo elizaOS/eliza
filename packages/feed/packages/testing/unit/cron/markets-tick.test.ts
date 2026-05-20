@@ -64,7 +64,7 @@ interface CronMockState {
   marketsAcquireLockResult: boolean;
 }
 
-const CRON_MOCK_STATE_KEY = '__babylonCronMockState';
+const CRON_MOCK_STATE_KEY = '__feedCronMockState';
 
 type GlobalWithCronMockState = typeof globalThis & {
   [CRON_MOCK_STATE_KEY]?: CronMockState;
@@ -203,8 +203,8 @@ const createMutationBuilder = (operation: 'insert' | 'update' | 'delete') => {
 };
 
 const registerMocks = () => {
-  // Mock @babylon/db - table-aware query handling
-  mock.module('@babylon/db', () => ({
+  // Mock @feed/db - table-aware query handling
+  mock.module('@feed/db', () => ({
     ...actualDbModule,
     db: {
       select: mock((columns?: Record<string, unknown>) => {
@@ -285,8 +285,8 @@ const registerMocks = () => {
     asPublic: async <T>(fn: (db: unknown) => Promise<T>) => fn({}),
   }));
 
-  // Mock @babylon/api - uses mutable state for auth/lock results
-  mock.module('@babylon/api', () => ({
+  // Mock @feed/api - uses mutable state for auth/lock results
+  mock.module('@feed/api', () => ({
     ...actualApiModule,
     CACHE_KEYS: {
       gameState: (_gameId: string) => 'game-state',
@@ -336,16 +336,16 @@ const registerMocks = () => {
     },
   }));
 
-  // Mock @babylon/core/markets/prediction
-  mock.module('@babylon/core/markets/prediction', () => ({
+  // Mock @feed/core/markets/prediction
+  mock.module('@feed/core/markets/prediction', () => ({
     PredictionDbAdapter: class {},
     PredictionMarketService: class {
       ensureMarketExists = async () => ({ id: 'mock-market-id' });
     },
   }));
 
-  // Mock @babylon/engine
-  mock.module('@babylon/engine', () => ({
+  // Mock @feed/engine
+  mock.module('@feed/engine', () => ({
     ...actualEngineModule,
     articleRateLimiter: {
       canGenerateArticle: async () => ({
@@ -402,9 +402,9 @@ const registerMocks = () => {
     }),
     isEligibleActor: () => true,
     mapGranularToDbTimeframe: (timeframe: string) => timeframe,
-    BabylonLLMClient: class MockBabylonLLMClient {
+    FeedLLMClient: class MockFeedLLMClient {
       static forGameTick() {
-        return new MockBabylonLLMClient();
+        return new MockFeedLLMClient();
       }
       async generateJSON() {
         return {
@@ -526,7 +526,7 @@ const registerMocks = () => {
   }));
 };
 
-// @babylon/shared is intentionally not mocked here.
+// @feed/shared is intentionally not mocked here.
 
 // Route handlers are loaded dynamically after mock registration.
 let GET: (req: NextRequest) => Promise<Response>;

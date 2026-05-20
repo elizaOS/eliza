@@ -1,5 +1,5 @@
 """
-HuggingFace Dataset Reader for Babylon Trajectories
+HuggingFace Dataset Reader for Feed Trajectories
 
 Loads trajectory data from HuggingFace datasets as an alternative to PostgreSQL.
 This provides reproducible training by using versioned, frozen datasets.
@@ -11,7 +11,7 @@ Usage:
     from data_bridge.hf_reader import HuggingFaceTrajectoryReader, HFReaderConfig
 
     config = HFReaderConfig(
-        dataset_id="elizaos/babylon-trajectories-simulation-v1",
+        dataset_id="elizaos/feed-trajectories-simulation-v1",
         split="raw",
     )
 
@@ -95,7 +95,7 @@ class HFReaderConfig:
 
 class HuggingFaceTrajectoryReader:
     """
-    Reads Babylon trajectories from a HuggingFace dataset.
+    Reads Feed trajectories from a HuggingFace dataset.
 
     Provides the same interface as PostgresTrajectoryReader for compatibility
     with the training pipeline. Trajectories are loaded from the 'raw' split
@@ -364,7 +364,7 @@ class HuggingFaceTrajectoryReader:
         """
         Get all trajectory groups formatted for the training pipeline.
 
-        This returns data in the same format as BabylonRLAIFEnv._load_trajectories.
+        This returns data in the same format as FeedRLAIFEnv._load_trajectories.
 
         Args:
             min_agents_per_window: Minimum trajectories per window
@@ -444,7 +444,7 @@ async def create_trajectory_reader_from_hf(
     Factory function to create and connect a HuggingFace trajectory reader.
 
     Args:
-        dataset_id: HuggingFace dataset ID (e.g., "elizaos/babylon-trajectories-v1")
+        dataset_id: HuggingFace dataset ID (e.g., "elizaos/feed-trajectories-v1")
         split: Dataset split to use (raw, preferences, sft)
         max_trajectories: Maximum trajectories to load
         min_actions: Minimum actions per trajectory

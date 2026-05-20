@@ -12,11 +12,11 @@
  */
 
 // =============================================================================
-// Re-exports from @babylon/shared
+// Re-exports from @feed/shared
 // =============================================================================
 
 // Import types for internal use in this file
-import type { UserPredictionPosition as SharedUserPredictionPosition } from '@babylon/shared';
+import type { UserPredictionPosition as SharedUserPredictionPosition } from '@feed/shared';
 
 export type {
   DailyPriceSnapshot,
@@ -29,7 +29,7 @@ export type {
   PredictionPosition,
   TradingStats,
   UserPredictionPosition,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // Local alias for internal use
 type UserPredictionPosition = SharedUserPredictionPosition;
@@ -40,7 +40,7 @@ export {
   calculateMarkPrice,
   calculateUnrealizedPnL,
   shouldLiquidate,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // =============================================================================
 // Market Types
@@ -50,7 +50,7 @@ export {
  * Perp market data structure from API.
  *
  * This is the simplified frontend version used for display in lists and cards.
- * Differences from SharedPerpMarket (from @babylon/shared):
+ * Differences from SharedPerpMarket (from @feed/shared):
  * - PerpMarket: Fewer fields, used for UI display (lists, cards, modals)
  * - SharedPerpMarket: Full API response with all fields (orderbook, trades, etc.)
  *
@@ -125,7 +125,7 @@ export interface PredictionMarketWithPosition extends PredictionMarket {
 /**
  * Side of a perpetual trade position (frontend format).
  *
- * Note: API responses use lowercase 'long' | 'short' (matches PerpPositionFromAPI in @babylon/shared).
+ * Note: API responses use lowercase 'long' | 'short' (matches PerpPositionFromAPI in @feed/shared).
  * This is consistent with the PerpPosition type and UI conventions.
  */
 export type TradeSide = 'long' | 'short';

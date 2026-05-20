@@ -1,7 +1,7 @@
 'use client';
 
-import type { FeedTagData } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { FeedTagData } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { Heart, MessageCircle, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { PanelViewMoreLink } from './PanelViewMoreLink';

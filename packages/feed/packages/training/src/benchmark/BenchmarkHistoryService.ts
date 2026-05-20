@@ -10,7 +10,7 @@ import {
   db,
   type JsonValue,
   type NewBenchmarkResult,
-} from '@babylon/db';
+} from '@feed/db';
 import { and, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 import { generateSnowflakeId } from '../utils/snowflake';

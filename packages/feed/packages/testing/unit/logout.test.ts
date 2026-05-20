@@ -16,9 +16,9 @@ describe('Logout State Cleanup', () => {
     mockSessionStorage = {};
   });
 
-  test('should clear babylon-auth from localStorage', () => {
+  test('should clear feed-auth from localStorage', () => {
     // Set up initial auth state
-    mockLocalStorage['babylon-auth'] = JSON.stringify({
+    mockLocalStorage['feed-auth'] = JSON.stringify({
       state: {
         user: { id: 'test-user', username: 'testuser' },
         wallet: { address: '0x123' },
@@ -26,10 +26,10 @@ describe('Logout State Cleanup', () => {
     });
 
     // Simulate logout cleanup
-    delete mockLocalStorage['babylon-auth'];
+    delete mockLocalStorage['feed-auth'];
 
     // Verify cleared
-    expect(mockLocalStorage['babylon-auth']).toBeUndefined();
+    expect(mockLocalStorage['feed-auth']).toBeUndefined();
   });
 
   test('should clear all privy: prefixed keys from localStorage', () => {
@@ -70,14 +70,14 @@ describe('Logout State Cleanup', () => {
     const cleanupOrder: string[] = [];
 
     // Set up state
-    mockLocalStorage['babylon-auth'] = 'test';
+    mockLocalStorage['feed-auth'] = 'test';
     mockLocalStorage['privy:token'] = 'test';
     mockSessionStorage['privy:session'] = 'test';
 
     // Simulate logout in correct order
-    // 1. Clear babylon-auth
-    delete mockLocalStorage['babylon-auth'];
-    cleanupOrder.push('babylon-auth');
+    // 1. Clear feed-auth
+    delete mockLocalStorage['feed-auth'];
+    cleanupOrder.push('feed-auth');
 
     // 2. Clear Privy localStorage
     Object.keys(mockLocalStorage)
@@ -100,7 +100,7 @@ describe('Logout State Cleanup', () => {
     expect(Object.keys(mockSessionStorage)).toHaveLength(0);
 
     // Verify order
-    expect(cleanupOrder[0]).toBe('babylon-auth');
+    expect(cleanupOrder[0]).toBe('feed-auth');
     expect(cleanupOrder).toContain('localStorage:privy:token');
     expect(cleanupOrder).toContain('sessionStorage:privy:session');
   });
@@ -110,31 +110,31 @@ describe('Logout State Cleanup', () => {
 
     // Simulate logout cleanup (should not throw)
     expect(() => {
-      delete mockLocalStorage['babylon-auth'];
+      delete mockLocalStorage['feed-auth'];
       Object.keys(mockLocalStorage)
         .filter((key) => key.startsWith('privy:'))
         .forEach((key) => delete mockLocalStorage[key]);
     }).not.toThrow();
 
     // Verify no errors
-    expect(mockLocalStorage['babylon-auth']).toBeUndefined();
+    expect(mockLocalStorage['feed-auth']).toBeUndefined();
   });
 
   test('should clear auth state even if some keys are malformed', () => {
     // Set up mix of valid and invalid state
-    mockLocalStorage['babylon-auth'] = 'invalid-json{]';
+    mockLocalStorage['feed-auth'] = 'invalid-json{]';
     mockLocalStorage['privy:token'] = 'test';
 
     // Simulate logout cleanup (should not throw)
     expect(() => {
-      delete mockLocalStorage['babylon-auth'];
+      delete mockLocalStorage['feed-auth'];
       Object.keys(mockLocalStorage)
         .filter((key) => key.startsWith('privy:'))
         .forEach((key) => delete mockLocalStorage[key]);
     }).not.toThrow();
 
     // Verify cleared
-    expect(mockLocalStorage['babylon-auth']).toBeUndefined();
+    expect(mockLocalStorage['feed-auth']).toBeUndefined();
     expect(mockLocalStorage['privy:token']).toBeUndefined();
   });
 });
@@ -145,7 +145,7 @@ describe('Logout Function Behavior', () => {
       '1. Call Privy logout()',
       '2. Call clearAuth() to reset Zustand state',
       '3. Clear window.__privyAccessToken',
-      '4. Remove babylon-auth from localStorage',
+      '4. Remove feed-auth from localStorage',
       '5. Clear all privy: prefixed localStorage keys',
       '6. Clear all privy: prefixed sessionStorage keys',
       '7. Clear module-level state (linkedSocialUsers, etc)',

@@ -3,7 +3,7 @@
  *
  * A "pack" is a self-contained simulation universe: actors, organizations,
  * relationships, correlations, and configuration. The engine loads one pack
- * at a time. Packs are swappable — the default Babylon parody universe is
+ * at a time. Packs are swappable — the default Feed parody universe is
  * one pack; a "30 Under 30 scammer CEOs" universe is another.
  */
 
@@ -18,7 +18,7 @@ import type { ActorTier } from './game-types';
  * how they relate, and any config overrides for the engine.
  */
 export interface PackManifest {
-  /** Unique pack identifier, e.g. "babylon-default", "corporate-30-under-30" */
+  /** Unique pack identifier, e.g. "feed-default", "corporate-30-under-30" */
   id: string;
   /** Human-readable name */
   name: string;
@@ -86,7 +86,7 @@ export interface PackManifest {
  * A single actor in a pack. Combines:
  * - Eliza Character fields (system prompt, bio, lore, style, examples)
  * - Engine ActorData fields (tier, domain, affiliations, voice)
- * - Babylon behavioral metadata (alignment, team, trading style, autonomy)
+ * - Feed behavioral metadata (alignment, team, trading style, autonomy)
  *
  * This is the single source of truth for an NPC's identity, personality,
  * and behavioral configuration.
@@ -169,10 +169,10 @@ export interface PackActor {
   profileBanner?: string;
 
   // ---------------------------------------------------------------------------
-  // Babylon behavioral metadata
+  // Feed behavioral metadata
   // ---------------------------------------------------------------------------
 
-  babylon: {
+  feed: {
     /** Moral alignment */
     alignment: 'good' | 'neutral' | 'evil';
     /** Team assignment for trust/scam benchmarks */

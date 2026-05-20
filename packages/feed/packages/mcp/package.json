@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/mcp",
+  "name": "@feed/mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon MCP Protocol - Model Context Protocol server implementation",
+  "description": "Feed MCP Protocol - Model Context Protocol server implementation",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -17,17 +17,17 @@
     "typecheck": "tsc -b ."
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*",
-    "@babylon/a2a": "workspace:*",
-    "@babylon/core": "workspace:*",
-    "@babylon/engine": "workspace:*"
+    "@feed/shared": "workspace:*",
+    "@feed/a2a": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/engine": "workspace:*"
   },
   "peerDependencies": {
-    "@babylon/db": "workspace:*",
-    "@babylon/api": "workspace:*",
-    "@babylon/engine": "workspace:*",
-    "@babylon/shared": "workspace:*",
-    "@babylon/a2a": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "@feed/a2a": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "ethers": "^6.15.0",
     "zod": "^4.3.6"

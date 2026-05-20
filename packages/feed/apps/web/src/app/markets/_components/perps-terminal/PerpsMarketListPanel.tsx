@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { ArrowDown, ArrowUp, Filter, Search, Star } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { formatPrice, formatVolume } from '@/lib/market-formatters';

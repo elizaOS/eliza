@@ -1,6 +1,6 @@
 /**
  * @deprecated Import ReputationService from './reputation-service' or
- * '@babylon/api' instead. This alias remains for compatibility while
+ * '@feed/api' instead. This alias remains for compatibility while
  * downstream consumers migrate away from ambiguous "points" naming.
  */
 

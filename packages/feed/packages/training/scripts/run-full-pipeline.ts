@@ -21,7 +21,7 @@
  *   --ticks              Ticks per agent (default: 10)
  */
 
-import { count, db, eq, isNotNull, trajectories } from '@babylon/db';
+import { count, db, eq, isNotNull, trajectories } from '@feed/db';
 import { parseArgs } from 'util';
 
 // Parse command line arguments
@@ -64,7 +64,7 @@ const config = {
 };
 
 console.log('═══════════════════════════════════════════════════════════════');
-console.log('  Babylon Full Training Pipeline');
+console.log('  Feed Full Training Pipeline');
 console.log('═══════════════════════════════════════════════════════════════');
 console.log(`  Archetypes: ${config.archetypes.join(', ')}`);
 console.log(`  Agents per archetype: ${config.agentsPerArchetype}`);
@@ -111,7 +111,7 @@ async function runPipeline() {
       );
 
       // Get a manager ID (first user in DB or create one)
-      const { users, desc } = await import('@babylon/db');
+      const { users, desc } = await import('@feed/db');
       const managerResult = await db
         .select({ id: users.id })
         .from(users)
@@ -237,7 +237,7 @@ async function runPipeline() {
     const scored = scoredResult[0]?.count || 0;
     if (scored > 0) {
       console.log(`  ✅ ${scored} trajectories ready for export.`);
-      console.log('  Run "babylon train export" to export training data.\n');
+      console.log('  Run "feed train export" to export training data.\n');
     } else {
       console.log('  ⚠️  No scored trajectories available for export.');
       console.log('  Generate and score trajectories first.\n');
@@ -258,10 +258,10 @@ async function runPipeline() {
   console.log(`  Total time: ${(totalTime / 1000).toFixed(1)}s`);
   console.log('');
   console.log('  Next steps:');
-  console.log('  1. Export data: babylon train export');
-  console.log('  2. Run canonical pipeline: babylon train pipeline');
+  console.log('  1. Export data: feed train export');
+  console.log('  2. Run canonical pipeline: feed train pipeline');
   console.log('  3. Iterate on RL only: python python/scripts/run_training.py');
-  console.log('  4. Benchmark: babylon train benchmark');
+  console.log('  4. Benchmark: feed train benchmark');
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );

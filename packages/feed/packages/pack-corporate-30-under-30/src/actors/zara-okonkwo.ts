@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'zara-okonkwo',
@@ -78,7 +78,7 @@ const actor = {
     'Founder @KibaliMiningTech | Oxford | McKinsey Alum | Ethical Resource Extraction | ESG A-rated (by our own assessment) | Davos Speaker | Making mining sustainable (on paper)',
   pfpDescription:
     'Black Nigerian-British woman in her late 20s with flawless dark brown skin, sharp cheekbones, and confident dark eyes. Hair in a sleek professional updo. Wearing a tailored emerald green blazer (the green is intentional branding). Gold stud earrings. Background: a modern glass office with a single potted plant \u2014 her entire carbon offset program.',
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'manipulator',

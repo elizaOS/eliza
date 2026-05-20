@@ -9,9 +9,9 @@
  * Admin only endpoint.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { and, db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { and, db, eq, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

@@ -14,9 +14,9 @@
  */
 
 import { afterAll, describe, expect, it } from 'bun:test';
-import { TradingBalanceFundingService } from '@babylon/api';
-import { and, balanceTransactions, db, eq, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { TradingBalanceFundingService } from '@feed/api';
+import { and, balanceTransactions, db, eq, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { TestScenarios } from '../unit/stripe/test-fixtures';
 
 // Test user ID prefix for cleanup

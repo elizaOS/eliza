@@ -97,9 +97,9 @@
  * @see {@link https://docs.neynar.com} Neynar API documentation
  */
 
-import { ReputationService, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { ReputationService, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { logger } from '@feed/shared';
 import { createAppClient, viemConnector } from '@farcaster/auth-client';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

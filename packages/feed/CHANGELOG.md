@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Babylon project are documented here.
+All notable changes to the Feed project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
@@ -29,15 +29,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Markets API caching and real-time updates (Terminal performance)**
   - **Why (latency)**: `GET /api/markets/perps` and `GET /api/markets/predictions` hit the database on every request. Under burst traffic (page load, multiple tabs, bot crawlers) this created unnecessary DB load and p95 latency spikes. Redis cache-aside with short TTLs (8s perps, 12s predictions, 30s positions) eliminates redundant reads while SSE + invalidation keep data fresh.
   - **Why (SSE on predictions)**: `PredictionMarketService` already broadcasts `prediction_trade`, `prediction_resolution`, and `prediction_cancellation` to the `markets` SSE channel, but the screener/dashboard didn't consume them — it relied entirely on periodic fetches. Now `useMarketsPageData` patches local prediction rows from SSE events so probability and share count updates appear instantly, matching how perps already work via `usePerpMarketsRealtime`.
-  - **Why (invalidation topology)**: Cache invalidation fires from API route handlers (not from `packages/engine` or `packages/core`) because domain packages must not depend on `@babylon/api`. Each mutation point — perp open/close/price-impact, prediction buy/sell, admin resolve/void/extend — calls a targeted invalidation helper. User-trade invalidation drops both the global list cache and the trading user's positions cache; admin mutations drop all position caches because every user's P&L changes on resolve.
+  - **Why (invalidation topology)**: Cache invalidation fires from API route handlers (not from `packages/engine` or `packages/core`) because domain packages must not depend on `@feed/api`. Each mutation point — perp open/close/price-impact, prediction buy/sell, admin resolve/void/extend — calls a targeted invalidation helper. User-trade invalidation drops both the global list cache and the trading user's positions cache; admin mutations drop all position caches because every user's P&L changes on resolve.
   - **Why (pagination opt-in, not mandatory)**: The screener loads all markets in one shot (fits in one request, client-side sort). External integrations or future dashboards may want pages. Adding `?page=N&limit=M` activates pagination (returns `page`, `limit`, `total` in the response) without breaking existing callers who omit those params.
   - **Why (perp polling on trending)**: `usePerpMarketsPolling(30_000)` on `/markets` ensures the screener refreshes even when SSE events are sparse (quiet markets, SSE reconnection gap).
-  - **Cache helpers** in `@babylon/api`: `invalidateMarketsApiPerpsSnapshot`, `invalidateMarketsApiPredictionsList`, `invalidateMarketsApiPredictionsAfterUserTrade`, `invalidateMarketsApiPredictionsListAndAllPositions`, `invalidateMarketsApiPredictionsPositionsForUser`.
-  - **Domain pagination** in `@babylon/core`: `PerpMarketService.countMarkets()` / `.getMarketsSnapshot({ limit, offset })`, `PredictionMarketService.countUnresolvedMarkets()` / `.listMarkets({ limit, offset })`, with Drizzle adapter and in-memory test implementations.
+  - **Cache helpers** in `@feed/api`: `invalidateMarketsApiPerpsSnapshot`, `invalidateMarketsApiPredictionsList`, `invalidateMarketsApiPredictionsAfterUserTrade`, `invalidateMarketsApiPredictionsListAndAllPositions`, `invalidateMarketsApiPredictionsPositionsForUser`.
+  - **Domain pagination** in `@feed/core`: `PerpMarketService.countMarkets()` / `.getMarketsSnapshot({ limit, offset })`, `PredictionMarketService.countUnresolvedMarkets()` / `.listMarkets({ limit, offset })`, with Drizzle adapter and in-memory test implementations.
   - **Docs**: `docs/markets/markets-api-caching.md` (design, cache topology, invalidation map, known caveats, roadmap).
 
 - **Markets trending screener (`/markets`)**
-  - **Why (product)**: Sending users straight into `MarketsTradingTerminal` put chart and order UI first; many users need a **scannable list** of what is moving before committing attention. A DEX-style screener matches that mental model without pretending Babylon perps are on-chain tokens.
+  - **Why (product)**: Sending users straight into `MarketsTradingTerminal` put chart and order UI first; many users need a **scannable list** of what is moving before committing attention. A DEX-style screener matches that mental model without pretending Feed perps are on-chain tokens.
   - **Why (navigation)**: Shell **Terminal** now opens the screener; **Open terminal** and row **Trade** deep-link to `/markets` with `marketKind` / `marketId` / `filter` so selection matches `parseSelected()` in the unified terminal—one URL contract, no duplicate state machines.
   - **Why (data honesty)**: Reference screeners show mcap, pool liquidity, buy/sell txn splits, and listing “paid” flags. Those fields do not exist on our `PerpMarket` model; we map to **OI**, **24h volume**, **funding APR**, and **24h %**, with header tooltips explaining that **chart timeframe ≠ 24h % window**.
   - **Why (performance)**: Per-row price history is expensive. `PerpSparklineCell` uses **IntersectionObserver** before mounting `usePerpHistory`, and tables cap visible rows (100 perps / 100 predictions) to bound API fan-out.
@@ -53,11 +53,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Why (copy)**: Page title **Terminal** matches the nav label; prediction row CTA **Predict** avoids implying a perp-style **Trade**; docs live under `docs/markets/` with `README.md` index and `trending-screener.md` roadmap.
 - **Agent skills generation and docs integration**
   - **Why**: We expose A2A and MCP; agents (Cursor, Claude Code, ClawHub, etc.) need a single, up-to-date reference. Hand-maintained docs drift from code; generating from source keeps skills and endpoints in sync.
-  - **Script** `scripts/generate-skills-md.ts`: Reads `packages/a2a` (babylon-agent-card, executor operations) and `packages/mcp` (tool list); writes a full Agent Skills package to `skills/babylon/` (SKILL.md with frontmatter, claw.json, README).
+  - **Script** `scripts/generate-skills-md.ts`: Reads `packages/a2a` (feed-agent-card, executor operations) and `packages/mcp` (tool list); writes a full Agent Skills package to `skills/feed/` (SKILL.md with frontmatter, claw.json, README).
   - **npm scripts** `skills:generate` (skills markdown), `skills:package` (full package).
   - **docs:generate** now runs the skills generator after vendor doc pulls.
 - **Outbound RSS feeds**
-  - **Why**: Let users and tools subscribe to Babylon content (hot posts, breaking news) in standard RSS readers without duplicating feed logic.
+  - **Why**: Let users and tools subscribe to Feed content (hot posts, breaking news) in standard RSS readers without duplicating feed logic.
   - **GET /feed/rss**: RSS 2.0 feed of hot posts. Reuses `/api/feed/hot` internally so scoring, caching, and filtering stay in one place; this route only converts JSON → XML.
   - **GET /feed/breaking-news/rss**: RSS 2.0 feed of breaking news (world events, org updates, actor posts). Reuses `/api/feed/widgets/breaking-news` the same way.
   - Shared RSS builder in `apps/web/src/lib/rss.ts` (RSS 2.0 XML with escaping, RFC 1123 dates, 5‑min cache headers). **Why single helper**: Consistent escaping and cache semantics across endpoints.
@@ -68,10 +68,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Public API tiered rate limiting**
   - **Why**: Public GET endpoints (feeds, markets, profiles, etc.) were previously unrate-limited. That allowed unbounded anonymous traffic, increasing cost and abuse risk. We now apply tiered limits so anonymous callers are capped per IP while authenticated users and API keys get higher quotas.
-  - New configs in `@babylon/api` rate limiting:
+  - New configs in `@feed/api` rate limiting:
     - **Read endpoints**: 20 req/min per IP (unauthenticated), 60 req/min per user (authenticated or API key), 10 req/min shared when IP cannot be determined.
     - **Firehose (SSE)**: 5 connections/min per IP (unauthenticated), 20/min per user, 2/min shared when IP unknown.
-  - New helper `publicRateLimit(request, kind?)` in `@babylon/api`: runs optional auth, then rate limits by `userId` (if authed) or by client IP (otherwise), or by shared anonymous bucket if IP is missing. Returns `{ error, user, rateLimitInfo }` so handlers can avoid double-auth and attach standard headers on success.
+  - New helper `publicRateLimit(request, kind?)` in `@feed/api`: runs optional auth, then rate limits by `userId` (if authed) or by client IP (otherwise), or by shared anonymous bucket if IP is missing. Returns `{ error, user, rateLimitInfo }` so handlers can avoid double-auth and attach standard headers on success.
   - New helper `addPublicReadHeaders(response, rateLimitInfo)`: sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` and `Cache-Control: public, s-maxage=5, stale-while-revalidate=10` on successful public read responses. **Why**: Clients can respect limits before hitting 429; CDNs can cache and reduce origin load.
   - All public read-only GET routes (posts, markets, trending, reputation, registry, NFT, NPC, stats, SSE stats, onboarding check-username, questions dynamics, etc.) now call `publicRateLimit()` at the top and attach rate limit + cache headers on success. Auth-only routes (e.g. user search) still use `authenticate()` but apply `publicRateLimit()` first so unauthenticated attempts are rate limited by IP before returning 401.
   - **Null-user safety**: Endpoints that allow unauthenticated access were audited so that `user` is never dereferenced without a null check and query parameters (e.g. `userId`, `following`) are not trusted for authorization—only the authenticated identity from the token/API key is used for user-scoped data.

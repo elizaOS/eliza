@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCurrency } from '@babylon/shared';
+import { formatCurrency } from '@feed/shared';
 import { useMemo } from 'react';
 import { calculateWalletPortfolioSummary } from '@/components/wallet/shared/portfolioBreakdown';
 import {

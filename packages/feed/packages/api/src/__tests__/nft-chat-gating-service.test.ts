@@ -52,7 +52,7 @@ mock.module('../services/nft-indexer-service', () => ({
   },
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -71,7 +71,7 @@ mock.module('drizzle-orm', () => ({
   sql: (strings: TemplateStringsArray) => ({ type: 'sql', value: strings[0] }),
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mockGenerateSnowflakeId,
   logger: mockLogger,
   ValidationError: class ValidationError extends Error {

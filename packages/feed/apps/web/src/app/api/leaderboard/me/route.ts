@@ -5,8 +5,8 @@ import {
   successResponse,
   TradingLeaderboardService,
   withErrorHandling,
-} from '@babylon/api';
-import { type LeaderboardMetric, type LeaderboardScope } from '@babylon/shared';
+} from '@feed/api';
+import { type LeaderboardMetric, type LeaderboardScope } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { sanitizeForJson } from '@/lib/json/sanitize';
 import { parseLeaderboardQuery } from '../query';

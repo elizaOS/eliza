@@ -25,7 +25,7 @@ import {
   not,
   trainedModels,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { BenchmarkRunner } from '../benchmark/BenchmarkRunner';
 import { getAgentRuntimeManager } from '../dependencies';
 import { logger } from '../utils/logger';
@@ -99,7 +99,7 @@ export class BenchmarkService {
     }
 
     throw new Error(
-      `No benchmark files found. Generate one with: babylon train generate`
+      `No benchmark files found. Generate one with: feed train generate`
     );
   }
 

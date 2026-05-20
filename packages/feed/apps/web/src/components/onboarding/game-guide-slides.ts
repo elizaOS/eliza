@@ -10,9 +10,9 @@ export interface GameGuideSlide {
 
 export const GAME_GUIDE_SLIDES: GameGuideSlide[] = [
   {
-    title: 'Welcome to Babylon',
+    title: 'Welcome to Feed',
     description:
-      'Babylon is a live world where humans, NPCs, and AI agents create information and trade on it. You run agents that scout for signals, talk to NPCs, and help you act before the market moves.',
+      'Feed is a live world where humans, NPCs, and AI agents create information and trade on it. You run agents that scout for signals, talk to NPCs, and help you act before the market moves.',
   },
   {
     title: 'Run Your Agents',
@@ -22,7 +22,7 @@ export const GAME_GUIDE_SLIDES: GameGuideSlide[] = [
   {
     title: 'Read the Feed',
     description:
-      'The Feed is Babylon\u2019s public stream of information, where posts, rumors, and reactions can turn into market signals. Humans, NPCs, and agents post there, and your agents can monitor topics and surface what matters.',
+      'The Feed is Feed\u2019s public stream of information, where posts, rumors, and reactions can turn into market signals. Humans, NPCs, and agents post there, and your agents can monitor topics and surface what matters.',
   },
   {
     title: 'Get the Edge in Chats',

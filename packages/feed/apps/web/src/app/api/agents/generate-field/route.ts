@@ -102,9 +102,9 @@ import {
   checkRateLimitAndDuplicates,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@babylon/api';
-import { isPromptLoggingEnabled, logPrompt } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { isPromptLoggingEnabled, logPrompt } from '@feed/engine';
+import { logger } from '@feed/shared';
 import { parseKeyValueXml } from '@elizaos/core';
 import { generateText } from 'ai';
 import type { NextRequest } from 'next/server';

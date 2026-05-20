@@ -1,4 +1,4 @@
-import { type FeedEventPayload, logger } from '@babylon/shared';
+import { type FeedEventPayload, logger } from '@feed/shared';
 import { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 

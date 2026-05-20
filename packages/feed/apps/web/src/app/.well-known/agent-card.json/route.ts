@@ -3,11 +3,11 @@
  * Standard location: /.well-known/agent-card.json
  */
 
-import { babylonAgentCard } from '@babylon/a2a';
+import { feedAgentCard } from '@feed/a2a';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  return NextResponse.json(babylonAgentCard, {
+  return NextResponse.json(feedAgentCard, {
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=3600',

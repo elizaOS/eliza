@@ -54,7 +54,7 @@ let mockGame: MockGame | null = null;
 mock.module('server-only', () => ({}));
 
 // Create a complete mock that includes schema exports
-mock.module('@babylon/db', () => {
+mock.module('@feed/db', () => {
   const createModelMock = (overrides: Partial<MockModel> = {}): MockModel => ({
     findFirst: mock(async () => mockGame),
     findUnique: mock(async () => null),
@@ -159,32 +159,32 @@ mock.module('@babylon/db', () => {
   };
 });
 
-mock.module('@babylon/agents/services/agent-registry.service', () => ({
+mock.module('@feed/agents/services/agent-registry.service', () => ({
   agentRegistry: {
     discoverAgents: async () => [],
   },
 }));
 
-mock.module('@babylon/agents/services/agent-lock-service', () => ({
+mock.module('@feed/agents/services/agent-lock-service', () => ({
   acquireAgentLock: async () => true,
   releaseAgentLock: async () => {},
 }));
 
 // Mock other services to avoid errors if they are imported
-mock.module('@babylon/agents/runtime/AgentRuntimeManager', () => ({
+mock.module('@feed/agents/runtime/AgentRuntimeManager', () => ({
   agentRuntimeManager: {
     getRuntime: async () => ({}),
   },
 }));
 
-mock.module('@babylon/agents/services/AgentService', () => ({
+mock.module('@feed/agents/services/AgentService', () => ({
   agentService: {
     deductPoints: async () => {},
     createLog: async () => {},
   },
 }));
 
-mock.module('@babylon/agents/autonomous', () => ({
+mock.module('@feed/agents/autonomous', () => ({
   autonomousCoordinator: {
     executeAutonomousTick: async () => ({
       success: true,
@@ -200,7 +200,7 @@ mock.module('@babylon/agents/autonomous', () => ({
   },
 }));
 
-mock.module('@babylon/api/services/cron-relay-service', () => ({
+mock.module('@feed/api/services/cron-relay-service', () => ({
   relayCronToStaging: async () => ({ forwarded: false }),
 }));
 

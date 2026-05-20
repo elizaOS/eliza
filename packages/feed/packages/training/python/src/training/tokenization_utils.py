@@ -12,7 +12,7 @@ labels=-100 for prompt tokens effectively excludes them from the loss.
 This is critical for GRPO because we only want to update policy on the
 model's own completions, not on the prompts.
 
-The online environment (BabylonOnlineEnv) uses Atropos managed_server which
+The online environment (FeedOnlineEnv) uses Atropos managed_server which
 handles this automatically. This module provides utilities for:
 1. Offline/historical data where masking wasn't applied correctly
 2. Testing and validation of masking logic
@@ -372,7 +372,7 @@ def fix_historical_masks(
     """
     Fix incorrectly applied masks from historical data.
 
-    Historical data from BabylonRLAIFEnv used [1]*len(tokens) or [0,1] binary
+    Historical data from FeedRLAIFEnv used [1]*len(tokens) or [0,1] binary
     masks which incorrectly trains on prompt tokens. This function recalculates
     proper masks using -100 for prompt and token IDs for completion.
 

@@ -61,9 +61,9 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@babylon/api';
-import { getReputationBreakdown, NPCInvestmentManager } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { verifyCronAuth, withErrorHandling } from '@feed/api';
+import { getReputationBreakdown, NPCInvestmentManager } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

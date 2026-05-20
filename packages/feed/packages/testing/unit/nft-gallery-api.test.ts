@@ -209,9 +209,9 @@ describe('NFT Gallery API - Input Validation', () => {
     });
 
     test('should handle search query trimming', () => {
-      const searchQuery = '  Babylon  ';
+      const searchQuery = '  Feed  ';
       const trimmed = searchQuery.trim();
-      expect(trimmed).toBe('Babylon');
+      expect(trimmed).toBe('Feed');
     });
 
     test('should handle empty search query', () => {
@@ -438,7 +438,7 @@ describe('NFT Gallery API - Response Structure', () => {
 
     test('should have correct attribute structure', () => {
       const attributes = [
-        { trait_type: 'Collection', value: 'Babylon Top 100' },
+        { trait_type: 'Collection', value: 'Feed Top 100' },
         { trait_type: 'Token Number', value: 42 },
         { trait_type: 'Edition', value: 'Genesis' },
       ];

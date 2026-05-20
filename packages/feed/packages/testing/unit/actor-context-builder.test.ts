@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { ActorContextBuilder } from '@babylon/engine';
+import { ActorContextBuilder } from '@feed/engine';
 
 describe('ActorContextBuilder', () => {
   const builder = new ActorContextBuilder();

@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { WorldFactsConsolidator } from '@babylon/engine';
+import { WorldFactsConsolidator } from '@feed/engine';
 
 describe('WorldFactsConsolidator', () => {
   test('can be instantiated with a mock LLM client', () => {
@@ -19,7 +19,7 @@ describe('WorldFactsConsolidator', () => {
       generateJSON: async () => ({ consolidatedFact: 'test' }),
     };
 
-    // The constructor accepts a BabylonLLMClient — verify it doesn't throw
+    // The constructor accepts a FeedLLMClient — verify it doesn't throw
     // with a minimal mock (type coercion for unit test purposes)
     const consolidator = new WorldFactsConsolidator(mockLlm as never);
     expect(consolidator).toBeDefined();

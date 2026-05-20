@@ -16,7 +16,7 @@
  * ```
  */
 
-import { logger, POINTS } from '@babylon/shared';
+import { logger, POINTS } from '@feed/shared';
 import { Check, Lock, Twitter, X as XIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';

@@ -1,12 +1,12 @@
 /**
- * Babylon Agents - Client-Safe Exports
+ * Feed Agents - Client-Safe Exports
  *
  * This module exports types and utilities that are safe to use in client-side code.
  * It does NOT include any server-only dependencies like @elizaos/core, Redis,
  * database connections, or Node.js built-in modules.
  *
  * Use this import for React client components:
- * import type { AgentTemplate, A2AReputationResponse } from '@babylon/agents/client';
+ * import type { AgentTemplate, A2AReputationResponse } from '@feed/agents/client';
  */
 
 // =============================================================================

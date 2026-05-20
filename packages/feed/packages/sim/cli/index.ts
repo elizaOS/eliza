@@ -1,23 +1,23 @@
 #!/usr/bin/env bun
 /**
- * Babylon Runtime CLI
+ * Feed Runtime CLI
  *
  * Usage:
- *   babylon dev        Start dev mode with hot-reload
- *   babylon tick       Execute a single tick (or loop with --loop)
- *   babylon build      Bundle for production
- *   babylon info       Show config and discovered systems
- *   babylon document   Generate markdown reference from system metadata
+ *   feed dev        Start dev mode with hot-reload
+ *   feed tick       Execute a single tick (or loop with --loop)
+ *   feed build      Bundle for production
+ *   feed info       Show config and discovered systems
+ *   feed document   Generate markdown reference from system metadata
  */
 
 import { defineCommand, runMain } from 'citty';
 
 const main = defineCommand({
   meta: {
-    name: 'babylon',
+    name: 'feed',
     version: '0.1.0',
     description:
-      'Babylon Runtime — standalone system engine for the Babylon simulation',
+      'Feed Runtime — standalone system engine for the Feed simulation',
   },
   subCommands: {
     dev: () => import('./commands/dev').then((m) => m.default),

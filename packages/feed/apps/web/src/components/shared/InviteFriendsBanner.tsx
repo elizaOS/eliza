@@ -1,6 +1,6 @@
 'use client';
 
-import { getReferralUrl } from '@babylon/shared';
+import { getReferralUrl } from '@feed/shared';
 import { Check, Copy, ExternalLink, Trophy, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';

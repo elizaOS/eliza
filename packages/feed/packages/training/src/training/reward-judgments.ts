@@ -1,9 +1,9 @@
-import { db, eq, rewardJudgments, trajectories } from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+import { db, eq, rewardJudgments, trajectories } from '@feed/db';
+import type { JsonValue } from '@feed/shared';
 import { generateSnowflakeId } from '../utils/snowflake';
 import type { TrajectoryStep } from './types';
 
-const DETERMINISTIC_JUDGE_MODEL = 'babylon-deterministic';
+const DETERMINISTIC_JUDGE_MODEL = 'feed-deterministic';
 const DETERMINISTIC_JUDGE_VERSION = 'trust-v1';
 
 function clamp01(value: number): number {
@@ -284,7 +284,7 @@ export function computeDeterministicRewardJudgment(input: {
   }
 
   const reasoningParts = [
-    `Deterministic Babylon trust reward derived from ${successCount}/${steps.length} successful actions`,
+    `Deterministic Feed trust reward derived from ${successCount}/${steps.length} successful actions`,
     `environment reward ${totalReward.toFixed(2)}`,
     finalPnL !== undefined ? `final P&L $${finalPnL.toFixed(2)}` : undefined,
     trustScore !== undefined

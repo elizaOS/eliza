@@ -41,8 +41,8 @@ import {
   npcMarketDecisions,
   renderPrompt,
   StaticDataRegistry,
-} from '@babylon/engine';
-import type { Actor } from '@babylon/shared';
+} from '@feed/engine';
+import type { Actor } from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // ANSI helpers
@@ -449,7 +449,7 @@ async function inspectAgentContext(agentUserId: string): Promise<{
   totalTokens: number;
   rawPrompt?: string;
 }> {
-  // Dynamic imports from @babylon/agents (not in @babylon/engine)
+  // Dynamic imports from @feed/agents (not in @feed/engine)
   const {
     getPredictionMarkets,
     getPerpMarkets,
@@ -468,7 +468,7 @@ async function inspectAgentContext(agentUserId: string): Promise<{
   const { getAgentContext } = await import(
     '../packages/agents/src/autonomous/agent-context'
   );
-  const { db, eq, users } = await import('@babylon/db');
+  const { db, eq, users } = await import('@feed/db');
 
   // Verify agent exists
   const [user] = await db
@@ -507,7 +507,7 @@ async function inspectAgentContext(agentUserId: string): Promise<{
   ]);
 
   const { generateWorldContext, WalletService } = await import(
-    '@babylon/engine'
+    '@feed/engine'
   );
   let balance = 0;
   let pnl = 0;

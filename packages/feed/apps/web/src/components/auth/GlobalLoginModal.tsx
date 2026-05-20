@@ -30,10 +30,10 @@ function GlobalLoginModalContent() {
   // Check if dev mode is enabled via URL parameter
   const isDevMode = searchParams.get('dev') === 'true';
 
-  // Hide on production (babylon.market) on home page unless ?dev=true
+  // Hide on production (feed.market) on home page unless ?dev=true
   const isProduction =
     typeof window !== 'undefined' &&
-    window.location.hostname === 'babylon.market';
+    window.location.hostname === 'feed.market';
   const isHomePage =
     typeof window !== 'undefined' && window.location.pathname === '/';
   const shouldHide = isProduction && isHomePage && !isDevMode;

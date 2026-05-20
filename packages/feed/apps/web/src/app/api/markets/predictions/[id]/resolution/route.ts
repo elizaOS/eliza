@@ -3,7 +3,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import type { NextRequest } from 'next/server';
 import { getPublicResolutionAudit } from '../../_resolution-audit';
 

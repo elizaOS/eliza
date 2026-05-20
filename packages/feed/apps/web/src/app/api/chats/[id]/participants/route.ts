@@ -130,10 +130,10 @@ import {
   notifyGroupChatInvite,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { requireNftChatAccess } from '@babylon/api/services/nft-chat-gating-service';
-import { asSystem, asUser } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/api';
+import { requireNftChatAccess } from '@feed/api/services/nft-chat-gating-service';
+import { asSystem, asUser } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 async function loadChatWithParticipants(

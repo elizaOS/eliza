@@ -1,9 +1,9 @@
 import {
   verifyNotificationUnsubscribeToken,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 function htmlResponse(content: string, status = 200): Response {
@@ -13,7 +13,7 @@ function htmlResponse(content: string, status = 200): Response {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Babylon Email Preferences</title>
+    <title>Feed Email Preferences</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
       .container { max-width: 560px; margin: 48px auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; }
@@ -84,7 +84,7 @@ async function processUnsubscribe(
   );
 
   return htmlResponse(
-    '<h1>You are unsubscribed</h1><p>You will no longer receive notification emails from Babylon.</p>'
+    '<h1>You are unsubscribed</h1><p>You will no longer receive notification emails from Feed.</p>'
   );
 }
 

@@ -2,8 +2,8 @@ import {
   authenticateWithDbUser,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { ensureNftChatMembership } from '@babylon/api/services/nft-chat-gating-service';
+} from '@feed/api';
+import { ensureNftChatMembership } from '@feed/api/services/nft-chat-gating-service';
 import type { NextRequest } from 'next/server';
 
 /**

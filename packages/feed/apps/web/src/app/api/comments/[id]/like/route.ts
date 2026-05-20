@@ -116,9 +116,9 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, comments, count, db, eq, reactions } from '@babylon/db';
-import { generateSnowflakeId, IdParamSchema, logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, comments, count, db, eq, reactions } from '@feed/db';
+import { generateSnowflakeId, IdParamSchema, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

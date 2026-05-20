@@ -54,7 +54,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   db,
@@ -63,8 +63,8 @@ import {
   gte,
   perpMarketSnapshots,
   stockPrices,
-} from '@babylon/db';
-import { toISO } from '@babylon/shared';
+} from '@feed/db';
+import { toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { chooseBucketMs } from '@/lib/api/chart-utils';

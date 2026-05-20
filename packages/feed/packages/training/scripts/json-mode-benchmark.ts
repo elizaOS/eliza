@@ -12,7 +12,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { generateSnowflakeId } from '@babylon/shared';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   db,
   initializeSimulationMode,
@@ -29,7 +29,7 @@ if (!existsSync(OUTPUT_DIR)) {
 }
 
 console.log('═══════════════════════════════════════════════════════════════');
-console.log('  Babylon JSON Mode Benchmark');
+console.log('  Feed JSON Mode Benchmark');
 console.log('  No database required - all data stored in JSON');
 console.log(
   '═══════════════════════════════════════════════════════════════\n'

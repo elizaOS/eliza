@@ -10,7 +10,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { and, db, eq, gte, posts } from '@babylon/db';
+import { and, db, eq, gte, posts } from '@feed/db';
 
 // Skip unless explicitly enabled with database running
 const SKIP = process.env.RUN_INTEGRATION_TESTS !== 'true';
@@ -30,7 +30,7 @@ type RegistryModule = typeof import('../../services/static-data-registry');
 
 describe.skipIf(SKIP || !hasLLMKey)('NPC Post Voice Integration', () => {
   let testTimestamp: Date;
-  let llmClient: ReturnType<LLMModule['BabylonLLMClient']['forGameTick']>;
+  let llmClient: ReturnType<LLMModule['FeedLLMClient']['forGameTick']>;
   let generateNPCPost: PostHelpersModule['generateNPCPost'];
   let loadSharedPostContext: PostHelpersModule['loadSharedPostContext'];
   let StaticDataRegistryRef: RegistryModule['StaticDataRegistry'];
@@ -56,7 +56,7 @@ describe.skipIf(SKIP || !hasLLMKey)('NPC Post Voice Integration', () => {
     loadSharedPostContext = postHelpersModule.loadSharedPostContext;
     StaticDataRegistryRef = registryModule.StaticDataRegistry;
 
-    llmClient = llmModule.BabylonLLMClient.forGameTick();
+    llmClient = llmModule.FeedLLMClient.forGameTick();
     testTimestamp = new Date();
   });
 

@@ -1,20 +1,20 @@
 /**
- * Babylon Production A2A Client
+ * Feed Production A2A Client
  *
- * Implements the harness A2AClientInterface against the real Babylon server
+ * Implements the harness A2AClientInterface against the real Feed server
  * using the official A2A protocol (message/send with operation + params).
  *
  * Use this client to run harness agents against:
  *   - Local dev: http://localhost:3000
- *   - Production: https://babylon.market
+ *   - Production: https://feed.market
  *
  * @example
  * ```typescript
- * import { BabylonProductionClient } from '@babylon/agent-harness';
+ * import { FeedProductionClient } from '@feed/agent-harness';
  *
- * const client = new BabylonProductionClient({
+ * const client = new FeedProductionClient({
  *   baseUrl: 'http://localhost:3000',
- *   apiKey: process.env.BABYLON_API_KEY!,
+ *   apiKey: process.env.FEED_API_KEY!,
  * });
  *
  * const result = await runHarness({
@@ -41,26 +41,26 @@ import type {
   UserInfo,
 } from './types';
 
-export interface BabylonProductionClientConfig {
-  /** Base URL of the Babylon server (e.g. http://localhost:3000) */
+export interface FeedProductionClientConfig {
+  /** Base URL of the Feed server (e.g. http://localhost:3000) */
   baseUrl: string;
-  /** Babylon-issued API key for authentication */
+  /** Feed-issued API key for authentication */
   apiKey: string;
   /** Optional agent display name (used for context ID) */
   agentName?: string;
 }
 
 /**
- * Maps harness A2AClientInterface onto the official Babylon A2A protocol.
+ * Maps harness A2AClientInterface onto the official Feed A2A protocol.
  * All operations use message/send with { operation, params } DataParts.
  */
-export class BabylonProductionClient implements A2AClientInterface {
-  private config: BabylonProductionClientConfig;
+export class FeedProductionClient implements A2AClientInterface {
+  private config: FeedProductionClientConfig;
   private clientInstance: A2AClientType | null = null;
   private contextId: string;
   private msgId = 1;
 
-  constructor(config: BabylonProductionClientConfig) {
+  constructor(config: FeedProductionClientConfig) {
     this.config = config;
     this.contextId = `harness-${config.agentName ?? 'agent'}-${Date.now()}`;
   }
@@ -78,7 +78,7 @@ export class BabylonProductionClient implements A2AClientInterface {
     this.clientInstance = await A2AClient.fromCardUrl(cardUrl, {
       fetchImpl: (url: RequestInfo | URL, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
-        headers.set('x-babylon-api-key', apiKey);
+        headers.set('x-feed-api-key', apiKey);
         return fetch(url as RequestInfo, { ...(init ?? {}), headers });
       },
     } as Parameters<typeof A2AClient.fromCardUrl>[1]);

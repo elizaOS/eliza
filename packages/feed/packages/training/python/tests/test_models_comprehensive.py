@@ -18,7 +18,7 @@ import pytest
 from src.models import (
     Action,
     AtroposScoredGroup,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     JudgeResponse,
     JudgeScore,
@@ -85,7 +85,7 @@ def make_step(step_number: int = 0, **overrides) -> TrajectoryStep:
     return TrajectoryStep(**defaults)
 
 
-def make_trajectory(**overrides) -> BabylonTrajectory:
+def make_trajectory(**overrides) -> FeedTrajectory:
     defaults = {
         "trajectory_id": "traj-agent-degen-001",
         "agent_id": "agent-degen-001",
@@ -94,7 +94,7 @@ def make_trajectory(**overrides) -> BabylonTrajectory:
         "final_pnl": 500.0,
     }
     defaults.update(overrides)
-    return BabylonTrajectory(**defaults)
+    return FeedTrajectory(**defaults)
 
 
 # =============================================================================
@@ -318,11 +318,11 @@ class TestTrajectoryStep:
 
 
 # =============================================================================
-# BabylonTrajectory Tests
+# FeedTrajectory Tests
 # =============================================================================
 
 
-class TestBabylonTrajectory:
+class TestFeedTrajectory:
     def test_basic_creation(self):
         traj = make_trajectory()
         assert traj.trajectory_id == "traj-agent-degen-001"
@@ -332,7 +332,7 @@ class TestBabylonTrajectory:
         assert traj.final_pnl == 500.0
 
     def test_default_values(self):
-        traj = BabylonTrajectory(trajectory_id="t1", agent_id="a1")
+        traj = FeedTrajectory(trajectory_id="t1", agent_id="a1")
         assert traj.id == ""
         assert traj.window_id == "default"
         assert traj.duration_ms == 0
@@ -349,7 +349,7 @@ class TestBabylonTrajectory:
             "agentId": "a1",
             "finalPnL": 1234.56,
         }
-        traj = BabylonTrajectory(**data)
+        traj = FeedTrajectory(**data)
         assert traj.final_pnl == 1234.56
 
     def test_not_frozen(self):
@@ -365,7 +365,7 @@ class TestBabylonTrajectory:
     def test_json_round_trip(self):
         traj = make_trajectory()
         json_str = traj.model_dump_json(by_alias=True)
-        restored = BabylonTrajectory.model_validate_json(json_str)
+        restored = FeedTrajectory.model_validate_json(json_str)
         assert restored.trajectory_id == traj.trajectory_id
         assert restored.final_pnl == traj.final_pnl
         assert len(restored.steps) == len(traj.steps)

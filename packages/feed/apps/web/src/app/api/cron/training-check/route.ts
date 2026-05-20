@@ -41,9 +41,9 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@babylon/api';
-import { logger, toISO } from '@babylon/shared';
-import { automationPipeline, rulerScoringService } from '@babylon/training';
+import { verifyCronAuth, withErrorHandling } from '@feed/api';
+import { logger, toISO } from '@feed/shared';
+import { automationPipeline, rulerScoringService } from '@feed/training';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

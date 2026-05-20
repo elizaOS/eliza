@@ -10,7 +10,7 @@ import { clamp, clamp01 } from '../utils/math-utils';
 /**
  * Interface for decimal-like values that can be converted to numbers.
  * Used to accept both native numbers and Decimal objects from the database.
- * Defined locally to avoid importing from @babylon/db in client-safe code.
+ * Defined locally to avoid importing from @feed/db in client-safe code.
  */
 interface DecimalLike {
   toNumber(): number;

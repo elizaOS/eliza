@@ -5,7 +5,7 @@
  * Ensures errors are properly formatted, logged, and propagated.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 /**
  * Safely extract error message from an unknown error value.

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { getReferralShareText, getReferralUrl } from '@babylon/shared';
+import { getReferralShareText, getReferralUrl } from '@feed/shared';
 
 describe('Referral Utilities', () => {
   describe('getReferralUrl', () => {
@@ -32,7 +32,7 @@ describe('Referral Utilities', () => {
     it('should generate share text with default message', () => {
       const text = getReferralShareText('testuser');
       expect(text).toContain('testuser');
-      expect(text).toContain('Babylon');
+      expect(text).toContain('Feed');
     });
 
     it('should include referral URL', () => {

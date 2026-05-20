@@ -7,8 +7,8 @@
  * the AMM price organically.
  */
 
-import { type StructuredEventData } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { type StructuredEventData } from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Log a structured event's intended market impacts for observability.

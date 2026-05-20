@@ -53,7 +53,7 @@ export interface StockFundamentals {
 /**
  * OrganizationState - Dynamic runtime state for organizations
  *
- * Static organization data is in TypeScript (StaticDataRegistry from @babylon/engine).
+ * Static organization data is in TypeScript (StaticDataRegistry from @feed/engine).
  * This table stores only fields that change during gameplay.
  */
 export const organizationState = pgTable(

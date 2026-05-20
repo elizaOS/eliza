@@ -7,18 +7,18 @@ const autonomousCoordinator = {
   executeAutonomousTick: mock(async () => ({ success: true })),
 };
 
-mock.module('@babylon/training/rubrics/index', () => ({
+mock.module('@feed/training/rubrics/index', () => ({
   getAvailableArchetypes: () => ['trader'],
   getPriorityMetrics: () => [],
   getRubric: () => 'rubric',
   hasCustomRubric: () => true,
 }));
 
-mock.module('@babylon/training', () => ({
+mock.module('@feed/training', () => ({
   configureTrainingDependencies,
 }));
 
-mock.module('@babylon/agents', () => ({
+mock.module('@feed/agents', () => ({
   agentService,
   agentRuntimeManager,
   autonomousCoordinator,

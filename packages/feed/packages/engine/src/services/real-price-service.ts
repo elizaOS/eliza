@@ -10,7 +10,7 @@
  * Falls back to hardcoded defaults on network failure — never throws.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 interface CachedPrices {
   prices: Map<string, number>;

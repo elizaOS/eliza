@@ -163,7 +163,7 @@ const mockDb = {
   })),
 };
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   broadcastAgentActivity: mock(async () => undefined),
   broadcastChatMessage: mock(async () => undefined),
   broadcastToChannel: mock(
@@ -176,12 +176,12 @@ mock.module('@babylon/api', () => ({
   },
 }));
 
-mock.module('@babylon/core/markets/perps', () => ({
+mock.module('@feed/core/markets/perps', () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0.001,
     PLATFORM_SHARE: 0.5,
@@ -249,7 +249,7 @@ mock.module('@babylon/engine', () => ({
   storeTagsForPost: mock(async () => undefined),
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   actorState,
   agentLogs,
   agentTrades,

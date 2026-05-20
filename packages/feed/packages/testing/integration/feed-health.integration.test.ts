@@ -231,7 +231,7 @@ describe('feed health — first-N-words near-dupe detection', () => {
       {
         id: '1',
         content:
-          'Babylon social platform launches exciting prediction markets feature today',
+          'Feed social platform launches exciting prediction markets feature today',
         authorId: 'npc-a',
         type: 'post',
         timestamp: base,
@@ -239,7 +239,7 @@ describe('feed health — first-N-words near-dupe detection', () => {
       {
         id: '2',
         content:
-          'Babylon social platform launches exciting prediction markets feature now',
+          'Feed social platform launches exciting prediction markets feature now',
         authorId: 'npc-b',
         type: 'post',
         timestamp: base,
@@ -256,7 +256,7 @@ describe('feed health — first-N-words near-dupe detection', () => {
       {
         id: '1',
         content:
-          'Babylon social platform launches exciting prediction markets today',
+          'Feed social platform launches exciting prediction markets today',
         authorId: 'npc-a',
         type: 'post',
         timestamp: base,
@@ -264,7 +264,7 @@ describe('feed health — first-N-words near-dupe detection', () => {
       {
         id: '2',
         content:
-          'Babylon social platform launches exciting prediction markets now',
+          'Feed social platform launches exciting prediction markets now',
         authorId: 'npc-a',
         type: 'post',
         timestamp: base,

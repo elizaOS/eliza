@@ -1,4 +1,4 @@
-import { BadRequestError, NotFoundError } from '@babylon/shared';
+import { BadRequestError, NotFoundError } from '@feed/shared';
 import { PredictionPricing } from './pricing';
 import type {
   PredictionBuyInput,

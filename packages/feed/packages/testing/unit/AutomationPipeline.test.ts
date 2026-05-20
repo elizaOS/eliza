@@ -12,11 +12,11 @@ import * as actualDbModule from '../../db/src/index';
 const describeTests = describe;
 
 // Import types used in type assertions for repository mocks
-import type { TrainedModel, TrainingBatch } from '@babylon/db';
+import type { TrainedModel, TrainingBatch } from '@feed/db';
 import type {
   AutomationConfig,
   AutomationPipeline as AutomationPipelineType,
-} from '@babylon/training';
+} from '@feed/training';
 
 // Type for pipeline with private properties/methods exposed for testing
 // Uses a structural type to access private members in tests
@@ -132,9 +132,9 @@ const mockLogger = {
   error: mock(),
 };
 
-// Mock modules - keep full @babylon/db export surface and only override db.
+// Mock modules - keep full @feed/db export surface and only override db.
 // This prevents cross-file module cache collisions from missing named exports.
-mock.module('@babylon/db', async () => {
+mock.module('@feed/db', async () => {
   return {
     ...actualDbModule,
     db: mockDb,
@@ -148,13 +148,13 @@ mock.module('@babylon/db', async () => {
   };
 });
 
-// Note: @babylon/shared is NOT mocked - let real logger run to avoid
+// Note: @feed/shared is NOT mocked - let real logger run to avoid
 // polluting module cache and breaking other tests that use formatCurrency, etc.
 
 // Mock the training package logger
 // AutomationPipeline imports from '../utils/logger' relative to its location
 // We need to mock it using the package export path
-mock.module('@babylon/training/utils/logger', () => ({
+mock.module('@feed/training/utils/logger', () => ({
   logger: mockLogger,
 }));
 
@@ -189,7 +189,7 @@ describeTests('AutomationPipeline - Unit Tests', () => {
       process.env.DATABASE_URL || 'postgresql://mock:mock@localhost:5432/mock';
 
     // Dynamic import to ensure env var is set and mocks are applied
-    const module = await import('@babylon/training/training');
+    const module = await import('@feed/training/training');
     AutomationPipeline = module.AutomationPipeline;
   });
 

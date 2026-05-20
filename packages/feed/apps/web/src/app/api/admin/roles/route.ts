@@ -11,7 +11,7 @@ import {
   requireSuperAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   ADMIN_PERMISSIONS,
   ADMIN_ROLES,
@@ -26,15 +26,15 @@ import {
   ROLE_PERMISSIONS,
   sql,
   users,
-} from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 /**
  * Zod schema for role grant/revoke request validation
  *
- * Uses the canonical ADMIN_ROLES and ADMIN_PERMISSIONS constants from @babylon/db
+ * Uses the canonical ADMIN_ROLES and ADMIN_PERMISSIONS constants from @feed/db
  * to ensure validation stays in sync with the database schema.
  */
 const RoleRequestSchema = z.object({

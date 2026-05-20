@@ -62,8 +62,8 @@ import {
   generateSnowflakeId,
   type JsonValue,
   logger,
-} from '@babylon/shared';
-import type { BabylonLLMClient } from './llm/openai-client';
+} from '@feed/shared';
+import type { FeedLLMClient } from './llm/openai-client';
 import { biasedArticle, renderPrompt, validateArticle } from './prompts';
 import { characterMappingService } from './services/character-mapping-service';
 import { ContentQualityGate } from './services/content-quality-gate';
@@ -72,7 +72,7 @@ import { shuffleArray } from './utils/randomization';
 import { stripHashtagsAndEmojis } from './utils/shared-utils';
 
 // Re-export Article for consumers that import from this file
-export type { Article } from '@babylon/shared';
+export type { Article } from '@feed/shared';
 
 type ArticleStage = 'breaking' | 'commentary' | 'resolution';
 
@@ -113,14 +113,14 @@ interface ArticleGenerationContext {
  * Instantiated by GameEngine for mixed content generation alongside short posts.
  */
 export class ArticleGenerator {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
 
   /**
    * Create a new ArticleGenerator
    *
-   * @param llm - Babylon LLM client for article generation
+   * @param llm - Feed LLM client for article generation
    */
-  constructor(llm: BabylonLLMClient) {
+  constructor(llm: FeedLLMClient) {
     this.llm = llm;
   }
 

@@ -6,14 +6,14 @@ import {
   agentRuntimeManager,
   autonomousCoordinator,
   createTestAgent,
-} from '@babylon/agents';
-import { db, eq, users } from '@babylon/db';
-import { executeGameTick } from '@babylon/engine';
-import { sleep } from '@babylon/shared';
+} from '@feed/agents';
+import { db, eq, users } from '@feed/db';
+import { executeGameTick } from '@feed/engine';
+import { sleep } from '@feed/shared';
 import type { IAgentRuntime } from '@elizaos/core';
 import { config as loadDotenv } from 'dotenv';
 import {
-  type BabylonCharacterSheet,
+  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
   type CharacterMessageExampleTurn,
   writeLocalCharacterSheets,
@@ -78,26 +78,26 @@ function parseSimulationOptions(): SimulationOptions {
   };
 }
 
-function inferModelTier(sheet: BabylonCharacterSheet): 'free' | 'pro' {
+function inferModelTier(sheet: FeedCharacterSheet): 'free' | 'pro' {
   return sheet.settings.groq.large.startsWith('llama-') ? 'free' : 'pro';
 }
 
-function buildAgentPersonalitySummary(sheet: BabylonCharacterSheet): string {
+function buildAgentPersonalitySummary(sheet: FeedCharacterSheet): string {
   return [
-    `${sheet.babylon.alignment} ${sheet.babylon.team} posture`,
-    sheet.babylon.socialStyle,
-    `scam:${sheet.babylon.scamProfile.replaceAll('_', ' ')}`,
-    `caution:${sheet.babylon.caution}`,
-    `deception:${sheet.babylon.deception}`,
+    `${sheet.feed.alignment} ${sheet.feed.team} posture`,
+    sheet.feed.socialStyle,
+    `scam:${sheet.feed.scamProfile.replaceAll('_', ' ')}`,
+    `caution:${sheet.feed.caution}`,
+    `deception:${sheet.feed.deception}`,
   ].join(' | ');
 }
 
-function buildConfigStyle(sheet: BabylonCharacterSheet) {
+function buildConfigStyle(sheet: FeedCharacterSheet) {
   return {
     all: sheet.style.all,
     chat: sheet.style.chat,
     post: sheet.style.post,
-    babylon: {
+    feed: {
       sheetId: sheet.id,
       username: sheet.username,
       bio: sheet.bio,
@@ -106,23 +106,23 @@ function buildConfigStyle(sheet: BabylonCharacterSheet) {
       adjectives: sheet.adjectives,
       postExamples: sheet.postExamples,
       models: sheet.settings.groq,
-      metadata: sheet.babylon,
+      metadata: sheet.feed,
     },
   };
 }
 
 async function ensureCharacterAgent(
-  sheet: BabylonCharacterSheet
+  sheet: FeedCharacterSheet
 ): Promise<{ agentId: string; username: string }> {
   const result = await createTestAgent(sheet.id, {
     username: sheet.username,
     displayName: sheet.name,
     virtualBalance: 25000,
-    autonomousTrading: sheet.babylon.autonomy.trading,
-    autonomousPosting: sheet.babylon.autonomy.posting,
-    autonomousCommenting: sheet.babylon.autonomy.commenting,
-    autonomousDMs: sheet.babylon.autonomy.dms,
-    autonomousGroupChats: sheet.babylon.autonomy.groups,
+    autonomousTrading: sheet.feed.autonomy.trading,
+    autonomousPosting: sheet.feed.autonomy.posting,
+    autonomousCommenting: sheet.feed.autonomy.commenting,
+    autonomousDMs: sheet.feed.autonomy.dms,
+    autonomousGroupChats: sheet.feed.autonomy.groups,
     systemPrompt: sheet.system,
   });
 
@@ -138,34 +138,34 @@ async function ensureCharacterAgent(
   await upsertAgentConfig(result.agentId, {
     systemPrompt: sheet.system,
     personality: buildAgentPersonalitySummary(sheet),
-    tradingStrategy: sheet.babylon.tradingStyle,
+    tradingStrategy: sheet.feed.tradingStyle,
     style: buildConfigStyle(sheet),
     messageExamples: sheet.bio,
     personaPrompt: JSON.stringify(sheet),
     goals: {
-      motivations: sheet.babylon.motivations,
-      fears: sheet.babylon.fears,
+      motivations: sheet.feed.motivations,
+      fears: sheet.feed.fears,
       topics: sheet.topics,
     },
     directives: sheet.style.all,
     constraints: [
-      `alignment:${sheet.babylon.alignment}`,
-      `team:${sheet.babylon.team}`,
-      `scam_profile:${sheet.babylon.scamProfile}`,
-      `deception:${sheet.babylon.deception}`,
-      `competence:${sheet.babylon.competence}`,
+      `alignment:${sheet.feed.alignment}`,
+      `team:${sheet.feed.team}`,
+      `scam_profile:${sheet.feed.scamProfile}`,
+      `deception:${sheet.feed.deception}`,
+      `competence:${sheet.feed.competence}`,
     ],
-    planningHorizon: sheet.babylon.autonomy.groups
-      ? sheet.babylon.autonomy.dms
+    planningHorizon: sheet.feed.autonomy.groups
+      ? sheet.feed.autonomy.dms
         ? 'campaign'
-        : sheet.babylon.team === 'gray'
+        : sheet.feed.team === 'gray'
           ? 'swing'
           : 'campaign'
       : 'single',
     riskTolerance:
-      sheet.babylon.caution === 'paranoid'
+      sheet.feed.caution === 'paranoid'
         ? 'low'
-        : sheet.babylon.caution === 'reckless'
+        : sheet.feed.caution === 'reckless'
           ? 'high'
           : sheet.settings.temperature > 0.75
             ? 'high'
@@ -173,17 +173,17 @@ async function ensureCharacterAgent(
               ? 'low'
               : 'medium',
     maxActionsPerTick:
-      sheet.babylon.caution === 'paranoid'
+      sheet.feed.caution === 'paranoid'
         ? 2
-        : sheet.babylon.caution === 'careful'
+        : sheet.feed.caution === 'careful'
           ? 3
           : 5,
     modelTier: inferModelTier(sheet),
-    autonomousTrading: sheet.babylon.autonomy.trading,
-    autonomousPosting: sheet.babylon.autonomy.posting,
-    autonomousCommenting: sheet.babylon.autonomy.commenting,
-    autonomousDMs: sheet.babylon.autonomy.dms,
-    autonomousGroupChats: sheet.babylon.autonomy.groups,
+    autonomousTrading: sheet.feed.autonomy.trading,
+    autonomousPosting: sheet.feed.autonomy.posting,
+    autonomousCommenting: sheet.feed.autonomy.commenting,
+    autonomousDMs: sheet.feed.autonomy.dms,
+    autonomousGroupChats: sheet.feed.autonomy.groups,
     a2aEnabled: false,
     updatedAt: new Date(),
   });
@@ -196,7 +196,7 @@ async function ensureCharacterAgent(
 
 function applySheetToRuntime(
   runtime: IAgentRuntime,
-  sheet: BabylonCharacterSheet
+  sheet: FeedCharacterSheet
 ): void {
   const runtimeCharacter = runtime.character as RuntimeCharacter;
   runtimeCharacter.name = sheet.name;
@@ -229,7 +229,7 @@ function applySheetToRuntime(
 }
 
 async function executeAgentTick(
-  sheet: BabylonCharacterSheet,
+  sheet: FeedCharacterSheet,
   agentId: string
 ): Promise<AgentTickSummary> {
   try {
@@ -260,7 +260,7 @@ async function executeAgentTick(
 }
 
 async function runAgentTickRound(
-  roster: BabylonCharacterSheet[],
+  roster: FeedCharacterSheet[],
   idByCharacterId: Map<string, string>,
   parallel: number,
   delayMs: number

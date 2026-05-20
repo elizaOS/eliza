@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 
 import {
   AlertCircle,
@@ -300,7 +300,7 @@ export function BuyPointsModal({
               <div className="space-y-2 text-muted-foreground text-xs">
                 <div>
                   <p>Trading balance is non-transferable.</p>
-                  <p>Balance units can be used for trading on Babylon.</p>
+                  <p>Balance units can be used for trading on Feed.</p>
                 </div>
                 <p className="flex items-start gap-2">
                   <CreditCard className="mt-0.5 h-3.5 w-3.5 shrink-0" />

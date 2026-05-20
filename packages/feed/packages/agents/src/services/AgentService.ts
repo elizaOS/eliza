@@ -30,9 +30,9 @@ import {
   userAgentConfigs,
   users,
   withTransaction,
-} from '@babylon/db';
-import type { AgentCapabilities } from '@babylon/shared';
-import { BABYLON_POINTS_SYMBOL } from '@babylon/shared';
+} from '@feed/db';
+import type { AgentCapabilities } from '@feed/shared';
+import { FEED_POINTS_SYMBOL } from '@feed/shared';
 import { AuthorizationError } from '../errors';
 import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';
 import { logger } from '../shared/logger';
@@ -302,7 +302,7 @@ export class AgentServiceV2 {
         ],
         version: '1.0.0',
         x402Support: true,
-        platform: 'babylon',
+        platform: 'feed',
         userType: 'user_controlled',
         skills: [],
         domains: [],
@@ -312,7 +312,7 @@ export class AgentServiceV2 {
         userId: agentUserId,
         name: name,
         systemPrompt:
-          system || 'You are a helpful AI agent on Babylon prediction market.',
+          system || 'You are a helpful AI agent on Feed prediction market.',
         capabilities,
       });
 
@@ -698,7 +698,7 @@ export class AgentServiceV2 {
     });
 
     logger.info(
-      `Deposited ${BABYLON_POINTS_SYMBOL}${amount} trading balance to agent ${agentUserId}`,
+      `Deposited ${FEED_POINTS_SYMBOL}${amount} trading balance to agent ${agentUserId}`,
       undefined,
       'AgentService'
     );
@@ -807,7 +807,7 @@ export class AgentServiceV2 {
     });
 
     logger.info(
-      `Withdrew ${BABYLON_POINTS_SYMBOL}${amount} trading balance from agent ${agentUserId}`,
+      `Withdrew ${FEED_POINTS_SYMBOL}${amount} trading balance from agent ${agentUserId}`,
       undefined,
       'AgentService'
     );

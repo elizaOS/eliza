@@ -12,7 +12,7 @@ import {
   filterIncoherent,
   validateCoherence,
   validateGrounding,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('validateGrounding', () => {
   test('grounded parody passes — topically related to source', async () => {

@@ -1,11 +1,11 @@
 'use client';
 
-import type { PerpPosition, UserPredictionPosition } from '@babylon/shared';
-import { logger, toNumber } from '@babylon/shared';
+import type { PerpPosition, UserPredictionPosition } from '@feed/shared';
+import { logger, toNumber } from '@feed/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Re-export for convenience
-export type { UserPredictionPosition } from '@babylon/shared';
+export type { UserPredictionPosition } from '@feed/shared';
 
 import { apiUrl } from '@/utils/api-url';
 

@@ -26,11 +26,11 @@ jobs:
         (github.event.action == 'review_requested' && vars.PRR_REVIEWER_LOGIN && github.event.requested_reviewer && github.event.requested_reviewer.login == vars.PRR_REVIEWER_LOGIN)
       ))
     # prr_ref must match uses: ref so checkout and npm ci stay in sync. On exit 1, download prr-logs-<PR#> artifact for output.log and prompts.log.
-    uses: elizaOS/prr/.github/workflows/run-prr-server.yml@babylon
+    uses: elizaOS/prr/.github/workflows/run-prr-server.yml@feed
     with:
       pr_number: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
       prr_repo: 'elizaOS/prr'
-      prr_ref: 'babylon'
+      prr_ref: 'feed'
       submit_review: ${{ github.event_name == 'workflow_dispatch' }}
     secrets:
       PRR_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

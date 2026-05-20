@@ -1,5 +1,6 @@
 import { buildControlPlaneApp, type ControlPlaneMockOptions } from "./server";
 import type { ControlPlaneStore } from "./store";
+import { startFetchServer } from "../fetch-server";
 
 export type { ControlPlaneMockOptions } from "./server";
 export { buildControlPlaneApp } from "./server";
@@ -42,10 +43,9 @@ export async function startControlPlaneMock(
     hetznerUrl,
   });
 
-  const server = Bun.serve({
+  const server = await startFetchServer(app.fetch, {
     port: options.port ?? 0,
     hostname: options.hostname ?? "127.0.0.1",
-    fetch: app.fetch,
   });
   const port = server.port;
   if (typeof port !== "number") {

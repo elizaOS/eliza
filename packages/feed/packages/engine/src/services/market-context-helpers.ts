@@ -1,9 +1,9 @@
-import type { PerpMarketRecord } from '@babylon/core/markets/perps';
+import type { PerpMarketRecord } from '@feed/core/markets/perps';
 import {
   maxSafeBuy,
   type PredictionMarketRecord,
   PredictionPricing,
-} from '@babylon/core/markets/prediction/client';
+} from '@feed/core/markets/prediction/client';
 import type {
   PerpMarketSnapshot,
   PredictionMarketSnapshot,

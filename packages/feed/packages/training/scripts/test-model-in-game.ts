@@ -16,7 +16,7 @@
  *   --auto-start-ollama Automatically start Ollama if not running (default: true)
  *   --stop-ollama       Stop Ollama after tests complete (if we started it)
  *   --import-mlx <path> Import MLX adapter to Ollama before test
- *   --model-name <name> Model name to test (default: babylon-trader:latest)
+ *   --model-name <name> Model name to test (default: feed-trader:latest)
  *   --archetype <type>  Agent archetype to test (default: trader)
  *   --ticks <n>         Number of simulation ticks (default: 100)
  *   --verbose           Enable verbose logging
@@ -24,7 +24,7 @@
  * By default, Ollama is auto-started if not running. Use --no-ollama to skip.
  */
 
-import { db, desc, eq, trainedModels } from '@babylon/db';
+import { db, desc, eq, trainedModels } from '@feed/db';
 import { type Subprocess, spawn } from 'bun';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -76,7 +76,7 @@ function parseConfig(): TestConfig {
       'auto-start-ollama': { type: 'boolean', default: true },
       'stop-ollama': { type: 'boolean', default: false },
       'import-mlx': { type: 'string' },
-      'model-name': { type: 'string', default: 'babylon-trader:latest' },
+      'model-name': { type: 'string', default: 'feed-trader:latest' },
       archetype: { type: 'string', default: 'trader' },
       ticks: { type: 'string', default: '100' },
       verbose: { type: 'boolean', default: false },
@@ -92,7 +92,7 @@ function parseConfig(): TestConfig {
     autoStartOllama: useOllama && (values['auto-start-ollama'] ?? true),
     stopOllama: values['stop-ollama'] ?? false,
     importMlxPath: values['import-mlx'],
-    modelName: values['model-name'] ?? 'babylon-trader:latest',
+    modelName: values['model-name'] ?? 'feed-trader:latest',
     archetype: values.archetype ?? 'trader',
     ticks: parseInt(values.ticks ?? '100', 10),
     verbose: values.verbose ?? false,

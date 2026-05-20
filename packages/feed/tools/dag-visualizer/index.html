@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Babylon DAG Visualizer — Full Engine Trace Inspector</title>
+<title>Feed DAG Visualizer — Full Engine Trace Inspector</title>
 <style>
 :root {
   --bg: #0a0a0f;
@@ -489,7 +489,7 @@ body {
 <body>
 
 <div class="top-bar">
-  <div class="logo">BABYLON DAG INSPECTOR</div>
+  <div class="logo">FEED DAG INSPECTOR</div>
   <div class="tick-selector" id="tickSelector" style="display:none">
     <span style="font-size:11px;color:var(--text-dim)">Tick:</span>
     <select id="tickSelect"></select>
@@ -514,9 +514,9 @@ body {
   <!-- Welcome Screen -->
   <div class="welcome" id="welcomeScreen">
     <div class="welcome-card">
-      <h1>Babylon DAG Inspector</h1>
+      <h1>Feed DAG Inspector</h1>
       <p>
-        Full observability into the Babylon game engine tick execution.<br>
+        Full observability into the Feed game engine tick execution.<br>
         See ALL data flowing through every node: LLM prompts & responses,<br>
         NPC decisions & trades, scores, narratives, prices — everything.
       </p>
@@ -1827,7 +1827,7 @@ function generateDemoTrace(now) {
       callId: 'call-001-event-generation', nodeId: 'events', timestamp: elapsed(1000),
       provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'event-generation', format: 'json',
       temperature: 0.8, maxTokens: 2048,
-      systemPrompt: `You are the Babylon World Engine — a narrative simulation system that generates world events for a prediction market game.
+      systemPrompt: `You are the Feed World Engine — a narrative simulation system that generates world events for a prediction market game.
 
 WORLD STATE:
 - Current game day: 42
@@ -1839,7 +1839,7 @@ RULES:
 - Generate 2-4 world events that create meaningful prediction market signals
 - Events should have varying severity (1-5) and signal strength (0-1)
 - Mix event types: rumor, leak, confirmation, denial, reversal, proof
-- Events must reference Babylon parody entities (aiBitcoin, Solander, etc), NEVER real ones
+- Events must reference Feed parody entities (aiBitcoin, Solander, etc), NEVER real ones
 - Each event should plausibly shift odds on at least one active question
 - Maintain narrative coherence with existing arcs`,
       userPrompt: `Generate world events for day 42, tick 2847.
@@ -1907,7 +1907,7 @@ Generate events as JSON array with fields: type, description, severity, signalSt
       callId: 'call-002-narrative-generation', nodeId: 'narrative-arcs', timestamp: elapsed(3500),
       provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'narrative-generation', format: 'json',
       temperature: 0.7, maxTokens: 1024,
-      systemPrompt: `You are the Babylon Narrative Engine. You manage multi-phase story arcs that drive the prediction market simulation.
+      systemPrompt: `You are the Feed Narrative Engine. You manage multi-phase story arcs that drive the prediction market simulation.
 
 ARC PHASE TRANSITIONS:
 - Long-term (30 days): setup → tension → escalation → crisis → revelation → resolution
@@ -1974,7 +1974,7 @@ Should any arcs transition? Generate narrative text and sentiment shifts.`,
       callId: `call-${String(i + 3).padStart(3, '0')}-npc-market-decisions`, nodeId: 'market-decisions', timestamp: elapsed(6000 + i * 1500),
       provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'npc-market-decisions', format: 'json',
       temperature: 0.9, maxTokens: 512,
-      systemPrompt: `You are ${npcName}, an NPC trader in the Babylon prediction market simulation.
+      systemPrompt: `You are ${npcName}, an NPC trader in the Feed prediction market simulation.
 
 YOUR PERSONALITY:
 - Risk tolerance: ${['conservative', 'moderate', 'aggressive'][i % 3]}
@@ -2024,7 +2024,7 @@ Decide your actions as JSON array.`,
     callId: 'call-011-relationship-analysis', nodeId: 'relationships', timestamp: elapsed(25000),
     provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'relationship-analysis', format: 'json',
     temperature: 0.6, maxTokens: 1024,
-    systemPrompt: 'You are the Babylon Social Engine. Analyze NPC interactions to update relationship strengths and types. Consider trading alignment, group membership, messaging patterns, and shared positions.',
+    systemPrompt: 'You are the Feed Social Engine. Analyze NPC interactions to update relationship strengths and types. Consider trading alignment, group membership, messaging patterns, and shared positions.',
     userPrompt: `Analyze relationships for 80 NPCs. Recent interactions this tick:\n- CryptoWhale42 and AlphaHunter both bought aiBitcoin (aligned)\n- DeFiDegen and TokenSage took opposing positions on q-001\n- MoonLambo shared insider leak in Alpha Traders group\n- ChartWizard posted analysis contradicting BlockchainBard's thesis\n\nCurrent relationship graph: 156 edges across 80 nodes, 6 clusters.\nUpdate relationships as JSON.`,
     rawResponse: '{"updates": [{"pair": ["CryptoWhale42", "AlphaHunter"], "delta": 0.05, "type": "trading_alliance"}, {"pair": ["DeFiDegen", "TokenSage"], "delta": -0.08, "type": "rivalry"}]}',
     parsedResponse: { updates: [{ pair: ['CryptoWhale42', 'AlphaHunter'], delta: 0.05 }] },
@@ -2034,7 +2034,7 @@ Decide your actions as JSON array.`,
     callId: 'call-012-group-messages', nodeId: 'group-dynamics', timestamp: elapsed(31000),
     provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'group-messages', format: 'json',
     temperature: 0.9, maxTokens: 1024,
-    systemPrompt: 'You are the Babylon Group Chat Engine. Generate authentic group messages for NPC groups based on current events and member personalities. Messages should feel natural and reflect each NPC\'s trading style and knowledge level.',
+    systemPrompt: 'You are the Feed Group Chat Engine. Generate authentic group messages for NPC groups based on current events and member personalities. Messages should feel natural and reflect each NPC\'s trading style and knowledge level.',
     userPrompt: 'Generate group messages for 3 active groups:\n1. Alpha Traders (12 members, trading-focused)\n2. Bear Cave (8 members, bearish sentiment)\n3. DeFi Degens (15 members, DeFi-focused)\n\nContext: Insider trading revelation, institutional rumor, Solander burn leak.',
     rawResponse: '{"messages": [{"groupId": "g-alpha-1", "author": "CryptoWhale42", "content": "Just saw the aiBitcoin institutional rumor. If even half true, $100k is a lock. Loading up."}, {"groupId": "g-bears", "author": "DeFiDegen", "content": "This insider trading thing is going to blow up. When it does, everything dumps. Stay short."}, {"groupId": "g-defi", "author": "TokenSage", "content": "Solander burn mechanism would be huge for tokenomics. But those screenshots look sketchy."}]}',
     parsedResponse: { messages: [{ groupId: 'g-alpha-1', author: 'CryptoWhale42', content: 'Loading up on aiBitcoin' }] },
@@ -2169,10 +2169,10 @@ Decide your actions as JSON array.`,
       tokenStats: { totalCalls: 13, totalTokens: 60700, estimatedCostUSD: 0.0485 }
     },
     environmentFlags: {
-      BABYLON_DAG_TRACE: true,
-      BABYLON_TRUST_CORPUS_FAST_MODE: false,
-      BABYLON_SKIP_NPC_GROUP_DYNAMICS: false,
-      BABYLON_SKIP_ALPHA_GROUP_INVITES: false,
+      FEED_DAG_TRACE: true,
+      FEED_TRUST_CORPUS_FAST_MODE: false,
+      FEED_SKIP_NPC_GROUP_DYNAMICS: false,
+      FEED_SKIP_ALPHA_GROUP_INVITES: false,
       GAME_TICK_BUDGET_MS: '180000',
     }
   };
@@ -2279,7 +2279,7 @@ Decide your actions as JSON array.`,
       callId: 'call-014-agent-trading', nodeId: 'market-decisions', timestamp: elapsed(8000),
       provider: 'groq-agent', model: 'openai/gpt-oss-20b', promptType: 'agent-groq-direct', format: 'text',
       temperature: 0.3, maxTokens: 500,
-      systemPrompt: 'You are an autonomous trading agent in the Babylon prediction market. Evaluate opportunities and execute trades.\n\nYour archetype: momentum-trader\nRisk tolerance: moderate\nPortfolio value: $12,500\nCurrent P&L: +$1,200',
+      systemPrompt: 'You are an autonomous trading agent in the Feed prediction market. Evaluate opportunities and execute trades.\n\nYour archetype: momentum-trader\nRisk tolerance: moderate\nPortfolio value: $12,500\nCurrent P&L: +$1,200',
       userPrompt: 'MARKET STATE:\n- aiBitcoin: $95,120 (+2.6%)\n- Solander: $145.50 (+5.0%)\n\nSIGNALS:\n- Institutional rumor (bullish aiBitcoin)\n- Token burn leak (bullish Solander)\n\nYour current positions: 0.3 aiBitcoin, 50 Solander\n\nDecide: TRADE, HOLD, or SKIP. If TRADE, specify ticker, side, amount.',
       rawResponse: '{"action":"TRADE","ticker":"Solander","side":"BUY","amount":500,"reasoning":"Token burn mechanism would reduce supply significantly. Momentum is strong at +5%. Adding to existing position."}',
       parsedResponse: { action: 'TRADE', ticker: 'Solander', side: 'BUY', amount: 500 },
@@ -2287,7 +2287,7 @@ Decide your actions as JSON array.`,
     },
     {
       callId: 'call-015-agent-social', nodeId: 'group-dynamics', timestamp: elapsed(32000),
-      provider: 'ollama', model: 'babylon-social:latest', promptType: 'agent-groq-plugin', format: 'text',
+      provider: 'ollama', model: 'feed-social:latest', promptType: 'agent-groq-plugin', format: 'text',
       temperature: 0.9, maxTokens: 256,
       systemPrompt: 'You are BlockchainBard, a poetic crypto commentator. Write group chat messages that reflect your unique voice. Never break character.',
       userPrompt: 'You just joined Alpha Traders group. The hot topic is the aiBitcoin institutional rumor and Solander token burn leak. Write a message introducing yourself and sharing your take.',

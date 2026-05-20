@@ -464,7 +464,7 @@ function buildHtml(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Babylon PFP Gallery</title>
+<title>Feed PFP Gallery</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e2e2e8; }
@@ -536,7 +536,7 @@ nav a:hover { background: #1e1e2e; }
 <body>
 
 <header>
-  <h1>🎨 Babylon PFP Gallery</h1>
+  <h1>🎨 Feed PFP Gallery</h1>
   <nav>
     <a href="#actors">Actors (${actors.length})</a>
     <a href="#orgs">Orgs (${orgs.length})</a>

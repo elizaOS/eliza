@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { checkDatabaseHealth, db, queryMonitor } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { checkDatabaseHealth, db, queryMonitor } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { CronJobStats } from '../monitoring/cron-metrics';
 import { cronMetrics } from '../monitoring/cron-metrics';
 import { getRedisClient, isRedisAvailable } from '../redis/client';
@@ -1143,7 +1143,7 @@ export function formatSystemStatusDiscordMessage(
           .join('\n');
 
   return [
-    `Babylon ${snapshot.status.toUpperCase()} system alert`,
+    `Feed ${snapshot.status.toUpperCase()} system alert`,
     `Environment: ${environment}${region}`,
     `Critical subsystems: ${snapshot.summary.criticalCount}/${snapshot.summary.total}`,
     issueLines.length > 0 ? issueLines : '- No issue details available',

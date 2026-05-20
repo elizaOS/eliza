@@ -1,6 +1,6 @@
 # Observability
 
-Client and server instrumentation for operating Babylon in production.
+Client and server instrumentation for operating Feed in production.
 
 | Doc | What it covers |
 |-----|----------------|

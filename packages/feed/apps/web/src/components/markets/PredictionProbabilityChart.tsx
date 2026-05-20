@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import type { ISeriesApi, Time } from 'lightweight-charts';
 import { AreaSeries } from 'lightweight-charts';
 import { useEffect, useMemo, useRef, useState } from 'react';

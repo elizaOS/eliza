@@ -1,4 +1,4 @@
-import { isRecord } from '@babylon/shared';
+import { isRecord } from '@feed/shared';
 
 export type PrivyApiDiagnostics = {
   errorName?: string;

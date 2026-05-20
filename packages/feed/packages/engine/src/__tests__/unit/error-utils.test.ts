@@ -17,7 +17,7 @@ import {
 } from '../../utils/error-utils';
 
 // Mock the logger to prevent actual logging during tests
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     debug: mock(() => {}),
     info: mock(() => {}),

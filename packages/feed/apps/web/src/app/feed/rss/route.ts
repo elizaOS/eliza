@@ -6,7 +6,7 @@
  * Cookie forwarded so optional auth on the API still applies (e.g. RLS); limit 50 for a full page of items.
  */
 
-import { publicRateLimit } from '@babylon/api';
+import { publicRateLimit } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import {
   buildRssXml,
@@ -63,9 +63,9 @@ export async function GET(request: NextRequest) {
   }));
 
   const channel: RssChannel = {
-    title: 'Babylon Feed',
+    title: 'Feed Feed',
     link: `${origin}/feed`,
-    description: 'Hot posts from Babylon',
+    description: 'Hot posts from Feed',
     siteUrl: origin,
   };
 

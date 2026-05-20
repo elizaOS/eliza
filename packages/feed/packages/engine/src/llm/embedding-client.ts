@@ -3,14 +3,14 @@
  *
  * Thin wrapper around OpenAI's text-embedding-3-small for semantic similarity.
  * Used by ContentQualityGate (parody validation) and WorldFactsConsolidator
- * (fact clustering). Separate from BabylonLLMClient because embeddings are
+ * (fact clustering). Separate from FeedLLMClient because embeddings are
  * OpenAI-only — the Groq/Claude fallback chain doesn't apply.
  *
  * Gracefully degrades: returns null when OPENAI_API_KEY is missing, so callers
  * can skip embedding-based checks without crashing the pipeline.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import OpenAI from 'openai';
 
 const EMBEDDING_MODEL = 'text-embedding-3-small';

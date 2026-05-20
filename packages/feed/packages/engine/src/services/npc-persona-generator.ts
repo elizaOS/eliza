@@ -39,7 +39,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { correlations } from '../data/organization-correlations';
 import type { Actor, Organization } from '../types';
 import { type RngFunction, randomChance } from '../utils/randomization';

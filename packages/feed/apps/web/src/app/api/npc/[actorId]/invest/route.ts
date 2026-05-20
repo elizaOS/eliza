@@ -62,9 +62,9 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { NPCInvestmentManager, StaticDataRegistry } from '@babylon/engine';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { NPCInvestmentManager, StaticDataRegistry } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

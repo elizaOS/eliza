@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

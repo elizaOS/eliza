@@ -1,5 +1,5 @@
 /**
- * Shared Utility Functions for Babylon Game Engine
+ * Shared Utility Functions for Feed Game Engine
  *
  * Consolidated utility functions used across the engine
  */

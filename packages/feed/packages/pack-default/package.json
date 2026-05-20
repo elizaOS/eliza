@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/pack-default",
+  "name": "@feed/pack-default",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,6 +12,6 @@
     "typecheck": "tsc -b ."
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*"
+    "@feed/shared": "workspace:*"
   }
 }

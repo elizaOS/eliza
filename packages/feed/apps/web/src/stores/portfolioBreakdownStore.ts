@@ -1,7 +1,7 @@
 import {
   type PortfolioBreakdownSnapshot,
   toNumber,
-} from '@babylon/engine/client';
+} from '@feed/engine/client';
 import { useCallback, useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';

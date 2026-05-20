@@ -75,15 +75,15 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, shareActions, users } from '@babylon/db';
+} from '@feed/api';
+import { db, eq, shareActions, users } from '@feed/db';
 import {
   logger,
   POINTS,
   SnowflakeIdSchema,
   toISOOrNull,
   UserIdParamSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

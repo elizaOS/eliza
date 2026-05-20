@@ -25,14 +25,14 @@ import {
 // Set default timeout to 30 seconds for integration tests
 setDefaultTimeout(30000);
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   AlphaGroupInviteService,
   GroupChatService,
   NPCGroupDynamicsService,
   NPCInteractionTracker,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Test data cleanup tracking
 const testIds = {

@@ -23,8 +23,8 @@ import {
   generateSnowflakeId,
   userAgentConfigs,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/engine';
+} from '@feed/db';
+import { logger } from '@feed/engine';
 import { ethers } from 'ethers';
 import { nanoid } from 'nanoid';
 
@@ -36,7 +36,7 @@ const AUTONOMOUS_AGENT_CONFIGS = [
   {
     username: 'trader-aggressive',
     displayName: 'Aggressive Trader',
-    systemPrompt: `You are an aggressive trader on Babylon prediction markets. You love taking risks, making bold predictions, and executing trades frequently. You analyze market sentiment, price movements, and news to make quick trading decisions. You're confident in your abilities and enjoy the thrill of trading. You actively participate in perpetual markets and prediction markets, always looking for opportunities to profit.`,
+    systemPrompt: `You are an aggressive trader on Feed prediction markets. You love taking risks, making bold predictions, and executing trades frequently. You analyze market sentiment, price movements, and news to make quick trading decisions. You're confident in your abilities and enjoy the thrill of trading. You actively participate in perpetual markets and prediction markets, always looking for opportunities to profit.`,
     bio: 'Technical analysis expert | Risk-conscious trader | Pattern recognition specialist',
     personality: 'Analytical, patient, disciplined',
     tradingStrategy:
@@ -49,7 +49,7 @@ const AUTONOMOUS_AGENT_CONFIGS = [
   {
     username: 'trader-conservative',
     displayName: 'Conservative Trader',
-    systemPrompt: `You are a conservative trader on Babylon prediction markets. You prefer careful analysis and only trade when you have high confidence. You study market trends, analyze sentiment data, and consider all factors before making a trade. You're patient and methodical, focusing on consistent gains rather than high-risk bets. You participate in both prediction and perpetual markets with a balanced approach.`,
+    systemPrompt: `You are a conservative trader on Feed prediction markets. You prefer careful analysis and only trade when you have high confidence. You study market trends, analyze sentiment data, and consider all factors before making a trade. You're patient and methodical, focusing on consistent gains rather than high-risk bets. You participate in both prediction and perpetual markets with a balanced approach.`,
     bio: 'Sentiment analysis expert | Social media monitoring | News-driven trader',
     personality: 'Social, reactive, trend-following',
     tradingStrategy:
@@ -62,7 +62,7 @@ const AUTONOMOUS_AGENT_CONFIGS = [
   {
     username: 'trader-social',
     displayName: 'Social Trader',
-    systemPrompt: `You are a social trader on Babylon prediction markets. You love chatting with other traders, sharing insights, and learning from the community. You make trading decisions based on both your own analysis and community sentiment. You're active in posting your thoughts, commenting on others' predictions, and participating in market discussions. You enjoy the social aspect of trading as much as the financial gains.`,
+    systemPrompt: `You are a social trader on Feed prediction markets. You love chatting with other traders, sharing insights, and learning from the community. You make trading decisions based on both your own analysis and community sentiment. You're active in posting your thoughts, commenting on others' predictions, and participating in market discussions. You enjoy the social aspect of trading as much as the financial gains.`,
     bio: 'Quantitative analyst | Arbitrage specialist | Statistical edge hunter',
     personality: 'Mathematical, precise, opportunistic',
     tradingStrategy:
@@ -768,7 +768,7 @@ async function seedModerationTestUsers(): Promise<number> {
 async function main(): Promise<void> {
   const command = process.argv[2] || 'all';
 
-  logger.info('Babylon Test Data Seeder', { command }, 'SeedTestData');
+  logger.info('Feed Test Data Seeder', { command }, 'SeedTestData');
   logger.info('═'.repeat(60), undefined, 'SeedTestData');
 
   let totalCreated = 0;

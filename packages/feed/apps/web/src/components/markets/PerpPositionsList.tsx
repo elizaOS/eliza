@@ -5,7 +5,7 @@ import {
   cn,
   formatCurrency,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { AlertTriangle, Bot, TrendingDown, TrendingUp } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';

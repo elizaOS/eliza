@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import type { DrizzleClient } from '@babylon/db';
-import { BabylonEngine } from '../core/engine';
+import type { DrizzleClient } from '@feed/db';
+import { FeedEngine } from '../core/engine';
 import { CircularDependencyError, FrameworkError } from '../core/errors';
 import { defineSystem } from '../core/system';
-import type { BabylonSystem } from '../core/types';
+import type { FeedSystem } from '../core/types';
 import { TickPhase } from '../core/types';
 
 function makeTestEngine(budgetMs = 60000) {
-  return new BabylonEngine({
+  return new FeedEngine({
     db: {} as DrizzleClient,
     llm: { execute: async () => ({}) as never, getClient: () => ({}) },
     logger: {
@@ -15,14 +15,14 @@ function makeTestEngine(budgetMs = 60000) {
       warn: () => {},
       error: () => {},
       debug: () => {},
-    } as unknown as import('@babylon/shared').Logger,
+    } as unknown as import('@feed/shared').Logger,
     config: { budgetMs },
   });
 }
 
 function makeSystem(
-  overrides: Partial<BabylonSystem> & { id: string; phase: TickPhase }
-): BabylonSystem {
+  overrides: Partial<FeedSystem> & { id: string; phase: TickPhase }
+): FeedSystem {
   return {
     name: overrides.id,
     onTick: async () => ({}),

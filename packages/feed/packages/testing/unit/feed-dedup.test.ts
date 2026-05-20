@@ -51,9 +51,9 @@ describe('jaccardSimilarity', () => {
   });
 
   test('high overlap returns >= 0.5', () => {
-    const a = 'Babylon social platform launches new prediction markets feature';
+    const a = 'Feed social platform launches new prediction markets feature';
     const b =
-      'Babylon platform launches social prediction markets feature today';
+      'Feed platform launches social prediction markets feature today';
     expect(jaccardSimilarity(a, b)).toBeGreaterThanOrEqual(0.5);
   });
 

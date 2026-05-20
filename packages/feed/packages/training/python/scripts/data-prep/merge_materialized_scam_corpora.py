@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Merge multiple materialized scam/prompt-injection corpora into a single Babylon-
+Merge multiple materialized scam/prompt-injection corpora into a single Feed-
 shaped training/scenario bundle.
 """
 

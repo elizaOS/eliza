@@ -161,9 +161,9 @@ async def test_run_selects_best_checkpoint_from_deterministic_eval(
 
     assert report["selected_checkpoint_source"] == "interval"
     assert report["selected_checkpoint_step"] == 1
-    assert report["selected_checkpoint_ref"] == "tinker://sampler/babylon-rl-test-run-step-1"
+    assert report["selected_checkpoint_ref"] == "tinker://sampler/feed-rl-test-run-step-1"
     assert (
-        report["selected_checkpoint_state_ref"] == "tinker://state/babylon-rl-test-run-step-1-state"
+        report["selected_checkpoint_state_ref"] == "tinker://state/feed-rl-test-run-step-1-state"
     )
     assert report["selected_checkpoint_materialized_ref"].startswith(
         "tinker://sampler/materialized-from/"
@@ -176,7 +176,7 @@ async def test_run_selects_best_checkpoint_from_deterministic_eval(
     assert report["final_reward"] == report["selection_summary"]["avg_score"]
     assert len(report["selection_candidates"]) == 3
     assert downloaded_refs == [report["selected_checkpoint_materialized_ref"]]
-    assert fake_client.loaded_state_paths == ["tinker://state/babylon-rl-test-run-step-1-state"]
+    assert fake_client.loaded_state_paths == ["tinker://state/feed-rl-test-run-step-1-state"]
 
 
 @_skip_no_tinker

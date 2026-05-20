@@ -1,7 +1,7 @@
 'use client';
 
-import type { GameOnboardingStep } from '@babylon/shared';
-import { logger, ONBOARDING_STEP_INFO } from '@babylon/shared';
+import type { GameOnboardingStep } from '@feed/shared';
+import { logger, ONBOARDING_STEP_INFO } from '@feed/shared';
 import {
   createContext,
   useCallback,

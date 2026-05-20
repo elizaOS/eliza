@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useStewardAuthContext } from './StewardAuthProvider';
 

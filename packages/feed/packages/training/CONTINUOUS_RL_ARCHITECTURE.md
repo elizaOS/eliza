@@ -3,8 +3,8 @@
 ## Overview
 
 Train a 9B Qwen3.5 model continuously via reinforcement learning while it
-serves as the LLM backend for all Babylon agents. The model runs on Nebius
-H100, Babylon runs locally, agents call the Nebius vLLM server for decisions.
+serves as the LLM backend for all Feed agents. The model runs on Nebius
+H100, Feed runs locally, agents call the Nebius vLLM server for decisions.
 Training happens online — the model updates from its own gameplay.
 
 ## Architecture
@@ -12,7 +12,7 @@ Training happens online — the model updates from its own gameplay.
 ```
 LOCAL MACHINE                          NEBIUS H100 (80GB)
 ┌─────────────────────┐               ┌──────────────────────────────────────┐
-│  Babylon Game        │               │  vLLM Server (Qwen3.5-9B)           │
+│  Feed Game        │               │  vLLM Server (Qwen3.5-9B)           │
 │  ├─ PostgreSQL       │   HTTP/API    │  ├─ Serves /v1/chat/completions     │
 │  ├─ Redis            │◄────────────►│  ├─ ~9GB weights (bf16)             │
 │  ├─ SimEngine        │               │  └─ GPU memory: ~20GB serving       │
@@ -25,7 +25,7 @@ LOCAL MACHINE                          NEBIUS H100 (80GB)
 │  ├─ /api/trajectories│──────────────►│  └─ ~40GB for training overhead     │
 │  └─ Deterministic    │               │                                      │
 │     reward compute   │               │  Training Service                    │
-│                      │               │  ├─ Pulls trajectories from Babylon │
+│                      │               │  ├─ Pulls trajectories from Feed │
 │                      │               │  ├─ Computes advantages (GRPO)      │
 │                      │               │  ├─ Kondo gate filters top 3%       │
 │                      │               │  ├─ APOLLO optimizer step           │
@@ -49,7 +49,7 @@ This leaves ~20GB headroom. Fits on a single H100.
 
 ## Phase 1: Game Setup (Pre-Bake)
 
-### 1.1 Configure Babylon Agents
+### 1.1 Configure Feed Agents
 
 All 60 agents use the SAME model on Nebius, differentiated only by system prompt:
 
@@ -94,7 +94,7 @@ outcome is logged to the `trajectories` table with:
 ### 2.1 Trajectory Collection
 
 After each game tick, the training service on Nebius:
-1. Fetches new trajectories from Babylon API
+1. Fetches new trajectories from Feed API
 2. Groups them by scenario (same game tick = same scenario)
 3. Extracts reward signals:
 
@@ -200,7 +200,7 @@ With 60 agents over 100 ticks:
 
 ### 3.3 Parallel Simulations
 
-Run multiple Babylon instances in parallel:
+Run multiple Feed instances in parallel:
 - Each with different random seed
 - Different agent assignments (shuffle red/blue/gray)
 - Different market scenarios
@@ -215,7 +215,7 @@ This multiplies training data by N with minimal overhead.
 Separate experiment: red team agents attack GPT-5.4 and Groq models.
 
 ```
-Babylon Instance (local)
+Feed Instance (local)
   ├─ Red agents → call Nebius vLLM (our trained model)  
   ├─ Blue agents → call GPT-5.4 via OpenAI API
   └─ Gray agents → call Groq Llama 70B
@@ -231,7 +231,7 @@ This lets us:
 Reverse: frontier models attack our blue team.
 
 ```
-Babylon Instance (local)
+Feed Instance (local)
   ├─ Red agents → call GPT-5.4 (as attacker)
   ├─ Blue agents → call Nebius vLLM (our trained model)
   └─ Gray agents → call Groq
@@ -244,11 +244,11 @@ Babylon Instance (local)
 | Gap | Priority | Effort |
 |---|---|---|
 | **Nebius vLLM server setup script** | HIGH | 2h — script to install vLLM, load model, expose endpoint |
-| **Trajectory export API** | HIGH | 3h — HTTP endpoint on Babylon to export trajectories to training |
+| **Trajectory export API** | HIGH | 3h — HTTP endpoint on Feed to export trajectories to training |
 | **Hot-reload mechanism** | HIGH | 2h — checkpoint save → vLLM restart cycle |
 | **Agent identity map service** | MED | 1h — expose red/blue/gray assignments via API |
 | **Reward computation service** | MED | 3h — compute verifiable rewards on Nebius from trajectory data |
-| **Parallel sim launcher** | MED | 2h — script to run N Babylon instances with different seeds |
+| **Parallel sim launcher** | MED | 2h — script to run N Feed instances with different seeds |
 | **Pre-bake script** | LOW | 1h — run 30 ticks without training to build social graph |
 
 ### Already Exists (Use As-Is)
@@ -257,7 +257,7 @@ Babylon Instance (local)
 |---|---|---|
 | Agent LLM routing | `packages/agents/src/llm/agent-llm.ts` | Set HUGGINGFACE_MODEL_ENDPOINT |
 | Trajectory logging | `plugin-trajectory-logger` | Enable with recordTrajectories=true |
-| All agent actions | `packages/agents/src/plugins/babylon/actions/` | 9 action types, all DB-verified |
+| All agent actions | `packages/agents/src/plugins/feed/actions/` | 9 action types, all DB-verified |
 | APOLLO optimizer | `packages/training/python/src/training/` | Tested on H100 |
 | Kondo gate | `kondo-gate` package | Tested at 3% rate |
 | TurboQuant KV cache | `src/training/turboquant.py` | Full implementation |
@@ -269,16 +269,16 @@ Babylon Instance (local)
 
 | Separate Modules | Merge Into |
 |---|---|
-| `team_rl.py` + `continuous_rl.py` + `multi_agent_orchestrator.py` | Single `babylon_rl.py` |
-| `verifiable_game.py` + `adversarial_game.py` | Fold into `babylon_rl.py` reward computation |
-| `run_team_rl.py` + `run_online_rl.py` + `demo_continuous_rl.py` | Single `run_babylon_rl.py` |
-| Mock bridges (3 different ones) | One `MockBabylonBridge` that covers all cases |
+| `team_rl.py` + `continuous_rl.py` + `multi_agent_orchestrator.py` | Single `feed_rl.py` |
+| `verifiable_game.py` + `adversarial_game.py` | Fold into `feed_rl.py` reward computation |
+| `run_team_rl.py` + `run_online_rl.py` + `demo_continuous_rl.py` | Single `run_feed_rl.py` |
+| Mock bridges (3 different ones) | One `MockFeedBridge` that covers all cases |
 
 ## How to Demonstrate CRL
 
 ### Demo 1: Local (5 min)
 ```bash
-# Start Babylon
+# Start Feed
 docker-compose up -d
 cd packages/sim && bun run bridge-server &
 
@@ -291,7 +291,7 @@ python scripts/run_team_rl.py --mock --model Qwen/Qwen3-4B --ticks 20
 # On Nebius: start vLLM + training service
 python scripts/start_nebius_rl_server.py --model Qwen/Qwen3.5-9B
 
-# Locally: start Babylon pointing at Nebius
+# Locally: start Feed pointing at Nebius
 HUGGINGFACE_MODEL_ENDPOINT=https://<nebius-ip>:8000/v1 bun run dev
 
 # Watch: agents play, trajectories collect, model improves

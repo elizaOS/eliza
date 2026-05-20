@@ -1,4 +1,4 @@
-# Babylon Tinker Training Configuration
+# Feed Tinker Training Configuration
 # 
 # This config file defines settings for GRPO training using Tinker API.
 # Copy this file and modify as needed for different training runs.
@@ -140,4 +140,4 @@ advanced:
   adam_epsilon: 1.0e-8
   
   # Checkpoint naming prefix
-  checkpoint_prefix: "babylon"
+  checkpoint_prefix: "feed"

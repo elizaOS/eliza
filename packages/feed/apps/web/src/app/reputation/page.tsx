@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { IDENTITY_REGISTRY_BASE_SEPOLIA } from '@babylon/shared';
+import { IDENTITY_REGISTRY_BASE_SEPOLIA } from '@feed/shared';
 import { Award, Medal, Target, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PageContainer } from '@/components/shared/PageContainer';

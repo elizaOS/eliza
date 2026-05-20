@@ -13,7 +13,7 @@
  * - QuestionManager - Question generation
  * - FeedGenerator - Feed post generation
  * - TrendingTopicsEngine - Trending calculation
- * - PerpMarketService (from @babylon/core/markets/perps) - Perpetual market operations
+ * - PerpMarketService (from @feed/core/markets/perps) - Perpetual market operations
  *
  * @usage
  * RUN_REAL_ENGINE_TESTS=true bun test engine-components-validation
@@ -77,14 +77,14 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
   describe('ArticleGenerator', () => {
     test('generates article from event context', async () => {
       const { ArticleGenerator } = await import('../../ArticleGenerator');
-      const { BabylonLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import('../../llm/openai-client');
       const { StaticDataRegistry } = await import(
         '../../services/static-data-registry'
       );
 
       console.log('📰 Testing ArticleGenerator...');
 
-      const llm = BabylonLLMClient.forGameTick();
+      const llm = FeedLLMClient.forGameTick();
       const generator = new ArticleGenerator(llm);
 
       // Load real actor data using StaticDataRegistry (preferred over deprecated loadActorsData)
@@ -143,11 +143,11 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
   describe('QuestionManager', () => {
     test('generates prediction questions', async () => {
       const { QuestionManager } = await import('../../QuestionManager');
-      const { BabylonLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import('../../llm/openai-client');
 
       console.log('❓ Testing QuestionManager...');
 
-      const llm = BabylonLLMClient.forGameTick();
+      const llm = FeedLLMClient.forGameTick();
       const manager = new QuestionManager(llm);
 
       // Generate questions using the continuous game method (what game tick uses)
@@ -167,9 +167,9 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
 
     test('resolves questions with proper outcome', async () => {
       const { QuestionManager } = await import('../../QuestionManager');
-      const { BabylonLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import('../../llm/openai-client');
 
-      const llm = BabylonLLMClient.forGameTick();
+      const llm = FeedLLMClient.forGameTick();
       const manager = new QuestionManager(llm);
 
       // Create a question to resolve
@@ -194,14 +194,14 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
   describe('FeedGenerator', () => {
     test('generates feed posts', async () => {
       const { FeedGenerator } = await import('../../FeedGenerator');
-      const { BabylonLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import('../../llm/openai-client');
       const { StaticDataRegistry } = await import(
         '../../services/static-data-registry'
       );
 
       console.log('📝 Testing FeedGenerator...');
 
-      const llm = BabylonLLMClient.forGameTick();
+      const llm = FeedLLMClient.forGameTick();
       const generator = new FeedGenerator(llm);
 
       // Use StaticDataRegistry instead of deprecated loadActorsData
@@ -268,7 +268,7 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       console.log('📈 Testing PerpMarketService...');
 
       const { PerpMarketService, PerpDbAdapter } = await import(
-        '@babylon/core/markets/perps'
+        '@feed/core/markets/perps'
       );
       const { WalletService } = await import('../../services/wallet-service');
       const { FEE_CONFIG } = await import('../../config/fees');
@@ -340,9 +340,9 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       const { MarketContextService } = await import(
         '../../services/market-context-service'
       );
-      const { BabylonLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import('../../llm/openai-client');
 
-      const llm = BabylonLLMClient.forGameTick();
+      const llm = FeedLLMClient.forGameTick();
       const contextService = new MarketContextService();
       const engine = new MarketDecisionEngine(llm, contextService);
 

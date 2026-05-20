@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 import { useEffect, useRef } from 'react';
 import type { OutcomeNotification } from '@/components/notifications/OutcomeNotificationPopup';

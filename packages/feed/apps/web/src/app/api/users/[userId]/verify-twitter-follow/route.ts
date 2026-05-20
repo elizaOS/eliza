@@ -5,7 +5,7 @@
  * @access Authenticated
  *
  * @description
- * Awards points for following @PlayBabylon on Twitter/X.
+ * Awards points for following @PlayFeed on Twitter/X.
  * Uses a trusted reward system (no API verification needed).
  *
  * @openapi
@@ -14,7 +14,7 @@
  *     tags:
  *       - Users
  *     summary: Award points for Twitter follow
- *     description: Awards points for following @PlayBabylon (trusted system, authenticated user only)
+ *     description: Awards points for following @PlayFeed (trusted system, authenticated user only)
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -52,14 +52,14 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**
  * POST /api/users/[userId]/verify-twitter-follow
- * Award points for following @PlayBabylon on Twitter (trusted system)
+ * Award points for following @PlayFeed on Twitter (trusted system)
  */
 export const POST = withErrorHandling(
   async (

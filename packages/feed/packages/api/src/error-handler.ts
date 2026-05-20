@@ -2,16 +2,16 @@
  * Global error handler and middleware for API routes
  */
 
-import * as BabylonDb from '@babylon/db';
-import { logger, BabylonError as SharedBabylonError } from '@babylon/shared';
+import * as FeedDb from '@feed/db';
+import { logger, FeedError as SharedFeedError } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { ApiError, BabylonError, isAuthenticationError } from './errors';
+import { ApiError, FeedError, isAuthenticationError } from './errors';
 import type { JsonValue } from './types';
 
 const DatabaseErrorCtor = (
-  BabylonDb as { DatabaseError?: new (...args: unknown[]) => Error }
+  FeedDb as { DatabaseError?: new (...args: unknown[]) => Error }
 ).DatabaseError;
 
 const SENSITIVE_HEADER_KEYS = new Set([
@@ -69,7 +69,7 @@ const SENSITIVE_CONTEXT_KEY_PATTERN =
   /(token|secret|password|authorization|cookie|jwt|api[-_]?key|signature|session|credential|wallet|private[-_]?key)/i;
 
 /**
- * Shallow-sanitizes a BabylonError context object before sending to Sentry.
+ * Shallow-sanitizes a FeedError context object before sending to Sentry.
  * Redacts values whose key matches sensitive patterns; preserves safe primitives.
  */
 function sanitizeErrorContext(
@@ -294,21 +294,21 @@ export function errorHandler(
   }
 
   // Handle client errors (4xx) at lower log level - these are expected behavior
-  // Check both local BabylonError and @babylon/shared BabylonError (separate class hierarchies)
-  const isLocalBabylonClient =
-    error instanceof BabylonError &&
+  // Check both local FeedError and @feed/shared FeedError (separate class hierarchies)
+  const isLocalFeedClient =
+    error instanceof FeedError &&
     error.statusCode >= 400 &&
     error.statusCode < 500;
-  const isSharedBabylonClient =
-    error instanceof SharedBabylonError &&
+  const isSharedFeedClient =
+    error instanceof SharedFeedError &&
     error.statusCode >= 400 &&
     error.statusCode < 500;
 
-  if (isLocalBabylonClient || isSharedBabylonClient) {
+  if (isLocalFeedClient || isSharedFeedClient) {
     logger.warn('Client error', {
       error: error.message,
-      code: (error as BabylonError | SharedBabylonError).code,
-      statusCode: (error as BabylonError | SharedBabylonError).statusCode,
+      code: (error as FeedError | SharedFeedError).code,
+      statusCode: (error as FeedError | SharedFeedError).statusCode,
       name: error.name,
       ...errorContext,
     });
@@ -325,7 +325,7 @@ export function errorHandler(
 
   // Track error with analytics (async, don't await to avoid slowing down response)
   // Skip tracking authentication errors, validation errors, and 4xx client errors as they're expected behavior
-  const isClientError = isLocalBabylonClient || isSharedBabylonClient;
+  const isClientError = isLocalFeedClient || isSharedFeedClient;
   if (
     options?.trackError &&
     !isAuthenticationError(error) &&
@@ -340,12 +340,12 @@ export function errorHandler(
 
   // Capture error in error tracking (only for server errors, not client errors like validation)
   // ZodError and AuthenticationError are excluded via early returns above.
-  // BabylonError operational 4xx (e.g. ValidationError, BadRequestError) are excluded here.
+  // FeedError operational 4xx (e.g. ValidationError, BadRequestError) are excluded here.
   const isOperational4xx =
-    (error instanceof BabylonError &&
+    (error instanceof FeedError &&
       error.isOperational &&
       error.statusCode < 500) ||
-    (error instanceof SharedBabylonError &&
+    (error instanceof SharedFeedError &&
       error.isOperational &&
       error.statusCode < 500);
   const shouldCaptureInErrorTracking =
@@ -362,12 +362,12 @@ export function errorHandler(
     if (userId) {
       context.user = { id: userId };
     }
-    if (error instanceof BabylonError && error.context) {
+    if (error instanceof FeedError && error.context) {
       context.error = {
         context: sanitizeErrorContext(error.context),
         code: error.code,
       };
-    } else if (error instanceof SharedBabylonError && error.context) {
+    } else if (error instanceof SharedFeedError && error.context) {
       context.error = {
         context: sanitizeErrorContext(
           error.context as Record<string, JsonValue>
@@ -384,8 +384,8 @@ export function errorHandler(
     }
   }
 
-  // Handle Babylon errors (our custom errors)
-  if (error instanceof BabylonError) {
+  // Handle Feed errors (our custom errors)
+  if (error instanceof FeedError) {
     const errorData: Record<string, JsonValue> = { error: error.message };
     if (error.context?.details) {
       errorData.details = error.context.details as JsonValue;
@@ -406,8 +406,8 @@ export function errorHandler(
     });
   }
 
-  // Handle @babylon/shared domain errors (separate class hierarchy from local BabylonError)
-  if (error instanceof SharedBabylonError) {
+  // Handle @feed/shared domain errors (separate class hierarchy from local FeedError)
+  if (error instanceof SharedFeedError) {
     const errorData: Record<string, JsonValue> = { error: error.message };
     if (error.context?.details) {
       errorData.details = error.context.details as JsonValue;

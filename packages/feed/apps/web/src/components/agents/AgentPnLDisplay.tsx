@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { useAgentTotalPnL } from '@/hooks/useAgentTotalPnL';
 

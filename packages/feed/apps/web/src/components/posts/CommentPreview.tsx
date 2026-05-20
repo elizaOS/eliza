@@ -1,7 +1,7 @@
 'use client';
 
-import type { CommentPreviewData } from '@babylon/shared';
-import { cn, getProfileUrl } from '@babylon/shared';
+import type { CommentPreviewData } from '@feed/shared';
+import { cn, getProfileUrl } from '@feed/shared';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,7 +14,7 @@ import {
 } from '@/components/shared/VerifiedBadge';
 
 // Re-export for convenience
-export type { CommentPreviewData } from '@babylon/shared';
+export type { CommentPreviewData } from '@feed/shared';
 
 interface CommentPreviewProps {
   comments: CommentPreviewData[];

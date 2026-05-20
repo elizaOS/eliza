@@ -24,9 +24,9 @@ import {
   type ScheduledEvent,
   type StructuredEventData,
   worldEvents,
-} from '@babylon/db';
-import { escapeRegex, generateSnowflakeId, logger } from '@babylon/shared';
-import type { BabylonLLMClient } from '../llm/openai-client';
+} from '@feed/db';
+import { escapeRegex, generateSnowflakeId, logger } from '@feed/shared';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { toSafeDayNumber } from '../utils/date-utils';
 import { secureRandom } from '../utils/entropy';
 import { formatError } from '../utils/error-utils';
@@ -36,8 +36,8 @@ import {
   parseScheduledEventsSafe,
 } from './jsonb-validators';
 
-// Re-export the BabylonLLMClient type for callers
-export type { BabylonLLMClient } from '../llm/openai-client';
+// Re-export the FeedLLMClient type for callers
+export type { FeedLLMClient } from '../llm/openai-client';
 
 /**
  * Day ranges for each arc state (for 30-day long-term arcs)
@@ -822,7 +822,7 @@ async function getAffectedStocksForQuestion(
 export async function processArcTick(
   arcId: string,
   dayNumber: number,
-  llmClient?: BabylonLLMClient | null
+  llmClient?: FeedLLMClient | null
 ): Promise<{
   transitioned: boolean;
   eventGenerated: boolean;
@@ -1168,7 +1168,7 @@ export class NarrativeEventProcessorService {
   async processArcTick(
     arcId: string,
     dayNumber: number,
-    llmClient?: BabylonLLMClient | null
+    llmClient?: FeedLLMClient | null
   ): Promise<{
     transitioned: boolean;
     eventGenerated: boolean;

@@ -71,8 +71,8 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
-import { automationPipeline } from '@babylon/training';
+} from '@feed/api';
+import { automationPipeline } from '@feed/training';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

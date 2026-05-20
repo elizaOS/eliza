@@ -35,7 +35,7 @@ import {
 } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
 // Set timeout to 10 minutes for real LLM calls
@@ -230,7 +230,7 @@ describe('Full Agent Tick Integration Test', () => {
   describe('1. Agent Registry Discovery', () => {
     test('discovers registered agents', async () => {
       const { AgentStatus, AgentType, agentRegistry } = await import(
-        '@babylon/agents'
+        '@feed/agents'
       );
 
       const registeredAgents = await agentRegistry.discoverAgents({
@@ -275,7 +275,7 @@ describe('Full Agent Tick Integration Test', () => {
   describe('2. NPC Portfolio Strategy', () => {
     test('validates NPC portfolio strategies', async () => {
       const { NPCPortfolioStrategy, StaticDataRegistry } = await import(
-        '@babylon/engine'
+        '@feed/engine'
       );
 
       const actors = StaticDataRegistry.getAllActors().slice(0, 5);
@@ -312,8 +312,8 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('3. NPC Investment Manager', () => {
     test('validates NPC portfolio metrics', async () => {
-      const { NPCInvestmentManager } = await import('@babylon/engine');
-      const { db, pools } = await import('@babylon/db');
+      const { NPCInvestmentManager } = await import('@feed/engine');
+      const { db, pools } = await import('@feed/db');
 
       // Get NPC pools
       const npcPools = await db.select().from(pools).limit(10);
@@ -348,7 +348,7 @@ describe('Full Agent Tick Integration Test', () => {
         StaticDataRegistry,
         TradeExecutionService,
         NPCInvestmentManager,
-      } = await import('@babylon/engine');
+      } = await import('@feed/engine');
 
       // Verify trading components exist
       expect(TradeExecutionService).toBeDefined();
@@ -374,8 +374,8 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('5. Autonomous Posting Service', () => {
     test('validates feed posts in database', async () => {
-      const { db, posts, desc } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, posts, desc } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       // Get recent NPC posts
       const recentPosts = await db
@@ -426,8 +426,8 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('6. Autonomous DM Service', () => {
     test('validates DMs in database', async () => {
-      const { db, messages, chats, desc, eq } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, messages, chats, desc, eq } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       // Get DM chats (non-group chats)
       const dmChats = await db
@@ -492,7 +492,7 @@ describe('Full Agent Tick Integration Test', () => {
     test.skipIf(!liveLlmTestConfig.enabled)(
       'triggers NPC group dynamics',
       async () => {
-        const { NPCGroupDynamicsService } = await import('@babylon/engine');
+        const { NPCGroupDynamicsService } = await import('@feed/engine');
 
         const dynamicsResult =
           await NPCGroupDynamicsService.processTickDynamics();
@@ -514,8 +514,8 @@ describe('Full Agent Tick Integration Test', () => {
     );
 
     test('validates group chat messages in database', async () => {
-      const { db, messages, chats, desc, eq } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, messages, chats, desc, eq } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       // Get group chats
       const groupChats = await db
@@ -578,8 +578,8 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('8. Autonomous Commenting Service', () => {
     test('validates comments in database', async () => {
-      const { db, comments, desc } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, comments, desc } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const recentComments = await db
         .select()
@@ -629,7 +629,7 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('9. NPC Trades Validation', () => {
     test('validates NPC trades with P&L', async () => {
-      const { db, npcTrades, desc } = await import('@babylon/db');
+      const { db, npcTrades, desc } = await import('@feed/db');
 
       const recentTrades = await db
         .select()
@@ -673,7 +673,7 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('10. Perp Positions Validation', () => {
     test('validates open perp positions', async () => {
-      const { db, perpPositions, desc } = await import('@babylon/db');
+      const { db, perpPositions, desc } = await import('@feed/db');
 
       const openPositions = await db
         .select()
@@ -700,7 +700,7 @@ describe('Full Agent Tick Integration Test', () => {
 
   describe('11. Pool Positions Validation', () => {
     test('validates pool positions (prediction markets)', async () => {
-      const { db, poolPositions, desc } = await import('@babylon/db');
+      const { db, poolPositions, desc } = await import('@feed/db');
 
       const positions = await db
         .select()

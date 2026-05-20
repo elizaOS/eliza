@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db, eq, inArray, systemMetricsSnapshots } from '@babylon/db';
+import { db, eq, inArray, systemMetricsSnapshots } from '@feed/db';
 import { getAdminToken } from './helpers';
 
 const BASE_URL =

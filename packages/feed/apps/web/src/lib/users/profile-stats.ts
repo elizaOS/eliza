@@ -1,5 +1,5 @@
-import { cachedDb } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { cachedDb } from '@feed/api';
+import { logger } from '@feed/shared';
 
 export type ProfileStats = {
   positions: number;

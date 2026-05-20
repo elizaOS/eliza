@@ -1,6 +1,6 @@
-# Babylon Experiments: Complete Guide
+# Feed Experiments: Complete Guide
 
-Five experiments demonstrate the Babylon social intelligence training pipeline, from offline fine-tuning through online RL to competitive evaluation against frontier models.
+Five experiments demonstrate the Feed social intelligence training pipeline, from offline fine-tuning through online RL to competitive evaluation against frontier models.
 
 ---
 
@@ -8,7 +8,7 @@ Five experiments demonstrate the Babylon social intelligence training pipeline, 
 
 **Goal**: Fine-tune a base model on the 15,260-record scam defense corpus to establish baseline scam resistance.
 
-**Data**: `/home/shaw/babylon-workspace/datasets/final/corpus/` — 15,260 records with reasoning traces, 9 style variants, 100% reasoning coverage.
+**Data**: `/home/shaw/feed-workspace/datasets/final/corpus/` — 15,260 records with reasoning traces, 9 style variants, 100% reasoning coverage.
 
 **Run**:
 ```bash
@@ -16,11 +16,11 @@ cd packages/training/python
 
 # 4B model with LoRA (fits 16GB VRAM)
 python3 scripts/train_local.py --backend cuda --model Qwen/Qwen3-4B \
-  --source-dir /home/shaw/babylon-workspace/datasets/final/corpus/ \
+  --source-dir /home/shaw/feed-workspace/datasets/final/corpus/ \
   --epochs 3 --batch-size 2 --lora --lora-rank 16
 
 # 9B model on Nebius H100
-ssh shaw@89.169.123.213 "cd /home/shaw/babylon-rl && source venv/bin/activate && \
+ssh shaw@89.169.123.213 "cd /home/shaw/feed-rl && source venv/bin/activate && \
   python3 scripts/train_local.py --backend cuda --model Qwen/Qwen3-9B \
   --source-dir ./data/corpus/ --epochs 3 --batch-size 1 --lora --lora-rank 16"
 ```
@@ -31,7 +31,7 @@ ssh shaw@89.169.123.213 "cd /home/shaw/babylon-rl && source venv/bin/activate &&
 vllm serve ./checkpoints/qwen3-4b-sft --port 8001
 
 # Run benchmark
-cd /home/shaw/babylon-workspace/scambench
+cd /home/shaw/feed-workspace/scambench
 bun run src/index.ts --model qwen3-4b-sft --base-url http://localhost:8001/v1 \
   --scenario-limit 50 --output-dir results/exp1-sft --score-attacker
 ```
@@ -42,13 +42,13 @@ bun run src/index.ts --model qwen3-4b-sft --base-url http://localhost:8001/v1 \
 
 ---
 
-## Experiment 2: Offline RL from Babylon Trajectories
+## Experiment 2: Offline RL from Feed Trajectories
 
-**Goal**: Collect trajectories from the live Babylon simulation, then train offline using GRPO with verifiable rewards.
+**Goal**: Collect trajectories from the live Feed simulation, then train offline using GRPO with verifiable rewards.
 
-**Step 1 — Collect trajectories** (requires running Babylon):
+**Step 1 — Collect trajectories** (requires running Feed):
 ```bash
-# Start Babylon with trajectory recording
+# Start Feed with trajectory recording
 bun run dev
 
 # Trajectories auto-saved to DB during NPC ticks
@@ -61,7 +61,7 @@ python3 scripts/hf/trajectories_to_hf_dataset.py --output ./hf_export \
 ```bash
 python3 scripts/run_rlvr_pipeline.py \
   --model Qwen/Qwen3-4B \
-  --sft-data-dir /home/shaw/babylon-workspace/datasets/final/corpus/ \
+  --sft-data-dir /home/shaw/feed-workspace/datasets/final/corpus/ \
   --grpo-steps 200 --apollo-rank 128
 ```
 
@@ -71,7 +71,7 @@ python3 scripts/run_rlvr_pipeline.py \
 
 ---
 
-## Experiment 3: Online RL from Babylon (Live Model Update)
+## Experiment 3: Online RL from Feed (Live Model Update)
 
 **Goal**: Run a single shared model that all agents (red/blue/gray) use, continuously updated with Kondo gate (3%) selecting only the most informative experiences.
 
@@ -94,11 +94,11 @@ python3 scripts/run_shared_model_rl.py --mock --model Qwen/Qwen3-4B \
 
 **Run on Nebius H100 (live bridge)**:
 ```bash
-# Terminal 1: Start Babylon bridge server
+# Terminal 1: Start Feed bridge server
 cd packages/sim && bun run core/bridge/simulation-bridge-server.ts
 
 # Terminal 2: Train on Nebius
-ssh shaw@89.169.123.213 "cd /home/shaw/babylon-rl && source venv/bin/activate && \
+ssh shaw@89.169.123.213 "cd /home/shaw/feed-rl && source venv/bin/activate && \
   python3 scripts/run_shared_model_rl.py \
   --bridge-url http://YOUR_SERVER:3001 \
   --model Qwen/Qwen3-9B --device cuda --ticks 500 \
@@ -146,7 +146,7 @@ python3 scripts/run_shared_model_rl.py --mock --model Qwen/Qwen3-9B \
 vllm serve ./shared_model_checkpoints/tick_100 --port 8001
 
 # Evaluate as blue-team (with scripted attacker)
-cd /home/shaw/babylon-workspace/scambench
+cd /home/shaw/feed-workspace/scambench
 bun run src/index.ts --model checkpoint-tick-100 \
   --base-url http://localhost:8001/v1 --scenario-limit 50 \
   --score-attacker --output-dir results/arms-race/tick-100-blue
@@ -171,25 +171,25 @@ bun run src/index.ts --model Qwen/Qwen3-4B \
 
 **Competitive matrix** (each cell = target_resistance, attacker_success):
 
-| Target ↓ / Attacker → | Scripted | Baseline 9B | Babylon Red-9B |
+| Target ↓ / Attacker → | Scripted | Baseline 9B | Feed Red-9B |
 |------------------------|----------|-------------|----------------|
 | GPT-5.4                | TBD      | TBD         | TBD            |
 | Sonnet 4.5             | TBD      | TBD         | TBD            |
 | Baseline Qwen-9B       | TBD      | TBD         | TBD            |
-| Babylon Blue-9B        | TBD      | TBD         | TBD            |
+| Feed Blue-9B        | TBD      | TBD         | TBD            |
 
-**Run one cell** (e.g., Babylon Red-9B attacking GPT-5.4):
+**Run one cell** (e.g., Feed Red-9B attacking GPT-5.4):
 ```bash
-cd /home/shaw/babylon-workspace/scambench
+cd /home/shaw/feed-workspace/scambench
 
 # Serve our trained model as attacker
-vllm serve ./checkpoints/babylon-red-9b --port 8001
+vllm serve ./checkpoints/feed-red-9b --port 8001
 
 # Run evaluation
 bun run src/index.ts \
-  --name "gpt5.4-vs-babylon-red" \
+  --name "gpt5.4-vs-feed-red" \
   --model gpt-5.4 --base-url https://api.openai.com/v1 --api-key-env OPENAI_API_KEY \
-  --attacker-model babylon-red-9b --attacker-base-url http://localhost:8001/v1 \
+  --attacker-model feed-red-9b --attacker-base-url http://localhost:8001/v1 \
   --attacker-temperature 0.9 --attacker-max-tokens 200 \
   --score-attacker --output-dir results/competitive-matrix
 ```
@@ -245,7 +245,7 @@ bun run src/index.ts --model gpt-5.4 \
 | Experiment | Status | Results |
 |------------|--------|---------|
 | 1: SFT | Prior results: 62.32 overall | Need to rerun on V3 benchmark |
-| 2: Offline RL | Pipeline ready | Need live Babylon trajectories |
+| 2: Offline RL | Pipeline ready | Need live Feed trajectories |
 | 3: Online RL | **Running on Nebius** | Tick 50: blue=0.078, red=0.055, gray=0.044 |
 | 4: Arms race | Infrastructure ready | Need to run multi-round tournament |
 | 5: vs Frontier | ScamBench + attacker scoring ready | Need trained checkpoints + API keys |

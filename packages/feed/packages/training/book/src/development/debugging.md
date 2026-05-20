@@ -259,13 +259,13 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 # Or for specific module
-logging.getLogger("babylon_env").setLevel(logging.DEBUG)
+logging.getLogger("feed_env").setLevel(logging.DEBUG)
 ```
 
 ### Debug Training Step
 
 ```python
-# In babylon_env.py, add prints
+# In feed_env.py, add prints
 def _score_with_judge(self, trajectory, response, archetype):
     print(f"=== Scoring ===")
     print(f"Archetype: {archetype}")

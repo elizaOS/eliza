@@ -108,7 +108,7 @@ export function createCheckoutCompletedEvent(
         metadata: {
           ...(options.app !== undefined
             ? { app: options.app }
-            : { app: 'babylon' }),
+            : { app: 'feed' }),
           userId,
           balanceUnits: balanceUnits.toString(),
           amountUSD: amountUSD.toString(),
@@ -144,7 +144,7 @@ export function createCheckoutExpiredEvent(
         metadata: {
           ...(options.app !== undefined
             ? { app: options.app }
-            : { app: 'babylon' }),
+            : { app: 'feed' }),
           userId: '',
           balanceUnits: '',
           amountUSD: '',
@@ -187,7 +187,7 @@ export function createDisputeCreatedEvent(
         payment_intent: paymentIntentId,
         charge: chargeId,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'babylon' },
+          options.app !== undefined ? { app: options.app } : { app: 'feed' },
       },
     },
   };
@@ -225,7 +225,7 @@ export function createDisputeWonEvent(
         payment_intent: paymentIntentId,
         charge: chargeId,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'babylon' },
+          options.app !== undefined ? { app: options.app } : { app: 'feed' },
       },
     },
   };
@@ -281,7 +281,7 @@ export function createChargeRefundedEvent(
         payment_intent: paymentIntentId,
         refunded: amountRefundedUSD === originalAmountUSD,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'babylon' },
+          options.app !== undefined ? { app: options.app } : { app: 'feed' },
       },
     },
   };

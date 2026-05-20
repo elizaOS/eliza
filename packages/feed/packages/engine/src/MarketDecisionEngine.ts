@@ -77,8 +77,8 @@ import {
   npcTrades,
   posts,
   questions,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { loadActorById } from './actors-loader';
 import { getTradingProbability } from './config/npc-activity';
 import {
@@ -86,7 +86,7 @@ import {
   formatSimulationPredictionMarkets,
   formatSimulationRecentEvents,
 } from './config/simulation';
-import type { BabylonLLMClient } from './llm/openai-client';
+import type { FeedLLMClient } from './llm/openai-client';
 import {
   countTokensSync,
   getSafeContextLimit,
@@ -198,7 +198,7 @@ export class MarketDecisionEngine {
   /**
    * Create a new MarketDecisionEngine
    *
-   * @param llm - Babylon LLM client for decision generation
+   * @param llm - Feed LLM client for decision generation
    * @param contextService - Service for building NPC market context
    * @param options - Optional configuration overrides
    * @param options.model - LLM model to use (default: 'openai/gpt-oss-120b' on Groq)
@@ -232,7 +232,7 @@ export class MarketDecisionEngine {
    * ```
    */
   constructor(
-    private llm: BabylonLLMClient,
+    private llm: FeedLLMClient,
     private contextService: MarketContextService,
     options: {
       model?: string;
@@ -248,7 +248,7 @@ export class MarketDecisionEngine {
     // 1. Check for Local Model / RL Training Override
     if (options.useLocalModel) {
       // Default to the adapter name if no specific model provided
-      model = options.model || 'babylon-adapter-v1';
+      model = options.model || 'feed-adapter-v1';
 
       logger.info(
         'MarketDecisionEngine switched to LOCAL MODEL for RL Benchmarking',

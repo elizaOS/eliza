@@ -16,13 +16,13 @@ Examples:
 
 ```bash
 # Local development
-DATABASE_URL=postgresql://babylon:password@localhost:5432/babylon
+DATABASE_URL=postgresql://feed:password@localhost:5432/feed
 
 # Test database
-DATABASE_URL=postgresql://babylon_test:test_password@localhost:5434/babylon_test
+DATABASE_URL=postgresql://feed_test:test_password@localhost:5434/feed_test
 
 # Cloud (staging)
-DATABASE_URL=postgresql://user:secret@db.example.com:5432/babylon_staging
+DATABASE_URL=postgresql://user:secret@db.example.com:5432/feed_staging
 ```
 
 **When required**: Always for DB mode training. Not required for JSON mode.
@@ -46,10 +46,10 @@ Get from: [wandb.ai](https://wandb.ai) → Settings → API Keys
 W&B project name.
 
 ```bash
-export WANDB_PROJECT=babylon-training
+export WANDB_PROJECT=feed-training
 ```
 
-Default: `babylon-training`
+Default: `feed-training`
 
 ### WANDB_ENTITY
 
@@ -192,7 +192,7 @@ Some settings can be in config files or environment:
 
 | Setting | Environment | Config File |
 |---------|-------------|-------------|
-| Database URL | `DATABASE_URL` | `babylon_atropos.yaml` |
+| Database URL | `DATABASE_URL` | `feed_atropos.yaml` |
 | W&B Project | `WANDB_PROJECT` | `--wandb-project` CLI |
 | GPU Memory | - | `profiles/*.json` |
 | Model | - | `profiles/*.json` |
@@ -207,7 +207,7 @@ Create `.env` in project root:
 
 ```bash
 # .env
-DATABASE_URL=postgresql://babylon:password@localhost:5432/babylon
+DATABASE_URL=postgresql://feed:password@localhost:5432/feed
 WANDB_API_KEY=your_key
 OPENAI_API_KEY=sk-your-key
 ```
@@ -247,7 +247,7 @@ make train-12gb
 ### "DATABASE_URL not set"
 
 ```bash
-export DATABASE_URL=postgresql://babylon:password@localhost:5432/babylon
+export DATABASE_URL=postgresql://feed:password@localhost:5432/feed
 ```
 
 ### "W&B API key not configured"
@@ -273,7 +273,7 @@ export ANTHROPIC_API_KEY=your_key
 # ~/.bashrc or ~/.zshrc
 
 # Required
-export DATABASE_URL=postgresql://babylon:password@localhost:5432/babylon
+export DATABASE_URL=postgresql://feed:password@localhost:5432/feed
 
 # Optional but recommended
 export WANDB_API_KEY=your_wandb_key

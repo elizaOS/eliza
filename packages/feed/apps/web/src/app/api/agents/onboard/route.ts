@@ -78,13 +78,13 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser } from '@babylon/db';
+} from '@feed/api';
+import { asUser } from '@feed/db';
 import {
   AgentOnboardSchema,
   generateSnowflakeId,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

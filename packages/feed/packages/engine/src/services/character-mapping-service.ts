@@ -5,7 +5,7 @@
  * Uses StaticDataRegistry for mappings (no database calls).
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import {
   type CharacterMapping,
   type OrganizationMapping,

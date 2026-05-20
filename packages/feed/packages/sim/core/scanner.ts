@@ -1,28 +1,28 @@
 /**
- * System scanner — uses unimport to discover BabylonSystem exports from a directory.
+ * System scanner — uses unimport to discover FeedSystem exports from a directory.
  */
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { type Import, scanDirExports } from 'unimport';
-import type { BabylonSystem } from './types';
+import type { FeedSystem } from './types';
 
 export interface ScanResult {
-  systems: BabylonSystem[];
+  systems: FeedSystem[];
   files: string[];
 }
 
 /**
- * Scan a directory for files exporting BabylonSystem instances.
- * Each file should export a default or named object that satisfies the BabylonSystem interface.
+ * Scan a directory for files exporting FeedSystem instances.
+ * Each file should export a default or named object that satisfies the FeedSystem interface.
  */
 export async function scanSystems(
   systemsDir: string,
   rootDir: string
 ): Promise<ScanResult> {
   const absoluteDir = resolve(rootDir, systemsDir);
-  const systems: BabylonSystem[] = [];
+  const systems: FeedSystem[] = [];
   const files: string[] = [];
 
   if (!existsSync(absoluteDir)) {
@@ -97,20 +97,20 @@ export async function scanSystems(
 }
 
 /**
- * Resolve a candidate export to a BabylonSystem instance.
+ * Resolve a candidate export to a FeedSystem instance.
  * Handles both class constructors and pre-instantiated objects.
  */
-function resolveSystem(candidate: unknown): BabylonSystem | null {
+function resolveSystem(candidate: unknown): FeedSystem | null {
   if (!candidate) return null;
 
   // Already an instance with the right shape
-  if (isBabylonSystem(candidate)) return candidate;
+  if (isFeedSystem(candidate)) return candidate;
 
   // Class constructor — instantiate it
   if (typeof candidate === 'function') {
     try {
       const instance = new (candidate as new () => unknown)();
-      if (isBabylonSystem(instance)) return instance;
+      if (isFeedSystem(instance)) return instance;
     } catch (err) {
       logger.warn(
         `Failed to instantiate candidate constructor: ${err instanceof Error ? err.message : String(err)}`,
@@ -123,7 +123,7 @@ function resolveSystem(candidate: unknown): BabylonSystem | null {
   return null;
 }
 
-function isBabylonSystem(obj: unknown): obj is BabylonSystem {
+function isFeedSystem(obj: unknown): obj is FeedSystem {
   if (!obj || typeof obj !== 'object') return false;
   const m = obj as Record<string, unknown>;
   return (

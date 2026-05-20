@@ -1,7 +1,7 @@
 /**
  * Daily Login Service - Comprehensive Unit Tests
  *
- * Tests core logic without pulling in @babylon/api (which has heavy deps).
+ * Tests core logic without pulling in @feed/api (which has heavy deps).
  * These functions MUST match the implementations in daily-login-service.ts.
  * Any changes to service logic should be reflected here.
  *
@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { DAILY_LOGIN, POINTS } from '@babylon/shared';
+import { DAILY_LOGIN, POINTS } from '@feed/shared';
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 

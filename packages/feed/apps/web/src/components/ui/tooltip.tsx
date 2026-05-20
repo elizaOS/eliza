@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import {
   type ComponentRef,

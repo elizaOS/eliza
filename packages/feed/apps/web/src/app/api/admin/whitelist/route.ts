@@ -7,15 +7,15 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import type { WhitelistSource } from '@babylon/api/services/whitelist-service';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import type { WhitelistSource } from '@feed/api/services/whitelist-service';
 import {
   addToWhitelist,
   getWhitelistStats,
   listWhitelistEntries,
   removeFromWhitelist,
-} from '@babylon/api/services/whitelist-service';
-import { db, eq, or, sql, users } from '@babylon/db';
+} from '@feed/api/services/whitelist-service';
+import { db, eq, or, sql, users } from '@feed/db';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

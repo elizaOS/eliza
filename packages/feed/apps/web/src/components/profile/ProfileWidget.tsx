@@ -1,12 +1,12 @@
 'use client';
 
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import type {
   PerpPositionFromAPI,
   PredictionPosition,
   UserProfileStats,
-} from '@babylon/shared';
-import { BABYLON_POINTS_SYMBOL, cn, logger, toNumber } from '@babylon/shared';
+} from '@feed/shared';
+import { FEED_POINTS_SYMBOL, cn, logger, toNumber } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -27,7 +27,7 @@ const formatPercent = (value: number) => {
 };
 
 const formatPrice = (price: number) => {
-  return `${BABYLON_POINTS_SYMBOL}${price.toFixed(2)}`;
+  return `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
 };
 
 /**

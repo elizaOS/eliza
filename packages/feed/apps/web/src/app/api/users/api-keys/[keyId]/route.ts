@@ -10,9 +10,9 @@ import {
   invalidateCachedKey,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, eq, userApiKeys } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { asUser, eq, userApiKeys } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run online continuous RL training with multiple agents in a shared Babylon game.
+Run online continuous RL training with multiple agents in a shared Feed game.
 
 RECOMMENDED: Use --mode shared for single shared model training (replaces team_rl):
     python scripts/run_online_rl.py --mode shared --mock --ticks 50
@@ -201,7 +201,7 @@ async def run_shared_model(args: argparse.Namespace) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run online continuous RL training for Babylon agents",
+        description="Run online continuous RL training for Feed agents",
     )
 
     parser.add_argument(

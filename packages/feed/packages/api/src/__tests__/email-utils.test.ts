@@ -6,7 +6,7 @@ import {
   sendViaSendGrid,
 } from '../services/email-utils';
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   getAllVerifiedEmails: mock(() => []),
   logger: {
     info: mock(),
@@ -40,16 +40,16 @@ describe('parseEmailAddress', () => {
   });
 
   it('parses a named email address', () => {
-    expect(parseEmailAddress('Babylon Team <team@babylon.market>')).toEqual({
-      email: 'team@babylon.market',
-      name: 'Babylon Team',
+    expect(parseEmailAddress('Feed Team <team@feed.market>')).toEqual({
+      email: 'team@feed.market',
+      name: 'Feed Team',
     });
   });
 
   it('strips surrounding quotes from name', () => {
-    expect(parseEmailAddress('"Babylon Team" <team@babylon.market>')).toEqual({
-      email: 'team@babylon.market',
-      name: 'Babylon Team',
+    expect(parseEmailAddress('"Feed Team" <team@feed.market>')).toEqual({
+      email: 'team@feed.market',
+      name: 'Feed Team',
     });
   });
 
@@ -132,35 +132,35 @@ describe('resolveSendGridConfig', () => {
 
   it('resolves config with NOTIFICATION_EMAIL_FROM', () => {
     process.env.SENDGRID_API_KEY = 'SG.test-key';
-    process.env.NOTIFICATION_EMAIL_FROM = 'noreply@babylon.market';
+    process.env.NOTIFICATION_EMAIL_FROM = 'noreply@feed.market';
 
     const config = resolveSendGridConfig('Test');
     expect(config).toEqual({
       apiKey: 'SG.test-key',
-      from: { email: 'noreply@babylon.market' },
+      from: { email: 'noreply@feed.market' },
     });
   });
 
   it('falls back to EMAIL_FROM when NOTIFICATION_EMAIL_FROM is missing', () => {
     process.env.SENDGRID_API_KEY = 'SG.test-key';
     delete process.env.NOTIFICATION_EMAIL_FROM;
-    process.env.EMAIL_FROM = 'fallback@babylon.market';
+    process.env.EMAIL_FROM = 'fallback@feed.market';
 
     const config = resolveSendGridConfig('Test');
     expect(config).toEqual({
       apiKey: 'SG.test-key',
-      from: { email: 'fallback@babylon.market' },
+      from: { email: 'fallback@feed.market' },
     });
   });
 
   it('resolves named from address', () => {
     process.env.SENDGRID_API_KEY = 'SG.test-key';
-    process.env.NOTIFICATION_EMAIL_FROM = 'Babylon Team <team@babylon.market>';
+    process.env.NOTIFICATION_EMAIL_FROM = 'Feed Team <team@feed.market>';
 
     const config = resolveSendGridConfig('Test');
     expect(config).toEqual({
       apiKey: 'SG.test-key',
-      from: { email: 'team@babylon.market', name: 'Babylon Team' },
+      from: { email: 'team@feed.market', name: 'Feed Team' },
     });
   });
 });

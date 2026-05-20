@@ -14,7 +14,7 @@
  *   bun run scripts/seed-nft-snapshot-csv.ts --file "/path/to/file.csv" --dry-run
  */
 
-import { closeDatabase, db, eq, nftSnapshot, users } from '@babylon/db';
+import { closeDatabase, db, eq, nftSnapshot, users } from '@feed/db';
 import { parse } from 'csv-parse/sync';
 import { nanoid } from 'nanoid';
 

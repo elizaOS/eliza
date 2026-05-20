@@ -5,7 +5,7 @@
  * Use these types when you need to explicitly type variables holding database records.
  *
  * Example:
- *   import type { User, Post, Market } from '@babylon/db';
+ *   import type { User, Post, Market } from '@feed/db';
  *
  *   const user: User = await db.user.findUnique({ where: { id } });
  *   const posts: Post[] = await db.post.findMany({ where: { authorId: user.id } });
@@ -302,7 +302,7 @@ export type UserWithAgentRelations = User & {
 
 /**
  * Static actor data reference for future migration
- * For full actor data, use StaticDataRegistry.getActor(authorId) from @babylon/engine
+ * For full actor data, use StaticDataRegistry.getActor(authorId) from @feed/engine
  */
 export interface ActorRef {
   id: string;

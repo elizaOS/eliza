@@ -16,7 +16,7 @@ import {
   type User,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import type { IAgentRuntime } from '@elizaos/core';
 import { ArchetypeConfigService } from '../archetypes/ArchetypeConfigService';
 import {

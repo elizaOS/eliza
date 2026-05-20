@@ -11,7 +11,7 @@
  * @module services/npc-character-config
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import {
   type RngFunction,
   randomChance,

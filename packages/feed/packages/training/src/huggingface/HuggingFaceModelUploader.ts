@@ -4,7 +4,7 @@
  * Uploads trained RL models to HuggingFace Hub with benchmark results and model cards.
  */
 
-import { benchmarkResults, db, trainedModels } from '@babylon/db';
+import { benchmarkResults, db, trainedModels } from '@feed/db';
 import { desc, eq } from 'drizzle-orm';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -33,7 +33,7 @@ export interface ModelCardBenchmarkResult {
 export interface ModelUploadOptions {
   /** Database model ID */
   modelId: string;
-  /** HuggingFace model name (e.g., 'babylonlabs/babylon-agent-v1') */
+  /** HuggingFace model name (e.g., 'feedlabs/feed-agent-v1') */
   modelName: string;
   description?: string;
   private?: boolean;
@@ -322,7 +322,7 @@ export class HuggingFaceModelUploader {
 license: mit
 library_name: transformers
 tags:
-- babylon
+- feed
 - reinforcement-learning
 - trading-agent
 - prediction-markets
@@ -331,7 +331,7 @@ base_model: ${data.baseModel}
 
 # ${data.modelName}
 
-Autonomous trading agent trained on Babylon prediction markets using reinforcement learning.
+Autonomous trading agent trained on Feed prediction markets using reinforcement learning.
 
 ## Model Details
 
@@ -365,14 +365,14 @@ ${this.generateBenchmarkTable(data.benchmarkResults)}
 
 ### Training Data
 
-- **Source:** Babylon autonomous agent trajectories
+- **Source:** Feed autonomous agent trajectories
 - **Collection Method:** Live agent gameplay on prediction markets
 - **Training Framework:** Atropos GRPO
 - **Base Model:** ${data.baseModel}
 
 ### Training Procedure
 
-This model was trained using Group Relative Policy Optimization (GRPO) via the Atropos framework on trajectories collected from autonomous agents playing Babylon prediction markets. The training process:
+This model was trained using Group Relative Policy Optimization (GRPO) via the Atropos framework on trajectories collected from autonomous agents playing Feed prediction markets. The training process:
 
 1. Agents generate trajectories through market interactions
 2. Trajectories are scored using RLAIF with an LLM judge based on P&L, prediction accuracy, and decision quality
@@ -388,7 +388,7 @@ This model was trained using Group Relative Policy Optimization (GRPO) via the A
 
 This model is designed for:
 
-- Autonomous trading on Babylon prediction markets
+- Autonomous trading on Feed prediction markets
 - Research on RL-based trading strategies
 - Benchmarking agent decision-making
 - Educational purposes
@@ -416,12 +416,12 @@ The model is evaluated on standardized benchmarks that include:
 
 ## Usage
 
-### Via Babylon Platform
+### Via Feed Platform
 
-The model is deployed on the Babylon platform and accessible via the agent API:
+The model is deployed on the Feed platform and accessible via the agent API:
 
 \`\`\`typescript
-import { agentRuntimeManager } from '@babylon/agents';
+import { agentRuntimeManager } from '@feed/agents';
 
 const runtime = await agentRuntimeManager.getRuntime(agentId);
 const response = await runtime.chat({
@@ -464,9 +464,9 @@ This model is part of a research project on autonomous agents in prediction mark
 ## Citation
 
 \`\`\`bibtex
-@model{babylon_agent_${data.version.replace(/\./g, '_')},
-  title = {Babylon Trading Agent},
-  author = {Babylon Labs},
+@model{feed_agent_${data.version.replace(/\./g, '_')},
+  title = {Feed Trading Agent},
+  author = {Feed Labs},
   year = {${new Date().getFullYear()}},
   version = {${data.version}},
   url = {https://huggingface.co/${data.modelName}}
@@ -475,7 +475,7 @@ This model is part of a research project on autonomous agents in prediction mark
 
 ## Model Card Contact
 
-For questions or issues, please contact the Babylon team or open an issue on the repository.
+For questions or issues, please contact the Feed team or open an issue on the repository.
 `;
 
     const cardPath = path.join(outputDir, 'README.md');

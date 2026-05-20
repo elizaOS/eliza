@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import type { CommentData } from '@babylon/shared';
-import { cn, getProfileUrl } from '@babylon/shared';
+import type { CommentData } from '@feed/shared';
+import { cn, getProfileUrl } from '@feed/shared';
 import { ArrowLeft, MessageCircle, Repeat2 } from 'lucide-react';
 import nextDynamic from 'next/dynamic';
 import Link from 'next/link';

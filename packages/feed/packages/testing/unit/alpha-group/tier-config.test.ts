@@ -24,7 +24,7 @@ import {
   isValidTier,
   shouldDemote,
   TIER_CONFIG,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 describe('Tier Configuration', () => {
   describe('TIER_CONFIG constants', () => {

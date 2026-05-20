@@ -1,7 +1,7 @@
 """
 KL Divergence Controller for GRPO Training
 
-Integrated into both BabylonRLAIFEnv (offline) and BabylonOnlineEnv (online).
+Integrated into both FeedRLAIFEnv (offline) and FeedOnlineEnv (online).
 Initialized in __init__ with adaptive coefficient targeting KL ≈ 3.0 nats.
 Applied during scoring: adjusted_reward = base_reward - kl_penalty.
 

@@ -9,8 +9,8 @@
  * for admin oversight and management.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@babylon/api';
-import { PredictionPricing } from '@babylon/core/markets/prediction/pricing';
+import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { PredictionPricing } from '@feed/core/markets/prediction/pricing';
 import {
   and,
   count,
@@ -22,8 +22,8 @@ import {
   markets,
   positions,
   sql,
-} from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

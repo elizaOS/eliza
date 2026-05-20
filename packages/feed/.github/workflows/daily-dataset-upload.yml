@@ -88,7 +88,7 @@ jobs:
         env:
           HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          HF_DATASET_NAME: BabylonSocial/babylon-game-data
+          HF_DATASET_NAME: FeedSocial/feed-game-data
         run: |
           echo "📤 Uploading to HuggingFace..."
           npx tsx scripts/upload-to-huggingface.ts

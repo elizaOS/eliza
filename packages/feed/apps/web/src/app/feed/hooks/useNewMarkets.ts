@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useEffect, useState } from 'react';
 import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';
 

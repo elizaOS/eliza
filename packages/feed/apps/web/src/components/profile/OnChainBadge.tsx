@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Shield, ShieldCheck } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
 

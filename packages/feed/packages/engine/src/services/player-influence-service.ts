@@ -9,8 +9,8 @@
  * process instance, which is acceptable since mention boost is a soft preference.
  */
 
-import { db, eq, organizations } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, eq, organizations } from '@feed/db';
+import { logger } from '@feed/shared';
 import { formatError } from '../utils/error-utils';
 import { npcMemoryService } from './npc-memory-service';
 import { StaticDataRegistry } from './static-data-registry';
@@ -116,7 +116,7 @@ export async function recordMention(
   // This ensures sync checks work even when Redis is the primary store
   memoryFallbackCache.set(actorId, timestamp);
 
-  // NOTE: This engine package intentionally does not depend on @babylon/api (Redis cache).
+  // NOTE: This engine package intentionally does not depend on @feed/api (Redis cache).
   // Mention tracking uses the in-memory fallback only. The mention boost is a soft preference,
   // so local-only semantics are acceptable.
 }

@@ -102,7 +102,7 @@ const mockDbInsert = mock(() => ({
   }),
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -127,13 +127,13 @@ mock.module('@babylon/db', () => ({
   whitelistConfig: whitelistConfigTable,
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   UserAlphaGroupAssignmentService: {
     assignDefaultGroups: mock(() => Promise.resolve()),
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     info: mock(),
     warn: mock(),

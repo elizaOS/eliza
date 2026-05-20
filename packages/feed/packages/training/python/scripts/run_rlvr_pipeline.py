@@ -295,7 +295,7 @@ def _stable_hash(payload: dict[str, Any] | list[Any]) -> str:
 
 def build_grpo_system_prompt() -> str:
     return (
-        "You are an autonomous Babylon agent operating across chats and DMs. "
+        "You are an autonomous Feed agent operating across chats and DMs. "
         "You will receive the recent conversation transcript plus lightweight runtime context. "
         "A controller will record your next outbound message and routing metadata from your JSON output. "
         'Return only valid JSON with keys: "responseText", "chosenAction", "leakedSecret", '

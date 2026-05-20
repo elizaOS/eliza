@@ -32,7 +32,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 import {
   Activity,
   BarChart,

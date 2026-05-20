@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ..models import (
     Action,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     TrajectoryStep,
 )
@@ -454,9 +454,9 @@ def build_trajectory_from_ticks(
     agent_id: str,
     ticks: list["AgentTickData"],
     min_steps: int = 1,
-) -> BabylonTrajectory | None:
+) -> FeedTrajectory | None:
     """
-    Build a BabylonTrajectory from tick data.
+    Build a FeedTrajectory from tick data.
 
     Args:
         trajectory_id: Unique trajectory ID
@@ -465,7 +465,7 @@ def build_trajectory_from_ticks(
         min_steps: Minimum steps required (returns None if fewer)
 
     Returns:
-        BabylonTrajectory or None if insufficient data
+        FeedTrajectory or None if insufficient data
     """
     if len(ticks) < min_steps:
         return None
@@ -507,7 +507,7 @@ def build_trajectory_from_ticks(
 
     now = datetime.now(timezone.utc)
 
-    return BabylonTrajectory(
+    return FeedTrajectory(
         id=trajectory_id,
         trajectory_id=trajectory_id,
         agent_id=agent_id,

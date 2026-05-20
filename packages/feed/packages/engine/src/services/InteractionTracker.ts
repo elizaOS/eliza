@@ -5,10 +5,10 @@
  * Simple text-based system - just records what happened.
  */
 
-import type { InputJsonValue } from '@babylon/db';
-import { db, npcInteractions } from '@babylon/db';
-import type { Actor } from '@babylon/shared';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import type { InputJsonValue } from '@feed/db';
+import { db, npcInteractions } from '@feed/db';
+import type { Actor } from '@feed/shared';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 export class InteractionTracker {
   /**

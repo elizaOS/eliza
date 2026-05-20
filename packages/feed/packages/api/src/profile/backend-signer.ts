@@ -11,7 +11,7 @@
  * This file is kept for backwards compatibility and utility functions.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { Address } from 'viem';
 
 export interface ProfileMetadata {

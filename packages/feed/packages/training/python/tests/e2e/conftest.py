@@ -27,8 +27,8 @@ import pytest
 
 from src.training.rewards import BehaviorMetrics
 
-BABYLON_ROOT = Path(__file__).resolve().parents[5]
-ENGINE_ROOT = BABYLON_ROOT / "packages" / "engine"
+FEED_ROOT = Path(__file__).resolve().parents[5]
+ENGINE_ROOT = FEED_ROOT / "packages" / "engine"
 
 
 def _find_free_port() -> int:
@@ -180,7 +180,7 @@ def create_step(
             {
                 "model": "gpt-4",
                 "purpose": "action",
-                "systemPrompt": "You are a trading agent in Babylon prediction markets.",
+                "systemPrompt": "You are a trading agent in Feed prediction markets.",
                 "userPrompt": f"Step {step_number}: Analyze market and decide action.",
                 "response": f"<thinking>Analyzing step {step_number}...</thinking>\nAction: {action_type}",
                 "reasoning": f"Based on market analysis at step {step_number}, executing {action_type}.",

@@ -7,7 +7,7 @@
  * DELETE — Clears steward-token and steward-refresh cookies (logout).
  */
 
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';

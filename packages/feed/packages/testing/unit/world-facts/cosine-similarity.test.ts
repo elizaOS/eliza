@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { cosineSimilarity } from '@babylon/engine';
+import { cosineSimilarity } from '@feed/engine';
 
 describe('cosineSimilarity', () => {
   test('identical vectors return 1', () => {

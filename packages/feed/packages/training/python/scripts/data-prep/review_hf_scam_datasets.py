@@ -3,7 +3,7 @@
 Inventory, sample, and normalize external scam datasets from Hugging Face.
 
 This script is designed for two immediate needs:
-1. Review external scam corpora before mixing them into Babylon training.
+1. Review external scam corpora before mixing them into Feed training.
 2. Produce a canonical preview corpus with exact-text dedup signals so we can
    decide which datasets are useful for SFT, detector pretraining, or
    ScamBench augmentation.
@@ -390,7 +390,7 @@ def transform_notes_for_shape(inferred_shape: str) -> list[str]:
     if inferred_shape == "messages":
         return [
             "Conversation-shaped data. Best candidate for ScamBench augmentation and transcript SFT.",
-            "Need speaker-role mapping so attacker and target turns are aligned with Babylon/ScamBench transcripts.",
+            "Need speaker-role mapping so attacker and target turns are aligned with Feed/ScamBench transcripts.",
         ]
     if inferred_shape == "conversation_text":
         return [
@@ -501,7 +501,7 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Directory for inventory artifacts. Defaults to babylon/training-data/external-scam-datasets/<timestamp>.",
+        help="Directory for inventory artifacts. Defaults to feed/training-data/external-scam-datasets/<timestamp>.",
     )
     parser.add_argument(
         "--sample-rows",

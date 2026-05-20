@@ -1,9 +1,9 @@
 """
-Babylon GRPO Trainer using Atropos
+Feed GRPO Trainer using Atropos
 
 This trainer implements Group Relative Policy Optimization (GRPO) for
-training Babylon trading agents using trajectories collected and scored
-by the Babylon RLAIF Environment.
+training Feed trading agents using trajectories collected and scored
+by the Feed RLAIF Environment.
 
 Key features:
 - Pulls batches from Atropos API server
@@ -217,8 +217,8 @@ class AtroposTrainingConfig(BaseModel):
 
     # W&B settings
     use_wandb: bool = Field(default=True, description="Enable W&B logging")
-    wandb_project: str = Field(default="babylon-training", description="W&B project name")
-    wandb_group: str = Field(default="babylon-training", description="W&B run group")
+    wandb_project: str = Field(default="feed-training", description="W&B project name")
+    wandb_group: str = Field(default="feed-training", description="W&B run group")
     wandb_entity: str | None = Field(default=None, description="W&B entity/team")
     wandb_run_name: str | None = Field(default=None, description="W&B run name")
 
@@ -309,9 +309,9 @@ def get_lr_scheduler(
     return LambdaLR(optimizer, lr_lambda)
 
 
-class BabylonAtroposTrainer:
+class FeedAtroposTrainer:
     """
-    GRPO Trainer for Babylon using Atropos
+    GRPO Trainer for Feed using Atropos
 
     This trainer:
     1. Registers with Atropos API server
@@ -454,7 +454,7 @@ class BabylonAtroposTrainer:
             "use_turboquant": self.config.use_turboquant,
         }
 
-        run_name = self.config.wandb_run_name or f"babylon-grpo-{self.run_id}"
+        run_name = self.config.wandb_run_name or f"feed-grpo-{self.run_id}"
 
         wandb.init(
             project=self.config.wandb_project,
@@ -964,7 +964,7 @@ class BabylonAtroposTrainer:
     def _train_sync(self) -> dict:
         """Synchronous training loop"""
         logger.info("=" * 60)
-        logger.info("BABYLON GRPO TRAINING")
+        logger.info("FEED GRPO TRAINING")
         logger.info("=" * 60)
         logger.info(f"Model: {self.config.model_name}")
         logger.info(f"Steps: {self.config.training_steps}")
@@ -1140,7 +1140,7 @@ def main():
         level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
 
-    parser = argparse.ArgumentParser(description="Babylon GRPO Trainer with Atropos")
+    parser = argparse.ArgumentParser(description="Feed GRPO Trainer with Atropos")
 
     # Model settings
     parser.add_argument("--model", default="Qwen/Qwen3.5-4B", help="Model to train")
@@ -1178,7 +1178,7 @@ def main():
 
     # W&B settings
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
-    parser.add_argument("--wandb-project", default="babylon-training", help="W&B project")
+    parser.add_argument("--wandb-project", default="feed-training", help="W&B project")
     parser.add_argument("--wandb-entity", help="W&B entity/team")
     parser.add_argument("--wandb-run-name", help="W&B run name")
 
@@ -1268,7 +1268,7 @@ def main():
         turboquant_residual_length=args.turboquant_residual,
     )
 
-    trainer = BabylonAtroposTrainer(config)
+    trainer = FeedAtroposTrainer(config)
     trainer._train_sync()
 
 

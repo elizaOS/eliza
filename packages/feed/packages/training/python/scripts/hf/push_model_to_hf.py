@@ -8,20 +8,20 @@ model cards and metadata.
 Usage:
     # Export LoRA adapter
     python scripts/export_model_to_huggingface.py \
-        --adapter-path ./checkpoints/babylon-qwen-lora \
-        --repo-id babylonlabs/babylon-trader-qwen3-30b-v0.1-rl
+        --adapter-path ./checkpoints/feed-qwen-lora \
+        --repo-id feedlabs/feed-trader-qwen3-30b-v0.1-rl
 
     # Export merged model
     python scripts/export_model_to_huggingface.py \
-        --adapter-path ./checkpoints/babylon-qwen-lora \
+        --adapter-path ./checkpoints/feed-qwen-lora \
         --base-model Qwen/Qwen3.5-4B \
         --merge \
-        --repo-id babylonlabs/babylon-trader-qwen3-30b-v0.1-merged
+        --repo-id feedlabs/feed-trader-qwen3-30b-v0.1-merged
 
     # With training metrics
     python scripts/export_model_to_huggingface.py \
-        --adapter-path ./checkpoints/babylon-qwen-lora \
-        --repo-id babylonlabs/babylon-trader-v0.1 \
+        --adapter-path ./checkpoints/feed-qwen-lora \
+        --repo-id feedlabs/feed-trader-v0.1 \
         --wandb-run-id abc123
 
 Environment:
@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# Babylon-inspired model codenames with meanings
+# Feed-inspired model codenames with meanings
 CODENAMES = {
     "ishtar": ("Goddess of love and war", "Aggressive trading models"),
     "marduk": ("Chief deity", "Flagship/best models"),
@@ -51,7 +51,7 @@ CODENAMES = {
     "tiamat": ("Primordial goddess of chaos", "Experimental/volatile models"),
     "nabu": ("God of wisdom and writing", "Analyst-focused models"),
     "ziggurat": ("Temple tower", "Multi-layer/ensemble models"),
-    "euphrates": ("River of Babylon", "Flow/momentum models"),
+    "euphrates": ("River of Feed", "Flow/momentum models"),
     "hammurabi": ("Famous king/lawgiver", "Rule-based hybrid models"),
 }
 
@@ -73,7 +73,7 @@ class ModelExportConfig:
     training_method: str = "rl"  # rl, sft, dpo
     description: str = ""
 
-    # Codename for model card (Babylon-inspired name)
+    # Codename for model card (Feed-inspired name)
     codename: str = "ishtar"
 
     # Training info (optional)
@@ -115,7 +115,7 @@ def get_training_args(adapter_path: Path) -> dict[str, Any]:
 
 
 def create_model_card(config: ModelExportConfig, adapter_config: dict, training_args: dict) -> str:
-    """Generate a comprehensive model card with Babylon codename."""
+    """Generate a comprehensive model card with Feed codename."""
 
     base_model_name = config.base_model.split("/")[-1]
 
@@ -189,7 +189,7 @@ A fine-tuned trading AI trained on simulation trajectories using {config.trainin
 
 ## ⚠️ Experimental Model
 
-This is an **early experimental model** from the Babylon project.
+This is an **early experimental model** from the Feed project.
 It is **NOT** intended for real trading decisions and should only be used for research purposes.
 
 ## Model Description
@@ -257,7 +257,7 @@ llm = LLM(model="{config.repo_id}")
 
 ## Training
 
-This model was trained using the Babylon RL training pipeline:
+This model was trained using the Feed RL training pipeline:
 - **Method:** {config.training_method.upper()} ({"Group Relative Policy Optimization" if config.training_method == "rl" else config.training_method.upper()})
 - **Base Model:** {config.base_model}
 - **Framework:** Atropos + Tinker
@@ -279,9 +279,9 @@ The model was trained to maximize trading performance measured by:
 ## Citation
 
 ```bibtex
-@misc{{babylon-trader-{config.version.replace(".", "-")},
-  author = {{Babylon Labs}},
-  title = {{Babylon Trader {base_model_name} v{config.version}}},
+@misc{{feed-trader-{config.version.replace(".", "-")},
+  author = {{Feed Labs}},
+  title = {{Feed Trader {base_model_name} v{config.version}}},
   year = {{2025}},
   publisher = {{HuggingFace}},
   url = {{https://huggingface.co/{config.repo_id}}}
@@ -448,7 +448,7 @@ def main():
         "--codename",
         default="ishtar",
         choices=list(CODENAMES.keys()),
-        help="Model codename (Babylon-inspired name for model card)",
+        help="Model codename (Feed-inspired name for model card)",
     )
     parser.add_argument("--wandb-run-id", help="W&B run ID for training metrics")
     parser.add_argument("--wandb-entity", help="W&B entity (team or username)")

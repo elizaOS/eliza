@@ -17,8 +17,8 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { toISO, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { toISO, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(

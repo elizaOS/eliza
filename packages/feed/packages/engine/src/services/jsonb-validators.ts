@@ -4,7 +4,7 @@
  * Zod schemas for validating JSONB columns that are type-asserted at runtime.
  * Provides safe parsing with fallbacks for corrupted or malformed data.
  *
- * Uses types from @babylon/db (source of truth) and creates corresponding
+ * Uses types from @feed/db (source of truth) and creates corresponding
  * Zod schemas for runtime validation.
  */
 
@@ -14,15 +14,15 @@ import type {
   PriceModifier,
   RelationshipState,
   ScheduledEvent,
-} from '@babylon/db';
-import { isStringArray, logger } from '@babylon/shared';
+} from '@feed/db';
+import { isStringArray, logger } from '@feed/shared';
 import { z } from 'zod';
 
 // Re-export types from the source of truth for convenience
-export type { NpcMemory, PriceModifier, RelationshipState } from '@babylon/db';
+export type { NpcMemory, PriceModifier, RelationshipState } from '@feed/db';
 
 /**
- * NPC Memory schema - validates against NpcMemory interface from @babylon/db
+ * NPC Memory schema - validates against NpcMemory interface from @feed/db
  * Note: Using z.object directly (not z.ZodType) to preserve .omit() method
  */
 export const NpcMemorySchema = z.object({
@@ -54,7 +54,7 @@ export const NpcMemoriesSchema = z.array(NpcMemorySchema);
 export const PartialMemorySchema = NpcMemorySchema.omit({ id: true });
 
 /**
- * Relationship State schema - validates against RelationshipState interface from @babylon/db
+ * Relationship State schema - validates against RelationshipState interface from @feed/db
  */
 export const RelationshipStateSchema = z.object({
   actorId: z.string(),
@@ -239,7 +239,7 @@ export function validateRelationshipUpdate(
 }
 
 /**
- * PriceModifier schema - validates against PriceModifier interface from @babylon/db
+ * PriceModifier schema - validates against PriceModifier interface from @feed/db
  */
 export const PriceModifierSchema = z.object({
   eventId: z.string(),
@@ -392,7 +392,7 @@ export function parseStringArraySafe(
   return [];
 }
 
-export { isStringArray } from '@babylon/shared';
+export { isStringArray } from '@feed/shared';
 
 // =============================================================================
 // NARRATIVE ARC VALIDATORS (PendingTransition, ScheduledEvent)
@@ -404,7 +404,7 @@ export { isStringArray } from '@babylon/shared';
  * Note: targetState accepts any string rather than validating against the concrete
  * ArcStateType union. This is intentional for future-proofing - new arc states can
  * be added without requiring schema updates. The PendingTransition interface in
- * @babylon/db defines the canonical ArcStateType constraint; this schema provides
+ * @feed/db defines the canonical ArcStateType constraint; this schema provides
  * looser runtime validation for flexibility.
  */
 export const PendingTransitionSchema = z.object({

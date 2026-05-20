@@ -42,7 +42,7 @@ describe('DM Chat ID Generation', () => {
 
   test('should handle Privy DID format users', () => {
     const did1 = 'did:privy:cm6sqq4og01qw9l70rbmyjn20';
-    const did2 = 'did:privy:babylon-support-demo';
+    const did2 = 'did:privy:feed-support-demo';
 
     const chatId = generateDMChatId(did1, did2);
     expect(chatId.length).toBeGreaterThan(3);

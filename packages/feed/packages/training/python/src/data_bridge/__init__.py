@@ -1,11 +1,11 @@
-"""Data bridge for converting Babylon trajectories to Atropos format"""
+"""Data bridge for converting Feed trajectories to Atropos format"""
 
 # Re-export Pydantic model from models for API compatibility
 from ..models import AtroposScoredGroup
 from .converter import (
     AtroposMessage,
     AtroposTrajectory,
-    BabylonToAtroposConverter,
+    FeedToAtroposConverter,
     ScoredGroupResult,
     calculate_dropout_rate,
 )
@@ -15,7 +15,7 @@ __all__ = [
     "AtroposMessage",
     "AtroposScoredGroup",  # Pydantic model from models.py
     "AtroposTrajectory",
-    "BabylonToAtroposConverter",
+    "FeedToAtroposConverter",
     "PostgresTrajectoryReader",
     "ScoredGroupResult",
     "calculate_dropout_rate",

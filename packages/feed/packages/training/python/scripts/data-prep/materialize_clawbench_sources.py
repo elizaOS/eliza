@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Materialize ClawBench workplace scenarios into Babylon source records,
+Materialize ClawBench workplace scenarios into Feed source records,
 conservative training examples, and a ScamBench-compatible augmentation bundle.
 """
 

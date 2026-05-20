@@ -61,7 +61,7 @@ export interface CharacterMessageExampleTurn {
   };
 }
 
-export interface BabylonCharacterSheet {
+export interface FeedCharacterSheet {
   id: string;
   name: string;
   username: string;
@@ -79,7 +79,7 @@ export interface BabylonCharacterSheet {
     maxTokens: number;
     groq: GroqModelRouting;
   };
-  babylon: {
+  feed: {
     alignment: CharacterSeed['alignment'];
     team: CharacterSeed['team'];
     politics: string;
@@ -2359,7 +2359,7 @@ function buildPostExamples(seed: CharacterSeed): string[] {
 }
 
 function buildSystem(seed: CharacterSeed): string {
-  return `${seed.name} is a hand-authored Babylon simulation character.
+  return `${seed.name} is a hand-authored Feed simulation character.
 
 Identity:
 - Hometown: ${seed.hometown}
@@ -2413,7 +2413,7 @@ function buildBio(seed: CharacterSeed): string[] {
   ];
 }
 
-function buildCharacterSheet(seed: CharacterSeed): BabylonCharacterSheet {
+function buildCharacterSheet(seed: CharacterSeed): FeedCharacterSheet {
   return {
     id: seed.id,
     name: seed.name,
@@ -2444,7 +2444,7 @@ function buildCharacterSheet(seed: CharacterSeed): BabylonCharacterSheet {
             : 900,
       groq: seed.modelRouting,
     },
-    babylon: {
+    feed: {
       alignment: seed.alignment,
       team: seed.team,
       politics: seed.politics,
@@ -2474,11 +2474,11 @@ function buildCharacterSheet(seed: CharacterSeed): BabylonCharacterSheet {
   };
 }
 
-export function buildLocalCharacterRoster(): BabylonCharacterSheet[] {
+export function buildLocalCharacterRoster(): FeedCharacterSheet[] {
   return LOCAL_CHARACTER_SEEDS.map((seed) => buildCharacterSheet(seed));
 }
 
-export function buildCanonicalSimulationRoster(): BabylonCharacterSheet[] {
+export function buildCanonicalSimulationRoster(): FeedCharacterSheet[] {
   const roster = buildLocalCharacterRoster();
   return CANONICAL_SIMULATION_CHARACTER_IDS.map((characterId) => {
     const sheet = roster.find((item) => item.id === characterId);
@@ -2507,7 +2507,7 @@ export async function writeLocalCharacterSheets(
 
 export function getLocalCharacterSheetById(
   characterId: string
-): BabylonCharacterSheet {
+): FeedCharacterSheet {
   const sheet = buildLocalCharacterRoster().find(
     (item) => item.id === characterId
   );

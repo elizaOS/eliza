@@ -204,7 +204,7 @@ export async function sendNotificationEmail(
     email: input.userEmail,
   });
 
-  const subject = `[Babylon] ${input.title}`;
+  const subject = `[Feed] ${input.title}`;
   const html = createEmailHtml({
     title: input.title,
     message: input.message,

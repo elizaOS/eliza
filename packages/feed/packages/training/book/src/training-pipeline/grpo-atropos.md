@@ -53,8 +53,8 @@ graph TB
     end
     
     subgraph "Our Code"
-        BENV[BabylonRLAIFEnv]
-        BTRAINER[BabylonAtroposTrainer]
+        BENV[FeedRLAIFEnv]
+        BTRAINER[FeedAtroposTrainer]
     end
     
     ENV --> |extends| BENV
@@ -67,8 +67,8 @@ graph TB
 
 | Class | Our Extension | Purpose |
 |-------|---------------|---------|
-| `BaseEnv` | `BabylonRLAIFEnv` | Provides trajectories and scores |
-| `BaseEnvConfig` | `BabylonEnvConfig` | Configuration |
+| `BaseEnv` | `FeedRLAIFEnv` | Provides trajectories and scores |
+| `BaseEnvConfig` | `FeedEnvConfig` | Configuration |
 | `ScoredDataGroup` | (used as-is) | Batch of tokens + scores |
 
 ## Training Loop
@@ -129,7 +129,7 @@ def compute_grpo_loss(model, tokens, scores, group_size):
 
 ## Configuration
 
-### Atropos Config (babylon_atropos.yaml)
+### Atropos Config (feed_atropos.yaml)
 
 ```yaml
 env:
@@ -138,7 +138,7 @@ env:
   
   # Experiment tracking
   use_wandb: false
-  wandb_name: babylon-rlaif
+  wandb_name: feed-rlaif
   
   # Worker settings
   max_num_workers: 64
@@ -250,7 +250,7 @@ This loads the checkpoint and continues from step 51.
 To ensure score variance, we add small tiebreakers:
 
 ```python
-# From babylon_env.py
+# From feed_env.py
 epsilon = 0.0
 epsilon += (len(generated_response) % 100) * 0.0001  # Response length variance
 # Deterministic content-based variance (sum of character codes, not hash for reproducibility)

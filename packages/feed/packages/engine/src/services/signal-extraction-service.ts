@@ -25,8 +25,8 @@ import {
   posts,
   questions,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { StaticDataRegistry } from './static-data-registry';
 
 export interface SignalAnalysis {

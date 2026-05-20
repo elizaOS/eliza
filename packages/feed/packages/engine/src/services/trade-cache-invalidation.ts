@@ -6,7 +6,7 @@
  * client to allow different caching strategies.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 /**
  * Cache invalidation client interface

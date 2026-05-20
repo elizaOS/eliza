@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Mock ONLY external dependencies - not the code under test
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     insert: mock(() => ({
       values: mock(() => ({

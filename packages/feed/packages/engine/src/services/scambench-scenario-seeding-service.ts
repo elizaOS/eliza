@@ -1,5 +1,5 @@
-import { db } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { db } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { getOrCreateDMChat, sendMessageToChat } from './dm-service';
 import { autoJoinEmptyUsersToNpcGroupChats } from './npc-group-chat-onboarding-service';
 import { sharedChatContextService } from './shared-chat-context-service';
@@ -469,7 +469,7 @@ export async function seedScamBenchScenario(
   );
 
   logger.info(
-    'Seeded ScamBench scenario into Babylon chats',
+    'Seeded ScamBench scenario into Feed chats',
     {
       scenarioId: options.scenario.id,
       targetUserId: options.targetUserId,

@@ -1,4 +1,4 @@
-# Deep Analysis: Agent Context Gaps in Babylon Simulation
+# Deep Analysis: Agent Context Gaps in Feed Simulation
 
 > Analysis of what context agents actually receive, what's missing, and why it produces poor simulation quality.
 > Audited against the codebase on 2026-03-30. All claims verified — see audit annotations throughout.

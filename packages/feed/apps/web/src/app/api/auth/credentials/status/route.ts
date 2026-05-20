@@ -45,7 +45,7 @@
  * @see {@link /api/auth/farcaster/callback} Farcaster callback
  */
 
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async function GET() {

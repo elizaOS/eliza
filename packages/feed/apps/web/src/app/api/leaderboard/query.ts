@@ -1,5 +1,5 @@
-import { ApiError } from '@babylon/api';
-import { LeaderboardQuerySchema } from '@babylon/shared';
+import { ApiError } from '@feed/api';
+import { LeaderboardQuerySchema } from '@feed/shared';
 
 const SUPPORTED_LEADERBOARD_QUERY_PARAMS = new Set([
   'page',

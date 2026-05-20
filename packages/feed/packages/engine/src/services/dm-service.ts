@@ -16,8 +16,8 @@ import {
   messages,
   type Transaction,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 /**
  * Get or create a DM chat between two users.

@@ -26,15 +26,15 @@ import {
   referrals,
   sql,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import {
   generateSnowflakeId,
   logger,
   POINTS,
   type PointsReason,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type {
   LeaderboardPosition,
   LeaderboardResult,
@@ -329,7 +329,7 @@ export class ReputationService {
       userId,
       POINTS.FARCASTER_FOLLOW,
       'farcaster_follow',
-      { action: 'follow_playbabylon' }
+      { action: 'follow_playfeed' }
     );
   }
 
@@ -343,7 +343,7 @@ export class ReputationService {
       userId,
       POINTS.TWITTER_FOLLOW,
       'twitter_follow',
-      { action: 'follow_playbabylon' }
+      { action: 'follow_playfeed' }
     );
   }
 

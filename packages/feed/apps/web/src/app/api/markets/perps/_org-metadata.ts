@@ -1,5 +1,5 @@
-import type { PerpMarketRecord } from '@babylon/core/markets/perps';
-import { db, organizations } from '@babylon/db';
+import type { PerpMarketRecord } from '@feed/core/markets/perps';
+import { db, organizations } from '@feed/db';
 import { inArray } from 'drizzle-orm';
 
 /**

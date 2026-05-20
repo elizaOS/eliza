@@ -188,7 +188,7 @@ Devcontainer (localhost:3077 = Next.js mobile dev server)
 cd apps/mobile
 
 # Set env vars
-NEXT_PUBLIC_API_URL=https://play.babylon.market \
+NEXT_PUBLIC_API_URL=https://play.feed.market \
 NEXT_PUBLIC_PRIVY_APP_ID=<privy-app-id> \
 bun run build
 

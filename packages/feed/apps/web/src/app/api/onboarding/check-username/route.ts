@@ -100,10 +100,10 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { DrizzleClient } from '@babylon/db';
-import { asPublic, asUser } from '@babylon/db';
-import { logger, sanitizeOnboardingUsername } from '@babylon/shared';
+} from '@feed/api';
+import type { DrizzleClient } from '@feed/db';
+import { asPublic, asUser } from '@feed/db';
+import { logger, sanitizeOnboardingUsername } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 interface UsernameCheckResult {

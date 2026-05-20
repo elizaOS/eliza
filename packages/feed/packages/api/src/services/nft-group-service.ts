@@ -15,8 +15,8 @@ import {
   db,
   eq,
   groupMembers,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 import { notifyNftAccessRevoked } from './notification-service';
 

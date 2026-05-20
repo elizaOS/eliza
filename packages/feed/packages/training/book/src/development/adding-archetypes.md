@@ -144,7 +144,7 @@ export const myArchetype: ArchetypeDefinition = {
   name: 'My Archetype',
   description: 'What this archetype does',
   
-  systemPrompt: `You are a [my-archetype] agent in Babylon...`,
+  systemPrompt: `You are a [my-archetype] agent in Feed...`,
   
   priorityMetrics: [
     'trading.totalPnL',

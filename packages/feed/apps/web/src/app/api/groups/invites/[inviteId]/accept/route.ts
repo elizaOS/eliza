@@ -11,15 +11,15 @@ import {
   checkProgress,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   asUser,
   chatParticipants,
   generateSnowflakeId,
   groupMembers,
   sql,
-} from '@babylon/db';
-import { GROUP_CONFIG, logger } from '@babylon/shared';
+} from '@feed/db';
+import { GROUP_CONFIG, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

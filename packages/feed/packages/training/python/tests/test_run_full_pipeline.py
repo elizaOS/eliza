@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import run_full_pipeline as run_full_pipeline_module
 from run_full_pipeline import FullPipeline
 
-from src.models import BabylonTrajectory
+from src.models import FeedTrajectory
 
 
 @pytest.mark.asyncio
@@ -130,7 +130,7 @@ async def test_train_model_prefers_local_training_without_tinker(monkeypatch, tm
 def test_default_local_model_for_mlx_uses_shared_registry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.delenv("BABYLON_LOCAL_MLX_MODEL", raising=False)
+    monkeypatch.delenv("FEED_LOCAL_MLX_MODEL", raising=False)
     pipeline = FullPipeline(output_dir=str(tmp_path))
 
     assert pipeline._default_local_model_for_backend("mlx") == "mlx-community/Qwen3.5-4B-MLX-4bit"
@@ -462,7 +462,7 @@ async def test_generate_data_reads_unscored_windows(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_generate_data_reads_local_export_source(tmp_path):
-    export_dir = tmp_path / "babylon-export"
+    export_dir = tmp_path / "feed-export"
     export_dir.mkdir()
     payload = {
         "trajectoryId": "traj-local-1",
@@ -613,7 +613,7 @@ async def test_generate_data_supports_huggingface_source(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_generate_data_records_window_selection_policy_and_filters_local_export(tmp_path):
-    export_dir = tmp_path / "babylon-export"
+    export_dir = tmp_path / "feed-export"
     export_dir.mkdir()
     payloads = [
         {
@@ -774,7 +774,7 @@ async def test_generate_data_records_window_selection_policy_and_filters_local_e
 async def test_generate_data_accepts_scam_defense_local_export_without_step_action(
     tmp_path,
 ):
-    export_dir = tmp_path / "babylon-export"
+    export_dir = tmp_path / "feed-export"
     export_dir.mkdir()
     payload = {
         "trajectory": {
@@ -854,7 +854,7 @@ def test_persist_training_manifest_uses_cached_sample_count(tmp_path, monkeypatc
 def test_build_tinker_scored_groups_uses_global_fallback_for_tiny_singleton_corpora(tmp_path):
     pipeline = FullPipeline(output_dir=str(tmp_path))
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-a",
                 "id": "traj-a",
@@ -892,7 +892,7 @@ def test_build_tinker_scored_groups_uses_global_fallback_for_tiny_singleton_corp
                 "finalPnL": 0.0,
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-b",
                 "id": "traj-b",
@@ -945,8 +945,8 @@ def test_build_tinker_scored_groups_uses_score_stratified_fallback_for_large_sin
 ):
     pipeline = FullPipeline(output_dir=str(tmp_path))
 
-    def make_singleton_trajectory(index: int) -> BabylonTrajectory:
-        return BabylonTrajectory.model_validate(
+    def make_singleton_trajectory(index: int) -> FeedTrajectory:
+        return FeedTrajectory.model_validate(
             {
                 "trajectoryId": f"traj-{index}",
                 "id": f"traj-{index}",
@@ -1006,8 +1006,8 @@ def test_build_tinker_scored_groups_keeps_strict_pairs_and_packs_singleton_remai
 ):
     pipeline = FullPipeline(output_dir=str(tmp_path))
 
-    def make_trajectory(index: int, *, window_id: str, scenario_id: str) -> BabylonTrajectory:
-        return BabylonTrajectory.model_validate(
+    def make_trajectory(index: int, *, window_id: str, scenario_id: str) -> FeedTrajectory:
+        return FeedTrajectory.model_validate(
             {
                 "trajectoryId": f"traj-{index}",
                 "id": f"traj-{index}",
@@ -1140,7 +1140,7 @@ async def test_generate_data_uses_explicit_window_selection_limit(monkeypatch, t
 async def test_score_trajectories_uses_current_reward_api(tmp_path):
     pipeline = FullPipeline(output_dir=str(tmp_path), skip_benchmark=True)
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-1",
                 "agent_id": "agent-1",
@@ -1170,7 +1170,7 @@ async def test_score_trajectories_uses_current_reward_api(tmp_path):
                 "finalStatus": "completed",
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-2",
                 "agent_id": "agent-2",
@@ -1228,7 +1228,7 @@ async def test_run_benchmark_loads_existing_local_training_manifest(tmp_path):
 
     pipeline = FullPipeline(output_dir=str(tmp_path))
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-1",
                 "agent_id": "agent-1",
@@ -1265,7 +1265,7 @@ async def test_run_benchmark_records_served_evaluation_summary(tmp_path):
     pipeline.trained_model_path = tmp_path / "adapters"
     pipeline.trained_model_path.mkdir()
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-1",
                 "agent_id": "agent-1",
@@ -1307,7 +1307,7 @@ async def test_run_benchmark_records_served_evaluation_summary(tmp_path):
 async def test_training_manifest_records_data_provenance_and_selection_policy(tmp_path):
     pipeline = FullPipeline(output_dir=str(tmp_path))
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-1",
                 "agent_id": "agent-1",
@@ -1417,7 +1417,7 @@ async def test_prepare_local_training_data_records_curation_metadata(monkeypatch
 
     pipeline = FullPipeline(output_dir=str(tmp_path))
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectory_id": "traj-1",
                 "agent_id": "agent-1",
@@ -1522,7 +1522,7 @@ async def test_train_with_tinker_uses_pre_scored_groups(
 
     monkeypatch.setenv("TINKER_API_KEY", "test-key")
     monkeypatch.setattr(tinker_client, "TINKER_AVAILABLE", True)
-    monkeypatch.setattr(tinker_trainer, "BabylonTinkerTrainer", FakeTrainer)
+    monkeypatch.setattr(tinker_trainer, "FeedTinkerTrainer", FakeTrainer)
 
     async def fake_download(self, trainer):
         return None
@@ -1540,7 +1540,7 @@ async def test_train_with_tinker_uses_pre_scored_groups(
         tinker_group_size=3,
     )
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-1",
                 "agentId": "agent-1",
@@ -1552,7 +1552,7 @@ async def test_train_with_tinker_uses_pre_scored_groups(
                 "finalStatus": "completed",
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-2",
                 "agentId": "agent-2",
@@ -1611,7 +1611,7 @@ async def test_train_with_tinker_falls_back_to_local_training_on_unsuccessful_re
 
     monkeypatch.setenv("TINKER_API_KEY", "test-key")
     monkeypatch.setattr(tinker_client, "TINKER_AVAILABLE", True)
-    monkeypatch.setattr(tinker_trainer, "BabylonTinkerTrainer", FakeTrainer)
+    monkeypatch.setattr(tinker_trainer, "FeedTinkerTrainer", FakeTrainer)
 
     pipeline = FullPipeline(output_dir=str(tmp_path), training_backend_preference="auto")
     pipeline.generated_trajectories = [object()]
@@ -1649,7 +1649,7 @@ async def test_train_with_tinker_prepares_data_only_when_local_training_disabled
 
     monkeypatch.setenv("TINKER_API_KEY", "test-key")
     monkeypatch.setattr(tinker_client, "TINKER_AVAILABLE", True)
-    monkeypatch.setattr(tinker_trainer, "BabylonTinkerTrainer", FakeTrainer)
+    monkeypatch.setattr(tinker_trainer, "FeedTinkerTrainer", FakeTrainer)
 
     pipeline = FullPipeline(
         output_dir=str(tmp_path),
@@ -1788,10 +1788,10 @@ async def test_run_benchmark_reports_remote_tinker_checkpoint(tmp_path: Path):
     pipeline.training_status = "trained"
     pipeline.training_backend = "tinker"
     pipeline.training_base_model = "Qwen/Qwen3.5-4B"
-    pipeline.training_remote_ref = "babylon-remote-final"
+    pipeline.training_remote_ref = "feed-remote-final"
     pipeline.trained_model_path = trained_dir
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-1",
                 "agentId": "agent-1",
@@ -1807,14 +1807,14 @@ async def test_run_benchmark_reports_remote_tinker_checkpoint(tmp_path: Path):
     await pipeline.run_benchmark()
 
     assert pipeline.benchmark_results["trained_model"]["status"] == "remote_checkpoint"
-    assert pipeline.benchmark_results["trained_model"]["remote_model_ref"] == "babylon-remote-final"
+    assert pipeline.benchmark_results["trained_model"]["remote_model_ref"] == "feed-remote-final"
     assert pipeline.benchmark_results["served_evaluation"]["status"] == "skipped"
 
 
 def test_build_tinker_scored_groups_partitions_by_dominant_market(tmp_path: Path):
     pipeline = FullPipeline(output_dir=str(tmp_path))
     pipeline.generated_trajectories = [
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-1",
                 "agentId": "agent-1",
@@ -1842,7 +1842,7 @@ def test_build_tinker_scored_groups_partitions_by_dominant_market(tmp_path: Path
                 "finalStatus": "completed",
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-2",
                 "agentId": "agent-2",
@@ -1870,7 +1870,7 @@ def test_build_tinker_scored_groups_partitions_by_dominant_market(tmp_path: Path
                 "finalStatus": "completed",
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-3",
                 "agentId": "agent-3",
@@ -1898,7 +1898,7 @@ def test_build_tinker_scored_groups_partitions_by_dominant_market(tmp_path: Path
                 "finalStatus": "completed",
             }
         ),
-        BabylonTrajectory.model_validate(
+        FeedTrajectory.model_validate(
             {
                 "trajectoryId": "traj-4",
                 "agentId": "agent-4",

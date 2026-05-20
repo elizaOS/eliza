@@ -9,7 +9,7 @@
  * Allows admins to resolve markets, extend end dates, or cancel markets.
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   broadcastToChannel,
   checkRateLimitAndDuplicates,
@@ -20,11 +20,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   db,
   desc,
@@ -34,13 +34,13 @@ import {
   questions,
   timeframedMarkets,
   withTransaction,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   FEE_CONFIG,
   invalidateAfterPredictionTrade,
   WalletService,
-} from '@babylon/engine';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/engine';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { notifyResolvedMarketOwners } from '@/lib/services/market-resolution-notifications';

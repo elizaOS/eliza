@@ -5,7 +5,7 @@
  * Uses curated word lists organized by theme for variety.
  */
 
-import { escapeRegex } from '@babylon/shared';
+import { escapeRegex } from '@feed/shared';
 
 // Agent name generation word lists
 const NAME_PREFIXES = [

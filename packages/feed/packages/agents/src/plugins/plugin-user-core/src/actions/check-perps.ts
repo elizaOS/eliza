@@ -8,9 +8,9 @@
  * - Funding rate
  */
 
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
-import { FEE_CONFIG, WalletService } from '@babylon/engine';
-import type { MessageTag } from '@babylon/shared';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+import { FEE_CONFIG, WalletService } from '@feed/engine';
+import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,

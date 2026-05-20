@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { NarrativePost, NarrativeStory } from '@babylon/shared';
+import type { NarrativePost, NarrativeStory } from '@feed/shared';
 import {
   calculateConversationDepthScore,
   calculateForYouScore,

@@ -171,6 +171,6 @@ mdbook serve
 ## Contact
 
 - **RL Workstream Lead**: @revlentless
-- **Linear Project**: Babylon → RL Training
-- **Slack Channel**: #babylon-training
+- **Linear Project**: Feed → RL Training
+- **Slack Channel**: #feed-training
 

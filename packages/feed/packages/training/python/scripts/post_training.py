@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# Babylon-inspired model codenames with meanings
+# Feed-inspired model codenames with meanings
 CODENAMES = {
     "ishtar": "Goddess of love and war - aggressive trading models",
     "marduk": "Chief deity - flagship/best models",
@@ -58,7 +58,7 @@ CODENAMES = {
     "tiamat": "Primordial goddess of chaos - experimental/volatile models",
     "nabu": "God of wisdom and writing - analyst-focused models",
     "ziggurat": "Temple tower - multi-layer/ensemble models",
-    "euphrates": "River of Babylon - flow/momentum models",
+    "euphrates": "River of Feed - flow/momentum models",
     "hammurabi": "Famous king/lawgiver - rule-based hybrid models",
 }
 

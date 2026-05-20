@@ -17,7 +17,7 @@ export {
   detectPrediction,
   hasInsiderLanguage,
   sanitizeContent,
-} from '@babylon/shared';
+} from '@feed/shared';
 // Actor utilities (shared across actor-related services)
 export {
   fetchRelevantPosts,

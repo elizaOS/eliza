@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, getActorProfileUrl, getUserProfileUrl } from '@babylon/shared';
+import { cn, getActorProfileUrl, getUserProfileUrl } from '@feed/shared';
 import {
   ArrowDownRight,
   ArrowUpRight,

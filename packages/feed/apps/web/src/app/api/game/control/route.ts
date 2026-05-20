@@ -93,14 +93,14 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asSystem } from '@babylon/db';
+} from '@feed/api';
+import { asSystem } from '@feed/db';
 import {
   generateSnowflakeId,
   logger,
   toISO,
   toISOOrNull,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 interface ControlRequest {

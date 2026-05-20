@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/engine",
+  "name": "@feed/engine",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon Game Engine - Core simulation and generation",
+  "description": "Feed Game Engine - Core simulation and generation",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -27,16 +27,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@babylon/core": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/pack-default": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/pack-default": "workspace:*",
+    "@feed/shared": "workspace:*",
     "@fal-ai/client": "^1.8.1",
     "hono": "4.12.9",
     "xml2js": "^0.6.2"
   },
   "peerDependencies": {
-    "@babylon/training": "workspace:*",
+    "@feed/training": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "openai": "^6.8.1",
     "dotenv": "^16.4.5",

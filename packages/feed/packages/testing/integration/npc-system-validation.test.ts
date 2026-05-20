@@ -24,8 +24,8 @@ import {
   NPCPersonaGenerator,
   NPCPortfolioStrategy,
   StaticDataRegistry,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 
 // Set timeout
 setDefaultTimeout(60000);

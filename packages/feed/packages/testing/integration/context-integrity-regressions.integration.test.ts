@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
-import { generateEvents, loadSharedPostContext } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db } from '@feed/db';
+import { generateEvents, loadSharedPostContext } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 describe('Context integrity regressions', () => {
   const createdPostIds: string[] = [];

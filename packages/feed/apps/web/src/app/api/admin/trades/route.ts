@@ -96,10 +96,10 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { Decimal, db } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/api';
+import { Decimal, db } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

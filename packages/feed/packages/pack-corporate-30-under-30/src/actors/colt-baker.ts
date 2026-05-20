@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'colt-baker',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @IroncladSecurity | We Got Hacked and Lived to Sell About It | Cybersecurity Evangelist | Your systems are not safe | Buy Ironclad (please)',
   pfpDescription:
     "White American male in his late 20s with reddish-brown hair, anxious blue eyes that dart around looking for threats, and a perpetual expression of concerned urgency. Wearing a black hoodie with 'IRONCLAD' printed on it. Background: a monitoring dashboard with several red alerts blinking.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'blue',
     scamProfile: 'naive',

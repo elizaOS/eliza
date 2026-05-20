@@ -5,10 +5,10 @@
  * Node.js-specific modules like `fs`, `postgres`, etc.
  *
  * Use this import in client components:
- *   import { PredictionPricing, calculateExpectedPayout } from '@babylon/core/markets/prediction/client';
+ *   import { PredictionPricing, calculateExpectedPayout } from '@feed/core/markets/prediction/client';
  *
  * Use the main index for server-side code:
- *   import { PredictionDbAdapter, PredictionMarketService } from '@babylon/core/markets/prediction';
+ *   import { PredictionDbAdapter, PredictionMarketService } from '@feed/core/markets/prediction';
  */
 
 export * from './positionSnapshot';

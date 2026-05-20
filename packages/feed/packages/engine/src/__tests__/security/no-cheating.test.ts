@@ -68,7 +68,7 @@ const mockWorldContext = {
   checkRealityGrounding: () => ({ score: 1, feedback: [] }),
 };
 
-mock.module('@babylon/engine', () => mockWorldContext);
+mock.module('@feed/engine', () => mockWorldContext);
 
 // Load environment variables from .env files
 const loadEnvFile = (filePath: string) => {

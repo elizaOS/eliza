@@ -13,7 +13,7 @@
  *   bun run scripts/seed-nft-collection.ts --snapshot   # Take a leaderboard snapshot
  */
 
-import { PointsService } from '@babylon/api';
+import { PointsService } from '@feed/api';
 import {
   closeDatabase,
   count,
@@ -23,8 +23,8 @@ import {
   nftCollection,
   nftOwnership,
   nftSnapshot,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { nanoid } from 'nanoid';
 
 const TOTAL_NFTS = 100;
@@ -76,7 +76,7 @@ async function fetchIpfsMetadata(tokenId: number): Promise<{
     const name =
       typeof nameTrait?.value === 'string'
         ? nameTrait.value
-        : (data.name ?? `Babylon #${tokenId}`);
+        : (data.name ?? `Feed #${tokenId}`);
     return {
       name,
       description: data.description ?? '',
@@ -255,10 +255,10 @@ async function seedCollection(): Promise<void> {
 
     // Try to fetch real metadata from IPFS, fall back to local names
     const ipfsMetadata = await fetchIpfsMetadata(tokenId);
-    const name = ipfsMetadata?.name ?? nftNames[i] ?? `Babylon #${tokenId}`;
+    const name = ipfsMetadata?.name ?? nftNames[i] ?? `Feed #${tokenId}`;
     const description =
       ipfsMetadata?.description ??
-      `A unique piece from the Babylon Top 100 Collection. Token #${tokenId} of 100.`;
+      `A unique piece from the Feed Top 100 Collection. Token #${tokenId} of 100.`;
     const storyTemplate = storyTemplates[i % storyTemplates.length]!;
 
     await db.insert(nftCollection).values({
@@ -275,7 +275,7 @@ async function seedCollection(): Promise<void> {
         ? `ipfs://${IPFS_METADATA_CID}/${tokenId}.json`
         : null,
       attributes: ipfsMetadata?.attributes ?? [
-        { trait_type: 'Collection', value: 'Babylon Top 100' },
+        { trait_type: 'Collection', value: 'Feed Top 100' },
         { trait_type: 'Token Number', value: tokenId },
         { trait_type: 'Edition', value: 'Genesis' },
       ],
@@ -386,7 +386,7 @@ export async function runNftCollectionSeed(
     'SeedNFT'
   );
   logger.info(
-    'Babylon NFT Collection Seeder',
+    'Feed NFT Collection Seeder',
     { forceReseed, showStats, takeSnapshot },
     'SeedNFT'
   );

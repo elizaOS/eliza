@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/a2a",
+  "name": "@feed/a2a",
   "version": "0.1.0",
   "private": true,
-  "description": "Babylon A2A Protocol - Agent-to-Agent communication",
+  "description": "Feed A2A Protocol - Agent-to-Agent communication",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -17,17 +17,17 @@
     "typecheck": "tsc -b ."
   },
   "dependencies": {
-    "@babylon/api": "workspace:*",
-    "@babylon/core": "workspace:*",
-    "@babylon/engine": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/shared": "workspace:*",
     "uuid": "^11.1.0"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "^0.3.5",
-    "@babylon/api": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/shared": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "ethers": "^6.16.0",
     "zod": "^4.3.6"

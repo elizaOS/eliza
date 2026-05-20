@@ -1,6 +1,6 @@
-import { createNotification } from '@babylon/api';
-import { and, chatParticipants, chats, db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { createNotification } from '@feed/api';
+import { and, chatParticipants, chats, db, eq, users } from '@feed/db';
+import { logger } from '@feed/shared';
 
 interface NotifyTeamChatMessageParams {
   chatId: string;

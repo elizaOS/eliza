@@ -1,5 +1,5 @@
 """
-Shared Type Definitions for Babylon RL Training
+Shared Type Definitions for Feed RL Training
 Strong, validated types - no Any, no unknown casts
 """
 
@@ -138,7 +138,7 @@ class TrajectoryStep(BaseModel):
     private_analysis: ScamAnalysis | None = None
 
 
-class BabylonTrajectory(BaseModel):
+class FeedTrajectory(BaseModel):
     """Complete trajectory from database"""
 
     # Combines camelCase conversion with mutability
@@ -274,7 +274,7 @@ class TrajectoryGroup(BaseModel):
     group_key: str
     window_id: str
     scenario_id: str | None = None
-    trajectories: list[BabylonTrajectory]
+    trajectories: list[FeedTrajectory]
 
     @property
     def size(self) -> int:

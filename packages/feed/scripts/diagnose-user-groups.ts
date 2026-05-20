@@ -17,12 +17,12 @@ import {
   groupMembers,
   groups,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   StaticDataRegistry,
   TIER_CONFIG,
   UserAlphaGroupAssignmentService,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 async function main() {
   const args = process.argv.slice(2);

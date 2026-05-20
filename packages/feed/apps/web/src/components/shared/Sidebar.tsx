@@ -5,7 +5,7 @@ import {
   extractErrorMessage,
   getReferralUrl,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   Bell,
   Bot,
@@ -27,8 +27,8 @@ import { LoginButton } from '@/components/auth/LoginButton';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { GameFeedbackModal } from '@/components/feedback/GameFeedbackModal';
 import { Avatar } from '@/components/shared/Avatar';
-import { BabylonIcon } from '@/components/shared/icons/BabylonIcon';
-import { BabylonFullLogo } from '@/components/shared/icons/BabylonLogo';
+import { FeedIcon } from '@/components/shared/icons/FeedIcon';
+import { FeedFullLogo } from '@/components/shared/icons/FeedLogo';
 import { HouseIcon } from '@/components/shared/icons/HouseIcon';
 import { useEmbedMode } from '@/contexts/EmbedContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -261,9 +261,9 @@ function SidebarContent() {
             !collapsed && 'lg:justify-start lg:px-4'
           )}
         >
-          <Link href="/feed" aria-label="Babylon home">
+          <Link href="/feed" aria-label="Feed home">
             {/* Icon-only logo for md (tablet) or collapsed */}
-            <BabylonIcon
+            <FeedIcon
               className={cn(
                 'h-8 w-8 text-sidebar-primary',
                 !collapsed && 'lg:hidden'
@@ -271,7 +271,7 @@ function SidebarContent() {
             />
             {/* Full logo with text for lg+ (desktop) when expanded */}
             {!collapsed && (
-              <BabylonFullLogo className="hidden h-8 w-auto text-sidebar-primary lg:block" />
+              <FeedFullLogo className="hidden h-8 w-auto text-sidebar-primary lg:block" />
             )}
           </Link>
         </div>

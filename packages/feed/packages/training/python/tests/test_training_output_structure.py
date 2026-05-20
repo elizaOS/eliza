@@ -24,10 +24,10 @@ import pytest
 
 sys.path.insert(0, ".")
 
-from src.data_bridge.converter import BabylonToAtroposConverter
+from src.data_bridge.converter import FeedToAtroposConverter
 from src.models import (
     Action,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     LLMCall,
     TrajectoryStep,
@@ -100,7 +100,7 @@ def trajectory_with_exact_calls(exact_llm_calls):
         )
         steps.append(step)
 
-    return BabylonTrajectory(
+    return FeedTrajectory(
         trajectory_id="test-exact-trajectory",
         agent_id="TRADER-001",
         window_id="test-window",
@@ -295,7 +295,7 @@ class TestMultiPromptExtraction:
 
     def test_all_calls_in_step_extracted(self, multi_call_step):
         """All LLM calls in a step should become separate samples."""
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-multi",
             agent_id="agent-1",
             steps=[multi_call_step],
@@ -317,7 +317,7 @@ class TestMultiPromptExtraction:
 
     def test_call_order_preserved(self, multi_call_step):
         """Calls should be indexed in order they appear in step."""
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-order",
             agent_id="agent-1",
             steps=[multi_call_step],
@@ -341,7 +341,7 @@ class TestMultiPromptExtraction:
 
     def test_each_call_gets_unique_index(self, multi_call_step):
         """Each LLM call should have a unique call_index within the step."""
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-index",
             agent_id="agent-1",
             steps=[multi_call_step],
@@ -375,7 +375,7 @@ class TestConverterStructure:
 
     def test_converter_includes_all_llm_calls(self, trajectory_with_exact_calls):
         """Converter should include all LLM calls, not just the first."""
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         result = converter.convert_trajectory(trajectory_with_exact_calls)
 
         # Count assistant messages (each LLM call produces one)
@@ -391,7 +391,7 @@ class TestConverterStructure:
         self, trajectory_with_exact_calls, exact_llm_calls
     ):
         """Converter messages should match original LLM call content."""
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         result = converter.convert_trajectory(trajectory_with_exact_calls)
 
         # Get all assistant messages
@@ -408,7 +408,7 @@ class TestConverterStructure:
 
     def test_converter_preserves_user_prompts(self, trajectory_with_exact_calls, exact_llm_calls):
         """Converter should preserve user prompts exactly."""
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         result = converter.convert_trajectory(trajectory_with_exact_calls)
 
         # Get user messages (skip system message at index 0)
@@ -497,7 +497,7 @@ class TestEdgeCases:
             action=Action(action_type="answer", parameters={}, success=True),
             reward=1.0,
         )
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-empty-system",
             agent_id="agent-1",
             steps=[step],
@@ -533,7 +533,7 @@ class TestEdgeCases:
             action=Action(action_type="ok", parameters={}, success=True),
             reward=1.0,
         )
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-short",
             agent_id="agent-1",
             steps=[step],
@@ -566,7 +566,7 @@ class TestEdgeCases:
             action=Action(action_type="test", parameters={}, success=True),
             reward=1.0,
         )
-        trajectory = BabylonTrajectory(
+        trajectory = FeedTrajectory(
             trajectory_id="test-special",
             agent_id="agent-1",
             steps=[step],
@@ -605,7 +605,7 @@ class TestSystemConsistency:
                 builder_responses.add(sample.response)
 
         # Extract with Converter
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         result = converter.convert_trajectory(trajectory_with_exact_calls)
 
         converter_responses = set()
@@ -632,7 +632,7 @@ class TestSystemConsistency:
                 builder_prompts.add(sample.user_prompt)
 
         # Extract with Converter
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         result = converter.convert_trajectory(trajectory_with_exact_calls)
 
         converter_prompts = set()

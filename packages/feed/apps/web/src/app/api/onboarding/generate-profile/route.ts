@@ -39,9 +39,9 @@
  * ```
  */
 
-import { successResponse, withErrorHandling } from '@babylon/api';
-import { BabylonLLMClient } from '@babylon/engine';
-import { logger, sanitizeOnboardingUsername } from '@babylon/shared';
+import { successResponse, withErrorHandling } from '@feed/api';
+import { FeedLLMClient } from '@feed/engine';
+import { logger, sanitizeOnboardingUsername } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import {
   adjectives,
@@ -65,7 +65,7 @@ interface ProfileData {
  */
 export const GET = withErrorHandling(async function GET(_request: NextRequest) {
   // Use game tick LLM client
-  const llmClient = BabylonLLMClient.forGameTick();
+  const llmClient = FeedLLMClient.forGameTick();
 
   // Generate random words for entropy/inspiration
   const randomAnimal = uniqueNamesGenerator({

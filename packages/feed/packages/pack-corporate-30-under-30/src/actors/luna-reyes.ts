@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'luna-reyes',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @VerdanaHealth | Aligning your gut, your chakras, and your AI | Former yoga instructor | Forbes 30 Under 30 | Namaste & ARR',
   pfpDescription:
     'Latina woman in her late 20s with long dark wavy hair, warm olive skin, and dark brown eyes that radiate practiced serenity. Wearing a minimalist white linen blouse with a small crystal pendant. Background: a clean, plant-filled office that looks like a wellness spa merged with a startup.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

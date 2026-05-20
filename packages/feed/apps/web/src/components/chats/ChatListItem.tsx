@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Shield, Users } from 'lucide-react';
 import React from 'react';
 import { Avatar } from '@/components/shared/Avatar';

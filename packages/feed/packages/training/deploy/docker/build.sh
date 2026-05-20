@@ -1,5 +1,5 @@
 #!/bin/bash
-# Babylon Training - Docker Build Script
+# Feed Training - Docker Build Script
 #
 # Simple CLI for building and pushing Docker images.
 #
@@ -32,9 +32,9 @@ set -e
 ORG="${DOCKER_REGISTRY:-revlentless}"
 TAGS="latest"
 BASE_TAG="latest"
-BASE_NAME="babylon-base"
-TRAINING_NAME="babylon-training"
-BENCHMARK_NAME="babylon-benchmark"
+BASE_NAME="feed-base"
+TRAINING_NAME="feed-training"
+BENCHMARK_NAME="feed-benchmark"
 
 # Directory setup
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,7 +49,7 @@ green() { echo -e "\033[0;32m$1\033[0m"; }
 blue() { echo -e "\033[0;34m$1\033[0m"; }
 
 usage() {
-    echo "Babylon Docker Build Script"
+    echo "Feed Docker Build Script"
     echo ""
     echo "Commands:"
     echo "  base             Build base image"

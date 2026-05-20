@@ -1,5 +1,5 @@
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || 'https://play.babylon.market';
+  process.env.NEXT_PUBLIC_API_URL || 'https://play.feed.market';
 
 export default function imageLoader({
   src,

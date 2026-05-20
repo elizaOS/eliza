@@ -5,7 +5,7 @@
  * Simulates the trading service logic locally
  */
 
-import { callGroqDirect } from '@babylon/agents/llm/direct-groq';
+import { callGroqDirect } from '@feed/agents/llm/direct-groq';
 import {
   and,
   db,
@@ -18,14 +18,14 @@ import {
   perpPositions,
   positions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   formatRandomContext,
   generateRandomMarketContext,
   StaticDataRegistry,
   shuffleArray,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 async function testTradingDecision() {
   console.log('🧪 Testing agent trading decision...\n');

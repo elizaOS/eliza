@@ -52,7 +52,7 @@
  * @module engine/services/npc-trade-rate-limiter
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import {
   getMaxTradesPerDay,
   getMinMinutesBetweenTrades,

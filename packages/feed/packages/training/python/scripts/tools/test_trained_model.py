@@ -189,7 +189,7 @@ def test_cuda_model(model_path: str, prompts: list[str]) -> dict:
 def get_test_prompts() -> list[str]:
     """Get standard test prompts for trading agents."""
     return [
-        """You are a trading agent in Babylon prediction markets.
+        """You are a trading agent in Feed prediction markets.
 
 Current State:
 - Balance: $10,000

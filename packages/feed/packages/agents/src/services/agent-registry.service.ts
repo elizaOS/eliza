@@ -8,8 +8,8 @@
  * @packageDocumentation
  */
 
-import { verifyApiKey } from '@babylon/api';
-import type { JsonValue } from '@babylon/db';
+import { verifyApiKey } from '@feed/api';
+import type { JsonValue } from '@feed/db';
 import {
   type AgentRegistry,
   agentCapabilities,
@@ -27,9 +27,9 @@ import {
   or,
   type User,
   users,
-} from '@babylon/db';
-import { type StaticActor, StaticDataRegistry } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { type StaticActor, StaticDataRegistry } from '@feed/engine';
+import { logger } from '@feed/shared';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import type {
   AgentCapabilities,

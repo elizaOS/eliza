@@ -18,8 +18,8 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { toISO, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { toISO, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(
@@ -67,7 +67,7 @@ export const GET = withErrorHandling(
       },
       200,
       {
-        'x-babylon-deprecated': 'true',
+        'x-feed-deprecated': 'true',
         link: '</api/users/[userId]/reputation-history>; rel="successor-version"',
       }
     );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { DrizzleClient } from '@babylon/db';
-import type { Logger } from '@babylon/shared';
+import type { DrizzleClient } from '@feed/db';
+import type { Logger } from '@feed/shared';
 import { createTickContext, DefaultTickSharedData } from '../core/context';
 import { DefaultServiceContainer } from '../core/service-container';
 import type { EngineContext } from '../core/types';

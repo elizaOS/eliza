@@ -19,7 +19,7 @@ import pytest
 
 from src.models import (
     Action,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     LLMCall,
     TrajectoryStep,
@@ -90,10 +90,10 @@ def make_trajectory(
     agent_id: str = "agent-degen-001",
     steps=None,
     final_pnl: float = 500.0,
-) -> BabylonTrajectory:
+) -> FeedTrajectory:
     if steps is None:
         steps = [make_step(0), make_step(1)]
-    return BabylonTrajectory(
+    return FeedTrajectory(
         trajectory_id=trajectory_id,
         agent_id=agent_id,
         steps=steps,

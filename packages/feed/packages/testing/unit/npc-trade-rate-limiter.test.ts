@@ -12,7 +12,7 @@ import {
   type NpcTradeRateLimitProvider,
   resetNpcTradeRateLimitProvider,
   setNpcTradeRateLimitProvider,
-} from '@babylon/engine';
+} from '@feed/engine';
 
 /**
  * Test provider that allows full control over rate limiting behavior.

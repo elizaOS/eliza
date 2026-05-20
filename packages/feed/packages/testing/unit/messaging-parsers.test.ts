@@ -47,8 +47,8 @@ const mockExecuteDirectMessage = mock(
     ({ success: true, messageId: 'msg-001' }) as Record<string, unknown>
 );
 
-const _actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const _actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ..._actualDb,
   db: {
     get select() {
@@ -99,9 +99,9 @@ mock.module('../../agents/src/autonomous/DirectExecutors', () => ({
   executeDirectMessage: mockExecuteDirectMessage,
 }));
 
-const _actualEngine = await import('@babylon/engine');
+const _actualEngine = await import('@feed/engine');
 _actualEngine.StaticDataRegistry.getActor = () => null;
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   ..._actualEngine,
 }));
 
@@ -123,7 +123,7 @@ const { resolveGroupChatByName, resolveUserByUsername } = await import(
 );
 
 const { sendMessageAction } = await import(
-  '../../agents/src/plugins/babylon/actions/messaging'
+  '../../agents/src/plugins/feed/actions/messaging'
 );
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

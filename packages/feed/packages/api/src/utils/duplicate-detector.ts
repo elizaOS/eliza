@@ -5,7 +5,7 @@
  * Uses content hashing to detect exact and near-duplicate content.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 import crypto from 'crypto';
 

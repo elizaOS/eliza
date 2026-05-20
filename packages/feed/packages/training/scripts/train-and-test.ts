@@ -51,7 +51,7 @@ const results: StepResult[] = [];
 // Show help
 function showHelp(): void {
   console.log(`
-Babylon Automated Training & Game Testing Pipeline
+Feed Automated Training & Game Testing Pipeline
 
 Usage: bun run packages/training/scripts/train-and-test.ts [options]
 
@@ -513,7 +513,7 @@ async function importToOllama(config: PipelineConfig): Promise<{
     };
   }
 
-  const modelName = `babylon-${config.archetype}:latest`;
+  const modelName = `feed-${config.archetype}:latest`;
   const baseModel = process.env.OLLAMA_BASE_MODEL || 'qwen2.5:7b-instruct';
 
   console.log(`Importing adapter as ${modelName}...`);
@@ -649,7 +649,7 @@ async function runGameTest(config: PipelineConfig): Promise<{
       timeout: config.ticks * 10000, // 10s per tick max
       env: {
         AGENT_LLM_PROVIDER: 'ollama',
-        OLLAMA_MODEL: `babylon-${config.archetype}:latest`,
+        OLLAMA_MODEL: `feed-${config.archetype}:latest`,
       },
     }
   );
@@ -676,7 +676,7 @@ async function runGameTest(config: PipelineConfig): Promise<{
       timeout: 120000,
       env: {
         AGENT_LLM_PROVIDER: 'ollama',
-        OLLAMA_MODEL: `babylon-${config.archetype}:latest`,
+        OLLAMA_MODEL: `feed-${config.archetype}:latest`,
       },
     }
   );
@@ -717,7 +717,7 @@ async function main(): Promise<void> {
 
   console.log(`
 ${'═'.repeat(60)}
-  BABYLON AUTOMATED TRAINING & TESTING PIPELINE
+  FEED AUTOMATED TRAINING & TESTING PIPELINE
 ${'═'.repeat(60)}
 
 Configuration:

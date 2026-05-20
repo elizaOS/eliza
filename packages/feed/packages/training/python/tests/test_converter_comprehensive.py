@@ -1,9 +1,9 @@
 """
-Comprehensive Tests for Babylon to Atropos Converter (data_bridge/converter.py)
+Comprehensive Tests for Feed to Atropos Converter (data_bridge/converter.py)
 
 Tests cover:
 - AtroposMessage and AtroposTrajectory creation
-- BabylonToAtroposConverter initialization and validation
+- FeedToAtroposConverter initialization and validation
 - Trajectory conversion with quality scoring
 - System message building with market outcomes
 - Dropout rate calculation
@@ -20,13 +20,13 @@ import pytest
 from src.data_bridge.converter import (
     AtroposMessage,
     AtroposTrajectory,
-    BabylonToAtroposConverter,
+    FeedToAtroposConverter,
     ScoredGroupResult,
     calculate_dropout_rate,
 )
 from src.models import (
     Action,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     LLMCall,
     MarketOutcomes,
@@ -81,7 +81,7 @@ def make_step(step_number: int = 0, llm_calls=None, action=None, **kw) -> Trajec
     )
 
 
-def make_trajectory(steps=None, **overrides) -> BabylonTrajectory:
+def make_trajectory(steps=None, **overrides) -> FeedTrajectory:
     defaults = {
         "trajectory_id": "traj-001",
         "agent_id": "agent-001",
@@ -89,7 +89,7 @@ def make_trajectory(steps=None, **overrides) -> BabylonTrajectory:
         "final_pnl": 500.0,
     }
     defaults.update(overrides)
-    return BabylonTrajectory(**defaults)
+    return FeedTrajectory(**defaults)
 
 
 def make_market_outcomes() -> MarketOutcomes:
@@ -164,22 +164,22 @@ class TestScoredGroupResult:
 
 class TestConverterInit:
     def test_default_init(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         assert converter.dropout_rate == 0.0
         assert converter.max_steps == 20
         assert converter.include_messages is True
 
     def test_valid_dropout(self):
-        converter = BabylonToAtroposConverter(dropout_rate=0.3)
+        converter = FeedToAtroposConverter(dropout_rate=0.3)
         assert converter.dropout_rate == 0.3
 
     def test_invalid_dropout_too_high(self):
         with pytest.raises(ValueError, match="dropout_rate"):
-            BabylonToAtroposConverter(dropout_rate=0.6)
+            FeedToAtroposConverter(dropout_rate=0.6)
 
     def test_invalid_dropout_negative(self):
         with pytest.raises(ValueError, match="dropout_rate"):
-            BabylonToAtroposConverter(dropout_rate=-0.1)
+            FeedToAtroposConverter(dropout_rate=-0.1)
 
 
 # =============================================================================
@@ -189,7 +189,7 @@ class TestConverterInit:
 
 class TestConvertTrajectory:
     def test_basic_conversion(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = make_trajectory()
         result = converter.convert_trajectory(traj)
         assert result is not None
@@ -197,14 +197,14 @@ class TestConvertTrajectory:
         assert result.messages[0].role == "system"
 
     def test_system_message_contains_agent_info(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = make_trajectory(agent_id="agent-degen-42", window_id="window-7")
         result = converter.convert_trajectory(traj)
         assert "agent-degen-42" in result.messages[0].content
         assert "window-7" in result.messages[0].content
 
     def test_system_message_with_market_outcomes(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         outcomes = make_market_outcomes()
         traj = make_trajectory()
         result = converter.convert_trajectory(traj, market_outcomes=outcomes)
@@ -214,7 +214,7 @@ class TestConvertTrajectory:
         assert "BULLISH" in system
 
     def test_llm_calls_become_messages(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         steps = [
             make_step(
                 0,
@@ -231,7 +231,7 @@ class TestConvertTrajectory:
 
     def test_fallback_without_llm_calls(self):
         """Steps without LLM calls use environment state fallback."""
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         step = TrajectoryStep(
             step_number=0,
             timestamp=1700000000000,
@@ -246,7 +246,7 @@ class TestConvertTrajectory:
         assert any("8500" in m.content for m in user_msgs)
 
     def test_max_steps_truncation(self):
-        converter = BabylonToAtroposConverter(max_steps=3)
+        converter = FeedToAtroposConverter(max_steps=3)
         steps = [make_step(i) for i in range(10)]
         traj = make_trajectory(steps=steps)
         result = converter.convert_trajectory(traj)
@@ -255,13 +255,13 @@ class TestConvertTrajectory:
         assert len(user_msgs) <= 3
 
     def test_score_calculated(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = make_trajectory(final_pnl=500.0)
         result = converter.convert_trajectory(traj)
         assert isinstance(result.score, float)
 
     def test_metadata_populated(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = make_trajectory(
             trajectory_id="traj-test",
             agent_id="agent-test",
@@ -274,7 +274,7 @@ class TestConvertTrajectory:
         assert result.metadata["final_pnl"] == 123.45
 
     def test_insufficient_messages_raises(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         # Step with empty LLM calls and no action
         step = TrajectoryStep(
             step_number=0,
@@ -287,7 +287,7 @@ class TestConvertTrajectory:
             converter.convert_trajectory(traj)
 
     def test_dropout_can_return_none(self):
-        converter = BabylonToAtroposConverter(dropout_rate=0.5)
+        converter = FeedToAtroposConverter(dropout_rate=0.5)
         traj = make_trajectory()
         # Run multiple times - some should be None
         results = [converter.convert_trajectory(traj) for _ in range(100)]
@@ -295,7 +295,7 @@ class TestConvertTrajectory:
         assert any(r is not None for r in results)
 
     def test_empty_llm_call_skipped(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         steps = [
             make_step(
                 0,
@@ -318,31 +318,31 @@ class TestConvertTrajectory:
 
 class TestConvertWindowGroup:
     def test_basic_group(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         trajs = [make_trajectory(trajectory_id=f"t{i}") for i in range(4)]
         result = converter.convert_window_group(trajs, None)
         assert result.group_size >= 2
         assert len(result.scores) == result.group_size
 
     def test_too_few_trajectories(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         with pytest.raises(ValueError, match="2\\+ trajectories"):
             converter.convert_window_group([make_trajectory()], None)
 
     def test_sampling_when_too_many(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         trajs = [make_trajectory(trajectory_id=f"t{i}") for i in range(20)]
         result = converter.convert_window_group(trajs, None, max_per_group=5)
         assert result.group_size <= 5
 
     def test_messages_included(self):
-        converter = BabylonToAtroposConverter(include_messages=True)
+        converter = FeedToAtroposConverter(include_messages=True)
         trajs = [make_trajectory(trajectory_id=f"t{i}") for i in range(3)]
         result = converter.convert_window_group(trajs, None)
         assert len(result.messages) == result.group_size
 
     def test_messages_excluded(self):
-        converter = BabylonToAtroposConverter(include_messages=False)
+        converter = FeedToAtroposConverter(include_messages=False)
         trajs = [make_trajectory(trajectory_id=f"t{i}") for i in range(3)]
         result = converter.convert_window_group(trajs, None)
         assert result.messages == []
@@ -383,7 +383,7 @@ class TestCalculateDropoutRate:
 
 class TestQualityScoringIntegration:
     def test_good_xml_improves_score(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         good_step = make_step(
             0,
             llm_calls=[
@@ -407,7 +407,7 @@ class TestQualityScoringIntegration:
         assert good_result.metadata["format_score"] > bad_result.metadata["format_score"]
 
     def test_risk_penalty_tracked(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         # High exposure step
         step = make_step(
             0,
@@ -427,7 +427,7 @@ class TestQualityScoringIntegration:
 
 class TestBalanceCalculation:
     def test_balance_from_steps(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         steps = [
             make_step(0, env={"agent_balance": 10000}),
             make_step(1, env={"agent_balance": 10500}),
@@ -438,7 +438,7 @@ class TestBalanceCalculation:
         assert result.score is not None
 
     def test_balance_fallback_to_trajectory(self):
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = make_trajectory(steps=[make_step(0)])
         traj.final_balance = 10500.0
         result = converter.convert_trajectory(traj)

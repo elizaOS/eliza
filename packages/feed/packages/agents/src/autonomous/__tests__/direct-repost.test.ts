@@ -18,7 +18,7 @@ const mockDb = {
   transaction: mock(async () => undefined),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   actorState: {},
   aliasedTable: mock(() => ({})),
   and: (...args: unknown[]) => args,
@@ -49,7 +49,7 @@ mock.module('@babylon/db', () => ({
   users: { id: 'id' },
 }));
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   broadcastAgentActivity: mock(async () => undefined),
   broadcastChatMessage: mock(async () => undefined),
   broadcastToChannel: mock(async () => undefined),
@@ -59,17 +59,17 @@ mock.module('@babylon/api', () => ({
   notifyGroupChatMessage: async () => undefined,
 }));
 
-mock.module('@babylon/core/markets/perps', () => ({
+mock.module('@feed/core/markets/perps', () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@babylon/core/markets/prediction', () => ({
+mock.module('@feed/core/markets/prediction', () => ({
   PredictionDbAdapter: class {},
   PredictionMarketService: class {},
 }));
 
-mock.module('@babylon/engine', () => ({
+mock.module('@feed/engine', () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0,
     PLATFORM_SHARE: 0,

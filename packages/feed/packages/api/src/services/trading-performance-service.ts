@@ -1,5 +1,5 @@
-import { buildCapitalBaseContributionSql, db, sql } from '@babylon/db';
-import { toISO } from '@babylon/shared';
+import { buildCapitalBaseContributionSql, db, sql } from '@feed/db';
+import { toISO } from '@feed/shared';
 
 export const TRADING_RETURN_CAPITAL_FLOOR = 1000;
 

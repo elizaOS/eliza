@@ -1,4 +1,4 @@
-import type { NarrativeStory } from '@babylon/shared';
+import type { NarrativeStory } from '@feed/shared';
 
 const AUTHOR_REPEAT_PENALTY = 0.55;
 const CLUSTER_REPEAT_PENALTY = 0.8;

@@ -1,4 +1,4 @@
-import { db, eq, generateSnowflakeId, worldStateSnapshots } from '@babylon/db';
+import { db, eq, generateSnowflakeId, worldStateSnapshots } from '@feed/db';
 export class WorldStateSnapshotService {
   /**
    * Capture a complete world state snapshot at the current moment.
@@ -47,7 +47,7 @@ export class WorldStateSnapshotService {
     // Query questions table for active prediction markets
     // Return array of { marketId, question, resolvedOutcome }
     try {
-      const { questions } = await import('@babylon/db/schema');
+      const { questions } = await import('@feed/db/schema');
       const markets = await db
         .select({
           id: questions.id,
@@ -68,7 +68,7 @@ export class WorldStateSnapshotService {
   static async getPerpMarketState() {
     // Return current perp market prices
     try {
-      const { organizationState } = await import('@babylon/db/schema');
+      const { organizationState } = await import('@feed/db/schema');
       const orgs = await db
         .select({
           id: organizationState.id,
@@ -86,7 +86,7 @@ export class WorldStateSnapshotService {
   }
   static async getWorldEvents() {
     try {
-      const { worldEvents } = await import('@babylon/db/schema');
+      const { worldEvents } = await import('@feed/db/schema');
       const events = await db
         .select({
           id: worldEvents.id,
@@ -102,7 +102,7 @@ export class WorldStateSnapshotService {
   }
   static async getInsiderAssignments() {
     try {
-      const { questionArcPlans } = await import('@babylon/db/schema');
+      const { questionArcPlans } = await import('@feed/db/schema');
       const plans = await db
         .select({
           id: questionArcPlans.id,
@@ -122,7 +122,7 @@ export class WorldStateSnapshotService {
   }
   static async getOrgStates() {
     try {
-      const { organizationState } = await import('@babylon/db/schema');
+      const { organizationState } = await import('@feed/db/schema');
       const orgs = await db.select().from(organizationState).limit(100);
       return orgs;
     } catch {

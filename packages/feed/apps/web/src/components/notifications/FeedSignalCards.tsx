@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -101,7 +101,7 @@ export function MarketClosingSoonCard({
           {positionSide}
         </span>
         <span className="text-muted-foreground text-xs">
-          @ {BABYLON_POINTS_SYMBOL}
+          @ {FEED_POINTS_SYMBOL}
           {entryPrice.toFixed(2)}
         </span>
         <span className="font-medium text-foreground text-xs">

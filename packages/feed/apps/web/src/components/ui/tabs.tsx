@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import * as React from 'react';
 

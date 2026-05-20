@@ -1,5 +1,5 @@
 """
-Tests for the Babylon Tinker client wrapper.
+Tests for the Feed Tinker client wrapper.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from src.training import tinker_client as tinker_client_module
 from src.training.tinker_client import (
     DEFAULT_TINKER_BASE_MODEL,
     TINKER_AVAILABLE,
-    BabylonTinkerClient,
+    FeedTinkerClient,
     TinkerConfig,
     resolve_tinker_base_model,
 )
@@ -112,7 +112,7 @@ def fake_tinker(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_setup_can_resume_from_state(fake_tinker):
-    client = BabylonTinkerClient(
+    client = FeedTinkerClient(
         TinkerConfig(
             base_model="Qwen/Qwen3.5-4B",
             resume_from_state="tinker://state/prev",
@@ -124,11 +124,11 @@ def test_setup_can_resume_from_state(fake_tinker):
     assert fake_tinker.loaded_state_path == "tinker://state/prev"
     assert client.initial_state_path == "tinker://state/prev"
     assert client.current_state_path == "tinker://state/prev"
-    assert client.initial_sampler_path == "tinker://sampler/babylon-initial"
+    assert client.initial_sampler_path == "tinker://sampler/feed-initial"
 
 
 def test_save_state_updates_current_state_ref(fake_tinker):
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client.setup()
 
     state_path = client.save_state("final-state")
@@ -138,14 +138,14 @@ def test_save_state_updates_current_state_ref(fake_tinker):
 
 
 def test_load_state_replaces_training_client(fake_tinker):
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client.setup()
 
     client.load_state("tinker://state/resume")
 
     assert fake_tinker.loaded_state_path == "tinker://state/resume"
     assert client.current_state_path == "tinker://state/resume"
-    assert client.current_sampler_path == "tinker://sampler/babylon-loaded"
+    assert client.current_sampler_path == "tinker://sampler/feed-loaded"
 
 
 @_skip_no_tinker
@@ -166,7 +166,7 @@ async def test_load_state_async_replaces_training_client_without_sync_sdk_calls(
         async def create_sampling_client_async(self, *, model_path: str):
             return _FakeSamplingClient(model_path)
 
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client._service_client = AsyncServiceClient()
     client._initialized = True
 
@@ -174,7 +174,7 @@ async def test_load_state_async_replaces_training_client_without_sync_sdk_calls(
 
     assert client.service_client.loaded_state_path == "tinker://state/resume-async"
     assert client.current_state_path == "tinker://state/resume-async"
-    assert client.current_sampler_path == "tinker://sampler/babylon-loaded"
+    assert client.current_sampler_path == "tinker://sampler/feed-loaded"
 
 
 def test_setup_accepts_tm_api_key_alias(monkeypatch: pytest.MonkeyPatch):
@@ -185,11 +185,11 @@ def test_setup_accepts_tm_api_key_alias(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(tinker_client_module, "TINKER_AVAILABLE", True)
     monkeypatch.setattr(tinker_client_module, "tinker", fake_module)
 
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client.setup()
 
     assert os.environ["TINKER_API_KEY"] == "tml-test-key"
-    assert client.initial_sampler_path == "tinker://sampler/babylon-initial"
+    assert client.initial_sampler_path == "tinker://sampler/feed-initial"
 
 
 def test_default_tinker_model_is_live_qwen35():
@@ -212,7 +212,7 @@ def test_resolve_tinker_base_model_normalizes_stale_alias():
 
 
 def test_setup_normalizes_stale_model_before_client_creation(fake_tinker):
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3-30B-A3B-Instruct"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3-30B-A3B-Instruct"))
 
     client.setup()
 
@@ -231,7 +231,7 @@ def test_setup_surfaces_billing_block(monkeypatch: pytest.MonkeyPatch, fake_tink
     fake_module = types.SimpleNamespace(ServiceClient=lambda: BillingBlockedServiceClient())
     monkeypatch.setattr(tinker_client_module, "tinker", fake_module)
 
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
 
     with pytest.raises(RuntimeError, match="billing status"):
         client.setup()
@@ -256,7 +256,7 @@ async def test_train_step_async_preserves_tensor_data_weights():
         async def optim_step_async(self, _params):
             return _AsyncFuture(types.SimpleNamespace())
 
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client._training_client = AsyncTrainingClient()
 
     datum = tinker_client_module.TinkerDatum(
@@ -282,7 +282,7 @@ async def test_setup_async_times_out_capability_lookup(monkeypatch: pytest.Monke
     monkeypatch.setattr(tinker_client_module, "TINKER_AVAILABLE", True)
     monkeypatch.setattr(tinker_client_module, "tinker", fake_module)
 
-    client = BabylonTinkerClient(
+    client = FeedTinkerClient(
         TinkerConfig(
             base_model="Qwen/Qwen3.5-4B",
             capabilities_timeout_seconds=1,
@@ -300,7 +300,7 @@ async def test_sample_async_times_out_when_tinker_sampler_hangs():
         async def sample_async(self, **_kwargs):
             await asyncio.sleep(10)
 
-    client = BabylonTinkerClient(
+    client = FeedTinkerClient(
         TinkerConfig(
             base_model="Qwen/Qwen3.5-4B",
             sampling_timeout_seconds=1,
@@ -318,7 +318,7 @@ async def test_sample_async_times_out_when_tinker_sampler_hangs():
 
 @_skip_no_tinker
 def test_prepare_datum_truncates_prompt_to_max_sequence_length():
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
     client._tokenizer = _StubTokenizer()
 
     datum = client.prepare_datum(
@@ -338,7 +338,7 @@ def test_prepare_datum_truncates_prompt_to_max_sequence_length():
 
 @_skip_no_tinker
 def test_prepare_datum_from_tokens_truncates_to_tail_window():
-    client = BabylonTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
+    client = FeedTinkerClient(TinkerConfig(base_model="Qwen/Qwen3.5-4B"))
 
     datum = client.prepare_datum_from_tokens(
         tokens=list(range(12)),

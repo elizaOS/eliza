@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { ArcStateType, PendingTransition } from '@babylon/db';
+import type { ArcStateType, PendingTransition } from '@feed/db';
 import {
   evaluateStateTransition,
   getExpectedState,

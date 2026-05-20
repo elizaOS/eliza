@@ -1,5 +1,5 @@
 /**
- * Module augmentation interfaces for @babylon/sim.
+ * Module augmentation interfaces for @feed/sim.
  *
  * Systems extend these via declaration merging to get typed config keys,
  * service tokens, shared data, and custom hooks — all resolved at the
@@ -8,14 +8,14 @@
  * Usage from a system file:
  *
  * ```ts
- * declare module '@babylon/sim' {
- *   interface BabylonConfig {
+ * declare module '@feed/sim' {
+ *   interface FeedConfig {
  *     mySystem: { apiKey: string; retries?: number };
  *   }
- *   interface BabylonServices {
+ *   interface FeedServices {
  *     feedCache: Map<string, unknown>;
  *   }
- *   interface BabylonSharedData {
+ *   interface FeedSharedData {
  *     feedReady: boolean;
  *   }
  * }
@@ -25,10 +25,10 @@
  * `NitroRuntimeHooks`, and hookable's typed `HookKeys`.
  */
 
-export interface BabylonConfig {}
+export interface FeedConfig {}
 
-export interface BabylonServices {}
+export interface FeedServices {}
 
-export interface BabylonSharedData {}
+export interface FeedSharedData {}
 
-export interface BabylonHooks {}
+export interface FeedHooks {}

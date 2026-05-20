@@ -3,7 +3,7 @@
  * Shared date parsing and extraction utilities for the game engine.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 /**
  * Extract day number from timestamp string.

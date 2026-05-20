@@ -45,7 +45,7 @@ import {
 } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
 
 // Set timeout to 10 minutes for real LLM calls
@@ -312,7 +312,7 @@ describe('Full Production Tick Integration Test', () => {
 
   describe('1. Static Data Validation', () => {
     test('actors exist and mostly have parody names', async () => {
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const actors = StaticDataRegistry.getAllActors();
       expect(actors.length).toBeGreaterThan(0);
@@ -353,7 +353,7 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('organizations exist and mostly have parody names', async () => {
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const orgs = StaticDataRegistry.getAllOrganizations();
       expect(orgs.length).toBeGreaterThan(0);
@@ -395,8 +395,8 @@ describe('Full Production Tick Integration Test', () => {
   describe('2. Bootstrap System', () => {
     test('bootstraps game data if needed', async () => {
       // Get static data and DB to check bootstrap state
-      const { StaticDataRegistry } = await import('@babylon/engine');
-      const { db, actorState } = await import('@babylon/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
+      const { db, actorState } = await import('@feed/db');
 
       // Check what's in the static data
       const staticActors = StaticDataRegistry.getAllActors();
@@ -428,12 +428,12 @@ describe('Full Production Tick Integration Test', () => {
       'generates content ahead of current time',
       async () => {
         const {
-          BabylonLLMClient,
+          FeedLLMClient,
           checkLookaheadStatus,
           generateAheadIfNeeded,
-        } = await import('@babylon/engine');
+        } = await import('@feed/engine');
 
-        const llmClient = BabylonLLMClient.forGameTick();
+        const llmClient = FeedLLMClient.forGameTick();
         const statusBefore = await checkLookaheadStatus();
         logger.info(
           `Lookahead status before: ${statusBefore.minutesAhead} minutes ahead`,
@@ -469,7 +469,7 @@ describe('Full Production Tick Integration Test', () => {
     test.skipIf(!liveLlmTestConfig.enabled)(
       'executes full game tick',
       async () => {
-        const { executeGameTick } = await import('@babylon/engine');
+        const { executeGameTick } = await import('@feed/engine');
 
         const tickResult = await executeGameTick(true);
 
@@ -489,8 +489,8 @@ describe('Full Production Tick Integration Test', () => {
 
   describe('5. Database State Validation', () => {
     test('validates posts in database', async () => {
-      const { db, posts, desc } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, posts, desc } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       // Get recent posts
       const recentPosts = await db
@@ -529,7 +529,7 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('validates events in database', async () => {
-      const { db, worldEvents, desc } = await import('@babylon/db');
+      const { db, worldEvents, desc } = await import('@feed/db');
 
       const recentEvents = await db
         .select()
@@ -550,7 +550,7 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('validates questions in database', async () => {
-      const { db, questions } = await import('@babylon/db');
+      const { db, questions } = await import('@feed/db');
 
       const allQuestions = await db.select().from(questions).limit(20);
 
@@ -572,7 +572,7 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('validates markets in database', async () => {
-      const { db, markets } = await import('@babylon/db');
+      const { db, markets } = await import('@feed/db');
 
       const allMarkets = await db.select().from(markets).limit(20);
 
@@ -594,8 +594,8 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('validates NPC trades in database', async () => {
-      const { db, npcTrades, desc } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, npcTrades, desc } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const recentTrades = await db
         .select()
@@ -638,8 +638,8 @@ describe('Full Production Tick Integration Test', () => {
     });
 
     test('validates actor state in database', async () => {
-      const { db, actorState, desc } = await import('@babylon/db');
-      const { StaticDataRegistry } = await import('@babylon/engine');
+      const { db, actorState, desc } = await import('@feed/db');
+      const { StaticDataRegistry } = await import('@feed/engine');
 
       const actorStates = await db
         .select()

@@ -82,8 +82,8 @@ import {
   publicRateLimit,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
-import { getReputationBreakdown } from '@babylon/engine';
+} from '@feed/api';
+import { getReputationBreakdown } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

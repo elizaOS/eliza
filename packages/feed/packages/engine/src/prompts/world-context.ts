@@ -23,7 +23,7 @@ import {
   npcTrades,
   questions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { loadActorsData } from '../actors-loader';
 import {
   formatSimulationActiveMarkets,
@@ -661,7 +661,7 @@ export {
  *   generateWorldContext,
  *   renderPrompt,
  *   validateGeneratedContent,
- * } from '@babylon/engine';
+ * } from '@feed/engine';
  *
  * // Generate world context with reality grounding
  * const worldContext = await generateWorldContext({

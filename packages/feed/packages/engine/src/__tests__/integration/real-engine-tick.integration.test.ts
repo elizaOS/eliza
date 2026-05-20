@@ -33,8 +33,8 @@ import {
   setDefaultTimeout,
   test,
 } from 'bun:test';
-import { asSystem, sql } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { asSystem, sql } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import { existsSync, readFileSync } from 'fs';
 import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
 
@@ -138,7 +138,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
       };
 
       // Get baseline counts using raw Drizzle query
-      const { getRawDrizzle } = await import('@babylon/db');
+      const { getRawDrizzle } = await import('@feed/db');
       const rawDb = getRawDrizzle();
 
       // Verify database tables exist before running tests
@@ -292,7 +292,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('should have generated news articles (not mocked)', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       // Get articles created after test start
       const newArticles = await db.post.findMany({
@@ -334,7 +334,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('should have executed NPC trading decisions (not mocked)', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       const newPositions = await db.poolPosition.findMany({
         where: {
@@ -372,7 +372,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('should have created prediction market questions (not mocked)', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       // Get questions created after test start
       const newQuestions = await db.question.findMany({
@@ -425,7 +425,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('should have generated world events (not mocked)', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       // Get events created after test start
       const newEvents = await db.worldEvent.findMany({
@@ -464,7 +464,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('market prices should be reasonable (0-100% for predictions)', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       const activeMarkets = await db.market.findMany({
         where: {
@@ -628,7 +628,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
     test('should verify engine produces valid outputs for training', async () => {
       expect(results.tickExecuted).toBe(true);
 
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@feed/db');
 
       console.log('\n🎓 Validating outputs for training readiness...');
 
@@ -646,7 +646,7 @@ describe.skipIf(shouldSkipLiveLlmTests)(
       }
 
       // Use raw Drizzle for complex queries
-      const { getRawDrizzle, sql: dbSql } = await import('@babylon/db');
+      const { getRawDrizzle, sql: dbSql } = await import('@feed/db');
       const rawDbCheck = getRawDrizzle();
 
       // Use raw SQL to avoid Drizzle count() compatibility issues

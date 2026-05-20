@@ -102,7 +102,7 @@
  *
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   authenticate,
   BusinessLogicError,
@@ -119,7 +119,7 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   count,
@@ -130,12 +130,12 @@ import {
   posts,
   shares,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   NPCInteractionTracker,
   parsePostId,
   StaticDataRegistry,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   generateSnowflakeId,
   isPureRepost,
@@ -143,7 +143,7 @@ import {
   PostIdParamSchema,
   SharePostSchema,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 

@@ -26,8 +26,8 @@ import {
   reactions,
   userInteractions,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { NPC_FOLLOWING_CONFIG } from '../config/npc-activity';
 import { secureRandom } from '../utils/entropy';
 import { formatError } from '../utils/error-utils';
@@ -49,7 +49,7 @@ function shuffleArray<T>(array: T[]): T[] {
 
 /**
  * Notifier interface for follow events.
- * Allows engine to emit follow notifications without depending on @babylon/api.
+ * Allows engine to emit follow notifications without depending on @feed/api.
  */
 export interface FollowNotifier {
   notifyFollow(userId: string, npcId: string): Promise<void>;

@@ -12,8 +12,8 @@ import {
   pointsTransactions,
   type Transaction,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 /**
  * Earned Points Service Class

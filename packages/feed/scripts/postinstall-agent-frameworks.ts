@@ -6,7 +6,7 @@
  * This script is intentionally idempotent and best-effort:
  * - clones public repos when missing
  * - installs/builds Hermes and OpenClaw
- * - clones Eliza for reference while the benchmark bridge uses Babylon's local packages
+ * - clones Eliza for reference while the benchmark bridge uses Feed's local packages
  * - prepares ClawBench and its TrajectoryRL OpenClaw fork for deterministic simulation
  * - reports missing provider API keys needed for live benchmark runs
  */
@@ -21,8 +21,8 @@ type FrameworkSpec = {
   install?: () => Promise<void>;
 };
 
-const BABYLON_ROOT = join(import.meta.dir, '..');
-const WORKSPACE_ROOT = join(BABYLON_ROOT, '..');
+const FEED_ROOT = join(import.meta.dir, '..');
+const WORKSPACE_ROOT = join(FEED_ROOT, '..');
 const EXTERNAL_SOURCES_ROOT = join(WORKSPACE_ROOT, 'external-sources');
 
 function readEnvFiles(): Record<string, string> {
@@ -30,8 +30,8 @@ function readEnvFiles(): Record<string, string> {
   for (const file of [
     join(WORKSPACE_ROOT, '.env'),
     join(WORKSPACE_ROOT, '.env.local'),
-    join(BABYLON_ROOT, '.env'),
-    join(BABYLON_ROOT, '.env.local'),
+    join(FEED_ROOT, '.env'),
+    join(FEED_ROOT, '.env.local'),
   ]) {
     if (!existsSync(file)) continue;
     const content = readFileSync(file, 'utf8');
@@ -141,7 +141,7 @@ async function ensureElizaReferenceClone(): Promise<void> {
     WORKSPACE_ROOT
   );
   console.log(
-    "   ✓ ElizaOS: reference clone ready (ScamBench uses Babylon's installed eliza packages at runtime)"
+    "   ✓ ElizaOS: reference clone ready (ScamBench uses Feed's installed eliza packages at runtime)"
   );
 }
 
@@ -178,9 +178,9 @@ async function ensureClawBench(): Promise<void> {
 }
 
 async function main() {
-  if (process.env.BABYLON_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP === '1') {
+  if (process.env.FEED_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP === '1') {
     console.log(
-      '🤖 Skipping agent framework bootstrap (BABYLON_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP=1)'
+      '🤖 Skipping agent framework bootstrap (FEED_SKIP_AGENT_FRAMEWORKS_BOOTSTRAP=1)'
     );
     return;
   }

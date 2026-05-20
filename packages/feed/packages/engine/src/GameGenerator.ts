@@ -1,5 +1,5 @@
 /**
- * Babylon Game Generator - Main Orchestrator
+ * Feed Game Generator - Main Orchestrator
  *
  * Coordinates LLM-driven generation of complete 30-day games
  * with actors, scenarios, questions, events, and outcomes.
@@ -29,10 +29,10 @@
  * Per-actor context preserved (personality, mood, luck)
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { generateActorContext } from './EmotionSystem';
 import { FeedGenerator } from './FeedGenerator';
-import { BabylonLLMClient } from './llm/openai-client';
+import { FeedLLMClient } from './llm/openai-client';
 import {
   baselineEvent,
   dayEvents,
@@ -377,7 +377,7 @@ import { StaticDataRegistry } from './services/static-data-registry';
  * Orchestrates complete LLM-driven game generation
  */
 export class GameGenerator {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
   private gameId?: string;
   private feedGenerator: FeedGenerator;
   private trendingTopics: TrendingTopicsEngine;
@@ -389,8 +389,8 @@ export class GameGenerator {
     // Use game tick LLM client (Priority: Groq > Claude > OpenAI)
     // If apiKey is provided, use OpenAI explicitly, otherwise use forGameTick()
     this.llm = apiKey
-      ? BabylonLLMClient.forOpenAI(apiKey)
-      : BabylonLLMClient.forGameTick();
+      ? FeedLLMClient.forOpenAI(apiKey)
+      : FeedLLMClient.forGameTick();
     this.feedGenerator = new FeedGenerator(this.llm); // Pass LLM to FeedGenerator
     this.trendingTopics = new TrendingTopicsEngine(this.llm);
     this.feedGenerator.setTrendingTopics(this.trendingTopics);
@@ -406,7 +406,7 @@ export class GameGenerator {
     this.gameId = `game-${Date.now()}-${gameNumber}`;
 
     logger.info(
-      `GENERATING BABYLON GAME #${gameNumber}...`,
+      `GENERATING FEED GAME #${gameNumber}...`,
       undefined,
       'GameGenerator'
     );
@@ -645,7 +645,7 @@ export class GameGenerator {
 
     // Organizations already extracted earlier for prompt generation
     const game: GeneratedGame = {
-      id: `babylon-${Date.now()}`,
+      id: `feed-${Date.now()}`,
       version: '1.0.0',
       generatedAt: new Date().toISOString(),
       setup: {

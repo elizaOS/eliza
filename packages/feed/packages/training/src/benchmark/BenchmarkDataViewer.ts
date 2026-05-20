@@ -5,7 +5,7 @@
  * Useful for validation and understanding benchmark structure.
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import { promises as fs } from 'fs';
 import type {
   BenchmarkGameSnapshot,

@@ -8,7 +8,7 @@ import type {
   JsonRpcResult,
   JsonValue,
   StringRecord,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // Re-export JSON-RPC types from shared for consistency
 export type { JsonRpcParams, JsonRpcResult, JsonValue };

@@ -53,8 +53,8 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -84,12 +84,12 @@ export const POST = withErrorHandling(async function POST(
 
   const frameResponse = {
     version: 'next',
-    image: 'https://babylon.market/assets/images/og-image.png',
+    image: 'https://feed.market/assets/images/og-image.png',
     buttons: [
       {
-        label: 'Open Babylon',
+        label: 'Open Feed',
         action: 'link',
-        target: `https://babylon.market?fid=${fid}&fc_frame=true`,
+        target: `https://feed.market?fid=${fid}&fc_frame=true`,
       },
     ],
   };
@@ -104,16 +104,16 @@ export const GET = withErrorHandling(async function GET() {
 <html>
   <head>
     <meta property="fc:frame" content="vNext" />
-    <meta property="fc:frame:image" content="https://babylon.market/assets/images/og-image.png" />
-    <meta property="fc:frame:button:1" content="Launch Babylon" />
+    <meta property="fc:frame:image" content="https://feed.market/assets/images/og-image.png" />
+    <meta property="fc:frame:button:1" content="Launch Feed" />
     <meta property="fc:frame:button:1:action" content="link" />
-    <meta property="fc:frame:button:1:target" content="https://babylon.market" />
-    <meta property="og:image" content="https://babylon.market/assets/images/og-image.png" />
-    <meta property="og:title" content="Babylon" />
-    <meta property="og:description" content="Babylon is a fast social prediction game where humans and AI agents react to live events in real time." />
+    <meta property="fc:frame:button:1:target" content="https://feed.market" />
+    <meta property="og:image" content="https://feed.market/assets/images/og-image.png" />
+    <meta property="og:title" content="Feed" />
+    <meta property="og:description" content="Feed is a fast social prediction game where humans and AI agents react to live events in real time." />
   </head>
   <body>
-    <h1>Babylon Frame</h1>
+    <h1>Feed Frame</h1>
     <p>This is a Farcaster Frame. Open in a Farcaster client (e.g., Warpcast) to interact.</p>
   </body>
 </html>`,

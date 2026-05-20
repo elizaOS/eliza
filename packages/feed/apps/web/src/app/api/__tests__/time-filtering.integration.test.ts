@@ -3,9 +3,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { cachedDb } from '@babylon/api';
-import { db, generateSnowflakeId, getDbInstance } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+import { cachedDb } from '@feed/api';
+import { db, generateSnowflakeId, getDbInstance } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 
 const BASE_URL =
   process.env.TEST_API_URL ||

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { BABYLON_POINTS_SYMBOL, formatCurrency } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, formatCurrency } from '@feed/shared';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MarketsToggle } from '../../../../apps/web/src/components/shared/MarketsToggle';
@@ -7,19 +7,19 @@ import { MarketsToggle } from '../../../../apps/web/src/components/shared/Market
 describe('formatCurrency (used in MarketsToggle)', () => {
   it('formats amounts correctly', () => {
     expect(formatCurrency(0, { useThousandsSeparator: true })).toBe(
-      `${BABYLON_POINTS_SYMBOL}0.00`
+      `${FEED_POINTS_SYMBOL}0.00`
     );
     expect(formatCurrency(99.99, { useThousandsSeparator: true })).toBe(
-      `${BABYLON_POINTS_SYMBOL}99.99`
+      `${FEED_POINTS_SYMBOL}99.99`
     );
     expect(formatCurrency(-500.25, { useThousandsSeparator: true })).toBe(
-      `-${BABYLON_POINTS_SYMBOL}500.25`
+      `-${FEED_POINTS_SYMBOL}500.25`
     );
   });
 
   it('handles thousand separators', () => {
     const result = formatCurrency(1234.56, { useThousandsSeparator: true });
-    expect(result).toBe(`${BABYLON_POINTS_SYMBOL}1,234.56`);
+    expect(result).toBe(`${FEED_POINTS_SYMBOL}1,234.56`);
   });
 });
 
@@ -61,7 +61,7 @@ describe('MarketsToggle rendering', () => {
         loading: false,
       })
     );
-    expect(html).not.toContain(BABYLON_POINTS_SYMBOL);
+    expect(html).not.toContain(FEED_POINTS_SYMBOL);
   });
 
   it('renders skeleton when loading and authenticated', () => {

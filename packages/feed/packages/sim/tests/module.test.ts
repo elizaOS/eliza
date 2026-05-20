@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AbstractBabylonSystem, defineSystem } from '../core/system';
+import { AbstractFeedSystem, defineSystem } from '../core/system';
 import type {
   EngineContext,
   SystemTickResult,
@@ -8,7 +8,7 @@ import type {
 import { TickPhase } from '../core/types';
 
 describe('defineSystem', () => {
-  it('returns a valid BabylonSystem from a definition', () => {
+  it('returns a valid FeedSystem from a definition', () => {
     const mod = defineSystem({
       id: 'test',
       name: 'Test Module',
@@ -81,9 +81,9 @@ describe('defineSystem', () => {
   });
 });
 
-describe('AbstractBabylonSystem (deprecated)', () => {
+describe('AbstractFeedSystem (deprecated)', () => {
   it('can be extended to create a module', async () => {
-    class TestModule extends AbstractBabylonSystem {
+    class TestModule extends AbstractFeedSystem {
       readonly id = 'test-class';
       readonly name = 'Test Class Module';
       readonly phase = TickPhase.Bootstrap;
@@ -102,7 +102,7 @@ describe('AbstractBabylonSystem (deprecated)', () => {
   });
 
   it('has no-op defaults for register and destroy', async () => {
-    class Minimal extends AbstractBabylonSystem {
+    class Minimal extends AbstractFeedSystem {
       readonly id = 'min';
       readonly name = 'Min';
       readonly phase = TickPhase.Events;

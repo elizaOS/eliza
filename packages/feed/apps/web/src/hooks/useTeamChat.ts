@@ -5,7 +5,7 @@
  * containing all their agents.
  */
 
-import { generateUUID, logger, type MessageMetadata } from '@babylon/shared';
+import { generateUUID, logger, type MessageMetadata } from '@feed/shared';
 import {
   useCallback,
   useEffect,

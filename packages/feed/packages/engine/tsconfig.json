@@ -9,14 +9,14 @@
     "noUnusedLocals": false,
     "baseUrl": ".",
     "paths": {
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"],
-      "@babylon/core": ["../core/markets/index.ts"],
-      "@babylon/core/*": ["../core/*"],
-      "@babylon/pack-default": ["../pack-default/src/index.ts"],
-      "@babylon/pack-default/*": ["../pack-default/src/*"]
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"],
+      "@feed/core": ["../core/markets/index.ts"],
+      "@feed/core/*": ["../core/*"],
+      "@feed/pack-default": ["../pack-default/src/index.ts"],
+      "@feed/pack-default/*": ["../pack-default/src/*"]
     }
   },
   "include": ["src/**/*", "src/**/*.json"],

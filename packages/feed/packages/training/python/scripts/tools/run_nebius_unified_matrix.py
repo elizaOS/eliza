@@ -39,7 +39,7 @@ from qwen_capacity import (
 )
 
 WORKSPACE_ROOT = Path(
-    os.environ.get("BABYLON_WORKSPACE_ROOT", str(Path(__file__).resolve().parents[6]))
+    os.environ.get("FEED_WORKSPACE_ROOT", str(Path(__file__).resolve().parents[6]))
 )
 
 
@@ -57,21 +57,21 @@ def resolve_scambench_root(workspace_root: Path) -> Path:
 SCAMBENCH_ROOT = resolve_scambench_root(WORKSPACE_ROOT)
 DEFAULT_WEIGHTED_EXPORT = (
     WORKSPACE_ROOT
-    / "babylon"
+    / "feed"
     / "training-data"
     / "scam-defense-export"
     / "2026-03-27T-unified-weighted-format"
 )
 DEFAULT_UNWEIGHTED_EXPORT = (
     WORKSPACE_ROOT
-    / "babylon"
+    / "feed"
     / "training-data"
     / "scam-defense-export"
     / "2026-03-27T-unified-unweighted"
 )
 DEFAULT_SCENARIO_CATALOG = SCAMBENCH_ROOT / "generated" / "scenario-catalog.json"
-DEFAULT_RESULTS_ROOT = WORKSPACE_ROOT / "babylon" / "runs" / "nebius-unified"
-STAGED_INPUTS_ROOT = Path("babylon") / "runs" / "nebius-unified" / "_inputs"
+DEFAULT_RESULTS_ROOT = WORKSPACE_ROOT / "feed" / "runs" / "nebius-unified"
+STAGED_INPUTS_ROOT = Path("feed") / "runs" / "nebius-unified" / "_inputs"
 
 
 @dataclass(frozen=True)
@@ -223,7 +223,7 @@ def variant_training_label(model_name_slug: str, variant_id: str) -> str:
 
 def variant_training_output_dir(workspace: str, model_name_slug: str, variant_id: str) -> str:
     return (
-        f"{workspace}/babylon/trained_models/{variant_training_label(model_name_slug, variant_id)}"
+        f"{workspace}/feed/trained_models/{variant_training_label(model_name_slug, variant_id)}"
     )
 
 
@@ -522,24 +522,24 @@ def bundle_sync_entries(
 ) -> list[tuple[Path, Path]]:
     return [
         (
-            WORKSPACE_ROOT / "babylon/packages/training/python/scripts",
-            Path("babylon/packages/training/python/scripts"),
+            WORKSPACE_ROOT / "feed/packages/training/python/scripts",
+            Path("feed/packages/training/python/scripts"),
         ),
         (
-            WORKSPACE_ROOT / "babylon/packages/training/python/src",
-            Path("babylon/packages/training/python/src"),
+            WORKSPACE_ROOT / "feed/packages/training/python/src",
+            Path("feed/packages/training/python/src"),
         ),
         (
-            WORKSPACE_ROOT / "babylon/packages/training/python/requirements.txt",
-            Path("babylon/packages/training/python/requirements.txt"),
+            WORKSPACE_ROOT / "feed/packages/training/python/requirements.txt",
+            Path("feed/packages/training/python/requirements.txt"),
         ),
         (
-            WORKSPACE_ROOT / "babylon/packages/training/python/pyproject.toml",
-            Path("babylon/packages/training/python/pyproject.toml"),
+            WORKSPACE_ROOT / "feed/packages/training/python/pyproject.toml",
+            Path("feed/packages/training/python/pyproject.toml"),
         ),
         (
-            WORKSPACE_ROOT / "babylon/packages/training/python/setup.py",
-            Path("babylon/packages/training/python/setup.py"),
+            WORKSPACE_ROOT / "feed/packages/training/python/setup.py",
+            Path("feed/packages/training/python/setup.py"),
         ),
         (weighted_export_dir.resolve(), bundle_relative_path(weighted_export_dir)),
         (unweighted_export_dir.resolve(), bundle_relative_path(unweighted_export_dir)),
@@ -613,7 +613,7 @@ def sync_workspace_subset(
 
 def render_remote_script(args: argparse.Namespace) -> str:
     workspace = shlex.quote(args.remote_workspace)
-    python_root = f"{workspace}/babylon/packages/training/python"
+    python_root = f"{workspace}/feed/packages/training/python"
     weighted_dir = remote_workspace_path(workspace, args.weighted_export_dir)
     unweighted_dir = remote_workspace_path(workspace, args.unweighted_export_dir)
     scenario_catalog = remote_workspace_path(workspace, args.scenario_catalog)
@@ -684,7 +684,7 @@ def render_remote_script(args: argparse.Namespace) -> str:
             "--model",
             shlex.quote(args.base_model),
             "--output",
-            shlex.quote(f"{workspace}/babylon/trained_models/{label}"),
+            shlex.quote(f"{workspace}/feed/trained_models/{label}"),
             "--auto-detect-held-out",
             "--max-steps",
             str(args.max_steps),
@@ -807,7 +807,7 @@ def render_remote_script(args: argparse.Namespace) -> str:
 
 def build_matrix(args: argparse.Namespace) -> list[dict[str, Any]]:
     workspace = shlex.quote(args.remote_workspace)
-    python_root = f"{workspace}/babylon/packages/training/python"
+    python_root = f"{workspace}/feed/packages/training/python"
     weighted_dir = remote_workspace_path(workspace, args.weighted_export_dir)
     unweighted_dir = remote_workspace_path(workspace, args.unweighted_export_dir)
     scenario_catalog = remote_workspace_path(workspace, args.scenario_catalog)
@@ -883,7 +883,7 @@ def build_matrix(args: argparse.Namespace) -> list[dict[str, Any]]:
             "--model",
             shlex.quote(args.base_model),
             "--output",
-            shlex.quote(f"{workspace}/babylon/trained_models/{label}"),
+            shlex.quote(f"{workspace}/feed/trained_models/{label}"),
             "--auto-detect-held-out",
             "--max-steps",
             str(args.max_steps),
@@ -1062,8 +1062,8 @@ def build_args() -> argparse.ArgumentParser:
     parser.add_argument("--username", default="trainer")
     parser.add_argument("--ssh-key", default=str(Path.home() / ".ssh" / "id_ed25519.pub"))
     parser.add_argument("--ssh-private-key", default=str(Path.home() / ".ssh" / "id_ed25519"))
-    parser.add_argument("--remote-workspace", default="/home/trainer/babylon-workspace")
-    parser.add_argument("--remote-results-dir", default="babylon/runs/nebius-unified/latest")
+    parser.add_argument("--remote-workspace", default="/home/trainer/feed-workspace")
+    parser.add_argument("--remote-results-dir", default="feed/runs/nebius-unified/latest")
     parser.add_argument("--weighted-export-dir", type=Path, default=DEFAULT_WEIGHTED_EXPORT)
     parser.add_argument("--unweighted-export-dir", type=Path, default=DEFAULT_UNWEIGHTED_EXPORT)
     parser.add_argument("--scenario-catalog", type=Path, default=DEFAULT_SCENARIO_CATALOG)

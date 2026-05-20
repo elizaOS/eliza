@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Babylon training stack preflight.
+Feed training stack preflight.
 
 This runs the current production-facing training commands instead of poking
 legacy internals:
@@ -151,7 +151,7 @@ def check_local_pipeline_smoke(local_export_dir: Path | None) -> CheckResult:
             message=f"Local export is missing trajectories.jsonl: {local_export_dir}",
         )
 
-    with tempfile.TemporaryDirectory(prefix="babylon-preflight-local-") as output_dir:
+    with tempfile.TemporaryDirectory(prefix="feed-preflight-local-") as output_dir:
         command = [
             sys.executable,
             str(SCRIPT_DIR / "run_pipeline.py"),
@@ -253,7 +253,7 @@ def check_dependency_audit() -> CheckResult:
 
 
 def check_release_status_commands() -> CheckResult:
-    with tempfile.TemporaryDirectory(prefix="babylon-preflight-release-") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="feed-preflight-release-") as tmp_dir:
         root = Path(tmp_dir)
         commands = {
             "scam_defense": [
@@ -498,7 +498,7 @@ def check_throughput_reports(
 def render_human_summary(results: list[CheckResult]) -> str:
     lines = [
         "=" * 72,
-        "BABYLON TRAINING STACK PREFLIGHT",
+        "FEED TRAINING STACK PREFLIGHT",
         "=" * 72,
     ]
     for result in results:
@@ -519,7 +519,7 @@ def render_human_summary(results: list[CheckResult]) -> str:
 
 def build_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run production-style preflight checks for the Babylon training stack."
+        description="Run production-style preflight checks for the Feed training stack."
     )
     parser.add_argument(
         "--local-export-dir",

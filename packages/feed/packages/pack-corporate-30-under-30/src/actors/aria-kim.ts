@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'aria-kim',
@@ -71,7 +71,7 @@ const actor = {
     "Founder @HarmonyOS | The future of computing is... | KAIST | The answer is the question | Coming soon (definition of 'soon' may vary)",
   pfpDescription:
     'Korean woman in her late 20s with sharp, delicate features, straight black hair cut asymmetrically, and dark eyes that reveal nothing. Minimal makeup, a slight enigmatic half-smile. Wearing a simple black mock-neck. Background: intentionally blurred \u2014 even her profile picture is opaque.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

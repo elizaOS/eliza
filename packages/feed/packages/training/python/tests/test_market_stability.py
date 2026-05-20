@@ -56,7 +56,7 @@ class UniswapV2Pool:
 
 
 # =============================================================================
-# Babylon AMM implementation (must match reference)
+# Feed AMM implementation (must match reference)
 # =============================================================================
 
 
@@ -110,7 +110,7 @@ def calculate_trade_impact(
 
 
 # =============================================================================
-# Test: Babylon AMM matches Uniswap v2 reference
+# Test: Feed AMM matches Uniswap v2 reference
 # =============================================================================
 
 

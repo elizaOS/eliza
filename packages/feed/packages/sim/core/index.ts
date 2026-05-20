@@ -1,14 +1,14 @@
 /**
- * @babylon/sim — Standalone simulation engine with CLI, config, and auto-import scanning.
+ * @feed/sim — Standalone simulation engine with CLI, config, and auto-import scanning.
  */
 
-export type { PromptDefinition } from '@babylon/engine/prompts/define-prompt';
-// Augmentation interfaces (declare module '@babylon/sim' { ... })
+export type { PromptDefinition } from '@feed/engine/prompts/define-prompt';
+// Augmentation interfaces (declare module '@feed/sim' { ... })
 export type {
-  BabylonConfig,
-  BabylonHooks,
-  BabylonServices,
-  BabylonSharedData,
+  FeedConfig,
+  FeedHooks,
+  FeedServices,
+  FeedSharedData,
 } from './augments';
 // Bridge (legacy)
 export {
@@ -29,10 +29,10 @@ export {
 } from './composables';
 // Config
 export {
-  type BabylonRuntimeConfig,
-  defineBabylonConfig,
-  loadBabylonConfig,
-  watchBabylonConfig,
+  type FeedRuntimeConfig,
+  defineFeedConfig,
+  loadFeedConfig,
+  watchFeedConfig,
 } from './config';
 export {
   type CreateEngineContextOptions,
@@ -41,7 +41,7 @@ export {
   DefaultTickSharedData,
 } from './context';
 // Engine
-export { BabylonEngine } from './engine';
+export { FeedEngine } from './engine';
 // Errors
 export {
   CircularDependencyError,
@@ -58,13 +58,13 @@ export { DefaultServiceContainer } from './service-container';
 // System definers
 /** @deprecated Use `defineSystem()` instead. */
 export {
-  AbstractBabylonSystem,
+  AbstractFeedSystem,
   defineSystem,
   type SystemDefinition,
 } from './system';
 // Types
 export {
-  type BabylonSystem,
+  type FeedSystem,
   type EngineConfig,
   type EngineContext,
   type LLMExecuteOptions,

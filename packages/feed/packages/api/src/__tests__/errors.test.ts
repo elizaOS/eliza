@@ -11,7 +11,7 @@ import {
   InternalServerError,
   isAuthenticationError,
   isAuthorizationError,
-  isBabylonError,
+  isFeedError,
   isOperationalError,
   NotFoundError,
   RateLimitError,
@@ -176,20 +176,20 @@ describe('Type Guards', () => {
     });
   });
 
-  describe('isBabylonError', () => {
-    it('returns true for all BabylonError subclasses', () => {
-      expect(isBabylonError(new AuthenticationError())).toBe(true);
-      expect(isBabylonError(new AuthorizationError())).toBe(true);
-      expect(isBabylonError(new BadRequestError('test'))).toBe(true);
-      expect(isBabylonError(new NotFoundError())).toBe(true);
-      expect(isBabylonError(new InternalServerError())).toBe(true);
+  describe('isFeedError', () => {
+    it('returns true for all FeedError subclasses', () => {
+      expect(isFeedError(new AuthenticationError())).toBe(true);
+      expect(isFeedError(new AuthorizationError())).toBe(true);
+      expect(isFeedError(new BadRequestError('test'))).toBe(true);
+      expect(isFeedError(new NotFoundError())).toBe(true);
+      expect(isFeedError(new InternalServerError())).toBe(true);
     });
 
-    it('returns false for non-BabylonError', () => {
-      expect(isBabylonError(new Error())).toBe(false);
-      expect(isBabylonError(new ApiError('test'))).toBe(false);
-      expect(isBabylonError('string')).toBe(false);
-      expect(isBabylonError(null)).toBe(false);
+    it('returns false for non-FeedError', () => {
+      expect(isFeedError(new Error())).toBe(false);
+      expect(isFeedError(new ApiError('test'))).toBe(false);
+      expect(isFeedError('string')).toBe(false);
+      expect(isFeedError(null)).toBe(false);
     });
   });
 
@@ -204,7 +204,7 @@ describe('Type Guards', () => {
       expect(isOperationalError(new InternalServerError())).toBe(false);
     });
 
-    it('returns false for non-BabylonError', () => {
+    it('returns false for non-FeedError', () => {
       expect(isOperationalError(new Error())).toBe(false);
     });
   });

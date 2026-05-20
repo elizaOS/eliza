@@ -26,14 +26,14 @@ import {
   eq,
   sql,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   DAILY_LOGIN,
   generateSnowflakeId,
   isValidSnowflakeId,
   logger,
   POINTS,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { DistributedLockService } from './distributed-lock-service';
 
 // ─── Errors ──────────────────────────────────────────────────────────────────

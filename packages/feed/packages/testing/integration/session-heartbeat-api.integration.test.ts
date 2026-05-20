@@ -19,8 +19,8 @@ import {
   userActivityLogs,
   userSessions,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 
 const BASE_URL =
   process.env.TEST_API_URL ||

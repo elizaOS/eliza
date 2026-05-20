@@ -59,8 +59,8 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import { NextResponse } from 'next/server';
 
 export const POST = withErrorHandling(async function POST() {

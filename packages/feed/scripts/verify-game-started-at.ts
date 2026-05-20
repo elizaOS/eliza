@@ -8,8 +8,8 @@
  * Usage: bun scripts/verify-game-started-at.ts
  */
 
-import { db, eq, games } from '@babylon/db';
-import { getGameDayNumber } from '@babylon/engine/utils/date-utils';
+import { db, eq, games } from '@feed/db';
+import { getGameDayNumber } from '@feed/engine/utils/date-utils';
 
 async function verifyGameStartedAt() {
   console.log('🔍 Checking continuous game startedAt...\n');

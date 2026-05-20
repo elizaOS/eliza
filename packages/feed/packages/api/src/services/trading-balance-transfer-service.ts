@@ -7,14 +7,14 @@ import {
   inArray,
   sql,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
   generateSnowflakeId,
   logger,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { CACHE_KEYS, cachedDb, invalidateCache } from '../cache';
 import { findUserByIdentifier } from '../users/user-lookup';
 
@@ -193,7 +193,7 @@ export class TradingBalanceTransferService {
       return {
         success: false,
         errorCode: 'RECIPIENT_NOT_ALLOWED',
-        error: 'Recipient must be a Babylon user, not an actor or agent',
+        error: 'Recipient must be a Feed user, not an actor or agent',
       };
     }
 
@@ -222,7 +222,7 @@ export class TradingBalanceTransferService {
         return {
           success: false,
           errorCode: 'SENDER_NOT_ALLOWED',
-          error: 'Only Babylon users can send trading balance',
+          error: 'Only Feed users can send trading balance',
         } satisfies TradingBalanceTransferFailure;
       }
 
@@ -230,7 +230,7 @@ export class TradingBalanceTransferService {
         return {
           success: false,
           errorCode: 'RECIPIENT_NOT_ALLOWED',
-          error: 'Recipient must be a Babylon user, not an actor or agent',
+          error: 'Recipient must be a Feed user, not an actor or agent',
         } satisfies TradingBalanceTransferFailure;
       }
 

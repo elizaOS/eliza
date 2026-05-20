@@ -1,4 +1,4 @@
-import type { JsonValue } from '@babylon/db';
+import type { JsonValue } from '@feed/db';
 
 export type BroadcastToChannelFn = (
   channel: string,
@@ -11,7 +11,7 @@ let broadcastFn: BroadcastToChannelFn | null = null;
  * Set the broadcast function used by engine services.
  *
  * The web/api layer should call this once per process (or per invocation) to
- * wire `@babylon/api`'s SSE broadcaster into the engine.
+ * wire `@feed/api`'s SSE broadcaster into the engine.
  */
 export function setBroadcastToChannel(fn: BroadcastToChannelFn | null): void {
   broadcastFn = fn;

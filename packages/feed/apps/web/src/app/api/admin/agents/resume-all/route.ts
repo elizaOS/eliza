@@ -15,7 +15,7 @@ import {
   logAdminModify,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   db,
   eq,
@@ -24,8 +24,8 @@ import {
   sql,
   userAgentConfigs,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

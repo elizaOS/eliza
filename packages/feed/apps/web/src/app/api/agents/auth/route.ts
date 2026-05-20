@@ -5,7 +5,7 @@
  * @access Public (with credentials)
  *
  * @description
- * Secure authentication endpoint for autonomous Babylon agents. Provides
+ * Secure authentication endpoint for autonomous Feed agents. Provides
  * session-based authentication without requiring user Privy tokens. Agent
  * credentials are validated against environment variables, and successful
  * authentication returns a time-limited session token.
@@ -75,7 +75,7 @@
  * ```
  *
  * @see {@link /lib/auth/agent-auth} Agent authentication implementation
- * @see {@link /examples/babylon-typescript-agent} Example agent usage
+ * @see {@link /examples/feed-typescript-agent} Example agent usage
  */
 
 import {
@@ -86,8 +86,8 @@ import {
   successResponse,
   verifyAgentCredentials,
   withErrorHandling,
-} from '@babylon/api';
-import { AgentAuthSchema, logger } from '@babylon/shared';
+} from '@feed/api';
+import { AgentAuthSchema, logger } from '@feed/shared';
 import { randomBytes } from 'crypto';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -96,7 +96,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 /**
  * In development, accept any non-empty string as agentId (not just Snowflake IDs).
- * This allows dev-mode agent IDs like "babylon-agent-alice" or "dev-admin-local".
+ * This allows dev-mode agent IDs like "feed-agent-alice" or "dev-admin-local".
  */
 const DevAgentAuthSchema = z.object({
   agentId: z.string().min(1, { message: 'Agent ID is required' }),

@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-This directory contains the rate limiting and duplicate detection system for the Babylon platform.
+This directory contains the rate limiting and duplicate detection system for the Feed platform.
 
 ## Features
 
@@ -40,7 +40,7 @@ This directory contains the rate limiting and duplicate detection system for the
 ### Usage in a GET handler
 
 ```typescript
-import { addPublicReadHeaders, publicRateLimit, successResponse } from '@babylon/api';
+import { addPublicReadHeaders, publicRateLimit, successResponse } from '@feed/api';
 
 export async function GET(request: NextRequest) {
   const { error, user, rateLimitInfo } = await publicRateLimit(request);
@@ -74,7 +74,7 @@ import {
   checkRateLimitAndDuplicates,
   RATE_LIMIT_CONFIGS,
   DUPLICATE_DETECTION_CONFIGS 
-} from '@babylon/api';
+} from '@feed/api';
 ```
 
 ### Apply Rate Limiting Only

@@ -6,8 +6,8 @@
  */
 
 import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { db, eq, like, or, worldFacts } from '@babylon/db';
-import { worldFactsService } from '@babylon/engine';
+import { db, eq, like, or, worldFacts } from '@feed/db';
+import { worldFactsService } from '@feed/engine';
 
 // Skip if DATABASE_URL is not set
 const shouldSkip = !process.env.DATABASE_URL;

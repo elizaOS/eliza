@@ -176,7 +176,7 @@ GRPO requires different scores within a group to compute gradients.
 We add small deterministic tiebreakers:
 
 ```python
-# From babylon_env.py
+# From feed_env.py
 def _add_tiebreaker(score: float, response: str, action_type: str) -> float:
     epsilon = 0.0
     
@@ -263,7 +263,7 @@ In W&B, look for:
 ### Logging Scores
 
 ```python
-# In babylon_env.py
+# In feed_env.py
 logger.info(f"Batch scores: {scores}")
 logger.info(f"  Mean: {np.mean(scores):.3f}")
 logger.info(f"  Std:  {np.std(scores):.3f}")

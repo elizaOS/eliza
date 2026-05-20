@@ -5,7 +5,7 @@
  * multiple LLM calls due to token limits.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { JsonValue } from '../types/common';
 
 export interface ParsedContent {

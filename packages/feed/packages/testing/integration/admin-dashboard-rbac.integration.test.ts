@@ -2,7 +2,7 @@
 // Run: bun test integration/admin-dashboard-rbac.integration.test.ts --preload ./integration/preload.ts
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { getAllAdmins } from '@babylon/api';
+import { getAllAdmins } from '@feed/api';
 import {
   ADMIN_PERMISSIONS,
   ADMIN_ROLES,
@@ -11,8 +11,8 @@ import {
   eq,
   ROLE_PERMISSIONS,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   getAdminToken,
   requireAuth as requireAuthShared,

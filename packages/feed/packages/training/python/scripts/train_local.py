@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Babylon Local Training Script - Unified Mac (MLX) + GTX (CUDA) Support
+Feed Local Training Script - Unified Mac (MLX) + GTX (CUDA) Support
 
 This script provides training using REAL data from the database OR local JSON files.
 Only trajectories with actual LLM calls are used.
@@ -85,7 +85,7 @@ from src.data_bridge.reader import (
     PostgresTrajectoryReader,
     has_minimum_usable_action_steps,
 )
-from src.models import BabylonTrajectory
+from src.models import FeedTrajectory
 from src.training.local_models import default_local_model_for_backend
 
 # Load environment
@@ -278,11 +278,11 @@ async def load_postgres_training_data(
     min_actions: int,
     lookback_hours: int,
     max_trajectories: int,
-) -> list[BabylonTrajectory]:
+) -> list[FeedTrajectory]:
     """Load REAL training data from the database and parse into Pydantic models."""
     logger.info("Loading real training data from database...")
 
-    trajectories: list[BabylonTrajectory] = []
+    trajectories: list[FeedTrajectory] = []
 
     try:
         async with PostgresTrajectoryReader(database_url) as reader:
@@ -329,7 +329,7 @@ async def load_postgres_training_data(
                             else 0,
                             "archetype": traj_row.archetype,
                         }
-                        traj_model = BabylonTrajectory.model_validate(traj_data)
+                        traj_model = FeedTrajectory.model_validate(traj_data)
                         trajectories.append(traj_model)
                     except Exception as e:
                         logger.warning(
@@ -587,12 +587,12 @@ def load_json_training_data(
     source_dir: str,
     max_trajectories: int,
     min_actions: int = 1,
-) -> list[BabylonTrajectory]:
+) -> list[FeedTrajectory]:
     """Loads training data from a directory of JSON files."""
     logger.info(f"Loading training data from local directory: {source_dir}")
     try:
         reader = JsonTrajectoryReader(source_dir)
-        all_trajectories: list[BabylonTrajectory] = []
+        all_trajectories: list[FeedTrajectory] = []
         invalid_trajectory_count = 0
         for window_id in sorted(reader.get_window_ids()):
             for traj_data in sorted(
@@ -623,7 +623,7 @@ def load_json_training_data(
                         )
                         continue
 
-                    all_trajectories.append(BabylonTrajectory.model_validate(traj_data))
+                    all_trajectories.append(FeedTrajectory.model_validate(traj_data))
                 except Exception as e:
                     invalid_trajectory_count += 1
                     if invalid_trajectory_count <= 5:
@@ -692,7 +692,7 @@ def shorten_text(value: str, limit: int) -> str:
     return text[: max(limit - 3, 1)].rstrip() + "..."
 
 
-def trajectory_selection_score(traj: BabylonTrajectory) -> tuple[float, float, int, str, str]:
+def trajectory_selection_score(traj: FeedTrajectory) -> tuple[float, float, int, str, str]:
     return (
         float(traj.total_reward or 0.0),
         float(traj.final_pnl or 0.0),
@@ -1019,7 +1019,7 @@ def build_trade_training_prompt(step: Any, llm_call: Any | None) -> str:
 
 
 def build_trade_canonical_messages(
-    traj: BabylonTrajectory,
+    traj: FeedTrajectory,
     step: Any,
 ) -> dict[str, Any] | None:
     if step.action is None or not is_trade_action_type(step.action.action_type):
@@ -1104,7 +1104,7 @@ def looks_like_decision_interaction(
 
 
 def build_decision_canonical_messages(
-    traj: BabylonTrajectory,
+    traj: FeedTrajectory,
     step: Any,
 ) -> dict[str, Any] | None:
     llm_call = select_primary_llm_call(step)
@@ -1163,7 +1163,7 @@ def build_decision_canonical_messages(
 
 
 def build_natural_message_canonical_messages(
-    traj: BabylonTrajectory,
+    traj: FeedTrajectory,
     step: Any,
 ) -> dict[str, Any] | None:
     llm_call = select_primary_llm_call(step)
@@ -1417,11 +1417,11 @@ def curate_trade_training_samples(
 
 
 def trajectories_to_training_samples(
-    trajectories: list[BabylonTrajectory],
+    trajectories: list[FeedTrajectory],
     sample_profile: Literal["raw", "trade-canonical", "decision-canonical", "canonical"] = "raw",
 ) -> list[dict]:
     """
-    Convert a list of BabylonTrajectory objects to the training sample format.
+    Convert a list of FeedTrajectory objects to the training sample format.
 
     Each LLM call within a trajectory is extracted into a separate sample
     containing a list of messages (system, user, assistant).
@@ -2631,7 +2631,7 @@ async def main_async(args):
             eval_source_dir = str(held_out_candidate)
             logger.info(f"Auto-detected held-out eval directory: {eval_source_dir}")
 
-    eval_trajectories: list[BabylonTrajectory] | None = None
+    eval_trajectories: list[FeedTrajectory] | None = None
     try:
         if eval_source_dir:
             eval_trajectories = load_json_training_data(
@@ -2653,7 +2653,7 @@ async def main_async(args):
         return 1
 
     # Load format recovery trajectories for multi-task mixing
-    format_recovery_trajectories: list[BabylonTrajectory] | None = None
+    format_recovery_trajectories: list[FeedTrajectory] | None = None
     if args.format_recovery_dir:
         try:
             format_recovery_trajectories = load_json_training_data(
@@ -2879,7 +2879,7 @@ def main():
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     parser = argparse.ArgumentParser(
-        description="Babylon Local Training", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Feed Local Training", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     parser.add_argument(

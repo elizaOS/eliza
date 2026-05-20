@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'jasper-thorne',
@@ -78,7 +78,7 @@ const actor = {
     "Founder @AphelionCapital | Civilizational Strategist | 'Democracy is a bug, not a feature' | Aphelion Dispatches (substack) | Heterodox by necessity",
   pfpDescription:
     "White American male in his early 30s with sharp features, dark hair swept back, and pale blue eyes that look like they've read too much Nietzsche. Wearing a black turtleneck (he calls it 'intellectual armor'). Thin, angular face with a permanent expression of mild disdain. Background: a study filled with leather-bound books he's definitely read.",
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'manipulator',

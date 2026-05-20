@@ -14,9 +14,9 @@
  */
 
 import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@babylon/db';
-import { chats, messages, posts } from '@babylon/db/schema';
-import { getAllActors, getAllOrganizations } from '@babylon/engine';
+import { getRawDrizzle } from '@feed/db';
+import { chats, messages, posts } from '@feed/db/schema';
+import { getAllActors, getAllOrganizations } from '@feed/engine';
 import { and, desc, gte, isNull, sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------

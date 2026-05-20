@@ -1,5 +1,5 @@
 /**
- * Emotion System for Babylon
+ * Emotion System for Feed
  *
  * @module engine/EmotionSystem
  *

@@ -21,7 +21,7 @@ import {
   trainingBatches,
   trajectories,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import { mkdirSync, writeFileSync } from 'fs';
 import { CANONICAL_ARCHETYPES } from '../src/rubrics';
 
@@ -63,7 +63,7 @@ async function main() {
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );
-  console.log('  Babylon Training Data Assessment');
+  console.log('  Feed Training Data Assessment');
   console.log(
     '═══════════════════════════════════════════════════════════════\n'
   );
@@ -288,7 +288,7 @@ async function main() {
     result.counts.totalTrajectories > 0
   ) {
     result.summary.issues.push(
-      'Trajectories exist but none are scored - run "babylon train score"'
+      'Trajectories exist but none are scored - run "feed train score"'
     );
   }
   if (result.archetypeBreakdown.every((a) => a.archetype === 'unknown')) {
@@ -298,15 +298,15 @@ async function main() {
   // Generate recommendations
   if (result.counts.totalAgents === 0) {
     result.summary.recommendations.push(
-      'Create agents: babylon agent spawn --count 5'
+      'Create agents: feed agent spawn --count 5'
     );
     result.summary.recommendations.push(
-      'Enable agents: babylon agent enable --all'
+      'Enable agents: feed agent enable --all'
     );
   }
   if (result.counts.totalTrajectories === 0 && result.counts.totalAgents > 0) {
     result.summary.recommendations.push(
-      'Run agents with trajectory recording: babylon train parallel -a trader -n 3 -t 50'
+      'Run agents with trajectory recording: feed train parallel -a trader -n 3 -t 50'
     );
   }
   if (
@@ -314,7 +314,7 @@ async function main() {
     result.counts.totalTrajectories > 0
   ) {
     result.summary.recommendations.push(
-      'Score trajectories: babylon train score'
+      'Score trajectories: feed train score'
     );
   }
   if (
@@ -322,7 +322,7 @@ async function main() {
     result.counts.scoredTrajectories > 0
   ) {
     result.summary.recommendations.push(
-      'Export and train: babylon train archetype -a trader'
+      'Export and train: feed train archetype -a trader'
     );
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { DrizzleClient } from '@babylon/db';
+import type { DrizzleClient } from '@feed/db';
 import {
   useDB,
   useEngine,
@@ -7,13 +7,13 @@ import {
   useServices,
   useTick,
 } from '../core/composables';
-import { BabylonEngine } from '../core/engine';
+import { FeedEngine } from '../core/engine';
 import { defineSystem } from '../core/system';
 import type { EngineContext, TickContext } from '../core/types';
 import { TickPhase } from '../core/types';
 
 function makeTestEngine(budgetMs = 60000) {
-  return new BabylonEngine({
+  return new FeedEngine({
     db: { _marker: 'integration-db' } as unknown as DrizzleClient,
     llm: {
       execute: async () => ({ generated: true }) as never,
@@ -24,7 +24,7 @@ function makeTestEngine(budgetMs = 60000) {
       warn: () => {},
       error: () => {},
       debug: () => {},
-    } as unknown as import('@babylon/shared').Logger,
+    } as unknown as import('@feed/shared').Logger,
     config: { budgetMs },
   });
 }

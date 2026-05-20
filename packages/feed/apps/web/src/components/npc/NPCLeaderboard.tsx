@@ -28,7 +28,7 @@
  */
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import { Activity, TrendingDown, TrendingUp, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { apiUrl } from '@/utils/api-url';
@@ -204,7 +204,7 @@ export function NPCLeaderboard({
               {/* Portfolio Value */}
               <div className="text-right">
                 <div className="flex items-center gap-1 font-bold text-foreground text-sm">
-                  <span className="h-3 w-3">{BABYLON_POINTS_SYMBOL}</span>
+                  <span className="h-3 w-3">{FEED_POINTS_SYMBOL}</span>
                   {entry.performance.totalValue.toLocaleString()}
                 </div>
                 <div className="text-muted-foreground text-xs">Value</div>
@@ -242,7 +242,7 @@ export function NPCLeaderboard({
                   )}
                 >
                   {entry.performance.unrealizedPnL >= 0 ? '+' : ''}
-                  {BABYLON_POINTS_SYMBOL}
+                  {FEED_POINTS_SYMBOL}
                   {Math.abs(entry.performance.unrealizedPnL).toLocaleString()}
                 </div>
                 <div className="text-muted-foreground text-xs">Unrealized</div>
@@ -273,7 +273,7 @@ export function NPCLeaderboard({
       {data.leaderboard.length === data.metadata.limit && (
         <div className="border-border border-t pt-2 text-center text-muted-foreground text-xs">
           Showing top {data.metadata.limit} NPCs. Minimum portfolio value:{' '}
-          {BABYLON_POINTS_SYMBOL}
+          {FEED_POINTS_SYMBOL}
           {data.metadata.minValue.toLocaleString()}
         </div>
       )}

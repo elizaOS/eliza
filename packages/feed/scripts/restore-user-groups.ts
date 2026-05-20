@@ -10,12 +10,12 @@
  *   bun run scripts/restore-user-groups.ts --user=<user-id>
  */
 
-import { db, eq, ilike, users } from '@babylon/db';
+import { db, eq, ilike, users } from '@feed/db';
 import {
   TieredGroupService,
   UserAlphaGroupAssignmentService,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -113,7 +113,7 @@ async function main() {
 
   // Step 1: Ensure tier groups exist (bootstrap)
   console.log('Step 1: Ensuring tier groups exist for all NPCs...');
-  const { StaticDataRegistry } = await import('@babylon/engine');
+  const { StaticDataRegistry } = await import('@feed/engine');
   const actors = StaticDataRegistry.getAllActors().filter((a) => !a.isTest);
 
   let groupsCreated = 0;
@@ -150,7 +150,7 @@ async function main() {
 
   // Step 3: Show final state
   console.log('\nStep 3: Final group count...');
-  const { count, groupMembers, groups, and } = await import('@babylon/db');
+  const { count, groupMembers, groups, and } = await import('@feed/db');
   const [groupCount] = await db
     .select({ count: count() })
     .from(groupMembers)

@@ -5,7 +5,7 @@
  * Works with any Redis server via the standard Redis protocol.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import type { JsonValue } from '../types';
 import { getRedisClient, type RedisInstance } from './client';
 

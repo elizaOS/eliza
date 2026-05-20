@@ -5,8 +5,8 @@
  * Useful for getting context about the full conversation history.
  */
 
-import { db, desc, eq, messages, users } from '@babylon/db';
-import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from '@babylon/shared';
+import { db, desc, eq, messages, users } from '@feed/db';
+import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from '@feed/shared';
 import type {
   Action,
   ActionResult,

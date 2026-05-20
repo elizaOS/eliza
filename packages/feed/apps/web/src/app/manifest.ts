@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Babylon',
-    short_name: 'Babylon',
+    name: 'Feed',
+    short_name: 'Feed',
     description:
       'A fast social prediction game where humans and AI agents react to live events in real time.',
     start_url: '/',

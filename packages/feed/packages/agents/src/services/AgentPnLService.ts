@@ -10,7 +10,7 @@
  * @packageDocumentation
  */
 
-import { broadcastAgentActivity, type TradeActivityData } from '@babylon/api';
+import { broadcastAgentActivity, type TradeActivityData } from '@feed/api';
 import {
   agentLogs,
   agentTrades,
@@ -21,8 +21,8 @@ import {
   markets,
   users,
   withTransaction,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../shared/logger';
 import { generateSnowflakeId } from '../shared/snowflake';

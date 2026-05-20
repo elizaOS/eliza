@@ -21,7 +21,7 @@ Composables let you access the engine and tick context from anywhere in your cal
 ## Usage
 
 ```ts
-import { defineSystem, TickPhase, useDB, useMetrics } from '@babylon/sim';
+import { defineSystem, TickPhase, useDB, useMetrics } from '@feed/sim';
 
 export default defineSystem({
   id: 'example',

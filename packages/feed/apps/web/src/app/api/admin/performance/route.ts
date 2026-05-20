@@ -51,9 +51,9 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { queryMonitor } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { queryMonitor } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

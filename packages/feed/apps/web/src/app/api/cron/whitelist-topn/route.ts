@@ -20,9 +20,9 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { autoWhitelistCurrentTopN } from '@babylon/api/services/whitelist-service';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { autoWhitelistCurrentTopN } from '@feed/api/services/whitelist-service';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   isValidOnboardingUsername,
   sanitizeOnboardingUsername,
-} from '@babylon/shared/utils/username';
+} from '@feed/shared/utils/username';
 
 describe('sanitizeOnboardingUsername', () => {
   it('keeps an already valid onboarding username', () => {

@@ -4,7 +4,7 @@
  * Validation schemas for each tool's arguments
  */
 
-import { JsonValueSchema } from '@babylon/shared';
+import { JsonValueSchema } from '@feed/shared';
 import { z } from 'zod';
 import type {
   AcceptGroupInviteArgs,

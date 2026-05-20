@@ -74,9 +74,9 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@babylon/api';
-import { and, db, desc, eq, lt, moderationEscrows, sql } from '@babylon/db';
-import { toISO, toISOOrNull } from '@babylon/shared';
+import { requireAdmin, withErrorHandling } from '@feed/api';
+import { and, db, desc, eq, lt, moderationEscrows, sql } from '@feed/db';
+import { toISO, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

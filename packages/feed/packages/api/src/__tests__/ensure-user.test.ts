@@ -34,7 +34,7 @@ const mockUpdateWhere = mock(() => ({ returning: mockUpdateReturning }));
 const mockUpdateSet = mock(() => ({ where: mockUpdateWhere }));
 const mockUpdate = mock(() => ({ set: mockUpdateSet }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: {
     insert: mockInsert,
     select: mockSelect,
@@ -52,7 +52,7 @@ mock.module('@babylon/db', () => ({
   },
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   resolveUserIdentifierKind: mockResolveUserIdentifierKind,
 }));
 

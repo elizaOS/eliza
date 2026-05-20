@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import { NotFoundError } from '@babylon/agents';
+import { NotFoundError } from '@feed/agents';
 import { NextRequest } from 'next/server';
 import type { MockUserRecord, UserFindUniqueArgs } from '../types/test-types';
 
@@ -42,7 +42,7 @@ mock.module('@privy-io/server-auth', () => {
 });
 
 // Mock agent auth service (dependency of auth-middleware)
-mock.module('@babylon/api/src/agent-auth', () => ({
+mock.module('@feed/api/src/agent-auth', () => ({
   verifyAgentSession: mockVerifyAgentSession,
 }));
 
@@ -145,14 +145,14 @@ const mockAuthMiddleware = () => {
   };
 };
 
-mock.module('@babylon/api/src/auth-middleware', mockAuthMiddleware);
+mock.module('@feed/api/src/auth-middleware', mockAuthMiddleware);
 
-// Mock @babylon/api to re-export from our mocked auth-middleware
-const _actualBabylonApi = await import('@babylon/api');
-mock.module('@babylon/api', () => {
+// Mock @feed/api to re-export from our mocked auth-middleware
+const _actualFeedApi = await import('@feed/api');
+mock.module('@feed/api', () => {
   const authMiddleware = mockAuthMiddleware();
   return {
-    ..._actualBabylonApi,
+    ..._actualFeedApi,
     authenticate: authMiddleware.authenticate,
     authenticateWithDbUser: authMiddleware.authenticateWithDbUser,
     isAuthenticationError: authMiddleware.isAuthenticationError,
@@ -162,8 +162,8 @@ mock.module('@babylon/api', () => {
 
 // Mock database (auth-middleware uses Drizzle query builder)
 // Include all exports that may be needed by dependencies
-const _actualDb = await import('@babylon/db');
-mock.module('@babylon/db', () => ({
+const _actualDb = await import('@feed/db');
+mock.module('@feed/db', () => ({
   ..._actualDb,
   db: {
     select: mockSelect,
@@ -210,7 +210,7 @@ mock.module('@babylon/db', () => ({
 
 // Import authenticate functions from the mocked module
 // The mock.module above ensures these use our mocked implementations
-import { authenticate, authenticateWithDbUser } from '@babylon/api';
+import { authenticate, authenticateWithDbUser } from '@feed/api';
 
 describe('User Not Found Handling', () => {
   beforeEach(() => {
@@ -247,7 +247,7 @@ describe('User Not Found Handling', () => {
     it('should return Privy DID when user does not exist in database', async () => {
       mockDbResult = null; // No user in DB
 
-      const request = new NextRequest('https://babylon.market/api/test', {
+      const request = new NextRequest('https://feed.market/api/test', {
         headers: {
           authorization: 'Bearer valid-token',
         },
@@ -268,7 +268,7 @@ describe('User Not Found Handling', () => {
         walletAddress: '0x1234567890123456789012345678901234567890',
       };
 
-      const request = new NextRequest('https://babylon.market/api/test', {
+      const request = new NextRequest('https://feed.market/api/test', {
         headers: {
           authorization: 'Bearer valid-token',
         },
@@ -290,7 +290,7 @@ describe('User Not Found Handling', () => {
     it('should throw error when user does not exist in database', async () => {
       mockDbResult = null; // No user in DB
 
-      const request = new NextRequest('https://babylon.market/api/test', {
+      const request = new NextRequest('https://feed.market/api/test', {
         headers: {
           authorization: 'Bearer valid-token',
         },
@@ -308,7 +308,7 @@ describe('User Not Found Handling', () => {
         walletAddress: '0x1234567890123456789012345678901234567890',
       };
 
-      const request = new NextRequest('https://babylon.market/api/test', {
+      const request = new NextRequest('https://feed.market/api/test', {
         headers: {
           authorization: 'Bearer valid-token',
         },

@@ -3,7 +3,7 @@
  * Research Report Generator
  *
  * Generates comprehensive benchmarks, charts, and a research paper for
- * the Babylon Continuous Training system.
+ * the Feed Continuous Training system.
  *
  * Usage:
  *   bun run packages/training/scripts/generate-research-report.ts
@@ -783,7 +783,7 @@ function generateHTMLViewer(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Babylon Training Research Report</title>
+  <title>Feed Training Research Report</title>
   <style>
     :root {
       --bg-primary: #0f172a;
@@ -960,7 +960,7 @@ function generateHTMLViewer(
 <body>
   <div class="container">
     <header>
-      <h1>📊 Babylon Continuous Training Research Report</h1>
+      <h1>📊 Feed Continuous Training Research Report</h1>
       <p class="subtitle">Multi-Archetype Agent Benchmark Study</p>
     </header>
     
@@ -1093,7 +1093,7 @@ function generateHTMLViewer(
     
     <footer>
       <p>Generated: ${new Date().toISOString()}</p>
-      <p>Babylon Continuous Training Research Report v1.0</p>
+      <p>Feed Continuous Training Research Report v1.0</p>
     </footer>
   </div>
 </body>
@@ -1116,11 +1116,11 @@ function generateResearchPaper(
   const top3 = sortedByPnl.slice(0, 3);
   const bottom3 = sortedByPnl.slice(-3).reverse();
 
-  const paper = `# Continuous Training in Babylon: A Multi-Archetype Agent Benchmark Study
+  const paper = `# Continuous Training in Feed: A Multi-Archetype Agent Benchmark Study
 
 ## Abstract
 
-This research paper presents a comprehensive analysis of the Babylon Continuous Training system, focusing on the behavioral dynamics and performance characteristics of ${systemData.totalArchetypes} distinct agent archetypes operating in simulated financial markets. Our study demonstrates that archetype-specific training through Reinforcement Learning from AI Feedback (RLAIF) produces measurable performance differentiation, with significant variations across market conditions. The top-performing archetypes show an average P&L of $${(top3.reduce((s, a) => s + a.metrics.avgPnl, 0) / 3).toFixed(2)} compared to $${(bottom3.reduce((s, a) => s + a.metrics.avgPnl, 0) / 3).toFixed(2)} for the lowest performers, representing a ${(top3.reduce((s, a) => s + a.metrics.avgPnl, 0) / bottom3.reduce((s, a) => s + a.metrics.avgPnl, 0)).toFixed(1)}x improvement ratio.
+This research paper presents a comprehensive analysis of the Feed Continuous Training system, focusing on the behavioral dynamics and performance characteristics of ${systemData.totalArchetypes} distinct agent archetypes operating in simulated financial markets. Our study demonstrates that archetype-specific training through Reinforcement Learning from AI Feedback (RLAIF) produces measurable performance differentiation, with significant variations across market conditions. The top-performing archetypes show an average P&L of $${(top3.reduce((s, a) => s + a.metrics.avgPnl, 0) / 3).toFixed(2)} compared to $${(bottom3.reduce((s, a) => s + a.metrics.avgPnl, 0) / 3).toFixed(2)} for the lowest performers, representing a ${(top3.reduce((s, a) => s + a.metrics.avgPnl, 0) / bottom3.reduce((s, a) => s + a.metrics.avgPnl, 0)).toFixed(1)}x improvement ratio.
 
 ## 1. Introduction
 
@@ -1139,7 +1139,7 @@ The emergence of autonomous AI agents in financial markets necessitates sophisti
 
 ### 2.1 System Architecture
 
-The Babylon Continuous Training system consists of:
+The Feed Continuous Training system consists of:
 
 - **Trajectory Recording**: Real-time capture of agent decisions, LLM calls, and environment states
 - **RLAIF Scoring**: LLM-as-judge evaluation using archetype-specific rubrics
@@ -1306,7 +1306,7 @@ The matchup analysis reveals:
 
 ## 7. Conclusion
 
-The Babylon Continuous Training system successfully produces differentiated agent behaviors through archetype-specific RLAIF training. Key findings include:
+The Feed Continuous Training system successfully produces differentiated agent behaviors through archetype-specific RLAIF training. Key findings include:
 
 1. **Clear Performance Stratification**: Top archetypes outperform by ${((sortedByPnl[0].metrics.avgPnl / sortedByPnl[sortedByPnl.length - 1].metrics.avgPnl) * 100 - 100).toFixed(0)}%
 2. **Market Specialization**: Different archetypes excel in different conditions
@@ -1342,7 +1342,7 @@ All charts in this report were generated from benchmark data. Data verification 
 ---
 
 *Generated: ${new Date().toISOString()}*
-*Babylon Continuous Training Research Report v1.0*
+*Feed Continuous Training Research Report v1.0*
 `;
 
   writeFileSync(join(REPORT_DIR, 'research-paper.md'), paper);
@@ -1450,7 +1450,7 @@ async function main() {
   console.log(
     '═══════════════════════════════════════════════════════════════'
   );
-  console.log('  Babylon Research Report Generator');
+  console.log('  Feed Research Report Generator');
   console.log(
     '═══════════════════════════════════════════════════════════════\n'
   );

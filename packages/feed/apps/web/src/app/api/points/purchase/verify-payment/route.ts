@@ -72,8 +72,8 @@ import {
   authenticate,
   TradingBalanceFundingService,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getPointsPurchaseX402Manager } from '@/lib/points-purchase-x402';

@@ -81,7 +81,7 @@ export function CategoryPnLShareCard({
   className,
 }: CategoryPnLShareCardProps) {
   const config = categoryConfig[category];
-  const displayName = getUserDisplayName(user, 'Babylon Trader');
+  const displayName = getUserDisplayName(user, 'Feed Trader');
   const handle = getUserHandle(user, 'anon');
 
   return (

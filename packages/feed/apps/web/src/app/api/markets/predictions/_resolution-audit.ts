@@ -6,7 +6,7 @@ import {
   questions,
   timeframedMarkets,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 
 export type PublicResolutionAudit = {
   resolution: boolean | null;
@@ -55,7 +55,7 @@ export async function getPublicResolutionAudit(
   if (reviewerId === 'system') {
     resolvedBy = {
       id: 'system',
-      displayName: 'Babylon Resolution Engine',
+      displayName: 'Feed Resolution Engine',
       username: null,
       kind: 'system',
     };

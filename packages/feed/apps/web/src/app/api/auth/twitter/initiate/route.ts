@@ -35,14 +35,14 @@
  * @see {@link https://developer.twitter.com/en/docs/authentication/oauth-2-0} Twitter OAuth 2.0
  */
 
-import { authenticate, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
+import { authenticate, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
 import {
   generateSnowflakeId,
   getWaitlistBaseUrl,
   logger,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

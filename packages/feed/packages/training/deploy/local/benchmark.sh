@@ -1,5 +1,5 @@
 #!/bin/bash
-# Babylon Training - Local Benchmark Run
+# Feed Training - Local Benchmark Run
 #
 # Quick script to run benchmarks locally with Docker.
 #
@@ -25,7 +25,7 @@ DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 TRAINING_DIR="$(dirname "$DEPLOY_DIR")"
 
 # Defaults
-IMAGE="${BABYLON_BENCHMARK_IMAGE:-revlentless/babylon-benchmark:latest}"
+IMAGE="${FEED_BENCHMARK_IMAGE:-revlentless/feed-benchmark:latest}"
 MODEL=""
 HF_MODEL=""
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}"
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "Babylon Benchmark - Local Docker Run"
+            echo "Feed Benchmark - Local Docker Run"
             echo ""
             echo "Usage: ./benchmark.sh [options]"
             echo ""
@@ -152,7 +152,7 @@ mkdir -p "$OUTPUT_DIR"
 # ============================================================================
 
 echo "============================================"
-echo "  Babylon Benchmark - Local"
+echo "  Feed Benchmark - Local"
 echo "============================================"
 echo ""
 echo "Image:      $IMAGE"

@@ -10,10 +10,10 @@
  * Uses the unified virtualBalance for all agent operations.
  */
 
-import { agentService } from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { balanceTransactions, db, desc, eq, users } from '@babylon/db';
-import { BABYLON_POINTS_SYMBOL, logger, toISO } from '@babylon/shared';
+import { agentService } from '@feed/agents';
+import { authenticateUser, withErrorHandling } from '@feed/api';
+import { balanceTransactions, db, desc, eq, users } from '@feed/db';
+import { FEED_POINTS_SYMBOL, logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -79,14 +79,14 @@ export const POST = withErrorHandling(async function POST(
   if (action === 'deposit') {
     await agentService.depositTradingBalance(agentId, user.id, amount);
     logger.info(
-      `Deposited ${BABYLON_POINTS_SYMBOL}${amount} to agent ${agentId}`,
+      `Deposited ${FEED_POINTS_SYMBOL}${amount} to agent ${agentId}`,
       undefined,
       'AgentsAPI'
     );
   } else {
     await agentService.withdrawTradingBalance(agentId, user.id, amount);
     logger.info(
-      `Withdrew ${BABYLON_POINTS_SYMBOL}${amount} from agent ${agentId}`,
+      `Withdrew ${FEED_POINTS_SYMBOL}${amount} from agent ${agentId}`,
       undefined,
       'AgentsAPI'
     );
@@ -110,6 +110,6 @@ export const POST = withErrorHandling(async function POST(
       totalWithdrawn: Number(agent?.totalWithdrawn ?? 0),
     },
     userBalance,
-    message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${BABYLON_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
+    message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${FEED_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
   });
 });

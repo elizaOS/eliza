@@ -38,8 +38,8 @@ import {
   eq,
   type TimeframedMarket,
   timeframedMarkets,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { secureRandom } from '../utils/entropy';
 import { formatError } from '../utils/error-utils';
 import { clamp01 } from '../utils/math-utils';

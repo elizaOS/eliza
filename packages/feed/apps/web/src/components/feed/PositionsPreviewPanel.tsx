@@ -1,7 +1,7 @@
 'use client';
 
-import type { PerpPositionFromAPI, PredictionPosition } from '@babylon/shared';
-import { BABYLON_POINTS_SYMBOL, cn, logger, toNumber } from '@babylon/shared';
+import type { PerpPositionFromAPI, PredictionPosition } from '@feed/shared';
+import { FEED_POINTS_SYMBOL, cn, logger, toNumber } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { PositionDetailModal } from '@/components/profile/PositionDetailModal';
@@ -20,7 +20,7 @@ const formatPercent = (value: number) =>
   `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
 
 const formatPrice = (price: number) =>
-  `${BABYLON_POINTS_SYMBOL}${price.toFixed(2)}`;
+  `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
 
 /** Unified position item for sorting by timestamp */
 interface PositionItem {

@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 // Restore real modules before importing to prevent leakage from other tests
 const _realNextServer = await import('next/server');
 mock.module('next/server', () => _realNextServer);
-const _realApi = await import('@babylon/api');
-mock.module('@babylon/api', () => _realApi);
-const _realShared = await import('@babylon/shared');
-mock.module('@babylon/shared', () => _realShared);
+const _realApi = await import('@feed/api');
+mock.module('@feed/api', () => _realApi);
+const _realShared = await import('@feed/shared');
+mock.module('@feed/shared', () => _realShared);
 
 const { NextRequest } = _realNextServer;
 

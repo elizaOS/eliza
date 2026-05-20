@@ -2,7 +2,7 @@
  * Local A2A Server - Standalone implementation for agent development
  *
  * This server provides a complete A2A protocol implementation that works
- * with local anvil and doesn't require the full Babylon infrastructure.
+ * with local anvil and doesn't require the full Feed infrastructure.
  */
 
 import { Database } from 'bun:sqlite';

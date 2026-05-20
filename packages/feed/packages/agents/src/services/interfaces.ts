@@ -1,5 +1,5 @@
 /**
- * Service Interfaces for @babylon/agents
+ * Service Interfaces for @feed/agents
  *
  * Defines contracts for services that can be injected from the application layer,
  * allowing the agents package to be decoupled from specific implementations.
@@ -220,21 +220,21 @@ export interface IServiceContainer {
  * Global service container for cross-module dependency injection.
  * Uses globalThis to ensure consistent state across dynamic and static imports.
  */
-type BabylonAgentsGlobal = typeof globalThis & {
-  __babylon_agents_services__?: IServiceContainer;
+type FeedAgentsGlobal = typeof globalThis & {
+  __feed_agents_services__?: IServiceContainer;
 };
 
-function getBabylonAgentsGlobal(): BabylonAgentsGlobal {
-  return globalThis as BabylonAgentsGlobal;
+function getFeedAgentsGlobal(): FeedAgentsGlobal {
+  return globalThis as FeedAgentsGlobal;
 }
 
 /**
  * Set the service container (merges with existing services)
  */
 export function setServiceContainer(container: IServiceContainer): void {
-  const g = getBabylonAgentsGlobal();
-  g.__babylon_agents_services__ = {
-    ...g.__babylon_agents_services__,
+  const g = getFeedAgentsGlobal();
+  g.__feed_agents_services__ = {
+    ...g.__feed_agents_services__,
     ...container,
   };
 }
@@ -243,7 +243,7 @@ export function setServiceContainer(container: IServiceContainer): void {
  * Get the full service container
  */
 export function getServiceContainer(): IServiceContainer {
-  return getBabylonAgentsGlobal().__babylon_agents_services__ ?? {};
+  return getFeedAgentsGlobal().__feed_agents_services__ ?? {};
 }
 
 /**
@@ -252,5 +252,5 @@ export function getServiceContainer(): IServiceContainer {
 export function getService<K extends keyof IServiceContainer>(
   key: K
 ): IServiceContainer[K] {
-  return getBabylonAgentsGlobal().__babylon_agents_services__?.[key];
+  return getFeedAgentsGlobal().__feed_agents_services__?.[key];
 }

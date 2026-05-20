@@ -57,9 +57,9 @@ import {
   logAdminModify,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
-import { BabylonLLMClient } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { FeedLLMClient } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -71,7 +71,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const admin = await requireAdmin(req);
 
   // Initialize client (uses Groq by default for game tick operations)
-  const client = BabylonLLMClient.forGameTick();
+  const client = FeedLLMClient.forGameTick();
   const stats = client.getStats();
 
   // Audit log the test

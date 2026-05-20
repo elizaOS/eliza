@@ -9,12 +9,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   InteractionTracker,
   RelationshipEvolutionEngine,
-} from '@babylon/engine';
-import type { Actor, Organization } from '@babylon/shared';
+} from '@feed/engine';
+import type { Actor, Organization } from '@feed/shared';
 
 // Test data
 const testActors: Actor[] = [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { PredictionPricing } from '@babylon/core/markets/prediction';
+import { PredictionPricing } from '@feed/core/markets/prediction';
 
 describe('Prediction market price scaling', () => {
   it('CPMM avgPrice can exceed 1.0 for large trades', () => {

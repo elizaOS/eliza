@@ -1,5 +1,5 @@
 """
-Integration tests for Babylon Atropos RLAIF implementation
+Integration tests for Feed Atropos RLAIF implementation
 
 Tests:
 1. Module imports work correctly
@@ -38,19 +38,19 @@ class TestImports:
     def test_import_models(self):
         from src.models import (
             AtroposScoredGroup,
-            BabylonTrajectory,
+            FeedTrajectory,
         )
 
-        assert BabylonTrajectory is not None
+        assert FeedTrajectory is not None
         assert AtroposScoredGroup is not None
 
     def test_import_converter(self):
         from src.data_bridge import (
-            BabylonToAtroposConverter,
+            FeedToAtroposConverter,
             ScoredGroupResult,
         )
 
-        assert BabylonToAtroposConverter is not None
+        assert FeedToAtroposConverter is not None
         assert ScoredGroupResult is not None
 
     def test_import_rewards(self):
@@ -65,18 +65,18 @@ class TestImports:
     @requires_torch
     def test_import_trainer(self):
         from src.training import (
-            BabylonAtroposTrainer,
+            FeedAtroposTrainer,
         )
 
-        assert BabylonAtroposTrainer is not None
+        assert FeedAtroposTrainer is not None
 
     @requires_wandb
     def test_import_environment(self):
         from src.training import (
-            BabylonRLAIFEnv,
+            FeedRLAIFEnv,
         )
 
-        assert BabylonRLAIFEnv is not None
+        assert FeedRLAIFEnv is not None
 
 
 class TestRewardFunctions:
@@ -181,13 +181,13 @@ class TestRewardFunctions:
 
 
 class TestConverter:
-    """Test Babylon to Atropos conversion"""
+    """Test Feed to Atropos conversion"""
 
     def create_sample_trajectory(self) -> dict:
         """Create a sample trajectory for testing"""
         from src.models import (
             Action,
-            BabylonTrajectory,
+            FeedTrajectory,
             EnvironmentState,
             LLMCall,
             TrajectoryStep,
@@ -224,7 +224,7 @@ class TestConverter:
             )
             steps.append(step)
 
-        return BabylonTrajectory(
+        return FeedTrajectory(
             id="test-1",
             trajectory_id="traj-1",
             agent_id="agent-1",
@@ -240,9 +240,9 @@ class TestConverter:
         )
 
     def test_convert_trajectory(self):
-        from src.data_bridge import BabylonToAtroposConverter
+        from src.data_bridge import FeedToAtroposConverter
 
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         traj = self.create_sample_trajectory()
 
         result = converter.convert_trajectory(traj)
@@ -253,9 +253,9 @@ class TestConverter:
         assert result.metadata["final_pnl"] == 400.0
 
     def test_convert_window_group(self):
-        from src.data_bridge import BabylonToAtroposConverter
+        from src.data_bridge import FeedToAtroposConverter
 
-        converter = BabylonToAtroposConverter()
+        converter = FeedToAtroposConverter()
         trajs = [self.create_sample_trajectory() for _ in range(4)]
 
         # Modify trajectory IDs
@@ -269,10 +269,10 @@ class TestConverter:
         assert len(result.messages) == 4
 
     def test_dropout(self):
-        from src.data_bridge import BabylonToAtroposConverter
+        from src.data_bridge import FeedToAtroposConverter
 
         # High dropout should skip some trajectories
-        converter = BabylonToAtroposConverter(dropout_rate=0.5)
+        converter = FeedToAtroposConverter(dropout_rate=0.5)
 
         dropped_count = 0
         for _ in range(100):
@@ -317,18 +317,18 @@ class TestEnvironmentConfig:
     """Test environment configuration (requires wandb)"""
 
     def test_default_config(self):
-        from src.training import BabylonEnvConfig
+        from src.training import FeedEnvConfig
 
-        config = BabylonEnvConfig()
+        config = FeedEnvConfig()
 
         assert config.group_size == 4
         assert config.lookback_hours == 720  # Default is 30 days (720 hours)
         assert config.min_agents_per_window == 2
 
     def test_custom_config(self):
-        from src.training import BabylonEnvConfig
+        from src.training import FeedEnvConfig
 
-        config = BabylonEnvConfig(
+        config = FeedEnvConfig(
             group_size=8,
             lookback_hours=48,
             judge_model="gpt-4",

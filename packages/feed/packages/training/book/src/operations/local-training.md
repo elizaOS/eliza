@@ -156,7 +156,7 @@ export WANDB_API_KEY=your_key
 python scripts/run_training.py --profile 12gb
 ```
 
-View at: [W&B Dashboard](https://wandb.ai/your-team/babylon-training)
+View at: [W&B Dashboard](https://wandb.ai/your-team/feed-training)
 
 ## Checkpoints
 

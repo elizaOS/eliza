@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { GameFeedbackSchema } from '@babylon/shared';
+import { GameFeedbackSchema } from '@feed/shared';
 
 describe('Game Feedback Validation Schema', () => {
   // ============================================

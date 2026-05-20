@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'mika-tanaka',
@@ -72,7 +72,7 @@ const actor = {
     'Founder @SakuraRobotics | Execution is everything | Building the future of robotics | Precision over passion | Results over relationships',
   pfpDescription:
     'Japanese woman in her late 20s with sharp, angular features, straight black hair cut in a precise bob, and dark eyes that evaluate everything they see. Flawless skin, minimal makeup. Wearing a black structured blazer. Expression: perfectly neutral, which somehow reads as threatening. Background: a pristine white lab with a humanoid robot standing at attention.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

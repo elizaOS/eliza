@@ -2,27 +2,27 @@
  * Utility functions for formatting values in the Markets page.
  */
 
-import { PredictionPricing } from '@babylon/core/markets/prediction/client';
-import { BABYLON_POINTS_SYMBOL } from '@babylon/shared';
+import { PredictionPricing } from '@feed/core/markets/prediction/client';
+import { FEED_POINTS_SYMBOL } from '@feed/shared';
 
 /**
- * Formats a price value as Babylon points currency.
+ * Formats a price value as Feed points currency.
  *
  * @param price - The price to format
  * @returns Formatted price string (e.g., "$123.45")
  */
 export function formatPrice(price: number): string {
-  return `${BABYLON_POINTS_SYMBOL}${price.toFixed(2)}`;
+  return `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
 }
 
 /**
- * Formats a Babylon points balance with 2 decimals and separators.
+ * Formats a Feed points balance with 2 decimals and separators.
  *
  * @param balance - The balance to format
  * @returns Formatted balance string (e.g., "$12,345.00")
  */
 export function formatBalance(balance: number): string {
-  return `${BABYLON_POINTS_SYMBOL}${balance.toLocaleString(undefined, {
+  return `${FEED_POINTS_SYMBOL}${balance.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -37,12 +37,12 @@ export function formatBalance(balance: number): string {
  */
 export function formatVolume(volume: number): string {
   if (volume >= 1e9)
-    return `${BABYLON_POINTS_SYMBOL}${(volume / 1e9).toFixed(2)}B`;
+    return `${FEED_POINTS_SYMBOL}${(volume / 1e9).toFixed(2)}B`;
   if (volume >= 1e6)
-    return `${BABYLON_POINTS_SYMBOL}${(volume / 1e6).toFixed(2)}M`;
+    return `${FEED_POINTS_SYMBOL}${(volume / 1e6).toFixed(2)}M`;
   if (volume >= 1e3)
-    return `${BABYLON_POINTS_SYMBOL}${(volume / 1e3).toFixed(2)}K`;
-  return `${BABYLON_POINTS_SYMBOL}${volume.toFixed(2)}`;
+    return `${FEED_POINTS_SYMBOL}${(volume / 1e3).toFixed(2)}K`;
+  return `${FEED_POINTS_SYMBOL}${volume.toFixed(2)}`;
 }
 
 /**

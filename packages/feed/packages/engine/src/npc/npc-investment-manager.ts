@@ -18,8 +18,8 @@ import {
   perpPositions,
   poolPositions,
   pools,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { desc, eq, inArray, or } from 'drizzle-orm';
 import { getReputationBreakdown } from '../reputation';
 import { StaticDataRegistry } from '../services/static-data-registry';

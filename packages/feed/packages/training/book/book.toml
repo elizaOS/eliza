@@ -1,5 +1,5 @@
 [book]
-title = "Babylon RL Training Pipeline"
+title = "Feed RL Training Pipeline"
 authors = ["revlentless"]
 language = "en"
 src = "src"
@@ -14,8 +14,8 @@ command = "mdbook-mermaid"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/BabylonSocial/babylon"
-edit-url-template = "https://github.com/BabylonSocial/babylon/edit/staging/packages/training/book/{path}"
+git-repository-url = "https://github.com/FeedSocial/feed"
+edit-url-template = "https://github.com/FeedSocial/feed/edit/staging/packages/training/book/{path}"
 site-url = "/"
 cname = ""
 no-section-label = false

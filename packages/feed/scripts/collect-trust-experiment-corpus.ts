@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-const BABYLON_REPO_ROOT = path.resolve(import.meta.dir, '..');
+const FEED_REPO_ROOT = path.resolve(import.meta.dir, '..');
 
 interface Options {
   runs: number;
@@ -50,7 +50,7 @@ interface CorpusMetrics {
 }
 
 function resolvePythonCommand(): string {
-  const override = process.env.BABYLON_PYTHON_BIN?.trim();
+  const override = process.env.FEED_PYTHON_BIN?.trim();
   if (override) {
     return override;
   }
@@ -159,17 +159,17 @@ function parseOptions(): Options {
     parallel: parsePositiveInt(values.parallel as string | undefined, 15),
     delayMs: parseNonNegativeInt(values.delay as string | undefined, 100),
     matrixOutputDir: path.resolve(
-      BABYLON_REPO_ROOT,
+      FEED_REPO_ROOT,
       String(values['matrix-output'] ?? 'training-data/trust-experiment-matrix')
     ),
     exportOutputDir: path.resolve(
-      BABYLON_REPO_ROOT,
+      FEED_REPO_ROOT,
       String(
         values['export-output'] ?? 'training-data/trust-experiment-exports'
       )
     ),
     collectionOutputPath: path.resolve(
-      BABYLON_REPO_ROOT,
+      FEED_REPO_ROOT,
       String(
         values['collection-output'] ??
           'training-data/trust-experiment-corpus/collection-summary.json'
@@ -257,7 +257,7 @@ async function summarizeCorpusMetrics(
         '--format',
         'all',
       ],
-      BABYLON_REPO_ROOT
+      FEED_REPO_ROOT
     );
 
     const summary = await readJson(path.join(workDir, 'export_summary.json'));
@@ -288,10 +288,10 @@ async function main(): Promise<void> {
   let latestCorpusMetrics: CorpusMetrics | null = null;
   const fastModeEnv = options.fastMode
     ? {
-        BABYLON_TRUST_CORPUS_FAST_MODE: 'true',
-        BABYLON_SKIP_ALPHA_GROUP_INVITES: 'true',
-        BABYLON_SKIP_NPC_GROUP_DYNAMICS: 'true',
-        BABYLON_DISABLE_REDIS: '1',
+        FEED_TRUST_CORPUS_FAST_MODE: 'true',
+        FEED_SKIP_ALPHA_GROUP_INVITES: 'true',
+        FEED_SKIP_NPC_GROUP_DYNAMICS: 'true',
+        FEED_DISABLE_REDIS: '1',
       }
     : {};
 
@@ -358,7 +358,7 @@ async function main(): Promise<void> {
       );
     }
 
-    await runCommand(matrixCommand, BABYLON_REPO_ROOT, fastModeEnv);
+    await runCommand(matrixCommand, FEED_REPO_ROOT, fastModeEnv);
     const matrixDir = await resolveRunDirByExperimentId(
       options.matrixOutputDir,
       experimentRunId
@@ -375,7 +375,7 @@ async function main(): Promise<void> {
         '--output',
         options.exportOutputDir,
       ],
-      BABYLON_REPO_ROOT,
+      FEED_REPO_ROOT,
       fastModeEnv
     );
 

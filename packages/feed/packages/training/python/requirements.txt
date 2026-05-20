@@ -1,4 +1,4 @@
-# Babylon RL Training - Atropos + Tinker Framework
+# Feed RL Training - Atropos + Tinker Framework
 # Supports: Tinker Cloud (RECOMMENDED), CUDA (GPU), MLX (Apple Silicon), CPU
 
 # ===========================================

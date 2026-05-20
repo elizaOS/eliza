@@ -1,13 +1,13 @@
 /**
- * @babylon/shared
+ * @feed/shared
  *
- * Shared types, constants, and utilities for Babylon.
+ * Shared types, constants, and utilities for Feed.
  * This package exports only client-safe code that can run in the browser.
  *
- * For server-only utilities, import from @babylon/api:
- * - Storage: import { getStorageClient } from '@babylon/api'
- * - Monitoring: import { performanceMonitor } from '@babylon/api'
- * - Token counting: import { countTokens, countTokensSync } from '@babylon/api'
+ * For server-only utilities, import from @feed/api:
+ * - Storage: import { getStorageClient } from '@feed/api'
+ * - Monitoring: import { performanceMonitor } from '@feed/api'
+ * - Token counting: import { countTokens, countTokensSync } from '@feed/api'
  */
 
 // =============================================================================
@@ -153,9 +153,9 @@ export * from './config';
 export * from './dag-trace-bridge';
 
 // =============================================================================
-// NOT EXPORTED (Server-only modules - import from @babylon/api):
+// NOT EXPORTED (Server-only modules - import from @feed/api):
 // =============================================================================
-// - Token counting: import { countTokens, countTokensSync } from '@babylon/api'
-// - Storage: import { getStorageClient } from '@babylon/api'
-// - Monitoring: import { performanceMonitor } from '@babylon/api'
-// - Rate limiting (user-level): import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@babylon/api'
+// - Token counting: import { countTokens, countTokensSync } from '@feed/api'
+// - Storage: import { getStorageClient } from '@feed/api'
+// - Monitoring: import { performanceMonitor } from '@feed/api'
+// - Rate limiting (user-level): import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@feed/api'

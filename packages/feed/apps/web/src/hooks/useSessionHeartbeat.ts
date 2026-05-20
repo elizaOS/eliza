@@ -7,7 +7,7 @@
  * @module useSessionHeartbeat
  */
 
-import { generateUUID, logger } from '@babylon/shared';
+import { generateUUID, logger } from '@feed/shared';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';

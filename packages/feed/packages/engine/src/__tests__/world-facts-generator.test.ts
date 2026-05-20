@@ -57,7 +57,7 @@ const mockDb = {
   })),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   desc: (col: unknown) => col,
@@ -104,7 +104,7 @@ mock.module('@babylon/db', () => ({
 }));
 
 // Mock the shared module
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   generateSnowflakeId: mock(() => Promise.resolve('123456789')),
   logger: {
     info: mock(() => {}),
@@ -127,7 +127,7 @@ const mockLlm = {
 } as unknown as ConstructorParameters<typeof WorldFactsGeneratorService>[1];
 
 mock.module('../llm/openai-client', () => ({
-  BabylonLLMClient: {
+  FeedLLMClient: {
     forGameTick: mock(() => mockLlm),
   },
 }));

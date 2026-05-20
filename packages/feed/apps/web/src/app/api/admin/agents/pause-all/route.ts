@@ -50,9 +50,9 @@ import {
   logAdminModify,
   requireAdmin,
   withErrorHandling,
-} from '@babylon/api';
-import { db, userAgentConfigs } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { db, userAgentConfigs } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

@@ -4,7 +4,7 @@
  * Fetches trained RL models from the database for inference.
  */
 
-import { db, desc, inArray, trainedModels } from '@babylon/db';
+import { db, desc, inArray, trainedModels } from '@feed/db';
 import { logger } from '../utils/logger';
 
 export interface ModelArtifact {

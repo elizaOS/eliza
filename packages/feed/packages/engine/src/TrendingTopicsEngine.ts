@@ -37,8 +37,8 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
-import type { BabylonLLMClient } from './llm/openai-client';
+import { logger } from '@feed/shared';
+import type { FeedLLMClient } from './llm/openai-client';
 import { getPromptParams, renderPrompt, trendingTopics } from './prompts';
 import type { FeedPost } from './types/shared';
 
@@ -75,7 +75,7 @@ export interface TrendingTopic {
  * redundant LLM calls when topics haven't changed.
  */
 export class TrendingTopicsEngine {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
   private currentTrends: TrendingTopic[] = [];
   private lastUpdateTick = 0;
   private updateInterval = 4; // Update every 4 ticks (4 hours, 6x per day)
@@ -87,9 +87,9 @@ export class TrendingTopicsEngine {
   /**
    * Create a new TrendingTopicsEngine
    *
-   * @param llm - Babylon LLM client for trend description generation
+   * @param llm - Feed LLM client for trend description generation
    */
-  constructor(llm: BabylonLLMClient) {
+  constructor(llm: FeedLLMClient) {
     this.llm = llm;
   }
 

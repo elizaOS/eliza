@@ -1,11 +1,11 @@
 /**
- * `babylon info` — Show runtime configuration and discovered systems.
+ * `feed info` — Show runtime configuration and discovered systems.
  */
 
 import { resolve } from 'node:path';
 import { defineCommand } from 'citty';
 import consola from 'consola';
-import { loadBabylonConfig } from '../../core/config';
+import { loadFeedConfig } from '../../core/config';
 import { scanSystems } from '../../core/scanner';
 import { phaseName } from '../shared';
 
@@ -23,9 +23,9 @@ export default defineCommand({
   },
   async run({ args }) {
     const rootDir = resolve(args.rootDir);
-    const { config, configFile } = await loadBabylonConfig(rootDir);
+    const { config, configFile } = await loadFeedConfig(rootDir);
 
-    consola.box('Babylon Runtime — Info');
+    consola.box('Feed Runtime — Info');
 
     consola.info('Configuration');
     consola.log(`  Config file:  ${configFile ?? '(none, using defaults)'}`);

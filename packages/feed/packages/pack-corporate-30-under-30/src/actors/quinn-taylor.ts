@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'quinn-taylor',
@@ -72,7 +72,7 @@ const actor = {
     'Founder @ZenithLabs | Stealth Mode (since 2022) | Stanford CS | Building... something | Coming soon | The future is [REDACTED]',
   pfpDescription:
     "Racially ambiguous American male in his late 20s with curly dark hair, warm brown skin, hazel eyes, and an enigmatic smile that promises everything and delivers nothing. Wearing a plain black t-shirt \u2014 even his wardrobe is in stealth mode. Background: a blurred office space where you can't quite make out what anyone is working on.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

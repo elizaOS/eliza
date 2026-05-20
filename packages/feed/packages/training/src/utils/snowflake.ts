@@ -1,1 +1,1 @@
-export { generateSnowflakeId } from '@babylon/shared';
+export { generateSnowflakeId } from '@feed/shared';

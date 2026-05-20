@@ -21,7 +21,7 @@ def default_workspace_root() -> Path:
 def default_bridge_script(hermes_root: Path) -> Path:
     workspace_root = default_workspace_root()
     candidates = (
-        workspace_root / "babylon" / "scripts" / "scambench" / "hermes_benchmark_bridge.py",
+        workspace_root / "feed" / "scripts" / "scambench" / "hermes_benchmark_bridge.py",
         hermes_root / "scripts" / "benchmark_bridge.py",
     )
     return next((candidate for candidate in candidates if candidate.exists()), candidates[0])

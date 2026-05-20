@@ -1,8 +1,8 @@
 # Phase 2: Replace Privy with Steward — Full Migration Plan
 
 > **Status**: Planning complete (LARP-assessed). Ready for implementation.
-> **Repos involved**: [Babylon](https://github.com/BabylonSocial/babylon) · [Steward](https://github.com/Steward-Fi/steward) · [ElizaCloud](https://github.com/elizaOS/cloud)
-> **Related PR**: [#1483](https://github.com/BabylonSocial/babylon/pull/1483) (Phase 1 — crypto removal, prerequisite)
+> **Repos involved**: [Feed](https://github.com/FeedSocial/feed) · [Steward](https://github.com/Steward-Fi/steward) · [ElizaCloud](https://github.com/elizaOS/cloud)
+> **Related PR**: [#1483](https://github.com/FeedSocial/feed/pull/1483) (Phase 1 — crypto removal, prerequisite)
 > **Assessed**: April 2026. 10 bugs found and corrected below.
 
 ---
@@ -16,8 +16,8 @@
 5. [Repository Work Breakdown](#5-repository-work-breakdown)
    - [5a. Steward PR — Twitter/X OAuth](#5a-steward-pr--twitterx-oauth)
    - [5b. ElizaCloud PR — Steward Hosting Infrastructure](#5b-elizacloud-pr--steward-hosting-infrastructure)
-   - [5c. Babylon PR — Full Privy Replacement](#5c-babylon-pr--full-privy-replacement)
-6. [Detailed Step-by-Step: Babylon](#6-detailed-step-by-step-babylon)
+   - [5c. Feed PR — Full Privy Replacement](#5c-feed-pr--full-privy-replacement)
+6. [Detailed Step-by-Step: Feed](#6-detailed-step-by-step-feed)
 7. [User Migration Strategy](#7-user-migration-strategy)
 8. [New Environment Variables](#8-new-environment-variables)
 9. [Full File Inventory](#9-full-file-inventory)
@@ -29,7 +29,7 @@
 
 ## 1. Context & Why
 
-Babylon currently uses [Privy](https://privy.io) for:
+Feed currently uses [Privy](https://privy.io) for:
 - User authentication (email, Twitter, Farcaster, Discord, Telegram)
 - Farcaster mini-app auto-auth (`useLoginToMiniApp`)
 - Telegram mini-app auth
@@ -61,7 +61,7 @@ Steward ([steward.fi](https://steward.fi)) is an **agent wallet infrastructure**
 
 **What Steward does NOT have (requires custom work on top):**
 - Twitter/X OAuth — **requires Steward PR** (see §5a — has a specific bug with Twitter's no-email API that must be fixed)
-- Farcaster login — use `@farcaster/auth-client` directly (already installed in Babylon)
+- Farcaster login — use `@farcaster/auth-client` directly (already installed in Feed)
 - Farcaster mini-app auth — use `@farcaster/miniapp-sdk`'s `quickAuth.getToken()` (already installed, verified working)
 - Telegram mini-app auth — use Telegram WebApp SDK + HMAC verification
 
@@ -93,7 +93,7 @@ Steward ([steward.fi](https://steward.fi)) is an **agent wallet infrastructure**
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                      Babylon (Next.js)                            │
+│                      Feed (Next.js)                            │
 │                                                                    │
 │  StewardAuthProvider (StewardAuth SDK v0.5.0 from npm)            │
 │    ↓ getToken()  ↓ signInWithEmail()  ↓ signInWithPasskey()       │
@@ -127,12 +127,12 @@ Steward ([steward.fi](https://steward.fi)) is an **agent wallet infrastructure**
 │  JWT env var: STEWARD_JWT_SECRET  (auth.ts reads this)            │
 │  (separate from STEWARD_SESSION_SECRET used by user.ts routes)    │
 │                                                                    │
-│  HS256 JWT: { userId (UUID), tenantId:"babylon", email?, exp }    │
+│  HS256 JWT: { userId (UUID), tenantId:"feed", email?, exp }    │
 └────────────────────────────┬─────────────────────────────────────┘
-                             │ Postgres (steward DB in Babylon's PG)
+                             │ Postgres (steward DB in Feed's PG)
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Steward DB (separate 'steward' database in Babylon's Postgres)   │
+│  Steward DB (separate 'steward' database in Feed's Postgres)   │
 │  users · authenticators · sessions · accounts · refresh_tokens   │
 │  tenants · user_tenants                                           │
 └──────────────────────────────────────────────────────────────────┘
@@ -146,11 +146,11 @@ Production: ElizaCloud-hosted Steward instance
 ```
 User: POST /auth/email/send { email }          → Steward sends magic link
 User: clicks link → /auth/callback/email?token=...&email=...
-Browser: POST /auth/email/verify { token, email, tenantId:"babylon" }
+Browser: POST /auth/email/verify { token, email, tenantId:"feed" }
 Steward: creates/finds user → mints JWT:
-  { userId: "uuid", tenantId: "babylon", email: "...", iss: "steward", exp: now+900 }
+  { userId: "uuid", tenantId: "feed", email: "...", iss: "steward", exp: now+900 }
 Browser: POST /api/auth/session { token, refreshToken }   ← body, NOT URL param
-Babylon API route: jwtVerify(token, STEWARD_JWT_SECRET) → sets steward-token httpOnly cookie
+Feed API route: jwtVerify(token, STEWARD_JWT_SECRET) → sets steward-token httpOnly cookie
 All subsequent requests: cookie → auth-middleware → WHERE stewardId = payload.userId
 ```
 
@@ -202,7 +202,7 @@ const email = providerUser.email
   : `${providerName}.${providerUser.id}@id.steward.internal`;
 ```
 
-This allows `findOrCreateUser(email)` to work. On the Babylon side, when we see `@id.steward.internal` in the email claim, we know it's a Twitter account without a real email and match by `accounts.provider + accounts.providerAccountId` instead.
+This allows `findOrCreateUser(email)` to work. On the Feed side, when we see `@id.steward.internal` in the email claim, we know it's a Twitter account without a real email and match by `accounts.provider + accounts.providerAccountId` instead.
 
 **Part 3** — `getUserInfo()` normalization for Twitter:
 Twitter's `/2/users/me` returns `{ data: { id, name, username, profile_image_url } }` not a flat object. The `getUserInfo()` method in `OAuthClient` needs a provider-specific data normalization:
@@ -244,7 +244,7 @@ ElizaCloud already has `packages/lib/services/steward-client.ts`. This PR adds:
 
 ---
 
-### 5c. Babylon PR — Full Privy Replacement
+### 5c. Feed PR — Full Privy Replacement
 
 See §6 for step-by-step.
 
@@ -252,7 +252,7 @@ See §6 for step-by-step.
 
 ---
 
-## 6. Detailed Step-by-Step: Babylon
+## 6. Detailed Step-by-Step: Feed
 
 ### Step 1 — Docker Compose: Add Steward service
 
@@ -263,7 +263,7 @@ Steward runs as a sibling directory (`../steward`). Docker allows relative build
     build:
       context: ../steward          # sibling directory — verified Docker supports this
       dockerfile: Dockerfile
-    container_name: babylon-steward
+    container_name: feed-steward
     restart: unless-stopped
     ports:
       - "3200:3200"
@@ -273,12 +273,12 @@ Steward runs as a sibling directory (`../steward`). Docker allows relative build
       STEWARD_MASTER_PASSWORD: ${STEWARD_MASTER_PASSWORD}
       STEWARD_JWT_SECRET: ${STEWARD_JWT_SECRET}
       STEWARD_SESSION_SECRET: ${STEWARD_JWT_SECRET}   # same value; Steward uses both var names
-      DATABASE_URL: "postgresql://babylon:babylon_dev_password@postgres:5432/steward"
+      DATABASE_URL: "postgresql://feed:feed_dev_password@postgres:5432/steward"
       STEWARD_PLATFORM_KEYS: ${STEWARD_PLATFORM_KEYS}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-login@babylon.social}
+      EMAIL_FROM: ${EMAIL_FROM:-login@feed.social}
       APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      PASSKEY_RP_NAME: Babylon
+      PASSKEY_RP_NAME: Feed
       PASSKEY_RP_ID: localhost
       PASSKEY_ORIGIN: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -327,7 +327,7 @@ Steward runs `runMigrations()` automatically on startup. No manual step.
 Add Steward health check after existing services:
 
 ```ts
-const STEWARD_CONTAINER = 'babylon-steward';
+const STEWARD_CONTAINER = 'feed-steward';
 const stewardRunning = await $`docker ps --filter name=${STEWARD_CONTAINER} --format "{{.Names}}"`.quiet().text();
 if (stewardRunning.trim() !== STEWARD_CONTAINER) {
   console.info('[Script] Starting Steward auth service...');
@@ -357,7 +357,7 @@ Add to status printout: `  Steward:    http://localhost:3200`
 ```ts
 #!/usr/bin/env bun
 /**
- * One-time idempotent script to provision the "babylon" tenant in Steward.
+ * One-time idempotent script to provision the "feed" tenant in Steward.
  * Run: bun run scripts/steward-init.ts
  * Copy the output STEWARD_TENANT_ID and STEWARD_TENANT_API_KEY into .env
  */
@@ -371,17 +371,17 @@ const res = await fetch(`${STEWARD_API_URL}/platform/tenants`, {
     'Content-Type': 'application/json',
     'X-Steward-Platform-Key': PLATFORM_KEY,
   },
-  body: JSON.stringify({ id: 'babylon', name: 'Babylon Social' }),
+  body: JSON.stringify({ id: 'feed', name: 'Feed Social' }),
 });
 const data = await res.json() as { ok: boolean; apiKey?: string; error?: string };
 
 if (res.status === 409) {
-  console.info('ℹ️  Tenant "babylon" already exists. API key is not re-returned. Check existing .env.');
+  console.info('ℹ️  Tenant "feed" already exists. API key is not re-returned. Check existing .env.');
 } else if (!res.ok) {
   console.error('❌ Failed:', data.error); process.exit(1);
 } else {
-  console.info('✅ Babylon tenant created. Add to .env:\n');
-  console.info(`STEWARD_TENANT_ID=babylon`);
+  console.info('✅ Feed tenant created. Add to .env:\n');
+  console.info(`STEWARD_TENANT_ID=feed`);
   console.info(`STEWARD_TENANT_API_KEY=${data.apiKey}`);
 }
 ```
@@ -428,7 +428,7 @@ This is part of the Steward PR. Without it, the migration script can't pre-seed 
 
 ---
 
-### Step 5 — DB migration: add `stewardId` to Babylon users
+### Step 5 — DB migration: add `stewardId` to Feed users
 
 In `packages/db/src/schema/users.ts`:
 
@@ -458,7 +458,7 @@ bun run db:migrate
  * Phase A: Export from Privy Admin API
  * Phase B: Pre-seed each user in Steward via POST /platform/users
  * Phase C: Build manifest of email-less users (social-only accounts)
- * Phase D: Report (no DB writes to Babylon — those happen at runtime via bridge)
+ * Phase D: Report (no DB writes to Feed — those happen at runtime via bridge)
  *
  * Usage:
  *   bun run scripts/migrate-privy-to-steward.ts --dry-run    # report only
@@ -654,7 +654,7 @@ export async function ensureUserFromSteward(
 }
 ```
 
-Update `findUserByIdentifier()` in `user-lookup.ts`: add `'stewardId'` alongside existing `'id'`, `'privyId'`, `'username'` kinds. The `resolveUserIdentifierKind()` function in `packages/shared` needs updating to detect Steward UUIDs (standard UUID v4 format) as the `'stewardId'` kind. Add a separate UUID regex path: if identifier matches `/^[0-9a-f-]{36}$/` and is not a known Babylon ID, try `stewardId` lookup.
+Update `findUserByIdentifier()` in `user-lookup.ts`: add `'stewardId'` alongside existing `'id'`, `'privyId'`, `'username'` kinds. The `resolveUserIdentifierKind()` function in `packages/shared` needs updating to detect Steward UUIDs (standard UUID v4 format) as the `'stewardId'` kind. Add a separate UUID regex path: if identifier matches `/^[0-9a-f-]{36}$/` and is not a known Feed ID, try `stewardId` lookup.
 
 ---
 
@@ -779,12 +779,12 @@ export default function OAuthCallbackPage() {
 }
 ```
 
-**OAuth App setup**: The OAuth providers (Google, Discord, Twitter) must whitelist the Steward API's callback URL, NOT Babylon's:
+**OAuth App setup**: The OAuth providers (Google, Discord, Twitter) must whitelist the Steward API's callback URL, NOT Feed's:
 - **Google**: Authorized redirect URI → `http://localhost:3200/auth/oauth/google/callback` (dev), `https://<steward-prod-url>/auth/oauth/google/callback` (prod)
 - **Discord**: Same pattern
 - **Twitter**: Same pattern
 
-Babylon's `/auth/callback/[provider]` page receives the already-processed JWT from Steward, not the OAuth code. This is a two-hop redirect: Provider → Steward callback → Babylon callback.
+Feed's `/auth/callback/[provider]` page receives the already-processed JWT from Steward, not the OAuth code. This is a two-hop redirect: Provider → Steward callback → Feed callback.
 
 ---
 
@@ -871,7 +871,7 @@ New component. Opens when `useAuth().login()` is called.
 
 - **Passkey**: `stewardAuth.signInWithPasskey(email)` → on success: `POST /api/auth/session { token, refreshToken }` → close modal
 - **Magic link**: `stewardAuth.signInWithEmail(email)` → shows "Check inbox" state. Callback page handles the rest.
-- **Google**: redirect to `${STEWARD_API_URL}/auth/oauth/google/authorize?redirect_uri=${APP_URL}/auth/callback/google&tenant_id=babylon`
+- **Google**: redirect to `${STEWARD_API_URL}/auth/oauth/google/authorize?redirect_uri=${APP_URL}/auth/callback/google&tenant_id=feed`
 - **Discord**: same pattern
 - **Twitter**: same pattern (requires Steward PR to be merged first)
 - **Farcaster**: `<SignInButton>` from `@farcaster/auth-kit`; on success, data goes to `POST /api/auth/farcaster`
@@ -903,17 +903,17 @@ export async function POST(req: NextRequest) {
 
   if (!success) return NextResponse.json({ ok: false, error: 'Invalid Farcaster signature' }, { status: 401 });
 
-  // Look up existing Babylon user by FID, then stewardId, then create
+  // Look up existing Feed user by FID, then stewardId, then create
   // Use ensureUserFromFarcaster() — create if needed, mint JWT
   const { token, refreshToken } = await mintSessionForFarcasterUser(fid, data);
   return NextResponse.json({ ok: true, token, refreshToken });
 }
 ```
 
-`mintSessionForFarcasterUser()`: finds or creates Babylon user by FID (social profile table), then creates a Steward user via `POST /platform/users` if one doesn't exist, gets back the `stewardId`, mints a JWT using `jose` `SignJWT` with `STEWARD_JWT_SECRET` in the same format Steward uses:
+`mintSessionForFarcasterUser()`: finds or creates Feed user by FID (social profile table), then creates a Steward user via `POST /platform/users` if one doesn't exist, gets back the `stewardId`, mints a JWT using `jose` `SignJWT` with `STEWARD_JWT_SECRET` in the same format Steward uses:
 
 ```ts
-const token = await new SignJWT({ userId: stewardUserId, tenantId: 'babylon', fid })
+const token = await new SignJWT({ userId: stewardUserId, tenantId: 'feed', fid })
   .setProtectedHeader({ alg: 'HS256' })
   .setIssuer('steward')
   .setIssuedAt()
@@ -921,7 +921,7 @@ const token = await new SignJWT({ userId: stewardUserId, tenantId: 'babylon', fi
   .sign(new TextEncoder().encode(process.env.STEWARD_JWT_SECRET!));
 ```
 
-**CORRECTED from original plan**: The original said "Babylon mints a JWT" without ensuring the `userId` exists in Steward's `users` table. Fixed: we call `POST /platform/users` first to ensure the Steward user record exists, THEN use the returned `userId` as the JWT's `userId` claim. This ensures `WHERE stewardId = payload.userId` succeeds in auth-middleware.
+**CORRECTED from original plan**: The original said "Feed mints a JWT" without ensuring the `userId` exists in Steward's `users` table. Fixed: we call `POST /platform/users` first to ensure the Steward user record exists, THEN use the returned `userId` as the JWT's `userId` claim. This ensures `WHERE stewardId = payload.userId` succeeds in auth-middleware.
 
 ---
 
@@ -990,7 +990,7 @@ export async function POST(req: NextRequest) {
 
 **CLARIFIED**: `verifyJwt` makes a network call to `https://auth.farcaster.xyz` to fetch the JWKS public key. This is a ~50-100ms network request on the server side, acceptable. The original plan didn't mention this — it's now documented.
 
-**CLARIFIED**: The `domain` parameter in `verifyJwt` must match the Farcaster app's registered domain. In dev: `localhost`. In prod: `babylon.social` (or whatever). Use `new URL(process.env.NEXT_PUBLIC_APP_URL!).hostname` to derive it.
+**CLARIFIED**: The `domain` parameter in `verifyJwt` must match the Farcaster app's registered domain. In dev: `localhost`. In prod: `feed.social` (or whatever). Use `new URL(process.env.NEXT_PUBLIC_APP_URL!).hostname` to derive it.
 
 ---
 
@@ -1049,7 +1049,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-`mintSessionForTelegramUser()`: same pattern as Farcaster — find/create Babylon user by Telegram ID, ensure Steward user exists via `POST /platform/users`, mint JWT.
+`mintSessionForTelegramUser()`: same pattern as Farcaster — find/create Feed user by Telegram ID, ensure Steward user exists via `POST /platform/users`, mint JWT.
 
 ---
 
@@ -1059,7 +1059,7 @@ export async function POST(req: NextRequest) {
 
 Remove `useLinkAccount` from `@privy-io/react-auth`. Replace per platform:
 
-- **Google/Discord/Twitter**: Redirect to Steward OAuth with extra `mode=link&babylonUserId=${userId}` query params (Steward stores these in state; after OAuth completes, Babylon callback calls `POST /api/users/[userId]/link-social`)
+- **Google/Discord/Twitter**: Redirect to Steward OAuth with extra `mode=link&feedUserId=${userId}` query params (Steward stores these in state; after OAuth completes, Feed callback calls `POST /api/users/[userId]/link-social`)
 - **Farcaster**: `<SignInButton>` from `@farcaster/auth-kit` in link mode; on success POST to `/api/auth/farcaster` → `/api/users/[userId]/link-social`
 - **Telegram**: Telegram Login Widget (script embed) with callback → `/api/auth/telegram-miniapp` → `/api/users/[userId]/link-social`
 
@@ -1079,7 +1079,7 @@ All these files do `const { getAccessToken } = usePrivy()`. Change to `useAuth()
 6. `apps/web/src/components/points/BuyPointsModal.tsx`
 7. `apps/web/src/components/chats/NftVerificationBanner.tsx`
 8. `apps/web/src/components/settings/SecurityTab.tsx`
-9. `apps/web/src/components/providers/OnboardingProvider.tsx` (also uses `const { user: privyUser } = usePrivy()` — replace with Babylon user from `useAuth()`)
+9. `apps/web/src/components/providers/OnboardingProvider.tsx` (also uses `const { user: privyUser } = usePrivy()` — replace with Feed user from `useAuth()`)
 
 ---
 
@@ -1121,8 +1121,8 @@ Run `scripts/migrate-privy-to-steward.ts` against production AFTER the Steward P
 
 **Layer 2 — Runtime email bridge** (in `auth-middleware.ts`)
 
-When Steward JWT arrives and `stewardId` not found in Babylon:
-1. If `payload.email` exists (real email, not `@id.steward.internal`): look up Babylon user by email, set `stewardId` on match
+When Steward JWT arrives and `stewardId` not found in Feed:
+1. If `payload.email` exists (real email, not `@id.steward.internal`): look up Feed user by email, set `stewardId` on match
 
 **Layer 3 — Runtime social bridge** (in custom auth API routes)
 
@@ -1189,7 +1189,7 @@ NEXT_PUBLIC_STEWARD_API_URL=http://localhost:3200
 STEWARD_MASTER_PASSWORD=
 
 # [REQUIRED] JWT signing secret used by Steward's auth.ts module.
-# Babylon's auth-middleware verifies JWTs using this secret.
+# Feed's auth-middleware verifies JWTs using this secret.
 # Generate: openssl rand -hex 32
 STEWARD_JWT_SECRET=
 
@@ -1202,7 +1202,7 @@ STEWARD_SESSION_SECRET=   # <- set equal to STEWARD_JWT_SECRET
 STEWARD_PLATFORM_KEYS=
 
 # [REQUIRED] Output of bun run steward:init
-STEWARD_TENANT_ID=babylon
+STEWARD_TENANT_ID=feed
 STEWARD_TENANT_API_KEY=
 
 # ── OAuth providers (all routed through Steward) ────────────────────────────
@@ -1228,7 +1228,7 @@ TWITTER_CLIENT_SECRET=
 # ── Email (Steward sends magic links via Resend) ────────────────────────────
 # If RESEND_API_KEY is blank, tokens are printed to console (safe for dev)
 RESEND_API_KEY=
-EMAIL_FROM=login@babylon.social
+EMAIL_FROM=login@feed.social
 
 # ── Telegram (mini-app HMAC verification) ──────────────────────────────────
 TELEGRAM_BOT_TOKEN=
@@ -1275,7 +1275,7 @@ TELEGRAM_BOT_TOKEN=
 | `.env.example` | Add Steward env vars |
 | `docs/steward-integration.md` | **NEW** |
 
-### Babylon repo (PR: `BabylonSocial/babylon`)
+### Feed repo (PR: `FeedSocial/feed`)
 
 **Infrastructure:**
 
@@ -1372,18 +1372,18 @@ Phase B — ElizaCloud PR (infrastructure)
 ├── Tenant provisioning API
 └── Merge to ElizaCloud dev
 
-Phase C — Babylon: Infrastructure
+Phase C — Feed: Infrastructure
 ├── 1. docker-compose.yml: steward service (../steward build context)
 ├── 2. scripts/docker/init-steward-db.sh
 ├── 3. scripts/pre-dev/pre-dev-local.ts: Steward health check
 ├── 4. scripts/steward-init.ts
 └── QG: bun run check + typecheck ✅
 
-Phase D — Babylon: Database
+Phase D — Feed: Database
 ├── 5. DB migration: stewardId column
 └── QG: bun run db:migrate ✅
 
-Phase E — Babylon: Backend auth swap
+Phase E — Feed: Backend auth swap
 ├── 6. auth-middleware.ts: Steward JWT verification
 ├── 7. ensure-user.ts + user-lookup.ts
 ├── 8. /api/auth/session cookie bridge
@@ -1392,29 +1392,29 @@ Phase E — Babylon: Backend auth swap
 ├── 11. /api/auth/telegram-miniapp route
 └── QG: integration tests pass ✅
 
-Phase F — Babylon: User migration
+Phase F — Feed: User migration
 ├── 12. scripts/migrate-privy-to-steward.ts --dry-run (review output)
 └── 13. Run migration against production Steward
 
-Phase G — Babylon: Frontend swap
+Phase G — Feed: Frontend swap
 ├── 14. StewardAuthProvider.tsx
 ├── 15. Providers.tsx (remove PrivyProvider)
 ├── 16. useAuth.ts rewrite
 ├── 17. Mechanical sweep: 9 getAccessToken callers
 └── QG: bun run typecheck ✅
 
-Phase H — Babylon: Login + callbacks
+Phase H — Feed: Login + callbacks
 ├── 18. LoginModal.tsx
 ├── 19. /auth/callback/email/page.tsx
 ├── 20. /auth/callback/[provider]/page.tsx (URL sanitization included)
 └── QG: manually test each login method ✅
 
-Phase I — Babylon: Mini-apps + linking
+Phase I — Feed: Mini-apps + linking
 ├── 21. FarcasterMiniAppProvider.tsx (quickAuth.getToken())
 ├── 22. LinkSocialAccountsModal.tsx
 └── QG: test Farcaster + Telegram mini-app flows ✅
 
-Phase J — Babylon: Cleanup
+Phase J — Feed: Cleanup
 ├── 23. bun remove @privy-io/react-auth @privy-io/server-auth @privy-io/node
 ├── 24. bun add @stwd/sdk @simplewebauthn/browser
 ├── 25. Delete dead files (privy-config.ts, privy-node.ts, etc.)
@@ -1510,7 +1510,7 @@ The following issues were identified in the original plan and corrected above:
 
 ---
 
-## Appendix B: Steward API Endpoints Used by Babylon
+## Appendix B: Steward API Endpoints Used by Feed
 
 | Method | Path | Used for | Notes |
 |---|---|---|---|
@@ -1521,15 +1521,15 @@ The following issues were identified in the original plan and corrected above:
 | `POST` | `/auth/passkey/login/options` | Start passkey login | |
 | `POST` | `/auth/passkey/login/verify` | Complete login | |
 | `GET` | `/auth/oauth/:provider/authorize` | Redirect to OAuth provider | Sets state in challenge store |
-| `GET` | `/auth/oauth/:provider/callback` | OAuth callback (Steward-internal) | Redirects to Babylon with `?token=<jwt>` |
+| `GET` | `/auth/oauth/:provider/callback` | OAuth callback (Steward-internal) | Redirects to Feed with `?token=<jwt>` |
 | `GET` | `/auth/session` | Validate existing JWT | Used on StewardAuthProvider mount |
 | `POST` | `/auth/refresh` | Rotate tokens | One-time use refresh token |
 | `POST` | `/auth/revoke` | Revoke refresh token | Logout |
 | `GET` | `/health` | Health check | Used in pre-dev-local.ts |
-| `POST` | `/platform/tenants` | Create Babylon tenant | Run once via steward-init.ts |
+| `POST` | `/platform/tenants` | Create Feed tenant | Run once via steward-init.ts |
 | `POST` | `/platform/users` | Pre-seed users (migration) | **New endpoint — requires Steward PR** |
 
-Babylon's `auth-middleware` verifies JWTs **locally** using `jose jwtVerify` + `STEWARD_JWT_SECRET`. No network call to Steward per request.
+Feed's `auth-middleware` verifies JWTs **locally** using `jose jwtVerify` + `STEWARD_JWT_SECRET`. No network call to Steward per request.
 
 ---
 
@@ -1554,7 +1554,7 @@ Babylon's `auth-middleware` verifies JWTs **locally** using `jose jwtVerify` + `
 @farcaster/auth-client@0.7.0   # already in apps/web/package.json
 @farcaster/miniapp-sdk@0.2.1   # already in apps/web/package.json (includes quickAuth)
 @farcaster/quick-auth          # already pulled in as transitive dep
-jose                           # already used in Babylon backend
+jose                           # already used in Feed backend
 ```
 
 ---

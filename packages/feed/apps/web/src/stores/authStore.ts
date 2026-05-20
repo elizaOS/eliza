@@ -5,7 +5,7 @@
  * Persists authentication data to localStorage for session persistence.
  */
 
-import { isRecord } from '@babylon/shared';
+import { isRecord } from '@feed/shared';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createSafeJsonStorage } from '@/utils/browser-storage';
@@ -171,7 +171,7 @@ export const useAuthStore = create<AuthState>()(
         }),
     }),
     {
-      name: 'babylon-auth',
+      name: 'feed-auth',
       storage: createSafeJsonStorage<PersistedAuthState>('localStorage'),
       // Bumping this triggers migrateAuthStoreState. Update the accepted
       // legacy versions above when the persisted schema changes again.

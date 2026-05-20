@@ -5,7 +5,7 @@
  * Supports Ethereum mainnet, Sepolia testnet, Base mainnet, and Base Sepolia.
  */
 
-import { getCurrentChainId } from '@babylon/shared';
+import { getCurrentChainId } from '@feed/shared';
 
 /**
  * Get the block explorer URL for a transaction hash based on the current chain.

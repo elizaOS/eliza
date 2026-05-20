@@ -3,8 +3,8 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { gameService } from '@babylon/engine';
+} from '@feed/api';
+import { gameService } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

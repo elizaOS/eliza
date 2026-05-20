@@ -7,7 +7,7 @@
  * repost payloads before they reach the client renderer.
  */
 
-import type { FeedPost, NarrativePost } from '@babylon/shared';
+import type { FeedPost, NarrativePost } from '@feed/shared';
 
 type FeedLikePost = FeedPost | NarrativePost;
 

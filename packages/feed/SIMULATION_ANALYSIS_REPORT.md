@@ -1,4 +1,4 @@
-# Babylon Simulation Analysis & Implementation Report
+# Feed Simulation Analysis & Implementation Report
 
 **Date**: 2026-04-02
 **Scope**: Trajectory quality, action distributions, intent metadata, shared-model RL, cleanup plan
@@ -21,7 +21,7 @@
 
 ### 1.2 Character Metadata Schema
 
-Each NPC has rich metadata in `babylon` field:
+Each NPC has rich metadata in `feed` field:
 - `alignment`: good | neutral | evil
 - `team`: blue | red | gray
 - `scamProfile`: hunter | wary | gullible | wants_to_be_scammed | situational
@@ -99,7 +99,7 @@ ScamBench defines `SenderRole`:
 - `team`: Same-team agent
 - `none`: Cross-team, guest, anonymous
 
-This is not propagated into Babylon trajectory metadata. For RL training, the agent needs to learn to behave differently based on who is asking (verified admin vs random user vs teammate). The reward should vary accordingly.
+This is not propagated into Feed trajectory metadata. For RL training, the agent needs to learn to behave differently based on who is asking (verified admin vs random user vs teammate). The reward should vary accordingly.
 
 ### 2.3 IMPORTANT: Online RL Has 3 Separate Models (team_rl.py)
 
@@ -430,7 +430,7 @@ This turns noisy PnL-based rewards into clean intent-aware signals.
 
 ### 8.1 Label Alignment
 
-| Babylon | ScamBench | Mapping |
+| Feed | ScamBench | Mapping |
 |---------|-----------|---------|
 | team: red | intent: attack | Evil agents run attack scenarios |
 | team: blue | intent: legitimate (defending) | Good agents are the targets |
@@ -440,7 +440,7 @@ This turns noisy PnL-based rewards into clean intent-aware signals.
 
 ### 8.2 Evaluation Flow
 
-1. Train shared model on Babylon trajectories (online RL)
+1. Train shared model on Feed trajectories (online RL)
 2. Export model checkpoint
 3. Evaluate on ScamBench (340 scenarios)
 4. Measure attack resistance + legitimate handling

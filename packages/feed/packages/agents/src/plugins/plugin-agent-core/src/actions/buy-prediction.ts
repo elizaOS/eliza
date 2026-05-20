@@ -3,19 +3,19 @@
  * Buy shares in a prediction market via core PredictionMarketService
  */
 
-import type { JsonValue } from '@babylon/api';
-import { broadcastToChannel } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
+import { broadcastToChannel } from '@feed/api';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
-import { asUser } from '@babylon/db';
+} from '@feed/core/markets/prediction';
+import { asUser } from '@feed/db';
 import {
   FEE_CONFIG,
   FeeService,
   invalidateAfterPredictionTrade,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type {
   Action,
   ActionResult,

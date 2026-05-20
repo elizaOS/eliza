@@ -1,7 +1,7 @@
 /**
  * Prediction Market AMM Pricing — Constant Product Market Maker (CPMM)
  *
- * Framework-free math utilities for Babylon's YES/NO offchain markets.
+ * Framework-free math utilities for Feed's YES/NO offchain markets.
  *
  * Pricing model: k = yesShares x noShares (constant product invariant)
  */

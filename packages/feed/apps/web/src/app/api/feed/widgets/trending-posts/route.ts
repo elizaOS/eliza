@@ -79,9 +79,9 @@
  * @see {@link /lib/validation/schemas} Validation schemas
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
-import { asPublic, asUser } from '@babylon/db';
-import { logger, TrendingPostsQuerySchema, toISO } from '@babylon/shared';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { asPublic, asUser } from '@feed/db';
+import { logger, TrendingPostsQuerySchema, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 interface TrendingPost {

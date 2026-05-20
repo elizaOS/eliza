@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import * as Sentry from '@sentry/nextjs';
 /**
  * PostHog error boundary component for catching and tracking React errors.

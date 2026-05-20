@@ -16,8 +16,8 @@ import {
   gte,
   messages,
   userInteractions,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { NPC_SOCIAL_ACTIONS_CONFIG } from '../config/npc-activity';
 import { clamp01 } from '../utils/math-utils';
 import { GroupChatService } from './group-chat-service';

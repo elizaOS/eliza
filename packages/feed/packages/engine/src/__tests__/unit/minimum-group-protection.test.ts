@@ -7,7 +7,7 @@
  * This protection ensures users always have access to alpha content.
  */
 
-import { GROUP_CONFIG } from '@babylon/shared';
+import { GROUP_CONFIG } from '@feed/shared';
 import { describe, expect, it } from 'vitest';
 
 describe('Minimum Group Protection Configuration', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, ChevronRight, TrendingDown, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';

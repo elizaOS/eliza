@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { BABYLON_POINTS_SYMBOL } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL } from '@feed/shared';
 
 import {
   calculateSharePercentages,
@@ -10,31 +10,31 @@ import {
 
 describe('formatPrice', () => {
   it('formats with currency symbol and 2 decimals', () => {
-    expect(formatPrice(123.456)).toBe(`${BABYLON_POINTS_SYMBOL}123.46`);
-    expect(formatPrice(100)).toBe(`${BABYLON_POINTS_SYMBOL}100.00`);
-    expect(formatPrice(0)).toBe(`${BABYLON_POINTS_SYMBOL}0.00`);
-    expect(formatPrice(-100)).toBe(`${BABYLON_POINTS_SYMBOL}-100.00`);
+    expect(formatPrice(123.456)).toBe(`${FEED_POINTS_SYMBOL}123.46`);
+    expect(formatPrice(100)).toBe(`${FEED_POINTS_SYMBOL}100.00`);
+    expect(formatPrice(0)).toBe(`${FEED_POINTS_SYMBOL}0.00`);
+    expect(formatPrice(-100)).toBe(`${FEED_POINTS_SYMBOL}-100.00`);
   });
 
   it('handles edge values', () => {
-    expect(formatPrice(0.001)).toBe(`${BABYLON_POINTS_SYMBOL}0.00`);
-    expect(formatPrice(0.01)).toBe(`${BABYLON_POINTS_SYMBOL}0.01`);
-    expect(formatPrice(999999)).toBe(`${BABYLON_POINTS_SYMBOL}999999.00`);
+    expect(formatPrice(0.001)).toBe(`${FEED_POINTS_SYMBOL}0.00`);
+    expect(formatPrice(0.01)).toBe(`${FEED_POINTS_SYMBOL}0.01`);
+    expect(formatPrice(999999)).toBe(`${FEED_POINTS_SYMBOL}999999.00`);
   });
 });
 
 describe('formatVolume', () => {
   it('formats under 1K without suffix', () => {
-    expect(formatVolume(0)).toBe(`${BABYLON_POINTS_SYMBOL}0.00`);
-    expect(formatVolume(500)).toBe(`${BABYLON_POINTS_SYMBOL}500.00`);
-    expect(formatVolume(999)).toBe(`${BABYLON_POINTS_SYMBOL}999.00`);
+    expect(formatVolume(0)).toBe(`${FEED_POINTS_SYMBOL}0.00`);
+    expect(formatVolume(500)).toBe(`${FEED_POINTS_SYMBOL}500.00`);
+    expect(formatVolume(999)).toBe(`${FEED_POINTS_SYMBOL}999.00`);
   });
 
   it('adds K/M/B suffix for larger values', () => {
-    expect(formatVolume(1000)).toBe(`${BABYLON_POINTS_SYMBOL}1.00K`);
-    expect(formatVolume(1500)).toBe(`${BABYLON_POINTS_SYMBOL}1.50K`);
-    expect(formatVolume(1000000)).toBe(`${BABYLON_POINTS_SYMBOL}1.00M`);
-    expect(formatVolume(1000000000)).toBe(`${BABYLON_POINTS_SYMBOL}1.00B`);
+    expect(formatVolume(1000)).toBe(`${FEED_POINTS_SYMBOL}1.00K`);
+    expect(formatVolume(1500)).toBe(`${FEED_POINTS_SYMBOL}1.50K`);
+    expect(formatVolume(1000000)).toBe(`${FEED_POINTS_SYMBOL}1.00M`);
+    expect(formatVolume(1000000000)).toBe(`${FEED_POINTS_SYMBOL}1.00B`);
   });
 });
 

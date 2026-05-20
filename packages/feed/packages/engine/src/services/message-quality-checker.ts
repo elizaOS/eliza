@@ -13,7 +13,7 @@ import {
   eq,
   messages,
   userInteractions,
-} from '@babylon/db';
+} from '@feed/db';
 
 /**
  * Message quality check result

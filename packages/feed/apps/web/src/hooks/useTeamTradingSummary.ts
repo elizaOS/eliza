@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useCallback, useEffect, useState } from 'react';
 import type { TeamTradingSummary } from '@/lib/agents/team-trading-summary';
 

@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 const mockAuthenticate = mock();
 const mockAsUser = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   authenticate: mockAuthenticate,
   successResponse: (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status }),
   withErrorHandling: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   asUser: mockAsUser,
 }));
 

@@ -31,9 +31,9 @@ import {
   nftSnapshot,
   users,
   whitelist,
-} from '@babylon/db';
-import { UserAlphaGroupAssignmentService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { UserAlphaGroupAssignmentService } from '@feed/engine';
+import { logger } from '@feed/shared';
 
 /** Default limit for batch processing when no limit specified */
 const MIGRATE_USERS_DEFAULT_LIMIT = 100000;

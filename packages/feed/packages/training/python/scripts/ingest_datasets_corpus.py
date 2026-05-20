@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Ingest training data from the workspace datasets/ pipeline into babylon training-data/.
+Ingest training data from the workspace datasets/ pipeline into feed training-data/.
 
 The datasets/ directory produces deduplicated, augmented training corpora in
 final/train-mixes/{full,balanced,attack-heavy}/. This script reads from
-that pipeline and writes a merged corpus into babylon's training-data/
+that pipeline and writes a merged corpus into feed's training-data/
 directory in the format expected by the training pipeline.
 
 Usage:
@@ -28,7 +28,7 @@ PYTHON_ROOT = SCRIPT_DIR.parent
 
 def _find_workspace_root(start: Path) -> Path:
     for candidate in (start, *start.parents):
-        if (candidate / "datasets").exists() and (candidate / "babylon").exists():
+        if (candidate / "datasets").exists() and (candidate / "feed").exists():
             return candidate
         if (candidate / "scambench").exists():
             return candidate
@@ -37,12 +37,12 @@ def _find_workspace_root(start: Path) -> Path:
 
 WORKSPACE_ROOT = _find_workspace_root(SCRIPT_DIR)
 DATASETS_ROOT = WORKSPACE_ROOT / "datasets"
-BABYLON_ROOT = (
-    WORKSPACE_ROOT / "babylon"
-    if (WORKSPACE_ROOT / "babylon").exists()
+FEED_ROOT = (
+    WORKSPACE_ROOT / "feed"
+    if (WORKSPACE_ROOT / "feed").exists()
     else _find_workspace_root(SCRIPT_DIR)
 )
-TRAINING_DATA_ROOT = BABYLON_ROOT / "training-data"
+TRAINING_DATA_ROOT = FEED_ROOT / "training-data"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,15 +88,15 @@ def load_datasets_corpus(mix_dir: Path) -> list[dict[str, Any]]:
     return records
 
 
-def convert_to_babylon_format(record: dict[str, Any]) -> dict[str, Any]:
-    """Convert a datasets pipeline record into babylon training format.
+def convert_to_feed_format(record: dict[str, Any]) -> dict[str, Any]:
+    """Convert a datasets pipeline record into feed training format.
 
     The datasets/ pipeline format has fields like:
         id, semantic_id, source_dataset, scenario_category,
         system_prompt, messages (JSON string), chosen_action,
         decision_class, reasoning_trace, etc.
 
-    The babylon training format expects:
+    The feed training format expects:
         scenario_id, category, prompt, user_prompt (conversation),
         response, chosen_action, explanation, available_actions,
         private_analysis, reasoning fields, etc.
@@ -137,7 +137,7 @@ def convert_to_babylon_format(record: dict[str, Any]) -> dict[str, Any]:
     else:
         secret_classes = secret_classes_raw
 
-    # Map scenario_category to babylon category names
+    # Map scenario_category to feed category names
     category_map = {
         "benign": "benign",
         "prompt-injection": "prompt-injection",
@@ -153,7 +153,7 @@ def convert_to_babylon_format(record: dict[str, Any]) -> dict[str, Any]:
     }
 
     scenario_category = record.get("scenario_category", "benign")
-    babylon_category = category_map.get(scenario_category, scenario_category)
+    feed_category = category_map.get(scenario_category, scenario_category)
 
     # Determine intent
     should_trigger = record.get("should_trigger_scam_defense", False)
@@ -161,7 +161,7 @@ def convert_to_babylon_format(record: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "scenario_id": record.get("id", record.get("semantic_id", "")),
-        "category": babylon_category,
+        "category": feed_category,
         "intent": intent,
         "prompt": record.get("system_prompt", ""),
         "user_prompt": json.dumps(messages),
@@ -187,13 +187,13 @@ def convert_to_babylon_format(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def write_babylon_corpus(
+def write_feed_corpus(
     records: list[dict[str, Any]],
     output_dir: Path,
     mix_name: str,
     dry_run: bool = False,
 ) -> Path:
-    """Write converted records to babylon training-data directory."""
+    """Write converted records to feed training-data directory."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     corpus_dir = output_dir / "datasets-corpus" / f"{mix_name}-{timestamp}"
 
@@ -262,7 +262,7 @@ def write_babylon_corpus(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Ingest datasets/ corpus into babylon training-data/"
+        description="Ingest datasets/ corpus into feed training-data/"
     )
     parser.add_argument(
         "--mix",
@@ -284,7 +284,7 @@ def main() -> None:
 
     output_dir = Path(args.output_dir) if args.output_dir else TRAINING_DATA_ROOT
 
-    logger.info(f"Ingesting datasets/{args.mix} train-mix into babylon training-data/")
+    logger.info(f"Ingesting datasets/{args.mix} train-mix into feed training-data/")
     logger.info(f"  Datasets root: {DATASETS_ROOT}")
     logger.info(f"  Output dir: {output_dir}")
 
@@ -293,11 +293,11 @@ def main() -> None:
     raw_records = load_datasets_corpus(mix_dir)
 
     # Convert format
-    converted = [convert_to_babylon_format(r) for r in raw_records]
-    logger.info(f"Converted {len(converted)} records to babylon format")
+    converted = [convert_to_feed_format(r) for r in raw_records]
+    logger.info(f"Converted {len(converted)} records to feed format")
 
     # Write
-    corpus_dir = write_babylon_corpus(converted, output_dir, args.mix, dry_run=args.dry_run)
+    corpus_dir = write_feed_corpus(converted, output_dir, args.mix, dry_run=args.dry_run)
 
     if not args.dry_run:
         logger.info(f"Done. Corpus available at: {corpus_dir}")

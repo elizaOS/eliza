@@ -109,9 +109,9 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, userMutes, users } from '@babylon/db';
-import { generateSnowflakeId, logger, MuteUserSchema } from '@babylon/shared';
+} from '@feed/api';
+import { and, db, eq, userMutes, users } from '@feed/db';
+import { generateSnowflakeId, logger, MuteUserSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const POST = withErrorHandling(

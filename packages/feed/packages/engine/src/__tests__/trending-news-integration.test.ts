@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { type Article, ArticleGenerator } from '../ArticleGenerator';
 import { FeedGenerator } from '../FeedGenerator';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { NewsArticlePacingEngine } from '../NewsArticlePacingEngine';
 import { TrendingTopicsEngine } from '../TrendingTopicsEngine';
 import type { Actor, FeedPost, Organization, Question } from '../types/shared';
@@ -19,14 +19,14 @@ import type { Actor, FeedPost, Organization, Question } from '../types/shared';
  * Mock LLM client interface for testing
  */
 interface MockLLMClient
-  extends Pick<BabylonLLMClient, 'generateJSON' | 'getProvider'> {}
+  extends Pick<FeedLLMClient, 'generateJSON' | 'getProvider'> {}
 
 describe('Trending Topics & News Integration', () => {
   let trendEngine: TrendingTopicsEngine;
   let pacingEngine: NewsArticlePacingEngine;
   let articleGen: ArticleGenerator;
   let feedGen: FeedGenerator;
-  let mockLLM: BabylonLLMClient;
+  let mockLLM: FeedLLMClient;
 
   const mockQuestion: Question = {
     id: 1,
@@ -133,7 +133,7 @@ describe('Trending Topics & News Integration', () => {
         return {};
       }),
     };
-    mockLLM = mockImpl as BabylonLLMClient;
+    mockLLM = mockImpl as FeedLLMClient;
 
     trendEngine = new TrendingTopicsEngine(mockLLM);
     // Use default interval of 4 ticks (every 4 hours, 6x per day)
@@ -445,7 +445,7 @@ describe('Trending Topics & News Integration', () => {
         }),
         getProvider: () => 'openai',
       };
-      const failingLLM = failingImpl as BabylonLLMClient;
+      const failingLLM = failingImpl as FeedLLMClient;
 
       const engine = new TrendingTopicsEngine(failingLLM);
       engine.setUpdateInterval(10);
@@ -515,7 +515,7 @@ describe('Trending Topics & News Integration', () => {
           },
         })),
       };
-      const badLLM = badImpl as BabylonLLMClient;
+      const badLLM = badImpl as FeedLLMClient;
 
       const badArticleGen = new ArticleGenerator(badLLM);
 
@@ -545,7 +545,7 @@ describe('Trending Topics & News Integration', () => {
           },
         })),
       };
-      const badLLM = badImpl as BabylonLLMClient;
+      const badLLM = badImpl as FeedLLMClient;
 
       const badArticleGen = new ArticleGenerator(badLLM);
 
@@ -575,7 +575,7 @@ describe('Trending Topics & News Integration', () => {
           },
         })),
       };
-      const badLLM = badImpl as BabylonLLMClient;
+      const badLLM = badImpl as FeedLLMClient;
 
       const badArticleGen = new ArticleGenerator(badLLM);
 

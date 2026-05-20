@@ -1,7 +1,7 @@
-import { findUserByIdentifierWithSelect } from '@babylon/api';
-import { users } from '@babylon/db';
-import { loadActorsData } from '@babylon/engine';
-import { extractUsername } from '@babylon/shared';
+import { findUserByIdentifierWithSelect } from '@feed/api';
+import { users } from '@feed/db';
+import { loadActorsData } from '@feed/engine';
+import { extractUsername } from '@feed/shared';
 import { notFound, redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';

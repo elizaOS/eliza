@@ -56,9 +56,9 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { and, asUser, chatParticipants, chats, eq } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { and, asUser, chatParticipants, chats, eq } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

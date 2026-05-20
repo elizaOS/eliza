@@ -12,7 +12,7 @@ import {
   getAgentDefaultProfileImageUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Check, Loader2, Wallet, X as XIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';

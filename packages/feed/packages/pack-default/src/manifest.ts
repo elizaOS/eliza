@@ -1,20 +1,20 @@
-import type { PackManifest } from '@babylon/shared';
+import type { PackManifest } from '@feed/shared';
 import { actors } from './actors-index';
 import { correlations } from './correlations';
 import { organizations } from './organizations-index';
 
 /**
- * The default Babylon pack manifest.
+ * The default Feed pack manifest.
  *
- * Defines the original Babylon universe: AI-parody versions of tech leaders,
+ * Defines the original Feed universe: AI-parody versions of tech leaders,
  * politicians, media figures, and crypto personalities in a satirical
  * prediction market simulation.
  */
 export const manifest: PackManifest = {
-  id: 'babylon-default',
-  name: 'Babylon Default',
+  id: 'feed-default',
+  name: 'Feed Default',
   description:
-    'The original Babylon universe — AI-parody versions of tech leaders, politicians, media figures, and crypto personalities.',
+    'The original Feed universe — AI-parody versions of tech leaders, politicians, media figures, and crypto personalities.',
   version: '1.0.0',
   tone: 'satirical',
   premise:

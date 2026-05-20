@@ -98,7 +98,7 @@ describe('generate-skills-md', () => {
       byPrefix,
       mcpTools
     );
-    expect(markdown).toContain('# Babylon Agent Skills');
+    expect(markdown).toContain('# Feed Agent Skills');
     expect(markdown).toContain('Test Skill');
     expect(markdown).toContain('test.operation1');
     expect(markdown).toContain('tool1');

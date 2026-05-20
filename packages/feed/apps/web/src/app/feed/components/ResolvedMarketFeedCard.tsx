@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import Link from 'next/link';
 import type { NarrativeStory } from '@/app/feed/types/narrative';
 

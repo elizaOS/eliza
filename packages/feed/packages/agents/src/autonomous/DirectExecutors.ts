@@ -16,12 +16,12 @@ import {
   type MessageActivityData,
   notifyGroupChatMessage,
   type PostActivityData,
-} from '@babylon/api';
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
+} from '@feed/api';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   actorState,
   aliasedTable,
@@ -49,7 +49,7 @@ import {
   sql,
   users,
   withTransaction,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   createPerpPriceImpactPort,
   FEE_CONFIG,
@@ -61,12 +61,12 @@ import {
   StaticDataRegistry,
   storeTagsForPost,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   AGENT_TRANSFER_IN_TRANSACTION_TYPE,
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   isPureRepost,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { agentPnLService } from '../services/AgentPnLService';
 import { logger } from '../shared/logger';
 import { generateSnowflakeId } from '../shared/snowflake';
@@ -656,7 +656,7 @@ export async function executeDirectTrade(
           2
         )} looks like a share count relative to $${balance.toFixed(
           2
-        )} balance. Expected Babylon Points.`,
+        )} balance. Expected Feed Points.`,
         { agentUserId, marketType, side, balance },
         'DirectExecutors'
       );

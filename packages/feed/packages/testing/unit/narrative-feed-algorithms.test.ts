@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { NarrativePost, NarrativeStory } from '@babylon/shared';
+import type { NarrativePost, NarrativeStory } from '@feed/shared';
 
 // Import the real implementations (not copies)
 import {

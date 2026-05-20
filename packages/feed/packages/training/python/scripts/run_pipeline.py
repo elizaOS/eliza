@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Babylon canonical training pipeline.
+Feed canonical training pipeline.
 
 This script is the user-facing orchestrator for the current project pipeline:
 
@@ -932,7 +932,7 @@ class CanonicalPipeline:
             "components": {},
         }
         workspace_root = _find_workspace_root(SCRIPT_DIR)
-        for component in ("babylon", "scambench", "datasets"):
+        for component in ("feed", "scambench", "datasets"):
             comp_dir = workspace_root / component
             if not comp_dir.exists():
                 continue
@@ -965,7 +965,7 @@ class CanonicalPipeline:
 
     async def run(self) -> dict[str, Any]:
         logger.info("=" * 70)
-        logger.info("BABYLON CANONICAL TRAINING PIPELINE")
+        logger.info("FEED CANONICAL TRAINING PIPELINE")
         logger.info("=" * 70)
         logger.info("Mode: %s", self.mode.upper())
         logger.info("Model: %s", self.model_name)
@@ -2327,7 +2327,7 @@ class CanonicalPipeline:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Babylon canonical training pipeline",
+        description="Feed canonical training pipeline",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(

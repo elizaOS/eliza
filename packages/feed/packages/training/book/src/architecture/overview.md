@@ -1,6 +1,6 @@
 # System Overview
 
-The Babylon RL training pipeline is a dual-language system: TypeScript for game simulation and trajectory recording, Python for ML training.
+The Feed RL training pipeline is a dual-language system: TypeScript for game simulation and trajectory recording, Python for ML training.
 
 ## High-Level Architecture
 
@@ -17,7 +17,7 @@ graph LR
     end
     
     subgraph "Training Layer (Python)"
-        BENV[BabylonRLAIFEnv]
+        BENV[FeedRLAIFEnv]
         SCORE[Scoring Pipeline]
         GRPO[GRPO Trainer]
         VLLM[vLLM Inference]
@@ -57,7 +57,7 @@ graph LR
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| BabylonRLAIFEnv | `src/training/babylon_env.py` | Atropos environment, loads trajectories, scores them |
+| FeedRLAIFEnv | `src/training/feed_env.py` | Atropos environment, loads trajectories, scores them |
 | AtroposTrainer | `src/training/atropos_trainer.py` | GRPO training loop |
 | Reward Functions | `src/training/rewards.py` | Archetype-aware reward computation |
 | Run Training | `scripts/run_training.py` | Orchestrates full pipeline |
@@ -118,7 +118,7 @@ sequenceDiagram
 | Simulation | Game state | Agent actions | `packages/engine/` |
 | Recording | Agent decisions | Trajectories | `TrajectoryRecorder.ts` |
 | Storage | Trajectories | DB rows | PostgreSQL |
-| Loading | DB query | Trajectory objects | `babylon_env.py` |
+| Loading | DB query | Trajectory objects | `feed_env.py` |
 | Scoring | Trajectory + completion | Reward float | `rewards.py` |
 | Training | Scored batches | Model update | `atropos_trainer.py` |
 

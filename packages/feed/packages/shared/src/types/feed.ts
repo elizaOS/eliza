@@ -5,7 +5,7 @@
  * Consumed by both the API route (apps/web/src/app/api/feed/narrative/route.ts)
  * and frontend feed components.
  *
- * ArcStateType mirrors the union defined in @babylon/db/src/schema/narrative.ts.
+ * ArcStateType mirrors the union defined in @feed/db/src/schema/narrative.ts.
  * The db schema definition is the canonical one; keep this copy in sync with it.
  */
 

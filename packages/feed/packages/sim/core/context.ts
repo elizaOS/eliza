@@ -2,9 +2,9 @@
  * Engine and tick context factories.
  */
 
-import { type DrizzleClient, db } from '@babylon/db';
-import { BabylonLLMClient } from '@babylon/engine';
-import { type Logger, logger } from '@babylon/shared';
+import { type DrizzleClient, db } from '@feed/db';
+import { FeedLLMClient } from '@feed/engine';
+import { type Logger, logger } from '@feed/shared';
 import { DefaultLLMOrchestrator } from './llm-orchestrator';
 import { DefaultTickMetrics } from './metrics';
 import { DefaultServiceContainer } from './service-container';
@@ -50,7 +50,7 @@ const noopHookable: RuntimeHookable = {
 
 export interface CreateEngineContextOptions {
   db?: DrizzleClient;
-  llmClient?: BabylonLLMClient;
+  llmClient?: FeedLLMClient;
   llm?: LLMOrchestrator;
   logger?: Logger;
   services?: ServiceContainer;
@@ -73,7 +73,7 @@ export function createEngineContext(
     db: options.db ?? db,
     llm:
       options.llm ??
-      new DefaultLLMOrchestrator(options.llmClient ?? new BabylonLLMClient()),
+      new DefaultLLMOrchestrator(options.llmClient ?? new FeedLLMClient()),
     logger: options.logger ?? logger,
     services: options.services ?? new DefaultServiceContainer(),
     config,

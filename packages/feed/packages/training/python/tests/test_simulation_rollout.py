@@ -19,7 +19,7 @@ sys.path.insert(0, ".")
 from src.models import (
     Action,
     AtroposScoredGroup,
-    BabylonTrajectory,
+    FeedTrajectory,
     EnvironmentState,
     LLMCall,
     TrajectoryStep,
@@ -120,7 +120,7 @@ def sample_trajectory(sample_env_state, sample_action, sample_llm_call):
             )
         )
 
-    return BabylonTrajectory(
+    return FeedTrajectory(
         id="traj-1",
         trajectory_id="traj-1",
         agent_id="agent-1",

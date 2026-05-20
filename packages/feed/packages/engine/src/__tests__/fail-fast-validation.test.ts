@@ -8,10 +8,10 @@
 
 import { describe, expect, mock, test } from 'bun:test';
 import { FeedGenerator } from '../FeedGenerator';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 
 // Create a minimal mock LLM client for validation tests
-function createMockLLMClient(): BabylonLLMClient {
+function createMockLLMClient(): FeedLLMClient {
   return {
     generateText: mock(() => Promise.resolve('')),
     generateJSON: mock(() => Promise.resolve({})),
@@ -22,7 +22,7 @@ function createMockLLMClient(): BabylonLLMClient {
       totalTokens: 0,
       totalCost: 0,
     }),
-  } as unknown as BabylonLLMClient;
+  } as unknown as FeedLLMClient;
 }
 
 describe('Fail-Fast Validation', () => {

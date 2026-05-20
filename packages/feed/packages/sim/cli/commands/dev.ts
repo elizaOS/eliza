@@ -1,5 +1,5 @@
 /**
- * `babylon dev` — Start the runtime in development mode with hot-reload.
+ * `feed dev` — Start the runtime in development mode with hot-reload.
  */
 
 import { existsSync } from 'node:fs';
@@ -8,9 +8,9 @@ import { watch } from 'chokidar';
 import { defineCommand } from 'citty';
 import consola from 'consola';
 import {
-  type BabylonRuntimeConfig,
-  loadBabylonConfig,
-  watchBabylonConfig,
+  type FeedRuntimeConfig,
+  loadFeedConfig,
+  watchFeedConfig,
 } from '../../core/config';
 import { buildEngine, parseInterval } from '../shared';
 
@@ -26,7 +26,7 @@ export default defineCommand({
   meta: {
     name: 'dev',
     description:
-      'Start Babylon Runtime in development mode with watch & hot-reload',
+      'Start Feed Runtime in development mode with watch & hot-reload',
   },
   args: {
     rootDir: {
@@ -47,10 +47,10 @@ export default defineCommand({
   },
   async run({ args }) {
     const rootDir = resolve(args.rootDir);
-    consola.box('Babylon Runtime — dev mode');
+    consola.box('Feed Runtime — dev mode');
 
-    const loaded = await loadBabylonConfig(rootDir);
-    let currentConfig: BabylonRuntimeConfig = loaded.config;
+    const loaded = await loadFeedConfig(rootDir);
+    let currentConfig: FeedRuntimeConfig = loaded.config;
     consola.info(`Config: ${loaded.configFile ?? 'defaults'}`);
 
     let engine = await buildEngine(currentConfig, rootDir, args.legacy);
@@ -131,7 +131,7 @@ export default defineCommand({
     const configWatcher =
       currentConfig.dev?.watchConfig === false
         ? null
-        : await watchBabylonConfig(rootDir, (nextConfig) => {
+        : await watchFeedConfig(rootDir, (nextConfig) => {
             currentConfig = nextConfig;
             void enqueue(resetSystemsWatcher);
             queueReload('config changed');

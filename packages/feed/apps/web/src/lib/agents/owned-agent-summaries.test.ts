@@ -6,7 +6,7 @@ const mockGetAgentConfig = mock();
 const mockIsAutonomousTradingEnabled = mock();
 const mockLoggerWarn = mock();
 
-mock.module('@babylon/agents', () => ({
+mock.module('@feed/agents', () => ({
   agentService: {
     listUserAgents: mockListUserAgents,
     getPerformance: mockGetPerformance,
@@ -15,7 +15,7 @@ mock.module('@babylon/agents', () => ({
   isAutonomousTradingEnabled: mockIsAutonomousTradingEnabled,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   logger: {
     warn: mockLoggerWarn,
   },

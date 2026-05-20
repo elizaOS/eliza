@@ -8,7 +8,7 @@ import {
   calculateMarkPrice,
   calculateUnrealizedPnL,
   shouldLiquidate,
-} from '@babylon/shared/perps-types';
+} from '@feed/shared/perps-types';
 
 describe('Perpetuals Calculation Utilities', () => {
   describe('calculateLiquidationPrice', () => {

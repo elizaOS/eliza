@@ -253,7 +253,7 @@ export class AgentRegistry {
       walletAddress,
       displayName || `Agent ${userId.slice(-8)}`,
       username,
-      'Autonomous agent on Babylon',
+      'Autonomous agent on Feed',
       1000,
       100
     );

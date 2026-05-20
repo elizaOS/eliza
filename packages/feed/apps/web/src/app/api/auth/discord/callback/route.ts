@@ -9,9 +9,9 @@
  * links Discord account, and awards points. Redirects to rewards page with status.
  */
 
-import { ReputationService, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { getWaitlistBaseUrl, logger } from '@babylon/shared';
+import { ReputationService, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { getWaitlistBaseUrl, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

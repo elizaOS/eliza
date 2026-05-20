@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { forwardRef } from 'react';
 

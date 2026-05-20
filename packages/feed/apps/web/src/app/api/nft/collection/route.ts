@@ -3,12 +3,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   getNftTokenOwnersFromIndexer,
   getOwnerUsersByWalletAddresses,
   NftIndexerUnavailableError,
-} from '@babylon/api/services/nft-indexer-service';
+} from '@feed/api/services/nft-indexer-service';
 import {
   and,
   asc,
@@ -21,8 +21,8 @@ import {
   nftOwnership,
   or,
   users,
-} from '@babylon/db';
-import { logger, toISOOrNull } from '@babylon/shared';
+} from '@feed/db';
+import { logger, toISOOrNull } from '@feed/shared';
 import type { SQL } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import type { NftGalleryResponse, NftSummary } from '@/types/nft';

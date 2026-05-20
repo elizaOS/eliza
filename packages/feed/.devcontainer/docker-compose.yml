@@ -9,12 +9,12 @@ services:
     command: sleep infinity
     environment:
       # Point to Docker-network service names instead of localhost ports
-      DATABASE_URL: postgresql://babylon:babylon_dev_password@postgres:5432/babylon
-      POSTGRES_URL: postgresql://babylon:babylon_dev_password@postgres:5432/babylon
+      DATABASE_URL: postgresql://feed:feed_dev_password@postgres:5432/feed
+      POSTGRES_URL: postgresql://feed:feed_dev_password@postgres:5432/feed
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: babylon
-      MINIO_SECRET_KEY: babylon_dev_password
+      MINIO_ACCESS_KEY: feed
+      MINIO_SECRET_KEY: feed_dev_password
     ports:
       - "3000:3000"   # Next.js (web)
       - "3077:3077"   # Next.js (mobile)

@@ -7,16 +7,16 @@
     "baseUrl": ".",
     "types": ["bun-types"],
     "paths": {
-      "@babylon/core": ["../core/markets/index.ts"],
-      "@babylon/core/*": ["../core/*"],
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"],
-      "@babylon/engine": ["../engine/src/index.ts"],
-      "@babylon/engine/*": ["../engine/src/*"],
-      "@babylon/agents": ["../agents/dist/index.d.ts"],
-      "@babylon/agents/*": ["../agents/dist/*"]
+      "@feed/core": ["../core/markets/index.ts"],
+      "@feed/core/*": ["../core/*"],
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"],
+      "@feed/engine": ["../engine/src/index.ts"],
+      "@feed/engine/*": ["../engine/src/*"],
+      "@feed/agents": ["../agents/dist/index.d.ts"],
+      "@feed/agents/*": ["../agents/dist/*"]
     }
   },
   "include": ["src/**/*", "src/**/*.d.ts"],

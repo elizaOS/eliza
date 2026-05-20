@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'nova-sinclair',
@@ -78,7 +78,7 @@ const actor = {
     "Founder @AetherEnergy | Solving Fusion | Solving Climate | Caltech (attended) | The planet can't wait | Clean energy or bust (increasingly likely: bust)",
   pfpDescription:
     'White American woman in her early 30s with bright auburn hair, green eyes burning with genuine conviction, and freckled skin. Wearing a simple sustainable-fabric t-shirt. Expression: fierce determination that borders on zealotry. Background: a clean energy lab with a prototype reactor that has never turned on.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'blue',
     scamProfile: 'naive',

@@ -2,7 +2,7 @@
  * Test to debug paragraph formatting in LLM responses
  */
 
-import { BabylonLLMClient } from '@babylon/engine';
+import { FeedLLMClient } from '@feed/engine';
 
 async function testParagraphFormatting() {
   console.log('🔍 Testing Paragraph Formatting\n');
@@ -12,7 +12,7 @@ async function testParagraphFormatting() {
     process.exit(0);
   }
 
-  const llm = new BabylonLLMClient();
+  const llm = new FeedLLMClient();
 
   const testPrompt = `You are BloombAIrg News, a news organization. Write a comprehensive news article about this prediction market: "Will OpenAGI achieve AGI by 2030?".
 

@@ -66,5 +66,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Run integration tests: bun test tests/integration/a2a-http-api.test.ts"
 echo "  2. Run live tests: bun test tests/integration/a2a-http-live.test.ts (set SKIP_LIVE_SERVER=true to skip)"
-echo "  3. Test with actual agents: See /eliza/plugin-babylon/"
+echo "  3. Test with actual agents: See /eliza/plugin-feed/"
 

@@ -4,7 +4,7 @@
  * Originally written for Privy; now used with Steward tokens via the compat shim.
  * TODO: Phase 3 — rename this file to `accessToken.ts` and remove Privy naming.
  */
-import { extractErrorMessage, sleep } from '@babylon/shared';
+import { extractErrorMessage, sleep } from '@feed/shared';
 
 const RETRYABLE_ACCESS_TOKEN_ERROR_MESSAGES = [
   'failed to fetch',

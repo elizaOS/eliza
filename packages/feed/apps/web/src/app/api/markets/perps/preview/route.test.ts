@@ -9,7 +9,7 @@ const mockAuthenticate = mock(async () => ({ userId: 'user-1' }));
 const mockPreviewOpenPosition = mock();
 const mockPreviewOrder = mock();
 
-mock.module('@babylon/api', () => ({
+mock.module('@feed/api', () => ({
   addPublicReadHeaders: mock(() => undefined),
   authenticate: mockAuthenticate,
   publicRateLimit: mockPublicRateLimit,
@@ -24,7 +24,7 @@ mock.module('@babylon/api', () => ({
       await handler(request),
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   PerpOpenPositionSchema: {
     parse: (value: Record<string, unknown>) => value,
   },

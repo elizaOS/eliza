@@ -70,9 +70,9 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser } from '@babylon/db';
-import { generateSnowflakeId, IdParamSchema, logger } from '@babylon/shared';
+} from '@feed/api';
+import { asUser } from '@feed/db';
+import { generateSnowflakeId, IdParamSchema, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

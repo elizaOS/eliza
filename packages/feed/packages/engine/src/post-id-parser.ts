@@ -34,7 +34,7 @@ export interface ParseResult {
  * Default post metadata
  */
 const DEFAULT_POST_METADATA: ParsedPostMetadata = {
-  gameId: 'babylon',
+  gameId: 'feed',
   authorId: 'system',
   timestamp: new Date(),
 };
@@ -48,7 +48,7 @@ function getArrayElement<T>(arr: readonly T[], index: number): T | undefined {
 
 /**
  * Parse Format 1: gameId-gameTimestamp-authorId-isoTimestamp
- * Example: babylon-1761441310151-kash-patrol-2025-10-01T02:12:00Z
+ * Example: feed-1761441310151-kash-patrol-2025-10-01T02:12:00Z
  */
 function parseFormat1(postId: string): ParsedPostMetadata | null {
   const isoTimestampMatch = postId.match(
@@ -105,7 +105,7 @@ function parsePostFormat(postId: string): ParsedPostMetadata | null {
     authorId = thirdPart;
   }
 
-  return { gameId: 'babylon', authorId, timestamp };
+  return { gameId: 'feed', authorId, timestamp };
 }
 
 /**
@@ -152,7 +152,7 @@ function parseGameFormat(postId: string): ParsedPostMetadata | null {
  *
  * @example
  * ```typescript
- * const result = parsePostId('babylon-1761441310151-kash-patrol-2025-10-01T02:12:00Z');
+ * const result = parsePostId('feed-1761441310151-kash-patrol-2025-10-01T02:12:00Z');
  * if (result.success) {
  *   console.log(`Post by ${result.metadata.authorId} at ${result.metadata.timestamp}`);
  * }

@@ -1,5 +1,5 @@
 // GET /api/markets/predictions/[id]/trades – paginated trades for a market
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@feed/api';
 import {
   addPublicReadHeaders,
   getCache,
@@ -7,9 +7,9 @@ import {
   setCache,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, inArray, markets, sql, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, inArray, markets, sql, users } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

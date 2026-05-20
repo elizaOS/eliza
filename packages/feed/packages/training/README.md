@@ -1,8 +1,8 @@
-# Babylon Training Pipeline
+# Feed Training Pipeline
 
 > **⚠️ Experimental** - Under active development. APIs may change.
 
-RL training for Babylon agents using trajectory-based learning with GRPO (Group Relative Policy Optimization).
+RL training for Feed agents using trajectory-based learning with GRPO (Group Relative Policy Optimization).
 
 ## Quick Start
 
@@ -11,7 +11,7 @@ RL training for Babylon agents using trajectory-based learning with GRPO (Group 
 ```bash
 bun run dev  # Start server first
 
-babylon train parallel --archetypes trader --num-agents 5 --ticks 20
+feed train parallel --archetypes trader --num-agents 5 --ticks 20
 ```
 
 ### 2. Train Locally
@@ -25,8 +25,8 @@ pip install -r requirements.txt
 python scripts/run_training.py --steps 100
 
 # Or use the canonical project pipeline from the CLI
-cd /Users/shawwalters/babylon-workspace/babylon
-babylon train pipeline --local-backend mlx --local-steps 100
+cd /Users/shawwalters/feed-workspace/feed
+feed train pipeline --local-backend mlx --local-steps 100
 ```
 
 ## Canonical Scam-Defense Release
@@ -34,15 +34,15 @@ babylon train pipeline --local-backend mlx --local-steps 100
 The canonical scam-defense dataset/model release is built from the selection file
 at:
 
-`/Users/shawwalters/babylon-workspace/Marketplace-of-Trust/runs/scam-defense/release_selection.json`
+`/Users/shawwalters/feed-workspace/Marketplace-of-Trust/runs/scam-defense/release_selection.json`
 
 Use the consolidated builder:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training/python/scripts
+cd /Users/shawwalters/feed-workspace/feed/packages/training/python/scripts
 python3 build_scam_defense_release.py \
-  --selection /Users/shawwalters/babylon-workspace/Marketplace-of-Trust/runs/scam-defense/release_selection.json \
-  --output-dir /Users/shawwalters/babylon-workspace/babylon/releases/scam-defense-v1 \
+  --selection /Users/shawwalters/feed-workspace/Marketplace-of-Trust/runs/scam-defense/release_selection.json \
+  --output-dir /Users/shawwalters/feed-workspace/feed/releases/scam-defense-v1 \
   --clean
 ```
 
@@ -79,8 +79,8 @@ python scripts/run_training.py --steps 100 --reward-profile trust_blue
 # Terminal 1: Atropos API
 run-api --port 8000
 
-# Terminal 2: Babylon Environment
-python -m src.training.babylon_env serve --slurm false
+# Terminal 2: Feed Environment
+python -m src.training.feed_env serve --slurm false
 
 # Terminal 3: GRPO Trainer
 python -m src.training.atropos_trainer --steps 100
@@ -109,7 +109,7 @@ W&B logging is **optional** and works in offline mode if no API key is set.
 ```bash
 # With W&B (online)
 export WANDB_API_KEY=your_key
-python scripts/run_training.py --steps 100 --wandb-project babylon-training
+python scripts/run_training.py --steps 100 --wandb-project feed-training
 
 # Offline mode (automatic if no API key)
 python scripts/run_training.py --steps 100
@@ -176,18 +176,18 @@ python scripts/run_training.py \
 | Any | Tinker | Cloud-based | N/A |
 
 Local backend defaults can be overridden with:
-- `BABYLON_LOCAL_MLX_MODEL`
-- `BABYLON_LOCAL_CUDA_MODEL`
-- `BABYLON_LOCAL_CPU_MODEL`
+- `FEED_LOCAL_MLX_MODEL`
+- `FEED_LOCAL_CUDA_MODEL`
+- `FEED_LOCAL_CPU_MODEL`
 
 ## CLI Commands
 
 ### Generate Data
 
 ```bash
-babylon train parallel --archetypes trader,degen --num-agents 3 --ticks 20
-babylon train parallel -a all -n 2 -t 10      # All archetypes
-babylon train parallel --dry-run               # Preview
+feed train parallel --archetypes trader,degen --num-agents 3 --ticks 20
+feed train parallel -a all -n 2 -t 10      # All archetypes
+feed train parallel --dry-run               # Preview
 ```
 
 | Flag | Description | Default |
@@ -201,16 +201,16 @@ babylon train parallel --dry-run               # Preview
 ### Score & Export
 
 ```bash
-babylon train score                           # Score all trajectories
-babylon train archetype -a trader             # Score + export for archetype
-babylon train archetype -a trader --score-only
+feed train score                           # Score all trajectories
+feed train archetype -a trader             # Score + export for archetype
+feed train archetype -a trader --score-only
 ```
 
 ### Train
 
 ```bash
-babylon train pipeline -a trader              # Canonical pipeline
-babylon train run -a all                      # All archetypes
+feed train pipeline -a trader              # Canonical pipeline
+feed train run -a all                      # All archetypes
 ```
 
 ## Benchmarking
@@ -288,13 +288,13 @@ Benchmarks run automatically via GitHub Actions:
 Plan the hardware and context envelope before changing the scam-defense recipe:
 
 ```bash
-cd /Users/shawwalters/babylon-workspace/babylon/packages/training
+cd /Users/shawwalters/feed-workspace/feed/packages/training
 make qwen-capacity MODEL=9b CONTEXTS=128k,256k TRAINING_SEQ_LENGTH=8192
 ```
 
 The detailed planner notes live in:
 
-- `/Users/shawwalters/babylon-workspace/babylon/packages/training/QWEN_CAPACITY_RUNBOOK.md`
+- `/Users/shawwalters/feed-workspace/feed/packages/training/QWEN_CAPACITY_RUNBOOK.md`
 
 ### Local Training
 
@@ -383,7 +383,7 @@ Notes:
 - Full canonical Tinker runs now continue from the SFT state into a Tinker-native RL stage instead of forcing `--skip-rl`.
 - Served eval and ScamBench run against Tinker's OpenAI-compatible inference endpoint using the initial sampler checkpoint vs the final sampler checkpoint from the run.
 - `python scripts/run_tinker_training.py` remains available as a low-level standalone trainer, defaults to `Qwen/Qwen3.5-4B`, and normalizes stale dated Tinker model ids when the live catalog has moved forward.
-- See [deploy/TINKER_RUNBOOK.md](/Users/shawwalters/babylon-workspace/babylon/packages/training/deploy/TINKER_RUNBOOK.md) for the recommended remote-machine workflow.
+- See [deploy/TINKER_RUNBOOK.md](/Users/shawwalters/feed-workspace/feed/packages/training/deploy/TINKER_RUNBOOK.md) for the recommended remote-machine workflow.
 - `python scripts/test_pipeline.py --local-export-dir <export-dir>` runs the current preflight checks against the canonical pipeline, dependency audit, rollback tooling, Nebius dry-run, optional alert webhook ping, and optional throughput-report validation.
 - Local smoke tests, dependency audits, rollback checks, and webhook alert tests are automated; live Tinker or Nebius runs plus target-H100/H200 throughput qualification are still separate production gates.
 
@@ -423,8 +423,8 @@ Agent Trajectories → TrajectoryRecorder → Database
 | Component | Description |
 |-----------|-------------|
 | `ServiceManager` | Manages Atropos API and vLLM servers |
-| `BabylonRLAIFEnv` | RLAIF environment for trajectory scoring |
-| `BabylonAtroposTrainer` | GRPO trainer with LR scheduling |
+| `FeedRLAIFEnv` | RLAIF environment for trajectory scoring |
+| `FeedAtroposTrainer` | GRPO trainer with LR scheduling |
 | `run_pipeline.py` | Canonical end-to-end project pipeline |
 | `run_training.py` | RL-only trainer / low-level iteration path |
 
@@ -464,7 +464,7 @@ TINKER_API_KEY=your_key             # For cloud training
 **No trajectory data**
 ```bash
 bun run dev
-babylon train parallel --archetypes trader --num-agents 5 --ticks 20
+feed train parallel --archetypes trader --num-agents 5 --ticks 20
 ```
 
 **Not enough samples** - Need 20+ trajectories with LLM calls. Run more agents.

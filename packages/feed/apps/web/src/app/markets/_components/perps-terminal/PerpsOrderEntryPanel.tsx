@@ -1,7 +1,7 @@
 'use client';
 
-import { FEE_CONFIG } from '@babylon/engine/config/fees';
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEE_CONFIG } from '@feed/engine/config/fees';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import { Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -209,7 +209,7 @@ export function PerpsOrderEntryPanel({
 
     if (sizeNum < market.minOrderSize) {
       toast.error(
-        `Minimum order size is ${BABYLON_POINTS_SYMBOL}${market.minOrderSize}`
+        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`
       );
       return;
     }
@@ -439,7 +439,7 @@ export function PerpsOrderEntryPanel({
                 Notional Size (USD)
               </label>
               <span className="text-muted-foreground text-xs">
-                Min {BABYLON_POINTS_SYMBOL}
+                Min {FEED_POINTS_SYMBOL}
                 {market.minOrderSize}
               </span>
             </div>

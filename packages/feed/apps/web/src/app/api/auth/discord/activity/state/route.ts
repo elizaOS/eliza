@@ -16,8 +16,8 @@
  * - hmac_signature: hex-encoded HMAC-SHA256 of `<uuid>.<timestamp>`
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import { NextResponse } from 'next/server';
 import { generateSignedState } from './state-utils';
 

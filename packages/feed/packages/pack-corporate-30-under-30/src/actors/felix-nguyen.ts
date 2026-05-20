@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'felix-nguyen',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @NimbusCloud | Fighting Big Cloud | 40% Cheaper Than AWS | 94.7% Uptime (aspirational: 99.9%) | Berkeley CS | Scrappy by Nature',
   pfpDescription:
     'Vietnamese-American male in his mid-20s with messy black hair, friendly dark eyes, and an optimistic grin despite everything. Wearing a hoodie with the Nimbus Cloud logo (a small cloud with a price tag). Background: a cluttered desk with ramen cups and server monitoring dashboards.',
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

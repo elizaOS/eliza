@@ -36,7 +36,7 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   db,
   desc,
@@ -45,15 +45,15 @@ import {
   generateSnowflakeId,
   inArray,
   posts,
-} from '@babylon/db';
+} from '@feed/db';
 import {
-  BabylonLLMClient,
+  FeedLLMClient,
   getActiveEventsForPosting,
   StaticDataRegistry,
   secureRandom,
   worldFactsService,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -382,7 +382,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     let abortedDueToCircuitBreaker = false;
 
     // Create LLM client for organization posts
-    const llmClient = BabylonLLMClient.forGameTick();
+    const llmClient = FeedLLMClient.forGameTick();
 
     for (const org of orgsThisTick) {
       // Circuit breaker: abort if too many consecutive errors

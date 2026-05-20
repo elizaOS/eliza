@@ -3,12 +3,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter,
   PredictionMarketService,
   PredictionPricing,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 import {
   and,
   balanceTransactions,
@@ -17,14 +17,14 @@ import {
   eq,
   inArray,
   npcTrades,
-} from '@babylon/db';
-import { FEE_CONFIG, WalletService } from '@babylon/engine';
+} from '@feed/db';
+import { FEE_CONFIG, WalletService } from '@feed/engine';
 import {
   logger,
   MarketQuerySchema,
   PredictionMarketIdSchema,
   toISOOrNull,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {

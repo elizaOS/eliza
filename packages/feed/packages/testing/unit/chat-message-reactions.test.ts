@@ -12,7 +12,7 @@ import {
   ALLOWED_REACTION_EMOJI_SET,
   ALLOWED_REACTION_EMOJIS,
   ChatMessageReactionCreateSchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 // ---------------------------------------------------------------------------
 // ALLOWED_REACTION_EMOJIS

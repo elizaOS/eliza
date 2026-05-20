@@ -19,7 +19,7 @@ import { describe, expect, mock, test } from 'bun:test';
 import {
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@babylon/shared/constants/markets';
+} from '@feed/shared/constants/markets';
 import type {
   PredictionDbPort,
   PredictionMarketRecord,

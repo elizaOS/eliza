@@ -1,4 +1,4 @@
-import type { ErrorHandlerOptions, JsonValue } from '@babylon/api';
+import type { ErrorHandlerOptions, JsonValue } from '@feed/api';
 import * as Sentry from '@sentry/nextjs';
 
 type ErrorCaptureContext = Parameters<
@@ -48,7 +48,7 @@ function getEndpointFromUrl(url: string | undefined): string | undefined {
 }
 
 /**
- * Creates the default Sentry capture callback used by @babylon/api's withErrorHandling wrapper.
+ * Creates the default Sentry capture callback used by @feed/api's withErrorHandling wrapper.
  */
 export function createSentryApiRouteCapture(): NonNullable<
   ErrorHandlerOptions['captureError']

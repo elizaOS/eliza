@@ -38,7 +38,7 @@ import {
   setDefaultTimeout,
   test,
 } from 'bun:test';
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { existsSync, readFileSync } from 'fs';
 import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
 // import { GameGenerator } from '@/engine/GameGenerator'; // Removed static import
@@ -87,7 +87,7 @@ const mockWorldContext = {
   checkRealityGrounding: () => ({ score: 1, feedback: [] }),
 };
 
-mock.module('@babylon/engine', () => mockWorldContext);
+mock.module('@feed/engine', () => mockWorldContext);
 
 // Load environment variables from .env files
 const loadEnvFile = (filePath: string) => {

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  type BabylonCharacterSheet,
+  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
   type GroqModelRouting,
 } from './local-roster';
@@ -27,7 +27,7 @@ export interface TrustExperimentAgentSpec {
   instanceId: string;
   variantIndex: number;
   modelProfile: TrustExperimentModelProfile;
-  sheet: BabylonCharacterSheet;
+  sheet: FeedCharacterSheet;
 }
 
 export interface TrustExperimentManifest {
@@ -189,8 +189,8 @@ export function buildTrustExperimentManifest(
   for (const agent of agents) {
     modelBreakdown[agent.modelProfile.id] =
       (modelBreakdown[agent.modelProfile.id] ?? 0) + 1;
-    teamBreakdown[agent.sheet.babylon.team] =
-      (teamBreakdown[agent.sheet.babylon.team] ?? 0) + 1;
+    teamBreakdown[agent.sheet.feed.team] =
+      (teamBreakdown[agent.sheet.feed.team] ?? 0) + 1;
   }
 
   return {
@@ -209,8 +209,8 @@ export function buildTrustExperimentManifest(
       instanceId: agent.instanceId,
       characterId: agent.sheet.id,
       username: agent.sheet.username,
-      team: agent.sheet.babylon.team,
-      alignment: agent.sheet.babylon.alignment,
+      team: agent.sheet.feed.team,
+      alignment: agent.sheet.feed.alignment,
       modelSize: agent.modelProfile.id,
       parameterCountB: agent.modelProfile.parameterCountB,
       baseModel: agent.modelProfile.baseModel,
@@ -241,10 +241,10 @@ export async function writeTrustExperimentCharacterSheets(
 }
 
 function buildExperimentCharacterSheet(
-  baseSheet: BabylonCharacterSheet,
+  baseSheet: FeedCharacterSheet,
   modelProfile: TrustExperimentModelProfile,
   variantIndex: number
-): BabylonCharacterSheet {
+): FeedCharacterSheet {
   const suffix = `${modelProfile.id.replace('.', '_')}v${variantIndex}`;
   const username = `${baseSheet.username}_${suffix}`.slice(0, 32);
 
@@ -265,10 +265,10 @@ function buildExperimentCharacterSheet(
       model: modelProfile.baseModel,
       groq: modelProfile.runtimeRouting,
     },
-    babylon: {
-      ...baseSheet.babylon,
+    feed: {
+      ...baseSheet.feed,
       datasetTags: [
-        ...baseSheet.babylon.datasetTags,
+        ...baseSheet.feed.datasetTags,
         `model_size:${modelProfile.id}`,
         `training_profile:${modelProfile.trainingProfile}`,
         `runtime_model:${modelProfile.runtimeRouting.primary}`,

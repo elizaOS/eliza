@@ -14,8 +14,8 @@
  * @module engine/services/market-momentum-service
  */
 
-import { db, desc, gte, perpMarketSnapshots } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, desc, gte, perpMarketSnapshots } from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Configuration for momentum-based trading behavior

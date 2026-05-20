@@ -6,7 +6,7 @@
  * over-the-top satirical content and applies character mappings.
  */
 
-import type { ParodyHeadline, RSSHeadline } from '@babylon/db';
+import type { ParodyHeadline, RSSHeadline } from '@feed/db';
 import {
   and,
   db,
@@ -16,9 +16,9 @@ import {
   isNull,
   or,
   parodyHeadlines,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
-import { BabylonLLMClient } from '../llm/openai-client';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
+import { FeedLLMClient } from '../llm/openai-client';
 import { characterMappingService } from './character-mapping-service';
 import { ContentQualityGate } from './content-quality-gate';
 import { StaticDataRegistry } from './static-data-registry';
@@ -53,9 +53,9 @@ export interface GeneratedParody {
  * consistent parody character usage.
  */
 export class ParodyHeadlineGenerator {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
 
-  constructor(llm: BabylonLLMClient) {
+  constructor(llm: FeedLLMClient) {
     this.llm = llm;
   }
 
@@ -462,6 +462,6 @@ Generate the parody now.`;
  * Priority: Groq > Claude > OpenAI
  */
 export function createParodyHeadlineGenerator(): ParodyHeadlineGenerator {
-  const llm = BabylonLLMClient.forGameTick();
+  const llm = FeedLLMClient.forGameTick();
   return new ParodyHeadlineGenerator(llm);
 }

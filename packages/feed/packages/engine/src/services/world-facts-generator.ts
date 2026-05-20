@@ -22,9 +22,9 @@ import {
   sql,
   worldEvents,
   worldFacts,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
-import { BabylonLLMClient } from '../llm/openai-client';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
+import { FeedLLMClient } from '../llm/openai-client';
 import { shuffleArray } from '../utils/randomization';
 import { validateCoherence } from './content-grounding-validator';
 import { ContentQualityGate } from './content-quality-gate';
@@ -62,14 +62,14 @@ const DEFAULT_CONFIG: WorldFactsGenerationConfig = {
  */
 export class WorldFactsGeneratorService {
   private config: WorldFactsGenerationConfig;
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
 
   constructor(
     config: Partial<WorldFactsGenerationConfig> = {},
-    llm?: BabylonLLMClient
+    llm?: FeedLLMClient
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.llm = llm ?? BabylonLLMClient.forGameTick();
+    this.llm = llm ?? FeedLLMClient.forGameTick();
   }
 
   /**
@@ -663,7 +663,7 @@ export const worldFactsGenerator = new WorldFactsGeneratorService();
  */
 export function createWorldFactsGenerator(
   config?: Partial<WorldFactsGenerationConfig>,
-  llm?: BabylonLLMClient
+  llm?: FeedLLMClient
 ): WorldFactsGeneratorService {
   return new WorldFactsGeneratorService(config, llm);
 }

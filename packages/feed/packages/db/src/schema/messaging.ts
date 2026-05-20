@@ -1,4 +1,4 @@
-import type { MessageMetadata, NotificationData } from '@babylon/shared';
+import type { MessageMetadata, NotificationData } from '@feed/shared';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -491,9 +491,9 @@ export type NewGroupInvite = typeof groupInvites.$inferInsert;
 export type GroupType = 'user' | 'npc' | 'agent' | 'team';
 export type GroupMemberRole = 'owner' | 'admin' | 'member';
 export type GroupInviteStatus = 'pending' | 'accepted' | 'declined';
-// MessageType is exported from @babylon/shared - use that canonical definition
-export type { MessageType } from '@babylon/shared';
-// TierLevel is exported from @babylon/shared - use that canonical definition
+// MessageType is exported from @feed/shared - use that canonical definition
+export type { MessageType } from '@feed/shared';
+// TierLevel is exported from @feed/shared - use that canonical definition
 
 // Alpha group enhancement types (for grandfathering and invite decay)
 export type GroupMemberGrandfatherFields = Pick<

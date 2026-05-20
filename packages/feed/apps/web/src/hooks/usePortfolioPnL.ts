@@ -1,6 +1,6 @@
 'use client';
 
-import type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 import { useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -11,7 +11,7 @@ import {
 } from '@/stores/portfolioBreakdownStore';
 
 // Re-export for components that import from this hook
-export type { PortfolioBreakdownSnapshot } from '@babylon/engine/client';
+export type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
 export { fetchPortfolioBreakdownSnapshot, isAbortError };
 
 /**

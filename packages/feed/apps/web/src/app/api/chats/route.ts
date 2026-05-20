@@ -171,12 +171,12 @@ import {
   ReputationService,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   canAccessNftChatGate,
   getNftChatGatingConfig,
   reconcileNftChatMembershipForUser,
-} from '@babylon/api/services/nft-chat-gating-service';
+} from '@feed/api/services/nft-chat-gating-service';
 // Import from new Drizzle client
 import {
   and,
@@ -192,7 +192,7 @@ import {
   inArray,
   messages,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   ChatCreateSchema,
   ChatQuerySchema,
@@ -200,7 +200,7 @@ import {
   getChainName,
   getCurrentChainId,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

@@ -9,12 +9,12 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { WorldEvent } from '@babylon/shared';
+import type { WorldEvent } from '@feed/shared';
 import {
   type BenchmarkConfig,
   BenchmarkDataGenerator,
   SeededRandom,
-} from '@babylon/training';
+} from '@feed/training';
 import { MarketMoverAgent } from '../services/market-mover-agent';
 
 // Shared config for most tests - minimal but sufficient

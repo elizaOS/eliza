@@ -6,16 +6,16 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   PredictionDbAdapter,
   type PredictionMarketRecord,
   PredictionMarketService,
   type PredictionPositionRecord,
   PredictionPricing,
-} from '@babylon/core/markets/prediction';
-import { FEE_CONFIG, WalletService } from '@babylon/engine';
-import { logger, MarketQuerySchema, toISOOrNull } from '@babylon/shared';
+} from '@feed/core/markets/prediction';
+import { FEE_CONFIG, WalletService } from '@feed/engine';
+import { logger, MarketQuerySchema, toISOOrNull } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {

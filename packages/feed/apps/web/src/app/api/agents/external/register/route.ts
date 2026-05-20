@@ -4,13 +4,13 @@
  * POST /api/agents/external/register
  *
  * Allows external agents (ElizaOS, MCP, Agent0, custom) to register
- * with the Babylon game. Generates API keys and stores connection params.
+ * with the Feed game. Generates API keys and stores connection params.
  *
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import type { ExternalAgentConnectionParams } from '@babylon/agents';
-import { agentRegistry } from '@babylon/agents';
+import type { ExternalAgentConnectionParams } from '@feed/agents';
+import { agentRegistry } from '@feed/agents';
 import {
   authenticate,
   checkRateLimitAsync,
@@ -18,8 +18,8 @@ import {
   hashApiKey,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

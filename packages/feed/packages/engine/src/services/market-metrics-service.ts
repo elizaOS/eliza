@@ -22,8 +22,8 @@ import {
   predictionPriceHistories,
   sql,
   stockPrices,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import { first, last } from '../utils/array-utils';
 import { formatError } from '../utils/error-utils';
 import { StaticDataRegistry } from './static-data-registry';

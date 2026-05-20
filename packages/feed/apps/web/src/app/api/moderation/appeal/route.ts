@@ -76,11 +76,11 @@ import {
   createNotification,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { JsonValue } from '@babylon/db';
-import { db } from '@babylon/db';
-import { WalletService } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import type { JsonValue } from '@feed/db';
+import { db } from '@feed/db';
+import { WalletService } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { type Address, createPublicClient, http } from 'viem';
 import { baseSepolia } from 'viem/chains';

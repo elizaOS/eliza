@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { runHarness, archetypeAgent, getArchetype } from '@babylon/agent-harness';
+ * import { runHarness, archetypeAgent, getArchetype } from '@feed/agent-harness';
  *
  * const result = await runHarness({
  *   a2aUrl: 'http://localhost:3001',
@@ -23,10 +23,10 @@
 /**
  * Agent Training Harness
  *
- * A framework for running and training agents against Babylon's prediction
+ * A framework for running and training agents against Feed's prediction
  * markets. Supports multiple backends:
  *   - Local A2A server (localhost:3001, JSON-RPC)
- *   - Production server (localhost:3000 or babylon.market, official A2A SDK)
+ *   - Production server (localhost:3000 or feed.market, official A2A SDK)
  *   - Offline simulation (no server required, uses engine's InMemoryStateStore)
  *
  * Built-in agents:
@@ -40,7 +40,7 @@
  *
  * @example
  * ```typescript
- * import { runHarness, createLLMAgent, getArchetype } from '@babylon/agent-harness';
+ * import { runHarness, createLLMAgent, getArchetype } from '@feed/agent-harness';
  *
  * const result = await runHarness({
  *   a2aUrl: 'http://localhost:3001',
@@ -85,8 +85,8 @@ export { AgentHarness, runHarness } from './harness';
 // ─── Simulation Adapter (offline, no server needed) ──────────────────────────
 export type { SimulationConfig, SimulationTickResult } from './offline-adapter';
 export { OfflineGameAdapter, SimulationAdapter } from './offline-adapter';
-export type { BabylonProductionClientConfig } from './production-client';
-export { BabylonProductionClient } from './production-client';
+export type { FeedProductionClientConfig } from './production-client';
+export { FeedProductionClient } from './production-client';
 export type {
   GameState,
   SimulationEngineInterface,

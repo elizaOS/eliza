@@ -1,5 +1,5 @@
 #!/bin/bash
-# Babylon Training Environment Validation
+# Feed Training Environment Validation
 #
 # Quick validation script to verify the container environment is correctly set up.
 # Run this before starting training to catch configuration issues early.
@@ -11,7 +11,7 @@
 set -e
 
 echo "============================================"
-echo "  Babylon Training - Environment Validation"
+echo "  Feed Training - Environment Validation"
 echo "============================================"
 echo ""
 

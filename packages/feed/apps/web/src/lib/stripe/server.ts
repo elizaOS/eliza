@@ -105,9 +105,9 @@ export function validatePurchaseAmount(amountUSD: number): {
  * users to malicious sites after checkout.
  */
 const ALLOWED_REDIRECT_ORIGINS = [
-  'https://babylon.market',
-  'https://www.babylon.market',
-  'https://staging.babylon.market',
+  'https://feed.market',
+  'https://www.feed.market',
+  'https://staging.feed.market',
   'http://localhost:3000',
   'http://localhost:3001',
 ];

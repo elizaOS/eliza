@@ -1,5 +1,5 @@
 /**
- * `babylon document` -- Generate markdown reference pages from system metadata.
+ * `feed document` -- Generate markdown reference pages from system metadata.
  *
  * Scans the systems directory, loads each system, and writes a markdown file
  * for each one plus an index page for the sim itself. These are auto-generated
@@ -11,9 +11,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
 import { defineCommand } from 'citty';
 import consola from 'consola';
-import { loadBabylonConfig } from '../../core/config';
+import { loadFeedConfig } from '../../core/config';
 import { scanSystems } from '../../core/scanner';
-import type { BabylonSystem } from '../../core/types';
+import type { FeedSystem } from '../../core/types';
 import { escapeMarkdown, phaseName } from '../shared';
 
 function formatInterval(interval: {
@@ -44,7 +44,7 @@ function formatInterval(interval: {
 }
 
 function generateSystemPage(
-  sys: BabylonSystem,
+  sys: FeedSystem,
   sourceFile: string | null
 ): string {
   const lines: string[] = [];
@@ -108,12 +108,12 @@ function generateSystemPage(
 }
 
 function generateIndexPage(
-  systems: BabylonSystem[],
+  systems: FeedSystem[],
   config: { budgetMs?: number; systemsDir?: string }
 ): string {
   const lines: string[] = [];
 
-  lines.push('# Babylon Sim');
+  lines.push('# Feed Sim');
   lines.push('');
   lines.push('Auto-generated reference from runtime metadata.');
   lines.push('');
@@ -126,7 +126,7 @@ function generateIndexPage(
   lines.push('');
 
   // Group by phase
-  const byPhase = new Map<number, BabylonSystem[]>();
+  const byPhase = new Map<number, FeedSystem[]>();
   for (const sys of systems) {
     const group = byPhase.get(sys.phase) ?? [];
     group.push(sys);
@@ -204,7 +204,7 @@ export default defineCommand({
     const rootDir = resolve(args.rootDir);
     const outDir = resolve(rootDir, args.outDir);
 
-    const { config, configFile } = await loadBabylonConfig(rootDir);
+    const { config, configFile } = await loadFeedConfig(rootDir);
     consola.info(`Config: ${configFile ?? 'defaults'}`);
 
     const { systems, files } = await scanSystems(

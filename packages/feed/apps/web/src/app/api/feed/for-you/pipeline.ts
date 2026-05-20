@@ -1,4 +1,4 @@
-import { getCacheOrFetch } from '@babylon/api';
+import { getCacheOrFetch } from '@feed/api';
 import {
   and,
   arcStates,
@@ -23,19 +23,19 @@ import {
   sql,
   userActorFollows,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   dailyTopicService,
   deriveTopicFromText,
   StaticDataRegistry,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type {
   ArcStateType,
   FeedEventAction,
   NarrativePost,
   NarrativeStory,
-} from '@babylon/shared';
-import { clamp, logger } from '@babylon/shared';
+} from '@feed/shared';
+import { clamp, logger } from '@feed/shared';
 import { compareFeedStories } from '@/app/api/feed/feed-cursor';
 import {
   calculateArcStateMultiplier,

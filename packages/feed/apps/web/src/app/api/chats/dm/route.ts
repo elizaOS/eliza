@@ -131,13 +131,13 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, hasBlocked } from '@babylon/db';
+} from '@feed/api';
+import { asUser, hasBlocked } from '@feed/db';
 import {
   DMChatCreateSchema,
   generateSnowflakeId,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
 

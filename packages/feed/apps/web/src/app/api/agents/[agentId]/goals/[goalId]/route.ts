@@ -121,8 +121,8 @@
  * ```
  */
 
-import { authenticate, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
+import { authenticate, withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

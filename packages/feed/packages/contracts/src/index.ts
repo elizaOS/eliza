@@ -1,16 +1,16 @@
 /**
  * @packageDocumentation
- * @module @babylon/contracts
+ * @module @feed/contracts
  *
- * Smart contract types and deployment information for Babylon.
+ * Smart contract types and deployment information for Feed.
  *
  * This package provides TypeScript types and utilities for interacting with
- * Babylon smart contracts, including deployment addresses, validation utilities,
+ * Feed smart contracts, including deployment addresses, validation utilities,
  * and environment detection.
  *
  * @example
  * ```typescript
- * import { getContractAddresses, getRpcUrl } from '@babylon/contracts';
+ * import { getContractAddresses, getRpcUrl } from '@feed/contracts';
  *
  * const addresses = getContractAddresses();
  * const rpcUrl = getRpcUrl();

@@ -12,7 +12,7 @@
  * - Tracks agent actions for performance evaluation
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import { logger } from '../utils/logger';
 import type {
   BenchmarkGameSnapshot,

@@ -2,7 +2,7 @@
  * LLM-Powered Agent
  *
  * An agent that uses a real LLM (Groq, OpenAI, or Anthropic) to make decisions.
- * This is the primary agent for evaluating model quality in the Babylon game context
+ * This is the primary agent for evaluating model quality in the Feed game context
  * and forms the foundation for OpenClaw, Hermes, and ElizaOS adapter comparisons.
  *
  * The agent receives a full context dump (balance, positions, markets, feed) and
@@ -60,7 +60,7 @@ const PROVIDER_DEFAULTS: Record<
 
 // ─── Prompt templates ─────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an autonomous trading agent in Babylon — a satirical prediction market game.
+const SYSTEM_PROMPT = `You are an autonomous trading agent in Feed — a satirical prediction market game.
 
 You observe the social feed, market conditions, and your portfolio, then decide what action to take.
 
@@ -77,7 +77,7 @@ Available actions and when to use them:
 Rules:
 - Only trade markets that seem genuinely mispriced based on the feed signals
 - Never risk more than 10% of balance on a single trade
-- Write posts that fit the satirical, tech/finance-focused tone of Babylon
+- Write posts that fit the satirical, tech/finance-focused tone of Feed
 - Provide clear reasoning for every decision
 
 Respond with ONLY valid JSON, no other text:

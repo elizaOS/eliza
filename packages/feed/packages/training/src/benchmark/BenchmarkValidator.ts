@@ -5,7 +5,7 @@
  * and contains all required fields.
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@feed/shared';
 import { logger } from '../utils/logger';
 import type { BenchmarkGameSnapshot } from './BenchmarkDataGenerator';
 

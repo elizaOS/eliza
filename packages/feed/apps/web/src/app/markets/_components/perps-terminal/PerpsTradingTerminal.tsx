@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { BarChart2, Bell, Home, Trophy, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -284,7 +284,7 @@ export function PerpsTradingTerminal({
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background">
                 <span className="font-bold text-xs">B</span>
               </div>
-              <span className="font-bold text-lg tracking-tight">babylon</span>
+              <span className="font-bold text-lg tracking-tight">feed</span>
             </div>
             <button
               type="button"

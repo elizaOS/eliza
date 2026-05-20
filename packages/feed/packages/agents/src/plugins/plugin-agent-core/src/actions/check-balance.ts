@@ -3,7 +3,7 @@
  * Returns the agent's current wallet balance
  */
 
-import { WalletService } from '@babylon/engine';
+import { WalletService } from '@feed/engine';
 import type {
   Action,
   ActionResult,

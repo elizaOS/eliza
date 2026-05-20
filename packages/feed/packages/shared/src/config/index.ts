@@ -1,5 +1,5 @@
 /**
- * Canonical Public Configuration for Babylon
+ * Canonical Public Configuration for Feed
  *
  * Environment-aware configuration for contract addresses and endpoints.
  * Import this instead of reading from environment variables.
@@ -169,9 +169,9 @@ export function getCurrentRpcUrl(): string {
  * 3. http://localhost:3000 (local development fallback)
  *
  * This ensures:
- * - Production: Uses babylon.market (via NEXT_PUBLIC_APP_URL)
- * - Staging: Uses staging.babylon.market (via NEXT_PUBLIC_APP_URL)
- * - Preview: Uses unique Vercel URL (e.g., babylon-pr-123.vercel.app via VERCEL_URL)
+ * - Production: Uses feed.market (via NEXT_PUBLIC_APP_URL)
+ * - Staging: Uses staging.feed.market (via NEXT_PUBLIC_APP_URL)
+ * - Preview: Uses unique Vercel URL (e.g., feed-pr-123.vercel.app via VERCEL_URL)
  * - Local: Uses localhost:3000
  */
 function normalizeBaseUrl(input: string): string {

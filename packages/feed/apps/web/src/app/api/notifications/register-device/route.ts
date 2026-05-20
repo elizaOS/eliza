@@ -15,7 +15,7 @@
  * @body { platform: 'ios' | 'android', token: string }
  */
 
-import { authenticate, withErrorHandling } from '@babylon/api';
+import { authenticate, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -25,7 +25,7 @@ const DEVICE_TOKEN_PREFIX = 'push:device:';
 const TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60;
 
 async function getRedis() {
-  const { getRedisClient } = await import('@babylon/api');
+  const { getRedisClient } = await import('@feed/api');
   return getRedisClient();
 }
 

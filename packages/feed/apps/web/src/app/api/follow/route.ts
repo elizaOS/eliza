@@ -1,4 +1,4 @@
-import { BusinessLogicError, withErrorHandling } from '@babylon/api';
+import { BusinessLogicError, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 import {
   DELETE as deleteFollow,

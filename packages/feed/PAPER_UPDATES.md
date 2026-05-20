@@ -1,6 +1,6 @@
 # Proposed Paper Updates
 
-Based on the gap analysis between the paper (`paper/babylon_scam_defense_paper.tex`) and current implementation.
+Based on the gap analysis between the paper (`paper/feed_scam_defense_paper.tex`) and current implementation.
 
 ---
 
@@ -62,7 +62,7 @@ Key points:
 **Content**: SHARE_INFORMATION (verifiable keyword-based intel search) and REQUEST_PAYMENT (labeled payment negotiation). These create measurable, non-fabricated social dynamics.
 
 ### 9. Online Continuous RL (Section 4.x)
-**Content**: Describe the online training loop where the model runs on GPU, queries the Babylon simulation for scenarios, generates actions, receives intent-aware rewards, and updates weights continuously.
+**Content**: Describe the online training loop where the model runs on GPU, queries the Feed simulation for scenarios, generates actions, receives intent-aware rewards, and updates weights continuously.
 
 ---
 
@@ -102,15 +102,15 @@ Fill in advance-fee fraud and interpersonal abuse rows (currently "---").
 |-------|-------------|-------------------|---------|-----------|---------|
 | Scripted | baseline | baseline | baseline | baseline | baseline |
 | Baseline Qwen-9B | TBD | TBD | TBD | TBD | TBD |
-| Babylon Red-9B | TBD | TBD | TBD | TBD | TBD |
+| Feed Red-9B | TBD | TBD | TBD | TBD | TBD |
 
 ### New Table: Competitive Matrix
-| Target ↓ / Attacker → | Scripted | Babylon Red | vs Baseline |
+| Target ↓ / Attacker → | Scripted | Feed Red | vs Baseline |
 |------------------------|----------|-------------|-------------|
 | GPT-5.4 | TBD | TBD | +X% |
 | Sonnet 4.5 | TBD | TBD | +X% |
 | Baseline Qwen-9B | TBD | TBD | +X% |
-| Babylon Blue-9B | TBD | TBD | +X% |
+| Feed Blue-9B | TBD | TBD | +X% |
 
 ---
 

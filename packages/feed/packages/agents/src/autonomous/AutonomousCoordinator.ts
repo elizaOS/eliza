@@ -21,10 +21,10 @@ import {
   or,
   userAgentConfigs,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import type { JsonValue } from '@babylon/shared';
-import { trajectoryRecorder } from '@babylon/training';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import type { JsonValue } from '@feed/shared';
+import { trajectoryRecorder } from '@feed/training';
 import type { IAgentRuntime } from '@elizaos/core';
 import {
   clearTrajectoryContext,
@@ -350,15 +350,15 @@ export class AutonomousCoordinator {
     if (recordTrajectories) {
       // Enrich NPC trajectories with world state context
       // Derive archetype from character sheet metadata
-      const babylonMeta = (
+      const feedMeta = (
         runtime.character as unknown as Record<string, unknown>
-      )?.babylon as Record<string, unknown> | undefined;
-      const archetype = babylonMeta
+      )?.feed as Record<string, unknown> | undefined;
+      const archetype = feedMeta
         ? deriveArchetype(
-            babylonMeta.alignment as string,
-            babylonMeta.team as string,
-            babylonMeta.scamProfile as string,
-            babylonMeta.tradingStyle as string
+            feedMeta.alignment as string,
+            feedMeta.team as string,
+            feedMeta.scamProfile as string,
+            feedMeta.tradingStyle as string
           )
         : 'trader';
 
@@ -393,7 +393,7 @@ export class AutonomousCoordinator {
           const snapshotId = null;
 
           // Query NPC actor state for memory/relationship snapshots
-          const { actorState } = await import('@babylon/db/schema');
+          const { actorState } = await import('@feed/db/schema');
           const npcState = await db
             .select()
             .from(actorState)
@@ -405,7 +405,7 @@ export class AutonomousCoordinator {
           // Determine NPC role from active arc plans
           let npcRole: string = 'observer';
           try {
-            const { questionArcPlans } = await import('@babylon/db/schema');
+            const { questionArcPlans } = await import('@feed/db/schema');
             const activePlans = await db
               .select({
                 insiderActorIds: questionArcPlans.insiderActorIds,

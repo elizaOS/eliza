@@ -1,7 +1,7 @@
 'use client';
 
-import { FEE_CONFIG } from '@babylon/engine/client';
-import { BABYLON_POINTS_SYMBOL, cn, logger } from '@babylon/shared';
+import { FEE_CONFIG } from '@feed/engine/client';
+import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
 import { AlertTriangle, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -214,7 +214,7 @@ export function PerpTradingModal({
 
     if (sizeNum < market.minOrderSize) {
       toast.error(
-        `Minimum order size is ${BABYLON_POINTS_SYMBOL}${market.minOrderSize}`
+        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`
       );
       return;
     }
@@ -235,7 +235,7 @@ export function PerpTradingModal({
       });
 
       toast.success('Position opened!', {
-        description: `Opened ${leverage}x ${side} on ${market.ticker} at ${BABYLON_POINTS_SYMBOL}${result.position.entryPrice.toFixed(2)}`,
+        description: `Opened ${leverage}x ${side} on ${market.ticker} at ${FEED_POINTS_SYMBOL}${result.position.entryPrice.toFixed(2)}`,
       });
       trackTrade('open', market.ticker, sizeNum, true);
 
@@ -261,7 +261,7 @@ export function PerpTradingModal({
   };
 
   const formatPrice = (price: number) => {
-    return `${BABYLON_POINTS_SYMBOL}${price.toFixed(2)}`;
+    return `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
   };
 
   const isHighRisk = leverage > 50 || marginRequired > 1000;
@@ -379,7 +379,7 @@ export function PerpTradingModal({
                   'w-32 rounded bg-background/50 px-3 py-1.5 text-right font-medium text-foreground focus:bg-background focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30',
                   loading && 'cursor-not-allowed opacity-50'
                 )}
-                placeholder={`Min: ${BABYLON_POINTS_SYMBOL}${market.minOrderSize}`}
+                placeholder={`Min: ${FEED_POINTS_SYMBOL}${market.minOrderSize}`}
               />
             </div>
             <div>

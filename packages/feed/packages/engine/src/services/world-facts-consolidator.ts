@@ -14,10 +14,10 @@
  * running 3x/day = ~$9/month.
  */
 
-import { and, db, desc, eq, inArray, worldFacts } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+import { and, db, desc, eq, inArray, worldFacts } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { cosineSimilarity, getEmbeddings } from '../llm/embedding-client';
-import { BabylonLLMClient } from '../llm/openai-client';
+import { FeedLLMClient } from '../llm/openai-client';
 import { ContentQualityGate } from './content-quality-gate';
 
 interface ConsolidationResult {
@@ -45,9 +45,9 @@ const MIN_CLUSTER_SIZE = 2;
 const MAX_FACTS_TO_PROCESS = 100;
 
 export class WorldFactsConsolidator {
-  private llm: BabylonLLMClient;
+  private llm: FeedLLMClient;
 
-  constructor(llm: BabylonLLMClient) {
+  constructor(llm: FeedLLMClient) {
     this.llm = llm;
   }
 

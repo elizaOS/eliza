@@ -315,7 +315,7 @@ def test_split_key_prefers_scenario_id_for_external_rows():
     assert (
         assemble.split_key_for_row(
             {
-                "source_pool": "babylon-export",
+                "source_pool": "feed-export",
                 "source_kind": "external",
                 "group_id": "external::family::external",
                 "scenario_id": "external::family::42",
@@ -327,7 +327,7 @@ def test_split_key_prefers_scenario_id_for_external_rows():
     assert (
         assemble.split_key_for_row(
             {
-                "source_pool": "babylon-export",
+                "source_pool": "feed-export",
                 "source_kind": "catalog",
                 "group_id": "catalog::core-direct",
                 "scenario_id": "catalog::core-direct::1",

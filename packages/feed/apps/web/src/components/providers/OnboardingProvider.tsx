@@ -1,12 +1,12 @@
 'use client';
 
-import type { OnboardingProfilePayload } from '@babylon/shared';
+import type { OnboardingProfilePayload } from '@feed/shared';
 import {
   isValidOnboardingUsername,
   logger,
   POINTS,
   sanitizeOnboardingUsername,
-} from '@babylon/shared';
+} from '@feed/shared';
 // Phase 2: Privy replaced by Steward — no more usePrivy or useIdentityToken
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -53,7 +53,7 @@ export function OnboardingProvider({
     logout,
   } = useAuth();
 
-  // Phase 2: isSocialLogin derived from the Babylon user record (populated at login)
+  // Phase 2: isSocialLogin derived from the Feed user record (populated at login)
   const isSocialLogin = useMemo(() => {
     return !!(user?.hasFarcaster || user?.hasTwitter);
   }, [user]);
@@ -131,7 +131,7 @@ export function OnboardingProvider({
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const isDevMode = params.get('dev') === 'true';
-      const isProduction = window.location.hostname === 'babylon.market';
+      const isProduction = window.location.hostname === 'feed.market';
       const isHomePage = window.location.pathname === '/';
       const isWaitlistFlow = params.get('waitlist') === 'true';
 
@@ -394,7 +394,7 @@ export function OnboardingProvider({
     socialAutoSubmitAttempted,
   ]);
 
-  // Phase 2: Auto-import social profile from Babylon user record
+  // Phase 2: Auto-import social profile from Feed user record
   // Social data (farcasterUsername, twitterUsername, etc.) is populated at login
   // by the Farcaster/Twitter auth routes before this effect runs.
   useEffect(() => {
@@ -413,7 +413,7 @@ export function OnboardingProvider({
       };
 
       logger.info(
-        'Auto-imported Farcaster profile from Babylon user record',
+        'Auto-imported Farcaster profile from Feed user record',
         {
           username: profileData.username,
           expectedPoints: POINTS.FARCASTER_LINK,
@@ -437,7 +437,7 @@ export function OnboardingProvider({
       };
 
       logger.info(
-        'Auto-imported Twitter profile from Babylon user record',
+        'Auto-imported Twitter profile from Feed user record',
         { username: profileData.username, expectedPoints: POINTS.TWITTER_LINK },
         'OnboardingProvider'
       );

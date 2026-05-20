@@ -1,7 +1,7 @@
 'use client';
 
-import type { FeedPost, RepostButtonProps } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { FeedPost, RepostButtonProps } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { Repeat2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar } from '@/components/shared/Avatar';

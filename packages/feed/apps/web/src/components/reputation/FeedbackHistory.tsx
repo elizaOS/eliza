@@ -30,7 +30,7 @@
  */
 'use client';
 
-import { getProfileUrl } from '@babylon/shared';
+import { getProfileUrl } from '@feed/shared';
 import { formatDistanceToNow } from 'date-fns';
 import {
   AlertCircle,

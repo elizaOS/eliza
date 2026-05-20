@@ -42,13 +42,13 @@ const nextConfig: NextConfig = {
   // Transpile internal workspace packages to resolve TypeScript imports properly
   // This is necessary because these packages are not pre-built and use TypeScript source directly
   transpilePackages: [
-    '@babylon/shared',
-    '@babylon/engine',
-    '@babylon/agents',
-    '@babylon/api',
-    '@babylon/db',
-    '@babylon/training',
-    '@babylon/a2a',
+    '@feed/shared',
+    '@feed/engine',
+    '@feed/agents',
+    '@feed/api',
+    '@feed/db',
+    '@feed/training',
+    '@feed/a2a',
   ],
   experimental: {
     optimizePackageImports: [
@@ -101,7 +101,7 @@ const nextConfig: NextConfig = {
     ];
   },
   // Externalize packages with native Node.js dependencies for server-side
-  // Note: @babylon/* packages are in transpilePackages, so they can't be here
+  // Note: @feed/* packages are in transpilePackages, so they can't be here
   serverExternalPackages: [
     'ipfs-http-client',
     '@helia/unixfs',
@@ -141,7 +141,7 @@ const nextConfig: NextConfig = {
   },
   // Turbopack config for monorepo
   // Explicitly set root to suppress Next.js warning about multiple lockfiles.
-  // The monorepo root contains the main bun.lock at /Users/shawwalters/babylon/bun.lock.
+  // The monorepo root contains the main bun.lock at /Users/shawwalters/feed/bun.lock.
   // Nested packages (packages/examples) may have their own lockfiles, but this
   // is the correct root for the web app's workspace.
   turbopack: {
@@ -230,7 +230,7 @@ const nextConfig: NextConfig = {
       config.plugins.push(
         new webpack.IgnorePlugin({
           resourceRegExp:
-            /^@babylon\/(api|db|training|agents)(\/.*)?$|^(ioredis|postgres|electron-fetch|ipfs-http-client)$|^@elizaos\/core$/,
+            /^@feed\/(api|db|training|agents)(\/.*)?$|^(ioredis|postgres|electron-fetch|ipfs-http-client)$|^@elizaos\/core$/,
         })
       );
     }
@@ -249,7 +249,7 @@ const nextConfig: NextConfig = {
       // For server-side, ensure packages in serverExternalPackages are externalized
       // They're already in serverExternalPackages, but we also configure webpack
       // to externalize them so they're resolved at runtime from node_modules
-      // NOTE: Do NOT externalize @babylon/* packages - they are TypeScript source files
+      // NOTE: Do NOT externalize @feed/* packages - they are TypeScript source files
       // and must be transpiled by webpack via transpilePackages
       // NOTE: @elizaos/core intentionally excluded - it's ESM-only and must be bundled
       const serverExternalPackagesList = [
@@ -316,16 +316,16 @@ const nextConfig: NextConfig = {
       // Externalize agent0-sdk and related packages to prevent bundling electron-fetch
       // Also externalize postgres and Node.js-only packages
       // These should only be loaded server-side via dynamic imports
-      // CRITICAL: Externalize @babylon/api and @babylon/db to prevent bundling server-only code in client
+      // CRITICAL: Externalize @feed/api and @feed/db to prevent bundling server-only code in client
       const serverOnlyPackages = [
         'agent0-sdk',
-        '@babylon/agents/agent0',
+        '@feed/agents/agent0',
         'ipfs-http-client',
         'electron-fetch',
         'postgres',
         'ioredis',
-        '@babylon/db',
-        '@babylon/api',
+        '@feed/db',
+        '@feed/api',
         'swagger-jsdoc',
       ];
 
@@ -408,7 +408,7 @@ const sentryWebpackPluginOptions = {
 
   org: process.env.SENTRY_ORG ?? 'eliza-uv',
 
-  project: process.env.SENTRY_PROJECT ?? 'babylon',
+  project: process.env.SENTRY_PROJECT ?? 'feed',
 
   // Auth token for uploading source maps and creating releases
   // Set SENTRY_AUTH_TOKEN in environment to enable source map uploads

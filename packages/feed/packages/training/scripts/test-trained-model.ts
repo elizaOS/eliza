@@ -14,7 +14,7 @@
  *   bun run packages/training/scripts/test-trained-model.ts --model-path <path> --benchmark
  */
 
-import { db, eq, trainedModels } from '@babylon/db';
+import { db, eq, trainedModels } from '@feed/db';
 import { BenchmarkService } from '../src/training/BenchmarkService';
 import { logger } from '../src/utils/logger';
 

@@ -3,14 +3,14 @@
  * All interfaces for the system engine, contexts, and runtime.
  */
 
-import type { DrizzleClient } from '@babylon/db';
-import type { PromptDefinition } from '@babylon/engine/prompts/define-prompt';
-import type { Logger } from '@babylon/shared';
+import type { DrizzleClient } from '@feed/db';
+import type { PromptDefinition } from '@feed/engine/prompts/define-prompt';
+import type { Logger } from '@feed/shared';
 import type {
-  BabylonConfig,
-  BabylonHooks,
-  BabylonServices,
-  BabylonSharedData,
+  FeedConfig,
+  FeedHooks,
+  FeedServices,
+  FeedSharedData,
 } from './augments';
 
 // ---------------------------------------------------------------------------
@@ -47,27 +47,27 @@ export interface SystemTickResult {
 }
 
 // ---------------------------------------------------------------------------
-// Service container — typed when BabylonServices is augmented
+// Service container — typed when FeedServices is augmented
 // ---------------------------------------------------------------------------
 
-/** Typed overloads when BabylonServices has been augmented. */
+/** Typed overloads when FeedServices has been augmented. */
 interface TypedServiceContainer {
-  register<K extends keyof BabylonServices>(
+  register<K extends keyof FeedServices>(
     token: K,
-    instance: BabylonServices[K]
+    instance: FeedServices[K]
   ): void;
   register<T>(token: string, instance: T): void;
 
-  get<K extends keyof BabylonServices>(token: K): BabylonServices[K];
+  get<K extends keyof FeedServices>(token: K): FeedServices[K];
   get<T>(token: string): T;
 
   has(token: string): boolean;
-  has(token: keyof BabylonServices): boolean;
+  has(token: keyof FeedServices): boolean;
 
   tokens(): string[];
 }
 
-/** Untyped fallback when BabylonServices is empty. */
+/** Untyped fallback when FeedServices is empty. */
 interface UntypedServiceContainer {
   register<T>(token: string, instance: T): void;
   get<T>(token: string): T;
@@ -76,7 +76,7 @@ interface UntypedServiceContainer {
 }
 
 export type ServiceContainer =
-  IsEmpty<BabylonServices> extends true
+  IsEmpty<FeedServices> extends true
     ? UntypedServiceContainer
     : TypedServiceContainer;
 
@@ -94,27 +94,27 @@ export interface TickMetrics {
 }
 
 // ---------------------------------------------------------------------------
-// Tick shared data — typed when BabylonSharedData is augmented
+// Tick shared data — typed when FeedSharedData is augmented
 // ---------------------------------------------------------------------------
 
-/** Typed overloads when BabylonSharedData has been augmented. */
+/** Typed overloads when FeedSharedData has been augmented. */
 interface TypedTickSharedData {
-  get<K extends keyof BabylonSharedData>(
+  get<K extends keyof FeedSharedData>(
     key: K
-  ): BabylonSharedData[K] | undefined;
+  ): FeedSharedData[K] | undefined;
   get<T>(key: string): T | undefined;
 
-  set<K extends keyof BabylonSharedData>(
+  set<K extends keyof FeedSharedData>(
     key: K,
-    value: BabylonSharedData[K]
+    value: FeedSharedData[K]
   ): void;
   set(key: string, value: unknown): void;
 
   has(key: string): boolean;
-  has(key: keyof BabylonSharedData): boolean;
+  has(key: keyof FeedSharedData): boolean;
 }
 
-/** Untyped fallback when BabylonSharedData is empty. */
+/** Untyped fallback when FeedSharedData is empty. */
 interface UntypedTickSharedData {
   get<T>(key: string): T | undefined;
   set(key: string, value: unknown): void;
@@ -122,19 +122,19 @@ interface UntypedTickSharedData {
 }
 
 export type TickSharedData =
-  IsEmpty<BabylonSharedData> extends true
+  IsEmpty<FeedSharedData> extends true
     ? UntypedTickSharedData
     : TypedTickSharedData;
 
 // ---------------------------------------------------------------------------
-// Engine config — typed when BabylonConfig is augmented
+// Engine config — typed when FeedConfig is augmented
 // ---------------------------------------------------------------------------
 
 export type EngineConfig = {
   budgetMs: number;
-} & (IsEmpty<BabylonConfig> extends true
+} & (IsEmpty<FeedConfig> extends true
   ? { [key: string]: unknown }
-  : BabylonConfig & { [key: string]: unknown });
+  : FeedConfig & { [key: string]: unknown });
 
 // ---------------------------------------------------------------------------
 // LLM orchestrator
@@ -184,10 +184,10 @@ export interface TickContext extends EngineContext {
 }
 
 // ---------------------------------------------------------------------------
-// BabylonSystem
+// FeedSystem
 // ---------------------------------------------------------------------------
 
-export interface BabylonSystem {
+export interface FeedSystem {
   readonly id: string;
   readonly name: string;
   readonly phase: TickPhase;
@@ -210,7 +210,7 @@ export interface BabylonSystem {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime hooks — lifecycle events emitted by BabylonEngine
+// Runtime hooks — lifecycle events emitted by FeedEngine
 // ---------------------------------------------------------------------------
 
 export type RuntimeHooks = {
@@ -241,4 +241,4 @@ export type RuntimeHooks = {
     error: Error,
     ctx: TickContext
   ) => void | Promise<void>;
-} & (IsEmpty<BabylonHooks> extends true ? Record<string, never> : BabylonHooks);
+} & (IsEmpty<FeedHooks> extends true ? Record<string, never> : FeedHooks);

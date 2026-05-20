@@ -1,4 +1,4 @@
-import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from '@babylon/shared';
+import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from '@feed/shared';
 import { escapeHtml } from '../utils/html';
 
 export type { FeedbackType };

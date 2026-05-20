@@ -69,10 +69,10 @@ import {
   BusinessLogicError,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { updateFeedbackMetrics } from '@babylon/engine';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { updateFeedbackMetrics } from '@feed/engine';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

@@ -7,7 +7,7 @@ const mockLoggerWarn = mock();
 const adminRolesTable = { table: 'adminRoles' };
 const usersTable = { table: 'users' };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   adminRoles: adminRolesTable,
   and: (...conditions: unknown[]) => ({ conditions }),
   db: {
@@ -24,7 +24,7 @@ mock.module('@babylon/db', () => ({
   users: usersTable,
 }));
 
-mock.module('@babylon/shared', () => ({
+mock.module('@feed/shared', () => ({
   checkForAdminEmail: () => ({ adminEmail: null, allVerifiedEmails: [] }),
   logger: {
     info: mockLoggerInfo,
@@ -36,7 +36,7 @@ mock.module('../auth-middleware', () => ({
   authenticate: mock(),
 }));
 
-import { ROLE_PERMISSIONS } from '@babylon/db';
+import { ROLE_PERMISSIONS } from '@feed/db';
 import { getAdminRole, getAllAdmins } from '../admin-middleware';
 
 describe('admin-middleware role mapping', () => {

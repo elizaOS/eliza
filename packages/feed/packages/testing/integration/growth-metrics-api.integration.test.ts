@@ -20,8 +20,8 @@ import {
   setDefaultTimeout,
   test,
 } from 'bun:test';
-import { db, eq, userSessions, users } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { db, eq, userSessions, users } from '@feed/db';
+import { generateSnowflakeId } from '@feed/shared';
 import {
   getAdminToken,
   requireAuth as requireAuthShared,

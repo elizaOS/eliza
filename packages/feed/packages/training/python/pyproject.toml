@@ -1,9 +1,9 @@
 [project]
-name = "babylon-training"
+name = "feed-training"
 version = "0.2.0"
-description = "RL Training pipeline for Babylon agents using Atropos - Continuous MMO Edition"
+description = "RL Training pipeline for Feed agents using Atropos - Continuous MMO Edition"
 authors = [
-    {name = "Babylon Team"}
+    {name = "Feed Team"}
 ]
 requires-python = ">=3.10"
 dependencies = [

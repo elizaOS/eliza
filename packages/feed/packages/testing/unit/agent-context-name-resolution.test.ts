@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { StaticDataRegistry } from '@babylon/engine';
+import { StaticDataRegistry } from '@feed/engine';
 
 describe('Author name resolution', () => {
   it('should resolve known NPC IDs to display names', () => {

@@ -13,10 +13,10 @@ import { $ } from 'bun';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-const POSTGRES_CONTAINER = 'babylon-postgres';
-const REDIS_CONTAINER = 'babylon-redis';
-const MINIO_CONTAINER = 'babylon-minio';
-const STEWARD_CONTAINER = 'babylon-steward';
+const POSTGRES_CONTAINER = 'feed-postgres';
+const REDIS_CONTAINER = 'feed-redis';
+const MINIO_CONTAINER = 'feed-minio';
+const STEWARD_CONTAINER = 'feed-steward';
 
 type DockerService = 'postgres' | 'redis' | 'minio' | 'steward';
 
@@ -124,14 +124,14 @@ if (!existsSync(envPath)) {
     envContent = readFileSync(envExamplePath, 'utf-8');
     envContent = envContent.replace(
       /DATABASE_URL=.*/,
-      'DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon"'
+      'DATABASE_URL="postgresql://feed:feed_dev_password@localhost:5433/feed"'
     );
     envContent = envContent.replace(
       /REDIS_URL=.*/,
       'REDIS_URL="redis://localhost:6380"'
     );
   } else {
-    envContent = `DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon"
+    envContent = `DATABASE_URL="postgresql://feed:feed_dev_password@localhost:5433/feed"
 REDIS_URL="redis://localhost:6380"
 NEXT_PUBLIC_PRIVY_APP_ID=""
 `;
@@ -229,7 +229,7 @@ if (minioRunning.trim() !== MINIO_CONTAINER) {
 
 // 8. Run database migrations and seed
 const LOCAL_DATABASE_URL =
-  'postgresql://babylon:babylon_dev_password@localhost:5433/babylon';
+  'postgresql://feed:feed_dev_password@localhost:5433/feed';
 process.env.DATABASE_URL = LOCAL_DATABASE_URL;
 process.env.DIRECT_DATABASE_URL = LOCAL_DATABASE_URL;
 
@@ -270,7 +270,7 @@ let needsSeed = false;
 
 try {
   const countResult =
-    await $`docker exec babylon-postgres psql -U babylon -d babylon -t -c "SELECT count(*) FROM \"User\";"`.quiet();
+    await $`docker exec feed-postgres psql -U feed -d feed -t -c "SELECT count(*) FROM \"User\";"`.quiet();
   userCount = parseInt(countResult.text().trim(), 10);
   if (isNaN(userCount)) userCount = 0;
   console.info(`✅ Database connected (${userCount} users)`);
@@ -341,7 +341,7 @@ if (!stewardSiblingExists) {
     if (stewardReady) {
       console.info('✅ Steward is ready at http://localhost:3200');
       console.info(
-        '   Run "bun run steward:init" once to provision the babylon tenant.'
+        '   Run "bun run steward:init" once to provision the feed tenant.'
       );
     } else {
       console.warn(

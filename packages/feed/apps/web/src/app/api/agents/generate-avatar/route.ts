@@ -19,12 +19,12 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   generateAgentMonkeyProfileImage,
   initFalClient,
-} from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/engine';
+import { logger } from '@feed/shared';
 import { fal } from '@fal-ai/client';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';

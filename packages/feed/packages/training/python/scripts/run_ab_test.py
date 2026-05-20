@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-A/B Test Runner for Babylon Agent Training
+A/B Test Runner for Feed Agent Training
 
 Compares a trained model against a baseline model using standardized evaluation scenarios.
 

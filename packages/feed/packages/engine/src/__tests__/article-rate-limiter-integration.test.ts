@@ -18,7 +18,7 @@ const mockDb = {
   where: mock(() => Promise.resolve([{ count: mockArticleCount }])),
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   eq: (a: unknown, b: unknown) => [a, b],

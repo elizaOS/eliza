@@ -77,8 +77,8 @@ import {
   authenticate,
   ServiceUnavailableError,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { trackServerEvent } from '@/lib/posthog/server';
@@ -159,7 +159,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
             currency: POINTS_CONFIG.CURRENCY,
             unit_amount: amountCents, // Stripe uses cents
             product_data: {
-              name: `${balanceUnits.toLocaleString()} Babylon Trading Balance`,
+              name: `${balanceUnits.toLocaleString()} Feed Trading Balance`,
               description: `Fund ${balanceUnits.toLocaleString()} balance units for $${amountUSD}`,
             },
           },
@@ -168,7 +168,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       ],
       // Store purchase details in metadata for webhook processing
       metadata: {
-        app: 'babylon',
+        app: 'feed',
         userId,
         balanceUnits: balanceUnits.toString(),
         amountUSD: amountUSD.toString(),

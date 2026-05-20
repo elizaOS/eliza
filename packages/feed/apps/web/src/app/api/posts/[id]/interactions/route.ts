@@ -85,7 +85,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   comments,
@@ -95,12 +95,12 @@ import {
   posts,
   reactions,
   shares,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   logger,
   PostIdParamSchema,
   PostInteractionsQuerySchema,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

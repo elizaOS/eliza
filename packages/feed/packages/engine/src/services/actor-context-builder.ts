@@ -25,8 +25,8 @@ import {
   parodyHeadlines,
   questions,
   worldEvents,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 import type {
   EventContext,
   FeedPostContext,
@@ -124,7 +124,7 @@ export class ActorContextBuilder {
       return null;
     }
 
-    // Get full pack data for behavioral rules (style, babylon metadata)
+    // Get full pack data for behavioral rules (style, feed metadata)
     const packActor = StaticDataRegistry.getPackActor(actorId);
 
     const now = new Date();
@@ -206,11 +206,11 @@ export class ActorContextBuilder {
         styleAll: packActor?.style?.all || [],
         stylePost: packActor?.style?.post || [],
         styleChat: packActor?.style?.chat || [],
-        tradingStyle: packActor?.babylon?.tradingStyle || '',
-        socialStyle: packActor?.babylon?.socialStyle || '',
-        motivations: packActor?.babylon?.motivations || [],
-        fears: packActor?.babylon?.fears || [],
-        alignment: packActor?.babylon?.alignment || 'neutral',
+        tradingStyle: packActor?.feed?.tradingStyle || '',
+        socialStyle: packActor?.feed?.socialStyle || '',
+        motivations: packActor?.feed?.motivations || [],
+        fears: packActor?.feed?.fears || [],
+        alignment: packActor?.feed?.alignment || 'neutral',
       },
       awareness: {
         recentPosts: relevantPosts,

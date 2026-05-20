@@ -1,5 +1,5 @@
 /**
- * Comprehensive E2E + Integration tests for the Babylon DAG Visualizer.
+ * Comprehensive E2E + Integration tests for the Feed DAG Visualizer.
  *
  * These tests verify:
  *  1. The standalone HTML loads and renders
@@ -43,7 +43,7 @@ test.describe('Page Load & Welcome Screen', () => {
     await page.goto(FILE_URL);
     const welcome = page.locator('#welcomeScreen');
     await expect(welcome).toBeVisible();
-    await expect(welcome.locator('h1')).toHaveText('Babylon DAG Inspector');
+    await expect(welcome.locator('h1')).toHaveText('Feed DAG Inspector');
   });
 
   test('welcome screen has Load Demo and Load JSON buttons', async ({
@@ -873,7 +873,7 @@ test.describe('LLM Calls Tab - Complete Prompt/Response Data', () => {
     // Expand all LLM cards programmatically
     await page.evaluate(() => toggleAllLLMCards(true));
     const body = await page.locator('#detailBody').textContent();
-    expect(body).toContain('Babylon World Engine');
+    expect(body).toContain('Feed World Engine');
     expect(body).toContain('narrative simulation system');
     expect(body).toContain('prediction market signals');
     expect(body).toContain('NEVER real ones');
@@ -997,7 +997,7 @@ test.describe('LLM Calls Tab - Complete Prompt/Response Data', () => {
     await page.waitForTimeout(100);
     await page.evaluate(() => toggleAllLLMCards(true));
     const body = await page.locator('#detailBody').textContent();
-    expect(body).toContain('Babylon Narrative Engine');
+    expect(body).toContain('Feed Narrative Engine');
     expect(body).toContain('ARC PHASE TRANSITIONS');
     expect(body).toContain('crisis');
     expect(body).toContain('revelation');
@@ -1666,7 +1666,7 @@ test.describe('Global Views', () => {
     await page.evaluate(() => toggleAllLLMCards(true));
     const expanded = await page.locator('#globalViewBody').textContent();
     expect(expanded).toContain('System Prompt');
-    expect(expanded).toContain('Babylon World Engine');
+    expect(expanded).toContain('Feed World Engine');
   });
 
   test('All NPCs shows all 8 NPC trajectories', async ({ page }) => {
@@ -1947,10 +1947,10 @@ test.describe('Environment Flags', () => {
   test('demo trace has environmentFlags', async ({ page }) => {
     const flags = await page.evaluate(() => currentTrace.environmentFlags);
     expect(flags).toBeDefined();
-    expect(flags.BABYLON_DAG_TRACE).toBe(true);
-    expect(flags.BABYLON_TRUST_CORPUS_FAST_MODE).toBe(false);
-    expect(flags.BABYLON_SKIP_NPC_GROUP_DYNAMICS).toBe(false);
-    expect(flags.BABYLON_SKIP_ALPHA_GROUP_INVITES).toBe(false);
+    expect(flags.FEED_DAG_TRACE).toBe(true);
+    expect(flags.FEED_TRUST_CORPUS_FAST_MODE).toBe(false);
+    expect(flags.FEED_SKIP_NPC_GROUP_DYNAMICS).toBe(false);
+    expect(flags.FEED_SKIP_ALPHA_GROUP_INVITES).toBe(false);
     expect(flags.GAME_TICK_BUDGET_MS).toBe('180000');
   });
 
@@ -1958,8 +1958,8 @@ test.describe('Environment Flags', () => {
     await page.evaluate(() => switchGlobalView('tick-summary'));
     const body = await page.locator('#globalViewBody').textContent();
     expect(body).toContain('Environment Flags');
-    expect(body).toContain('BABYLON_DAG_TRACE');
-    expect(body).toContain('BABYLON_TRUST_CORPUS_FAST_MODE');
+    expect(body).toContain('FEED_DAG_TRACE');
+    expect(body).toContain('FEED_TRUST_CORPUS_FAST_MODE');
     expect(body).toContain('GAME_TICK_BUDGET_MS');
   });
 
@@ -1968,7 +1968,7 @@ test.describe('Environment Flags', () => {
     const html = await page.locator('#globalViewBody').innerHTML();
     // Should have json-key spans for the flag names
     expect(html).toContain('json-key');
-    expect(html).toContain('BABYLON_DAG_TRACE');
+    expect(html).toContain('FEED_DAG_TRACE');
   });
 });
 

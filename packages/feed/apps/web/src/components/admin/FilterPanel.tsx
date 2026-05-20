@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { Calendar, ChevronDown, Filter, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 

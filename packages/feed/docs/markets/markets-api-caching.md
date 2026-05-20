@@ -47,7 +47,7 @@ Redis cache-aside layer for `GET /api/markets/perps` and `GET /api/markets/predi
 | **Admin extend** (action=extend) | `invalidateMarketsApiPredictionsList` | endDate changed; positions unaffected. |
 
 **WHY invalidation lives in `apps/web` route handlers, not in `packages/core`:**
-Domain packages (`packages/core`, `packages/engine`) must stay framework-agnostic and must not depend on `@babylon/api`. Cache is infrastructure; invalidation is wiring. The route handler is the boundary where domain results meet infra side-effects.
+Domain packages (`packages/core`, `packages/engine`) must stay framework-agnostic and must not depend on `@feed/api`. Cache is infrastructure; invalidation is wiring. The route handler is the boundary where domain results meet infra side-effects.
 
 ---
 

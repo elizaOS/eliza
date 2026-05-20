@@ -5,7 +5,7 @@
  * loads the app. Fires once per session — idempotent on the server side.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';

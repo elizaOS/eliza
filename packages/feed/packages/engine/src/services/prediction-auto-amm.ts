@@ -10,9 +10,9 @@
  * System-level trades with no NPC identity and no scoring impact.
  */
 
-import { PredictionPricing } from '@babylon/core/markets/prediction';
-import { and, arcStates, db, eq, gte, markets, questions } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { PredictionPricing } from '@feed/core/markets/prediction';
+import { and, arcStates, db, eq, gte, markets, questions } from '@feed/db';
+import { logger } from '@feed/shared';
 import { calculateAutoAmmTargetNudge } from './prediction-auto-amm-helpers';
 import { buildPredictionMarketProfile } from './prediction-market-profiles';
 

@@ -30,7 +30,7 @@ def default_selection_path() -> Path:
 
 
 def default_output_root() -> Path:
-    return WORKSPACE_ROOT / "babylon" / "releases" / "scam-defense-v1"
+    return WORKSPACE_ROOT / "feed" / "releases" / "scam-defense-v1"
 
 
 DATASET_FILES = [
@@ -181,12 +181,12 @@ def dataset_card_text(
             "  - social-engineering",
             "  - benchmark",
             "  - red-team",
-            "pretty_name: Babylon Scam Defense v1",
+            "pretty_name: Feed Scam Defense v1",
             "---",
             "",
-            "# Babylon Scam Defense v1",
+            "# Feed Scam Defense v1",
             "",
-            "Canonical release dataset for the Babylon anti-scam training and evaluation work.",
+            "Canonical release dataset for the Feed anti-scam training and evaluation work.",
             "",
             "## Contents",
             "",
@@ -196,8 +196,8 @@ def dataset_card_text(
             f"- SFT rows: `{dataset_manifest['sftCount']}`",
             f"- Reasoning donors: `{dataset_manifest.get('reasoningDonorCount', 0)}`",
             f"- Curated ScamBench scenarios: `{dataset_manifest['scenarioCount']}`",
-            f"- Weighted Babylon trajectories: `{weighted_manifest['trajectoryCount']}` trajectories / `{weighted_manifest['sampleCount']}` samples",
-            f"- Unweighted Babylon trajectories: `{unweighted_manifest['trajectoryCount']}` trajectories / `{unweighted_manifest['sampleCount']}` samples",
+            f"- Weighted Feed trajectories: `{weighted_manifest['trajectoryCount']}` trajectories / `{weighted_manifest['sampleCount']}` samples",
+            f"- Unweighted Feed trajectories: `{unweighted_manifest['trajectoryCount']}` trajectories / `{unweighted_manifest['sampleCount']}` samples",
             "",
             "## Benchmark Snapshot",
             "",
@@ -213,8 +213,8 @@ def dataset_card_text(
             "- `data/scambench_scenario_seeds.jsonl`: scenario seed inventory.",
             "- `data/scambench_curated_scenarios.json`: curated multi-turn scenarios.",
             "- `data/scenario_catalog.json`: canonical full ScamBench catalog for this release.",
-            "- `exports/weighted/trajectories.jsonl`: weighted Babylon training export.",
-            "- `exports/unweighted/trajectories.jsonl`: unweighted Babylon training export.",
+            "- `exports/weighted/trajectories.jsonl`: weighted Feed training export.",
+            "- `exports/unweighted/trajectories.jsonl`: unweighted Feed training export.",
             "",
             "## Methodology Caveats",
             "",
@@ -331,7 +331,7 @@ def root_readme_text(selection: dict[str, Any], manifest: dict[str, Any]) -> str
         [
             f"# {selection['release_name']}",
             "",
-            "Canonical local release bundle for the Babylon scam-defense work.",
+            "Canonical local release bundle for the Feed scam-defense work.",
             "",
             "## Recommended Checkpoints",
             "",
@@ -375,7 +375,7 @@ def training_instructions_text(selection: dict[str, Any]) -> str:
                 f"## {model['label']}",
                 "",
                 "```bash",
-                "cd <BABYLON_ROOT>/packages/training/python/scripts",
+                "cd <FEED_ROOT>/packages/training/python/scripts",
                 (
                     "python3 train_local.py "
                     f"--backend mlx "
@@ -622,7 +622,7 @@ def build_release_bundle(
     for key, filename in [
         ("publication_summary_md", "publication_summary.md"),
         ("publication_summary_json", "publication_summary.json"),
-        ("paper_pdf", "babylon_scam_defense_paper.pdf"),
+        ("paper_pdf", "feed_scam_defense_paper.pdf"),
     ]:
         source = Path(selection["dataset"][key]).resolve()
         if source.exists():

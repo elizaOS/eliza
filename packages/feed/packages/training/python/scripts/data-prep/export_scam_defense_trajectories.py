@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Export Babylon-compatible anti-scam trajectories for local training.
+Export Feed-compatible anti-scam trajectories for local training.
 
-This script creates synthetic-but-structured Babylon trajectory files with real
+This script creates synthetic-but-structured Feed trajectory files with real
 LLM-call-shaped prompts and target responses. The data is tailored to the
-ScamBench decision schema and Babylon trust-defense scenarios, so it can be
+ScamBench decision schema and Feed trust-defense scenarios, so it can be
 consumed directly by scripts/train_local.py via --source-dir.
 """
 
@@ -50,7 +50,7 @@ DEFAULT_RESEARCH_PROFILE = {
 
 TRADING_SYSTEM_PROMPT = " ".join(
     [
-        "You are a Babylon prediction-market trading agent.",
+        "You are a Feed prediction-market trading agent.",
         "Provide a concise trading recommendation with reasoning, position sizing, and risk controls.",
         "Do not output JSON unless the user explicitly asks for it.",
     ]
@@ -489,7 +489,7 @@ def build_generic_trading_examples(
 ) -> list[TrainingExample]:
     prompts_and_responses = [
         (
-            "You are a trading agent in Babylon prediction markets.\n\nCurrent State:\n- Balance: $10,000\n- P&L: $250\n- Positions: 2 open\n\nMarket Update:\n- BTC prediction market at 68% probability\n- Recent news: Fed announces rate cut consideration\n\nAnalyze this market update and explain your trading decision.",
+            "You are a trading agent in Feed prediction markets.\n\nCurrent State:\n- Balance: $10,000\n- P&L: $250\n- Positions: 2 open\n\nMarket Update:\n- BTC prediction market at 68% probability\n- Recent news: Fed announces rate cut consideration\n\nAnalyze this market update and explain your trading decision.",
             "I would add a modest YES position rather than chase aggressively. The 68% market probability and a possible Fed rate cut both support a bullish setup, but I would still size the trade conservatively because macro headlines can reverse quickly. My plan is to buy a small increment, keep cash in reserve, and set a clear risk limit in case sentiment weakens.",
         ),
         (
@@ -501,7 +501,7 @@ def build_generic_trading_examples(
             "I would keep the existing positions, preserve most cash, and open only a small YES starter position in the stablecoin market. A 40% probability suggests upside if regulation momentum improves, but it is not strong enough for a large allocation. The portfolio should stay diversified across markets, with position sizes capped so one thesis cannot dominate overall risk.",
         ),
         (
-            "You are monitoring a Babylon election market.\n\nMarket: 'Will the reform bill pass this quarter?'\nCurrent Probability: 54% YES\nNew information: committee support improved, but two undecided votes remain.\n\nWhat trade would you place and why?",
+            "You are monitoring a Feed election market.\n\nMarket: 'Will the reform bill pass this quarter?'\nCurrent Probability: 54% YES\nNew information: committee support improved, but two undecided votes remain.\n\nWhat trade would you place and why?",
             "I would take a small YES trade because the committee update improves the odds, but the undecided votes keep the market close. This is a medium-conviction setup, not a full-size position. The trade should be sized modestly, with risk limits in place in case the political whip count turns against the bill.",
         ),
         (
@@ -513,7 +513,7 @@ def build_generic_trading_examples(
             "I would not add to YES at 72% until the injury status is clearer. The market is already pricing a strong favorite, so the risk-reward on buying more is weaker if the star player misses time. My trade would be to wait or trim slightly, protecting profit and avoiding a crowded position on uncertain news.",
         ),
         (
-            "You are a Babylon trader reviewing overnight moves.\n\nMarket: 'Will the ETF be approved this month?'\nProbability moved from 41% to 58% YES after an exchange filing update.\n\nWhat is your next move?",
+            "You are a Feed trader reviewing overnight moves.\n\nMarket: 'Will the ETF be approved this month?'\nProbability moved from 41% to 58% YES after an exchange filing update.\n\nWhat is your next move?",
             "I would avoid blindly buying the move after such a sharp repricing. The filing update is directionally positive, but a jump from 41% to 58% means some of the edge may already be gone. I would either wait for a better entry or take a small position with tight risk rather than chase momentum.",
         ),
         (
@@ -802,7 +802,7 @@ def build_examples(
 
 
 ACTION_REASON_SYSTEM_PROMPT = (
-    "You are a Babylon trading agent. Reply in exactly two lines only. "
+    "You are a Feed trading agent. Reply in exactly two lines only. "
     "Do not output a thinking process, bullets, JSON, XML tags, or any text "
     "before 'Action:' or after the 'Reason:' line. "
     "Line 1 must start with 'Action:' and include one of buy, sell, hold, "
@@ -1396,7 +1396,7 @@ def export_trajectories(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Export Babylon-compatible scam-defense trajectories."
+        description="Export Feed-compatible scam-defense trajectories."
     )
     parser.add_argument(
         "--output-dir",
@@ -1418,7 +1418,7 @@ def main() -> int:
     parser.add_argument(
         "--include-trading-examples",
         action="store_true",
-        help="Mix general Babylon trading examples into the export.",
+        help="Mix general Feed trading examples into the export.",
     )
     parser.add_argument(
         "--trading-example-limit",

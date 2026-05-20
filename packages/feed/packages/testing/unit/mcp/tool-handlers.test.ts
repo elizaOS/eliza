@@ -234,7 +234,7 @@ describe('MCP Tool Handlers - Error Messages', () => {
   describe('Not Implemented Features', () => {
     it('should have correct x402 error message', () => {
       const errorMessage =
-        'MCP tool payment_request is disabled until x402 support is registered in Babylon MCP discovery.';
+        'MCP tool payment_request is disabled until x402 support is registered in Feed MCP discovery.';
       expect(errorMessage).toContain('x402');
       expect(errorMessage).toContain('disabled');
     });

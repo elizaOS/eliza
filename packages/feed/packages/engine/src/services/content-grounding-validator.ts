@@ -11,7 +11,7 @@
  *    (for content without a single source, e.g. consolidated facts)
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { cosineSimilarity, getEmbedding } from '../llm/embedding-client';
 import { StaticDataRegistry } from './static-data-registry';
 

@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
-import { getOrCreateReferralCode, PointsService } from '@babylon/api';
+import { getOrCreateReferralCode, PointsService } from '@feed/api';
 import {
   and,
   count,
@@ -22,8 +22,8 @@ import {
   pointsTransactions,
   referrals,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, POINTS } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, POINTS } from '@feed/shared';
 
 // Test user IDs that we'll clean up
 const testUserIds: string[] = [];

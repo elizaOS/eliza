@@ -1,4 +1,4 @@
-import { and, db, gte, isNull, lt, posts, sql } from '@babylon/db';
+import { and, db, gte, isNull, lt, posts, sql } from '@feed/db';
 
 export interface ForYouCandidatePost {
   id: string;

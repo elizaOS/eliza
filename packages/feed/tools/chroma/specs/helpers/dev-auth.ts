@@ -6,9 +6,9 @@ import type { Page } from '@playwright/test';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const PRIVY_TOKEN_COOKIE_NAME = 'privy-token';
-const DEV_USER_ID_COOKIE_NAME = 'babylon-dev-user-id';
-const DEV_ADMIN_TOKEN_COOKIE_NAME = 'babylon-dev-admin-token';
-const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'babylon-playwright-dev-auth';
+const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
+const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
+const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'feed-playwright-dev-auth';
 
 type BrowserDevAuthSession = {
   userId: string;

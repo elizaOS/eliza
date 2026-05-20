@@ -18,7 +18,7 @@ import {
   posts,
   reactions,
   shares,
-} from '@babylon/db';
+} from '@feed/db';
 
 /**
  * Participation statistics for a user

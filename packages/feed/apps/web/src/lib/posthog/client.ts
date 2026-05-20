@@ -9,7 +9,7 @@
  * filtered independently within a single PostHog project.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import posthog from 'posthog-js';
 
 export type PostHogClient = typeof posthog;

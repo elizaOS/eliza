@@ -8,5 +8,5 @@
 #
 # Setup:
 #   docker compose -f docker-compose.test.yml up -d
-#   DATABASE_URL=postgresql://babylon_test:test_password@localhost:5434/babylon_test pytest python/tests/integration/
+#   DATABASE_URL=postgresql://feed_test:test_password@localhost:5434/feed_test pytest python/tests/integration/
 

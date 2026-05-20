@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { type ComponentProps, memo, useCallback, useMemo } from 'react';
 import { Streamdown } from 'streamdown';
@@ -20,8 +20,8 @@ type ResponseProps = ComponentProps<typeof Streamdown> & {
  * Pre-processes text to convert @mentions and $cashtags into markdown links.
  * These links use special protocols that are intercepted on click.
  *
- * @mentions -> [mention](babylon://mention/username) (only if in validMentions)
- * $cashtags -> [cashtag](babylon://cashtag/SYMBOL)
+ * @mentions -> [mention](feed://mention/username) (only if in validMentions)
+ * $cashtags -> [cashtag](feed://cashtag/SYMBOL)
  *
  * @param text - The text to process
  * @param validMentions - Optional list of valid usernames (case-sensitive)
@@ -41,13 +41,13 @@ function preprocessTags(text: string, validMentions?: Set<string>): string {
         if (validMentions && !validMentions.has(username)) {
           return match; // Keep as plain text
         }
-        // @username -> [@username](babylon://mention/username)
-        return `[${mention}](babylon://mention/${username})`;
+        // @username -> [@username](feed://mention/username)
+        return `[${mention}](feed://mention/${username})`;
       }
       if (cashtag) {
-        // $BTC -> [$BTC](babylon://cashtag/BTC)
+        // $BTC -> [$BTC](feed://cashtag/BTC)
         const symbol = cashtag.slice(1); // Remove $
-        return `[${cashtag}](babylon://cashtag/${symbol})`;
+        return `[${cashtag}](feed://cashtag/${symbol})`;
       }
       return match;
     }
@@ -100,7 +100,7 @@ export const Response = memo(
         // Check if clicked element is a link with our special protocol
         if (target.tagName === 'A') {
           const href = target.getAttribute('href');
-          if (href?.startsWith('babylon://')) {
+          if (href?.startsWith('feed://')) {
             e.preventDefault();
             e.stopPropagation();
 
@@ -156,17 +156,17 @@ export const Response = memo(
             '[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3',
             '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
             // Tag links - styled like TaggedText
-            '[&_a[href^="babylon://"]]:cursor-pointer [&_a[href^="babylon://"]]:font-medium',
-            '[&_a[href^="babylon://"]]:text-[#0066FF] hover:[&_a[href^="babylon://"]]:text-[#2952d9]',
-            '[&_a[href^="babylon://"]]:underline [&_a[href^="babylon://"]]:decoration-[#0066FF]/30',
-            'hover:[&_a[href^="babylon://"]]:decoration-[#0066FF]/50',
+            '[&_a[href^="feed://"]]:cursor-pointer [&_a[href^="feed://"]]:font-medium',
+            '[&_a[href^="feed://"]]:text-[#0066FF] hover:[&_a[href^="feed://"]]:text-[#2952d9]',
+            '[&_a[href^="feed://"]]:underline [&_a[href^="feed://"]]:decoration-[#0066FF]/30',
+            'hover:[&_a[href^="feed://"]]:decoration-[#0066FF]/50',
             // Regular links - high-contrast, accessible styles
-            '[&_a:not([href^="babylon://"])]:font-medium [&_a:not([href^="babylon://"])]:underline [&_a:not([href^="babylon://"])]:underline-offset-2',
-            '[&_a:not([href^="babylon://"])]:text-blue-600 dark:[&_a:not([href^="babylon://"])]:text-blue-400',
-            'hover:[&_a:not([href^="babylon://"])]:text-blue-500 dark:hover:[&_a:not([href^="babylon://"])]:text-blue-300',
-            '[&_a:not([href^="babylon://"])]:decoration-blue-500/50 hover:[&_a:not([href^="babylon://"])]:decoration-2 dark:[&_a:not([href^="babylon://"])]:decoration-blue-400/60',
-            'focus-visible:[&_a:not([href^="babylon://"])]:rounded-sm focus-visible:[&_a:not([href^="babylon://"])]:outline-none focus-visible:[&_a:not([href^="babylon://"])]:ring-1 focus-visible:[&_a:not([href^="babylon://"])]:ring-blue-400/40',
-            '[&_a:not([href^="babylon://"])]:break-words',
+            '[&_a:not([href^="feed://"])]:font-medium [&_a:not([href^="feed://"])]:underline [&_a:not([href^="feed://"])]:underline-offset-2',
+            '[&_a:not([href^="feed://"])]:text-blue-600 dark:[&_a:not([href^="feed://"])]:text-blue-400',
+            'hover:[&_a:not([href^="feed://"])]:text-blue-500 dark:hover:[&_a:not([href^="feed://"])]:text-blue-300',
+            '[&_a:not([href^="feed://"])]:decoration-blue-500/50 hover:[&_a:not([href^="feed://"])]:decoration-2 dark:[&_a:not([href^="feed://"])]:decoration-blue-400/60',
+            'focus-visible:[&_a:not([href^="feed://"])]:rounded-sm focus-visible:[&_a:not([href^="feed://"])]:outline-none focus-visible:[&_a:not([href^="feed://"])]:ring-1 focus-visible:[&_a:not([href^="feed://"])]:ring-blue-400/40',
+            '[&_a:not([href^="feed://"])]:break-words',
             // Blockquote
             '[&_blockquote]:my-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:border-l-4 [&_blockquote]:pl-4 [&_blockquote]:italic',
             // Tables - contained with horizontal scroll

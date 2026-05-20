@@ -62,7 +62,7 @@
  * @since v0.1.0
  */
 
-import { GameWorld } from '@babylon/engine';
+import { GameWorld } from '@feed/engine';
 import { writeFile } from 'fs/promises';
 import { logger } from './lib/logger.js';
 
@@ -147,7 +147,7 @@ function parseArgs(): CLIOptions {
  * bun run src/cli/generate-world.ts --verbose
  *
  * # Output:
- * # GENERATING BABYLON GAME WORLD
+ * # GENERATING FEED GAME WORLD
  * # =================================
  * # Question: Will the AI regulation bill pass?
  * # True Outcome: SUCCESS
@@ -178,7 +178,7 @@ async function main() {
   });
 
   if (options.verbose && !options.json) {
-    logger.info('GENERATING BABYLON GAME WORLD');
+    logger.info('GENERATING FEED GAME WORLD');
     logger.info('=================================');
 
     world.on('world:started', (event) => {

@@ -1,5 +1,5 @@
 /**
- * Core storage types for the Babylon platform.
+ * Core storage types for the Feed platform.
  * These types are database-agnostic and can be used with any storage backend.
  */
 

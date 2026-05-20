@@ -23,14 +23,14 @@ import {
   test,
 } from 'bun:test';
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   ALPHA_GROUP_CONFIG,
   AlphaGroupInviteService,
   NPCInteractionTracker,
   TIER_CONFIG,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Set timeout to 60 seconds for integration tests
 setDefaultTimeout(60000);

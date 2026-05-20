@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from 'node:util';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   markets,
   perpMarketSnapshots,
   predictionPriceHistories,
-} from '@babylon/db/schema';
-import { initializeDatabaseMode } from '@babylon/engine';
+} from '@feed/db/schema';
+import { initializeDatabaseMode } from '@feed/engine';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import {
   computePerpRealismMetrics,

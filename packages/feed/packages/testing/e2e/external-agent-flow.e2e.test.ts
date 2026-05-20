@@ -8,7 +8,7 @@
  * 4. Verify trust scoring → Trust level progression
  */
 
-import type { AgentCapabilities } from '@babylon/agents';
+import type { AgentCapabilities } from '@feed/agents';
 import { expect, test } from '@playwright/test';
 import type { DiscoveredAgent } from '../types/test-types';
 
@@ -429,7 +429,7 @@ test.describe('External Agent E2E Flow', () => {
 
       const data = await response.json();
 
-      expect(data.name).toBe('Babylon');
+      expect(data.name).toBe('Feed');
       expect(data.url).toContain('/api/a2a');
       expect(data.version).toBeDefined();
       expect(data.protocolVersion).toBeDefined();

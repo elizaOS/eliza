@@ -1,8 +1,8 @@
 // POST /api/users/me/game-guide - Mark game guide as completed
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

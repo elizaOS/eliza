@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn, logger } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -213,7 +213,7 @@ export function MarketsPanel() {
                         </p>
                         <div className="mt-0.5 flex items-center justify-between gap-1">
                           <span className="truncate text-muted-foreground text-xs">
-                            {BABYLON_POINTS_SYMBOL}
+                            {FEED_POINTS_SYMBOL}
                             {token.currentPrice.toLocaleString('en-US', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
@@ -253,7 +253,7 @@ export function MarketsPanel() {
                         </p>
                         <div className="mt-0.5 flex items-center justify-between gap-1">
                           <span className="truncate text-muted-foreground text-xs">
-                            {BABYLON_POINTS_SYMBOL}
+                            {FEED_POINTS_SYMBOL}
                             {token.currentPrice.toLocaleString('en-US', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
@@ -305,7 +305,7 @@ export function MarketsPanel() {
                         </div>
                         {market.volume > 0 && (
                           <span className="text-muted-foreground text-xs">
-                            Vol {BABYLON_POINTS_SYMBOL}
+                            Vol {FEED_POINTS_SYMBOL}
                             {Math.round(market.volume).toLocaleString()}
                           </span>
                         )}

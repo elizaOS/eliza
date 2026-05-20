@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { getDevCredentials } from '@babylon/api';
+import { getDevCredentials } from '@feed/api';
 
 const DEFAULT_BASE_URL =
   process.env.TEST_API_URL ||

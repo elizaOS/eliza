@@ -12,13 +12,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import {
   autoJoinEmptyUsersToNpcGroupChats,
   GroupChatService,
   NPCGroupDynamicsService,
-} from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 // Test data cleanup tracking
 const testIds: {

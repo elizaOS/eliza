@@ -1,1 +1,1 @@
-"""Training scripts for Babylon RL system"""
+"""Training scripts for Feed RL system"""

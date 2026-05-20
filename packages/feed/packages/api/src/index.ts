@@ -1,12 +1,12 @@
 /**
- * Babylon API Package
+ * Feed API Package
  *
  * Provides API middleware and utilities for authentication, authorization,
  * and common API patterns.
  */
 
 // Re-export auth types from shared
-export type { AuthenticatedUser } from '@babylon/shared';
+export type { AuthenticatedUser } from '@feed/shared';
 // Logger
 export {
   extractErrorMessage,
@@ -14,7 +14,7 @@ export {
   Logger,
   type LogLevel,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 // Admin Audit Logging
 export {
   type AdminAuditContext,
@@ -122,7 +122,7 @@ export {
   ApiError,
   AuthenticationError as AuthError,
   AuthorizationError,
-  BabylonError,
+  FeedError,
   BadRequestError,
   BusinessLogicError,
   ConflictError,
@@ -161,7 +161,7 @@ export {
 export { cronMetrics, recordCronExecution } from './monitoring/cron-metrics';
 export * from './monitoring/monitored-cache';
 export * from './monitoring/monitored-storage';
-// Performance monitoring (moved from @babylon/shared)
+// Performance monitoring (moved from @feed/shared)
 export { performanceMonitor } from './monitoring/performance-monitor';
 // Profile utilities
 export {
@@ -270,7 +270,7 @@ export {
   type PostActivityData,
   type TradeActivityData,
 } from './sse/event-broadcaster';
-// Storage utilities (moved from @babylon/shared)
+// Storage utilities (moved from @feed/shared)
 export {
   getStorageClient,
   type UploadOptions,
@@ -299,7 +299,7 @@ export {
   budgetTokens,
   // Cached user API key validation
   clearApiKeyCache,
-  // Token counter utilities (moved from @babylon/shared)
+  // Token counter utilities (moved from @feed/shared)
   countTokens,
   countTokensSync,
   // Deployment environment detection

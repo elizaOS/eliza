@@ -3,7 +3,7 @@ import {
   type BuildSystemStatusInput,
   buildSystemStatusSnapshot,
   formatSystemStatusDiscordMessage,
-} from '@babylon/api';
+} from '@feed/api';
 
 function createBaseInput(): BuildSystemStatusInput {
   return {
@@ -184,7 +184,7 @@ describe('system-status-service', () => {
 
     const message = formatSystemStatusDiscordMessage(snapshot);
 
-    expect(message).toContain('Babylon CRITICAL system alert');
+    expect(message).toContain('Feed CRITICAL system alert');
     expect(message).toContain('Environment: preview');
     expect(message).toContain('Server Memory: 96% heap used');
   });

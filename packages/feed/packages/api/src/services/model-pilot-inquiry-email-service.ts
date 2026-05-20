@@ -4,7 +4,7 @@ import {
   type ModelPilotOutput,
   type ModelPilotReviewLevel,
   type ModelPilotScenario,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { escapeHtml } from '../utils/html';
 import {
   normalizeEmail,
@@ -12,7 +12,7 @@ import {
   sendViaSendGrid,
 } from './email-utils';
 
-const DEFAULT_NOTIFY_EMAIL = 'babylon@elizalabs.ai';
+const DEFAULT_NOTIFY_EMAIL = 'feed@elizalabs.ai';
 
 export interface ModelPilotInquiryPayload {
   senderEmail: string;
@@ -63,7 +63,7 @@ function buildPlainTextSummary(payload: ModelPilotInquiryPayload): string {
     '',
     `Estimated range (indicative): ${estimate}`,
     '',
-    'This request was submitted through the Babylon model pilot form.',
+    'This request was submitted through the Feed model pilot form.',
   ];
 
   return lines.join('\n');
@@ -111,8 +111,8 @@ export async function sendModelPilotInquiryEmails(
   const text = buildPlainTextSummary(payload);
   const html = buildHtmlSummary(payload);
 
-  const internalSubject = `[Babylon] Model pilot inquiry from ${sender}`;
-  const senderSubject = 'We received your Babylon model pilot request';
+  const internalSubject = `[Feed] Model pilot inquiry from ${sender}`;
+  const senderSubject = 'We received your Feed model pilot request';
 
   return sendViaSendGrid(
     config.apiKey,

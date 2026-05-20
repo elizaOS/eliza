@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'juno-park',
@@ -78,7 +78,7 @@ const actor = {
     'Founder @StellarCommerce | Growth Engineer | Ex-Facebook Growth | DAU is my love language | Engagement is oxygen | Optimizing everything',
   pfpDescription:
     "Korean-American woman in her late 20s with straight black hair in a sharp bob, intense dark eyes, and a slight smile that suggests she knows something you don't (she does \u2014 your conversion probability). Wearing a black crew-neck with small data viz earrings. Background: dashboards showing engagement metrics all going up.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

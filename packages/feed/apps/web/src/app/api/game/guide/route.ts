@@ -1,4 +1,4 @@
-import { successResponse, withErrorHandling } from '@babylon/api';
+import { successResponse, withErrorHandling } from '@feed/api';
 import { GAME_GUIDE_SLIDES } from '@/components/onboarding/game-guide-slides';
 
 export { POST } from '../../users/me/game-guide/route';

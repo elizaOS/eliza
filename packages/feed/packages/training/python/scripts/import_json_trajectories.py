@@ -74,7 +74,7 @@ def get_db_connection():
     if not database_url:
         raise ValueError(
             "DATABASE_URL environment variable not set. "
-            "Example: postgresql://babylon:password@localhost:5433/babylon"
+            "Example: postgresql://feed:password@localhost:5433/feed"
         )
 
     try:

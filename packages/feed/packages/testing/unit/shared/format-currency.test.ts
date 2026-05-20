@@ -2,21 +2,21 @@
  * Comprehensive Currency Formatting Tests
  *
  * Tests formatCurrency function with extensive edge cases, boundary conditions,
- * error handling, and integration with BABYLON_POINTS_SYMBOL constant.
+ * error handling, and integration with FEED_POINTS_SYMBOL constant.
  */
 
 import { describe, expect, it } from 'bun:test';
 
 process.env.NEXT_PUBLIC_CURRENCY_SYMBOL = '$';
-const { BABYLON_POINTS_SYMBOL, formatCurrency } = await import(
-  '@babylon/shared'
+const { FEED_POINTS_SYMBOL, formatCurrency } = await import(
+  '@feed/shared'
 );
 
 describe('formatCurrency - Comprehensive Tests', () => {
   describe('Symbol Verification', () => {
-    it('should use default $ symbol for Babylon points display', () => {
-      expect(BABYLON_POINTS_SYMBOL).toBe('$');
-      expect(BABYLON_POINTS_SYMBOL).not.toBe('Ƀ');
+    it('should use default $ symbol for Feed points display', () => {
+      expect(FEED_POINTS_SYMBOL).toBe('$');
+      expect(FEED_POINTS_SYMBOL).not.toBe('Ƀ');
     });
 
     it('should include symbol in formatted output', () => {
@@ -241,17 +241,17 @@ describe('formatCurrency - Comprehensive Tests', () => {
     });
   });
 
-  describe('Integration with BABYLON_POINTS_SYMBOL', () => {
+  describe('Integration with FEED_POINTS_SYMBOL', () => {
     it('should use the constant value directly', () => {
       const result = formatCurrency(100);
-      expect(result.charAt(0)).toBe(BABYLON_POINTS_SYMBOL);
+      expect(result.charAt(0)).toBe(FEED_POINTS_SYMBOL);
     });
 
     it('should reflect constant changes immediately', () => {
       // Verify the constant is imported and used
       const testValue = 100;
       const result = formatCurrency(testValue);
-      const expectedSymbol = BABYLON_POINTS_SYMBOL;
+      const expectedSymbol = FEED_POINTS_SYMBOL;
       expect(result.startsWith(expectedSymbol)).toBe(true);
     });
   });

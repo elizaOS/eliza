@@ -29,14 +29,14 @@ import {
   posts,
   type Question,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   escapeRegex,
   isNonEmptyString,
   type JsonValue,
   logger,
-} from '@babylon/shared';
-import type { BabylonLLMClient } from '../llm/openai-client';
+} from '@feed/shared';
+import type { FeedLLMClient } from '../llm/openai-client';
 import type { LLMJsonClient } from '../llm/types';
 import type { EventContext, FeedPostContext } from '../types/market-context';
 import { createDiscourseActionDeck } from '../utils/feed-diversity';
@@ -499,7 +499,7 @@ async function getNPCPositions(
  * @param currentDay - Current game day (optional, used for arc plan signal guidance)
  */
 export async function generateNPCPost(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   actor: ActorForPost,
   question: QuestionForPost,
   worldFactsContext: string,
@@ -743,7 +743,7 @@ ${worldFactsContext}
  * @param currentDay - Current game day
  */
 export async function generateOrganicPost(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   actor: ActorForPost,
   worldFactsContext: string,
   timestamp: Date,
@@ -910,7 +910,7 @@ ${worldFactsContext}
  * @param currentDay - Current game day
  */
 export async function generateRivalryPost(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   actor: ActorForPost,
   rivalName: string,
   rivalPosition: 'YES' | 'NO' | string,
@@ -1065,7 +1065,7 @@ ${worldFactsContext}
  * @param currentDay - Current game day
  */
 export async function generatePlayerReactionPost(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   actor: ActorForPost,
   playerName: string,
   betDetails: string,
@@ -1206,7 +1206,7 @@ ${worldFactsContext}
  * Generate a single organization post using LLM
  */
 export async function generateOrgPost(
-  llmClient: BabylonLLMClient,
+  llmClient: FeedLLMClient,
   org: OrganizationForPost,
   question: QuestionForPost,
   worldFactsContext: string,
@@ -1289,7 +1289,7 @@ ${worldFactsContext}
 
 // NOTE: generateOrgArticle was removed - articles are now event-driven only
 // via article-tick cron (rate-limited) and breaking articles from world events.
-// Use ArticleGenerator from @babylon/engine for article generation.
+// Use ArticleGenerator from @feed/engine for article generation.
 
 /**
  * Represents a post that NPCs can reply to

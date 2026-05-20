@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { getModelTokenLimit, truncateToTokenLimitSync } from '@babylon/api';
-import { getRLModelConfig } from '@babylon/training';
+import { getModelTokenLimit, truncateToTokenLimitSync } from '@feed/api';
+import { getRLModelConfig } from '@feed/training';
 
 describe('RL Training System', () => {
   describe('Configuration', () => {
@@ -122,7 +122,7 @@ describe('RL Training System', () => {
       expect(trajectoryLogger.TrajectoryLoggerService).toBeDefined();
 
       // 2. RL Model config
-      const config = await import('@babylon/training');
+      const config = await import('@feed/training');
       expect(config.getRLModelConfig).toBeDefined();
 
       // 3. Agent runtime

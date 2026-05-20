@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-# Babylon Example Agent Development Environment
+# Feed Example Agent Development Environment
 # Start all services needed for local agent development
 
-echo "🚀 Starting Babylon Agent Development Environment"
+echo "🚀 Starting Feed Agent Development Environment"
 echo "=================================================="
 
 # Colors
@@ -96,7 +96,7 @@ echo "  Account 1: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 echo "  Private:   0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 echo ""
 echo "To run the example agent:"
-echo "  cd packages/examples/babylon-typescript-agent"
+echo "  cd packages/examples/feed-typescript-agent"
 echo "  cp .env.example .env.local"
 echo "  bun run agent"
 echo ""

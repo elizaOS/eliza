@@ -8,7 +8,7 @@
  * - Modern Portfolio Theory principles
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 
 interface MarketConditions {
   volatility: number; // 0-1, market volatility index

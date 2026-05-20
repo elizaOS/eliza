@@ -1,5 +1,5 @@
 #!/bin/bash
-# Babylon Training - Local Docker Run
+# Feed Training - Local Docker Run
 #
 # Quick script to run training locally with Docker.
 #
@@ -25,11 +25,11 @@ DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 TRAINING_DIR="$(dirname "$DEPLOY_DIR")"
 
 # Defaults
-IMAGE="${BABYLON_IMAGE:-revlentless/babylon-training:0.2.1}"
-ENV_FILE="${BABYLON_ENV_FILE:-$DEPLOY_DIR/.env}"
-PROFILE="${BABYLON_PROFILE:-12gb}"
-STEPS="${BABYLON_STEPS:-100}"
-MIN_AGENTS="${BABYLON_MIN_AGENTS:-1}"
+IMAGE="${FEED_IMAGE:-revlentless/feed-training:0.2.1}"
+ENV_FILE="${FEED_ENV_FILE:-$DEPLOY_DIR/.env}"
+PROFILE="${FEED_PROFILE:-12gb}"
+STEPS="${FEED_STEPS:-100}"
+MIN_AGENTS="${FEED_MIN_AGENTS:-1}"
 HF_DATASET=""
 INTERACTIVE=false
 EXTRA_ARGS=()
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "Babylon Training - Local Docker Run"
+            echo "Feed Training - Local Docker Run"
             echo ""
             echo "Usage: ./run.sh [options]"
             echo ""
@@ -84,10 +84,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --help, -h           Show this help"
             echo ""
             echo "Environment variables:"
-            echo "  BABYLON_IMAGE        Override default image"
-            echo "  BABYLON_ENV_FILE     Override default env file"
-            echo "  BABYLON_PROFILE      Override default profile"
-            echo "  BABYLON_STEPS        Override default steps"
+            echo "  FEED_IMAGE        Override default image"
+            echo "  FEED_ENV_FILE     Override default env file"
+            echo "  FEED_PROFILE      Override default profile"
+            echo "  FEED_STEPS        Override default steps"
             exit 0
             ;;
         *)
@@ -128,7 +128,7 @@ fi
 # ============================================================================
 
 echo "============================================"
-echo "  Babylon RL Training - Local"
+echo "  Feed RL Training - Local"
 echo "============================================"
 echo ""
 echo "Image:      $IMAGE"

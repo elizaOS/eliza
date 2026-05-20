@@ -5,7 +5,7 @@
  * Import this before using TrajectoryGenerator or other training services.
  *
  * Usage:
- *   import { configureTrainingDependencies, initializeTrainingPackage } from '@babylon/training';
+ *   import { configureTrainingDependencies, initializeTrainingPackage } from '@feed/training';
  *   configureTrainingDependencies({ ... });
  *   await initializeTrainingPackage();
  */

@@ -18,9 +18,9 @@ import {
   setDefaultTimeout,
   test,
 } from 'bun:test';
-import { DailyLoginService } from '@babylon/api';
-import { db, eq, sql, users } from '@babylon/db';
-import { generateSnowflakeId, POINTS } from '@babylon/shared';
+import { DailyLoginService } from '@feed/api';
+import { db, eq, sql, users } from '@feed/db';
+import { generateSnowflakeId, POINTS } from '@feed/shared';
 import { waitForEndpointAvailability } from './helpers';
 
 setDefaultTimeout(30000);

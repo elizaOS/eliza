@@ -1,14 +1,14 @@
 /**
  * Game Capabilities Endpoint
  *
- * Returns detailed capabilities of the Babylon game
+ * Returns detailed capabilities of the Feed game
  * Used for agent discovery and capability matching
  *
  * @see agent-patch-plan.md Phase 3.1
  */
 
-import { babylonAgentCard } from '@babylon/a2a';
-import { withErrorHandling } from '@babylon/api';
+import { feedAgentCard } from '@feed/a2a';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -21,21 +21,21 @@ export const GET = withErrorHandling(async function GET() {
   const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
   const capabilities = {
-    name: babylonAgentCard.name,
-    version: babylonAgentCard.version,
-    description: babylonAgentCard.description,
-    protocolVersion: babylonAgentCard.protocolVersion,
+    name: feedAgentCard.name,
+    version: feedAgentCard.version,
+    description: feedAgentCard.description,
+    protocolVersion: feedAgentCard.protocolVersion,
 
     // Agent capabilities from card
-    capabilities: babylonAgentCard.capabilities,
+    capabilities: feedAgentCard.capabilities,
 
     // Available protocols
     protocols: {
       a2a: {
-        endpoint: babylonAgentCard.url,
+        endpoint: feedAgentCard.url,
         supported: true,
-        version: babylonAgentCard.protocolVersion,
-        transport: babylonAgentCard.preferredTransport,
+        version: feedAgentCard.protocolVersion,
+        transport: feedAgentCard.preferredTransport,
       },
       mcp: {
         endpoint: `${BASE_URL}/api/mcp`,
@@ -45,7 +45,7 @@ export const GET = withErrorHandling(async function GET() {
     },
 
     // Skills from A2A card
-    skills: babylonAgentCard.skills,
+    skills: feedAgentCard.skills,
 
     // Market types
     marketTypes: [
@@ -63,17 +63,17 @@ export const GET = withErrorHandling(async function GET() {
 
     // Authentication methods from security schemes
     authentication: {
-      required: (babylonAgentCard.security?.length ?? 0) > 0,
-      methods: babylonAgentCard.securitySchemes
-        ? Object.values(babylonAgentCard.securitySchemes).map(
+      required: (feedAgentCard.security?.length ?? 0) > 0,
+      methods: feedAgentCard.securitySchemes
+        ? Object.values(feedAgentCard.securitySchemes).map(
             (scheme) => scheme.type
           )
         : [],
     },
 
     // Input/output modes
-    inputModes: babylonAgentCard.defaultInputModes,
-    outputModes: babylonAgentCard.defaultOutputModes,
+    inputModes: feedAgentCard.defaultInputModes,
+    outputModes: feedAgentCard.defaultOutputModes,
 
     // Additional game features
     features: {
@@ -82,8 +82,8 @@ export const GET = withErrorHandling(async function GET() {
       agentAutonomy: true,
       reputationSystem: true,
       onChainRegistry: true,
-      streaming: babylonAgentCard.capabilities.streaming,
-      pushNotifications: babylonAgentCard.capabilities.pushNotifications,
+      streaming: feedAgentCard.capabilities.streaming,
+      pushNotifications: feedAgentCard.capabilities.pushNotifications,
     },
   };
 

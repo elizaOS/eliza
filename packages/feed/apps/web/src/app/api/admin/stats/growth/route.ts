@@ -18,9 +18,9 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@babylon/api';
-import { db } from '@babylon/db';
-import { logger, toISO } from '@babylon/shared';
+} from '@feed/api';
+import { db } from '@feed/db';
+import { logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /** Valid period types for growth metrics */

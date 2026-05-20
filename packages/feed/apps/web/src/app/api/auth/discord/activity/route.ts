@@ -15,8 +15,8 @@
  * by ensuring the state was issued by this server and has not expired.
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

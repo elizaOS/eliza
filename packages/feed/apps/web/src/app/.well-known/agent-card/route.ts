@@ -7,7 +7,7 @@
  * Standard location: /.well-known/agent-card.json
  */
 
-import { babylonAgentCard } from '@babylon/a2a';
+import { feedAgentCard } from '@feed/a2a';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -17,12 +17,12 @@ export const dynamic = 'force-dynamic';
  *
  * Returns the official A2A AgentCard with:
  * - Protocol version 0.3.0
- * - 10 Babylon game skills
+ * - 10 Feed game skills
  * - Official A2A methods (message/send, tasks/*)
  * - Capabilities and metadata
  */
 export async function GET() {
-  return NextResponse.json(babylonAgentCard, {
+  return NextResponse.json(feedAgentCard, {
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=3600', // Cache for 1 hour

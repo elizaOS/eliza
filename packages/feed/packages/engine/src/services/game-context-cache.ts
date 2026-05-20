@@ -27,8 +27,8 @@ import {
   inArray,
   questions as questionsSchema,
   worldEvents,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@feed/db';
+import { logger } from '@feed/shared';
 
 /**
  * Game state from database

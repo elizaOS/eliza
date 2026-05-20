@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { cn, logger } from '@babylon/shared';
+import { cn, logger } from '@feed/shared';
 import { Bell, Settings } from 'lucide-react';
 import nextDynamic from 'next/dynamic';
 import Link from 'next/link';

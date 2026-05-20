@@ -52,11 +52,11 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { DrizzleClient } from '@babylon/db';
-import { asPublic } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import type { DrizzleClient } from '@feed/db';
+import { asPublic } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 function mapAgent0SummaryToEntity(

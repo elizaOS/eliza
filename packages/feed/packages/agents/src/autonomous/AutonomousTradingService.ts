@@ -5,7 +5,7 @@
  * Uses DirectExecutors for actual trade execution (DRY principle).
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@babylon/api';
+import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
 import {
   db,
   desc,
@@ -15,14 +15,14 @@ import {
   perpPositions,
   positions,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   formatRandomContext,
   generateRandomMarketContext,
   StaticDataRegistry,
   shuffleArray,
   WalletService,
-} from '@babylon/engine';
+} from '@feed/engine';
 import type { IAgentRuntime } from '@elizaos/core';
 import { callGroqDirect } from '../llm/direct-groq';
 import { getAgentConfig } from '../shared/agent-config';
@@ -167,9 +167,9 @@ export class AutonomousTradingService {
     const suggestedTradeSizeText = suggestedTradeSize.toFixed(2);
 
     // Build trading prompt
-    const prompt = `${config?.systemPrompt ?? 'You are an AI trading agent on Babylon.'}
+    const prompt = `${config?.systemPrompt ?? 'You are an AI trading agent on Feed.'}
 
-You are ${agentDisplayName}, a trader on Babylon prediction markets and perps.
+You are ${agentDisplayName}, a trader on Feed prediction markets and perps.
 
 Current State:
 - Balance: $${balance.balance.toFixed(2)}
@@ -203,7 +203,7 @@ Output JSON only:
   }
 }
 
-IMPORTANT: "amount_in_points" is the number of Babylon Points (1 pt = $1 USD) you want to invest, NOT a share count.
+IMPORTANT: "amount_in_points" is the number of Feed Points (1 pt = $1 USD) you want to invest, NOT a share count.
 
 If holding:
 {

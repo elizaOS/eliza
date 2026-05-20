@@ -76,10 +76,10 @@
  * @see {@link https://miniapps.farcaster.xyz/docs/guides/sharing} Farcaster embed docs
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
-import { PostIdParamSchema, toISO } from '@babylon/shared';
+import { withErrorHandling } from '@feed/api';
+import { db } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
+import { PostIdParamSchema, toISO } from '@feed/shared';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async function GET(
@@ -142,7 +142,7 @@ export const GET = withErrorHandling(async function GET(
     }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://babylon.market';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://feed.market';
   const postUrl = `${baseUrl}/post/${postId}`;
 
   // Truncate content for preview
@@ -154,7 +154,7 @@ export const GET = withErrorHandling(async function GET(
   const title =
     post.type === 'article' && post.articleTitle
       ? post.articleTitle
-      : `${authorName} on Babylon`;
+      : `${authorName} on Feed`;
 
   // Return Farcaster embed metadata
   return NextResponse.json({

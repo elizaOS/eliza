@@ -45,18 +45,18 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
+import { withErrorHandling } from '@feed/api';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withErrorHandling(async function GET() {
   const metadata = {
-    name: 'Babylon',
-    icon: 'https://babylon.market/assets/logos/logo.svg',
-    splashImage: 'https://babylon.market/assets/images/og-image.png',
+    name: 'Feed',
+    icon: 'https://feed.market/assets/logos/logo.svg',
+    splashImage: 'https://feed.market/assets/images/og-image.png',
     splashBackgroundColor: '#0a0a0a',
-    homeUrl: 'https://babylon.market',
+    homeUrl: 'https://feed.market',
     version: 'next',
   };
 

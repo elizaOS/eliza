@@ -6,11 +6,11 @@
  *
  * On-chain reputation tracking via Base Sepolia contracts has been removed.
  * Reputation is now purely database-driven, with optional Agent0 feedback
- * propagation handled by the ReputationBridge in @babylon/agents.
+ * propagation handled by the ReputationBridge in @feed/agents.
  */
 
-import { db, eq, inArray, positions, sql, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { db, eq, inArray, positions, sql, users } from '@feed/db';
+import { logger } from '@feed/shared';
 
 // =============================================================================
 // Reputation Sync Interface

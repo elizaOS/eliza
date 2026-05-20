@@ -2,8 +2,8 @@ import torch
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoTokenizer
 
-ADAPTER_DIR = "./trained_models/babylon-v1/adapter"
-OUTPUT_DIR = "./trained_models/babylon-v1/merged"
+ADAPTER_DIR = "./trained_models/feed-v1/adapter"
+OUTPUT_DIR = "./trained_models/feed-v1/merged"
 
 
 def main():

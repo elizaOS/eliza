@@ -31,7 +31,7 @@ export interface LLMGenerateJSONOptions {
 
 /**
  * Minimal interface for any LLM client used by engine services.
- * Matches `BabylonLLMClient.generateJSON`.
+ * Matches `FeedLLMClient.generateJSON`.
  */
 export interface LLMJsonClient {
   generateJSON<T>(

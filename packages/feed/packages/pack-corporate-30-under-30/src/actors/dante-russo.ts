@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'dante-russo',
@@ -71,7 +71,7 @@ const actor = {
     'Founder @ForgeCapital | High-Conviction Investing | Georgetown MBA | Investing in Extraordinary Founders (who I went to college with) | Relationships > Returns',
   pfpDescription:
     "White American male in his late 20s with perfectly coiffed brown hair, a year-round tan from frequent Cabo trips, bright blue eyes, and a grin that's equal parts charm and privilege. Wearing a blazer over a t-shirt with loafers, no socks. Background: a trendy co-working space that costs more than some of his portfolio companies make.",
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'naive',

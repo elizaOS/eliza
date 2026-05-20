@@ -19,7 +19,7 @@ Apple rejects "simple website wrappers" that don't provide functionality beyond 
 
 ### 2. In-App Purchase Requirement
 
-If Babylon sells points/credits for real money via Stripe in the app, Apple **requires** using their IAP system (30% cut). App Store Guidelines 3.1.1.
+If Feed sells points/credits for real money via Stripe in the app, Apple **requires** using their IAP system (30% cut). App Store Guidelines 3.1.1.
 
 **Options:**
 1. **Remove Stripe from mobile app** — link out to web for purchases. Users buy on web, use in app.
@@ -33,7 +33,7 @@ If Babylon sells points/credits for real money via Stripe in the app, Apple **re
 App Store Guidelines 3.1.1 (Payments) and 3.1.5 (Cryptocurrencies). Prediction markets may be classified as gambling.
 
 **Key questions:**
-- Does Babylon involve real-money prediction markets?
+- Does Feed involve real-money prediction markets?
 - Are users wagering actual cryptocurrency?
 - Do prediction market outcomes constitute "gambling" under Apple's definition?
 

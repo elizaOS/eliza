@@ -8,7 +8,7 @@ import {
   getProfileUrl,
   type LeaderboardMetric,
   type LeaderboardScope,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   Bot,
   ChevronLeft,

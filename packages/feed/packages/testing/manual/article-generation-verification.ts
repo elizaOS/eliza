@@ -9,8 +9,8 @@
  * 5. Article detail pages display fullContent correctly
  */
 
-import { db } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+import { db } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 
 async function verifyArticleGeneration() {
   console.log('🔍 Starting Article Generation Verification...\n');

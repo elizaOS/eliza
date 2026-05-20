@@ -35,9 +35,9 @@
  * ```
  */
 
-import { withErrorHandling } from '@babylon/api';
-import { logger } from '@babylon/shared';
-import { huggingFaceIntegration } from '@babylon/training';
+import { withErrorHandling } from '@feed/api';
+import { logger } from '@feed/shared';
+import { huggingFaceIntegration } from '@feed/training';
 import { NextResponse } from 'next/server';
 
 export const GET = withErrorHandling(async function GET() {
@@ -68,11 +68,11 @@ export const GET = withErrorHandling(async function GET() {
     environment: {
       hasToken: !!(process.env.HUGGING_FACE_TOKEN || process.env.HF_TOKEN),
       datasetName:
-        process.env.HF_DATASET_NAME || 'babylonlabs/agent-benchmarks',
+        process.env.HF_DATASET_NAME || 'feedlabs/agent-benchmarks',
       trajectoryDatasetName:
         process.env.HF_TRAJECTORY_DATASET_NAME ||
-        'babylonlabs/agent-trajectories',
-      modelNamePrefix: process.env.HF_MODEL_NAME || 'babylonlabs/babylon-agent',
+        'feedlabs/agent-trajectories',
+      modelNamePrefix: process.env.HF_MODEL_NAME || 'feedlabs/feed-agent',
     },
     nextScheduledRun: 'Sundays at 2 AM UTC',
   });

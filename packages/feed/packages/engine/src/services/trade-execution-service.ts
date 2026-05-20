@@ -25,12 +25,12 @@
  *
  * @see NpcTradeRateLimiter for rate limiting implementation details
  */
-import { PerpDbAdapter, PerpMarketService } from '@babylon/core/markets/perps';
+import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@babylon/core/markets/prediction';
-import type { WalletPort } from '@babylon/core/markets/shared';
+} from '@feed/core/markets/prediction';
+import type { WalletPort } from '@feed/core/markets/shared';
 import {
   actorState,
   and,
@@ -45,8 +45,8 @@ import {
   poolPositions,
   sql,
   type Transaction,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { FEE_CONFIG } from '../config/fees';
 import { getSimulationPrice } from '../config/simulation';
 import { isSimulationMode } from '../storage-bridge';

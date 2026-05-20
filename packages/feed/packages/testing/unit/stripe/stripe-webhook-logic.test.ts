@@ -409,11 +409,11 @@ describe('App Metadata Filtering', () => {
 
   /**
    * Determine if an event should be processed by this app.
-   * Returns true if the event belongs to 'babylon' or has no app tag (backward compat).
+   * Returns true if the event belongs to 'feed' or has no app tag (backward compat).
    */
   function shouldProcessForApp(
     eventObject: Record<string, unknown>,
-    appName: string = 'babylon'
+    appName: string = 'feed'
   ): boolean {
     const app = extractAppMetadata(eventObject);
     // If no app metadata, allow (backward compat with pre-tagging resources)
@@ -424,8 +424,8 @@ describe('App Metadata Filtering', () => {
 
   describe('extractAppMetadata', () => {
     it('should extract app from top-level metadata', () => {
-      const obj = { metadata: { app: 'babylon' } };
-      expect(extractAppMetadata(obj)).toBe('babylon');
+      const obj = { metadata: { app: 'feed' } };
+      expect(extractAppMetadata(obj)).toBe('feed');
     });
 
     it('should extract app from subscription_details.metadata', () => {
@@ -438,10 +438,10 @@ describe('App Metadata Filtering', () => {
 
     it('should prefer top-level metadata over subscription_details', () => {
       const obj = {
-        metadata: { app: 'babylon' },
+        metadata: { app: 'feed' },
         subscription_details: { metadata: { app: 'eliza-cloud' } },
       };
-      expect(extractAppMetadata(obj)).toBe('babylon');
+      expect(extractAppMetadata(obj)).toBe('feed');
     });
 
     it('should return undefined when no app metadata exists', () => {
@@ -463,8 +463,8 @@ describe('App Metadata Filtering', () => {
   });
 
   describe('shouldProcessForApp', () => {
-    it('should process events tagged with babylon', () => {
-      const obj = { metadata: { app: 'babylon' } };
+    it('should process events tagged with feed', () => {
+      const obj = { metadata: { app: 'feed' } };
       expect(shouldProcessForApp(obj)).toBe(true);
     });
 
@@ -488,10 +488,10 @@ describe('App Metadata Filtering', () => {
       expect(shouldProcessForApp(obj)).toBe(true);
     });
 
-    it('should process when subscription_details has babylon', () => {
+    it('should process when subscription_details has feed', () => {
       const obj = {
         metadata: {},
-        subscription_details: { metadata: { app: 'babylon' } },
+        subscription_details: { metadata: { app: 'feed' } },
       };
       expect(shouldProcessForApp(obj)).toBe(true);
     });
@@ -507,9 +507,9 @@ describe('App Metadata Filtering', () => {
 
   describe('Filtering across all webhook event types', () => {
     describe('checkout.session.completed', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createCheckoutCompletedEvent('user_1', 10, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(
@@ -546,9 +546,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('checkout.session.expired', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createCheckoutExpiredEvent(undefined, undefined, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(
@@ -570,9 +570,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('checkout.session.async_payment_succeeded', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createCheckoutCompletedEvent('user_1', 10, {
-          app: 'babylon',
+          app: 'feed',
         });
         event.type = 'checkout.session.async_payment_succeeded';
         expect(
@@ -596,9 +596,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('checkout.session.async_payment_failed', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createCheckoutCompletedEvent('user_1', 10, {
-          app: 'babylon',
+          app: 'feed',
         });
         event.type = 'checkout.session.async_payment_failed';
         expect(
@@ -622,9 +622,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('charge.dispute.created', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createDisputeCreatedEvent('pi_test', 50, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(
@@ -646,9 +646,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('charge.dispute.closed (won)', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createDisputeWonEvent('pi_test', 50, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(
@@ -670,9 +670,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('charge.dispute.closed (lost)', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createDisputeLostEvent('pi_test', 50, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(
@@ -694,9 +694,9 @@ describe('App Metadata Filtering', () => {
     });
 
     describe('charge.refunded', () => {
-      it('should process babylon-tagged event', () => {
+      it('should process feed-tagged event', () => {
         const event = createChargeRefundedEvent('pi_test', 25, 50, {
-          app: 'babylon',
+          app: 'feed',
         });
         expect(
           shouldProcessForApp(

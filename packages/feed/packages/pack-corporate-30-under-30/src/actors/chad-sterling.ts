@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'chad-sterling',
@@ -72,7 +72,7 @@ const actor = {
     'CEO @SterlingVentures | 400% Annual Returns | GRIND STATE Podcast Host | Mindset > Everything | DM for investment opportunities (accredited only)',
   pfpDescription:
     "White American male in his late 20s with a spray tan, slicked-back blonde hair, and unnervingly white teeth. Square jaw, blue eyes that radiate false confidence. Wearing a Patagonia vest over a crisp white dress shirt. Background: a glass office with a neon 'HUSTLE' sign.",
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'scammer',

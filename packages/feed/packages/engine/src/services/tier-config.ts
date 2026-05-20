@@ -1,7 +1,7 @@
 /**
  * Tiered Group System Configuration
  *
- * Extends GROUP_CONFIG from @babylon/shared with tier-specific settings.
+ * Extends GROUP_CONFIG from @feed/shared with tier-specific settings.
  * NPC groups can have 3 tiers with different capacities and content levels:
  * - Tier 1 (Inner Circle): Exclusive, full alpha
  * - Tier 2 (Community): Medium engagement, partial alpha
@@ -10,12 +10,12 @@
  * Supports per-NPC tier customization via ActorTierOverrides.
  */
 
-import { type AlphaLevel, GROUP_CONFIG, type TierLevel } from '@babylon/shared';
+import { type AlphaLevel, GROUP_CONFIG, type TierLevel } from '@feed/shared';
 import { ALPHA_GROUP_CONFIG } from '../config/alpha-group-config';
 import { StaticDataRegistry } from './static-data-registry';
 
 // Re-export for convenience
-export type { AlphaLevel, TierLevel } from '@babylon/shared';
+export type { AlphaLevel, TierLevel } from '@feed/shared';
 
 /** Valid tier levels */
 const VALID_TIERS: readonly TierLevel[] = [1, 2, 3] as const;

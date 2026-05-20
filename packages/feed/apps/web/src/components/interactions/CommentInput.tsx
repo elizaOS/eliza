@@ -1,7 +1,7 @@
 'use client';
 
-import type { CommentInputProps } from '@babylon/shared';
-import { cn } from '@babylon/shared';
+import type { CommentInputProps } from '@feed/shared';
+import { cn } from '@feed/shared';
 import { Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';

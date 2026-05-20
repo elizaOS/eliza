@@ -12,8 +12,8 @@
  * 4. Executes responses for approved interactions
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@babylon/api';
-import type { UserAgentConfig } from '@babylon/db';
+import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
+import type { UserAgentConfig } from '@feed/db';
 import type { IAgentRuntime } from '@elizaos/core';
 import { parseKeyValueXml } from '@elizaos/core';
 import { callGroqDirect } from '../llm/direct-groq';
@@ -242,9 +242,9 @@ ${chatLines.join('\n\n')}`);
 
     // Build evaluation prompt - ask for IDs instead of positional true/false
     // This is more robust as it doesn't rely on counting/ordering
-    const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Babylon.'}
+    const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
 
-You are ${agentDisplayName}, an AI agent on Babylon. You need to decide which interactions warrant a response.
+You are ${agentDisplayName}, an AI agent on Feed. You need to decide which interactions warrant a response.
 
 CRITICAL: Be VERY selective. Silence is often the best response.
 
@@ -466,7 +466,7 @@ Do NOT include any explanations, only the XML format above.`;
       if (!interaction || !decision || !decision.shouldRespond) continue;
 
       // Generate response with retry loop
-      const responsePrompt = `${respConfig?.systemPrompt ?? 'You are an AI agent on Babylon.'}
+      const responsePrompt = `${respConfig?.systemPrompt ?? 'You are an AI agent on Feed.'}
 
 You are ${agentDisplayName}, responding to an interaction.
 

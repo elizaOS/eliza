@@ -10,7 +10,7 @@
  *       - Run each script in parallel as:
  *           bun scripts/docs/pull_<vendor>_docs.ts --output docs/vendors/<vendor>
  *
- * Also runs skills generator (docs/skills.md + skills/babylon/) after vendor pulls.
+ * Also runs skills generator (docs/skills.md + skills/feed/) after vendor pulls.
  * WHY: One command should refresh all docs that agents and LLMs might read (vendor + our A2A/MCP surface);
  * otherwise we forget to run skills:generate when we change endpoints.
  *
@@ -79,7 +79,7 @@ async function main() {
   // Markdown and package write to different files, so run in parallel.
   console.log('');
   console.log(
-    '→ Running skills generator (docs/skills.md + skills/babylon/) in parallel...'
+    '→ Running skills generator (docs/skills.md + skills/feed/) in parallel...'
   );
   const skillsScript = join(rootDir, 'scripts/generate-skills-md.ts');
   const skillsMd = Bun.spawn(['bun', 'run', skillsScript], {

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Babylon RL Training - Full Pipeline Runner
+Feed RL Training - Full Pipeline Runner
 
 This script orchestrates the complete RLAIF training pipeline:
 1. Validates environment and prerequisites
 2. Starts background services (Atropos API, vLLM)
-3. Starts the Babylon RLAIF environment
+3. Starts the Feed RLAIF environment
 4. Runs the GRPO trainer with optional W&B logging
 
 Usage:
@@ -33,7 +33,7 @@ GPU Profiles (config/profiles/*.json):
 
 Or run components separately:
     Terminal 1: run-api
-    Terminal 2: python -m src.training.babylon_env serve --slurm false
+    Terminal 2: python -m src.training.feed_env serve --slurm false
     Terminal 3: python -m src.training.atropos_trainer --steps 100
 """
 
@@ -189,7 +189,7 @@ class TrainingOrchestrator:
         keep_checkpoints: int = 3,
         resume_from: str | None = None,
         use_wandb: bool = True,
-        wandb_project: str = "babylon-training",
+        wandb_project: str = "feed-training",
         wandb_entity: str | None = None,
         wandb_run_name: str | None = None,
         skip_services: bool = False,
@@ -363,13 +363,13 @@ class TrainingOrchestrator:
         return False
 
     def start_environment(self) -> bool:
-        """Start Babylon RLAIF environment (offline mode)"""
-        logger.info("Starting Babylon RLAIF environment (offline mode)...")
+        """Start Feed RLAIF environment (offline mode)"""
+        logger.info("Starting Feed RLAIF environment (offline mode)...")
 
         env_cmd = [
             sys.executable,
             "-m",
-            "src.training.babylon_env",
+            "src.training.feed_env",
             "serve",
             "--slurm",
             "false",
@@ -444,8 +444,8 @@ class TrainingOrchestrator:
         return True
 
     def start_online_environment(self) -> bool:
-        """Start Babylon Online environment (online mode with simulation bridge)"""
-        logger.info("Starting Babylon Online environment (online mode)...")
+        """Start Feed Online environment (online mode with simulation bridge)"""
+        logger.info("Starting Feed Online environment (online mode)...")
 
         env_cmd = [
             sys.executable,
@@ -509,9 +509,9 @@ class TrainingOrchestrator:
         return True
 
     def start_hybrid_environment(self) -> bool:
-        """Start Babylon Hybrid environment (mix of offline and online)"""
+        """Start Feed Hybrid environment (mix of offline and online)"""
         logger.info(
-            f"Starting Babylon Hybrid environment (online ratio: {self.hybrid_online_ratio:.0%})..."
+            f"Starting Feed Hybrid environment (online ratio: {self.hybrid_online_ratio:.0%})..."
         )
 
         env_cmd = [
@@ -784,7 +784,7 @@ class TrainingOrchestrator:
     def _log_config(self):
         """Log training configuration"""
         logger.info("=" * 70)
-        logger.info("BABYLON RL TRAINING PIPELINE")
+        logger.info("FEED RL TRAINING PIPELINE")
         logger.info("=" * 70)
         logger.info(f"Mode: {self.mode.upper()}")
         if self.mode in ("online", "hybrid"):
@@ -825,7 +825,7 @@ class TrainingOrchestrator:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Babylon RL Training Pipeline",
+        description="Feed RL Training Pipeline",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -885,7 +885,7 @@ def main():
     parser.add_argument("--resume", help="Resume from checkpoint path")
 
     # W&B settings
-    parser.add_argument("--wandb-project", default="babylon-training", help="W&B project name")
+    parser.add_argument("--wandb-project", default="feed-training", help="W&B project name")
     parser.add_argument("--wandb-entity", help="W&B entity/team")
     parser.add_argument("--wandb-run-name", help="W&B run name")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
@@ -898,7 +898,7 @@ def main():
         "--skip-validation", action="store_true", help="Skip environment validation"
     )
 
-    # Offline environment tuning (affects BabylonRLAIFEnv only)
+    # Offline environment tuning (affects FeedRLAIFEnv only)
     parser.add_argument(
         "--lookback-hours", type=int, default=None, help="Hours to look back for trajectories"
     )

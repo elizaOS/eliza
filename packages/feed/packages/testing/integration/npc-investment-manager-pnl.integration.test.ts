@@ -15,9 +15,9 @@ import {
   expect,
   test,
 } from 'bun:test';
-import { actorState, db, eq, perpPositions, poolPositions } from '@babylon/db';
-import { NPCInvestmentManager } from '@babylon/engine';
-import { generateSnowflakeId } from '@babylon/shared';
+import { actorState, db, eq, perpPositions, poolPositions } from '@feed/db';
+import { NPCInvestmentManager } from '@feed/engine';
+import { generateSnowflakeId } from '@feed/shared';
 
 describe('NPCInvestmentManager - Realized PnL Calculation', () => {
   const TEST_ACTOR_ID = 'test-actor-pnl-' + Date.now();

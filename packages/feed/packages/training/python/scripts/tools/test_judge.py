@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_bridge.reader import JsonTrajectoryReader
-from src.models import BabylonTrajectory
+from src.models import FeedTrajectory
 from src.training.quality_utils import calculate_detailed_tick_quality
 from src.training.rewards import (
     TrajectoryRewardInputs,
@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("TheJudge")
 
 
-def evaluate_trajectory(traj: BabylonTrajectory):
+def evaluate_trajectory(traj: FeedTrajectory):
     print(f"\n--- Judging Trajectory: {traj.trajectory_id} ---")
 
     # 1. Financials
@@ -145,7 +145,7 @@ def main():
                     raw["steps"] = json.loads(raw["stepsJson"])
 
                 try:
-                    traj = BabylonTrajectory.model_validate(raw)
+                    traj = FeedTrajectory.model_validate(raw)
                     evaluate_trajectory(traj)
                     count += 1
                     if count >= 5:

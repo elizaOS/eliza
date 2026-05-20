@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     loader: 'custom',
     loaderFile: './src/lib/image-loader.ts',
   },
-  transpilePackages: ['@babylon/shared', '@babylon/core', '@babylon/contracts'],
+  transpilePackages: ['@feed/shared', '@feed/core', '@feed/contracts'],
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
@@ -89,7 +89,7 @@ const nextConfig: NextConfig = {
       // Ignore server-only packages in client builds
       config.plugins.push(
         new webpack.IgnorePlugin({
-          resourceRegExp: /^@babylon\/(api|db|engine|training|agents)(\/.*)?$/,
+          resourceRegExp: /^@feed\/(api|db|engine|training|agents)(\/.*)?$/,
         }),
         new webpack.IgnorePlugin({
           resourceRegExp:

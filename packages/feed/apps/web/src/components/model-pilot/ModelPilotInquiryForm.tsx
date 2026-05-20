@@ -12,7 +12,7 @@ import {
   type ModelPilotReviewLevel,
   type ModelPilotScenario,
   modelPilotDeliverableAffectsEstimate,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 
-const TERMS_URL = 'https://docs.babylon.market/legal/terms-of-service/';
+const TERMS_URL = 'https://docs.feed.market/legal/terms-of-service/';
 
 const fieldClass =
   'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
@@ -232,7 +232,7 @@ export function ModelPilotInquiryForm() {
               Model pilot inquiry
             </p>
             <h1 className="font-bold text-2xl text-foreground tracking-tight md:text-3xl">
-              Bring Your Model to Babylon
+              Bring Your Model to Feed
             </h1>
             <p className="mt-3 max-w-prose text-base text-muted-foreground leading-relaxed md:text-lg">
               Connect your model, run adversarial social and market scenarios,
@@ -261,7 +261,7 @@ export function ModelPilotInquiryForm() {
                       <PricingScopeBadge mode="none" />
                     </div>
                     <p className="mt-1 text-muted-foreground text-sm">
-                      Plug your model into Babylon&apos;s training environment.
+                      Plug your model into Feed&apos;s training environment.
                       Used to plan integration; the range on the right is not
                       tied to provider, endpoint, tool use, or memory.
                     </p>
@@ -353,7 +353,7 @@ export function ModelPilotInquiryForm() {
                         id="model-pilot-step-2"
                         className="font-semibold text-foreground text-lg tracking-tight"
                       >
-                        2. What should Babylon deliver?
+                        2. What should Feed deliver?
                       </h2>
                       <PricingScopeBadge mode="fineTuneOnly" />
                     </div>
@@ -622,7 +622,7 @@ export function ModelPilotInquiryForm() {
                       <PricingScopeBadge mode="none" />
                     </div>
                     <p className="mt-1 text-muted-foreground text-sm">
-                      Choose what Babylon returns at the end of the run. The
+                      Choose what Feed returns at the end of the run. The
                       estimate does not change with these selections; they align
                       the statement of work with deliverables above.
                     </p>

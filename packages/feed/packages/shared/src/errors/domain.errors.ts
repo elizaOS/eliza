@@ -1,8 +1,8 @@
 /**
- * Domain-specific error classes for Babylon business logic
+ * Domain-specific error classes for Feed business logic
  */
 
-import { BabylonError, BusinessLogicError } from './base.errors';
+import { FeedError, BusinessLogicError } from './base.errors';
 
 /**
  * Insufficient funds error for balance-related issues
@@ -24,7 +24,7 @@ export class InsufficientFundsError extends BusinessLogicError {
 /**
  * Trading error for market operations
  */
-export class TradingError extends BabylonError {
+export class TradingError extends FeedError {
   constructor(
     message: string,
     public readonly marketId: string,
@@ -61,7 +61,7 @@ export class PositionError extends BusinessLogicError {
 /**
  * Agent error for A2A operations
  */
-export class AgentError extends BabylonError {
+export class AgentError extends FeedError {
   constructor(
     message: string,
     public readonly agentId: string,
@@ -75,7 +75,7 @@ export class AgentError extends BabylonError {
 /**
  * Agent authentication error
  */
-export class AgentAuthenticationError extends BabylonError {
+export class AgentAuthenticationError extends FeedError {
   constructor(
     public readonly agentId: string,
     public readonly reason:
@@ -115,7 +115,7 @@ export class CoalitionError extends BusinessLogicError {
 /**
  * Blockchain error for web3 interactions
  */
-export class BlockchainError extends BabylonError {
+export class BlockchainError extends FeedError {
   constructor(
     message: string,
     public readonly txHash?: string,
@@ -134,7 +134,7 @@ export class BlockchainError extends BabylonError {
 /**
  * Smart contract error for contract interactions
  */
-export class SmartContractError extends BabylonError {
+export class SmartContractError extends FeedError {
   constructor(
     message: string,
     public readonly contractAddress: string,
@@ -229,9 +229,9 @@ export class GameError extends BusinessLogicError {
 }
 
 /**
- * Feed error for social feed operations
+ * Social feed error for social feed operations
  */
-export class FeedError extends BusinessLogicError {
+export class SocialFeedError extends BusinessLogicError {
   constructor(
     message: string,
     public readonly feedId: string,
@@ -248,7 +248,7 @@ export class FeedError extends BusinessLogicError {
 /**
  * LLM error for AI/LLM operations
  */
-export class LLMError extends BabylonError {
+export class LLMError extends FeedError {
   constructor(
     message: string,
     public readonly model: string,

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, getDisplayReferralUrl, getReferralUrl } from '@babylon/shared';
+import { cn, getDisplayReferralUrl, getReferralUrl } from '@feed/shared';
 import {
   Bell,
   Bot,
@@ -21,7 +21,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { GameFeedbackModal } from '@/components/feedback/GameFeedbackModal';
 import { Avatar } from '@/components/shared/Avatar';
-import { BabylonIcon } from '@/components/shared/icons/BabylonIcon';
+import { FeedIcon } from '@/components/shared/icons/FeedIcon';
 import { HouseIcon } from '@/components/shared/icons/HouseIcon';
 import {
   fetchMobileHeaderPointsSnapshot,
@@ -297,7 +297,7 @@ function MobileHeaderContent() {
               href="/feed"
               className="transition-transform duration-300 hover:scale-105"
             >
-              <BabylonIcon className="h-7 w-7 text-primary" />
+              <FeedIcon className="h-7 w-7 text-primary" />
             </Link>
           </div>
         </div>

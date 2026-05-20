@@ -3,7 +3,7 @@ name: Benchmark Suite
 on:
   # Run after training workflow completes
   workflow_run:
-    workflows: ["Babylon RL Training"]
+    workflows: ["Feed RL Training"]
     types:
       - completed
 

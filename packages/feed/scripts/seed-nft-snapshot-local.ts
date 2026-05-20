@@ -13,7 +13,7 @@
  *   bun run scripts/seed-nft-snapshot-local.ts
  */
 
-import { closeDatabase, count, db, nftSnapshot, users } from '@babylon/db';
+import { closeDatabase, count, db, nftSnapshot, users } from '@feed/db';
 import { nanoid } from 'nanoid';
 
 export async function runLocalNftSnapshotSeed(options?: {

@@ -3,13 +3,13 @@
 import {
   calculateExpectedPayout,
   PredictionPricing,
-} from '@babylon/core/markets/prediction/client';
-import { FEE_CONFIG } from '@babylon/engine/config/fees';
+} from '@feed/core/markets/prediction/client';
+import { FEE_CONFIG } from '@feed/engine/config/fees';
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatCompactNumber,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -890,7 +890,7 @@ export function MarketsTradingTerminal({
       kind: 'perp',
       title: m.ticker,
       subtitle: perpCompanyLabel(m.name),
-      valuePrimary: `${BABYLON_POINTS_SYMBOL}${m.currentPrice.toFixed(2)}`,
+      valuePrimary: `${FEED_POINTS_SYMBOL}${m.currentPrice.toFixed(2)}`,
       valueSecondary: `Vol ${formatCompactNumber(m.volume24h)}`,
       change24hPct: m.changePercent24h,
       sortVolume: m.volume24h ?? 0,
@@ -1340,7 +1340,7 @@ export function MarketsTradingTerminal({
     }
     if (predictionTradeMode === 'buy') {
       if (predictionAmountNum < 1) {
-        toast.error(`Minimum bet is ${BABYLON_POINTS_SYMBOL}1`);
+        toast.error(`Minimum bet is ${FEED_POINTS_SYMBOL}1`);
         return;
       }
       if (!predictionBuyCalculation) {
@@ -2116,7 +2116,7 @@ export function MarketsTradingTerminal({
                     Amount
                   </label>
                   <span className="text-muted-foreground text-xs">
-                    Min {BABYLON_POINTS_SYMBOL}1
+                    Min {FEED_POINTS_SYMBOL}1
                   </span>
                 </div>
                 <input
@@ -2188,14 +2188,14 @@ export function MarketsTradingTerminal({
                 <div className="flex items-center justify-between py-0.5">
                   <span className="text-muted-foreground">Fee</span>
                   <span className="font-mono text-foreground tabular-nums">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {predictionBuyCalculation.fee?.toFixed(2) ?? '0.00'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-0.5">
                   <span className="text-muted-foreground">Expected payout</span>
                   <span className="font-mono text-foreground tabular-nums">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {expectedPayout.toFixed(2)}
                   </span>
                 </div>
@@ -2207,21 +2207,21 @@ export function MarketsTradingTerminal({
                 <div className="flex items-center justify-between py-0.5">
                   <span className="text-muted-foreground">Gross proceeds</span>
                   <span className="font-mono text-foreground tabular-nums">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {predictionSellCalculation.totalCost.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-0.5">
                   <span className="text-muted-foreground">Fee</span>
                   <span className="font-mono text-foreground tabular-nums">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {predictionSellCalculation.fee?.toFixed(2) ?? '0.00'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-0.5 font-semibold">
                   <span className="text-muted-foreground">Net proceeds</span>
                   <span className="font-mono text-foreground tabular-nums">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {(
                       predictionSellCalculation.netProceeds ??
                       predictionSellCalculation.netAmount ??
@@ -2260,7 +2260,7 @@ export function MarketsTradingTerminal({
                 : !authenticated
                   ? 'Log In to Trade'
                   : predictionTradeMode === 'buy'
-                    ? `BUY ${predictionSide.toUpperCase()} · ${BABYLON_POINTS_SYMBOL}${predictionAmountNum.toFixed(
+                    ? `BUY ${predictionSide.toUpperCase()} · ${FEED_POINTS_SYMBOL}${predictionAmountNum.toFixed(
                         0
                       )}`
                     : `SELL ${predictionSide.toUpperCase()} · ${clampedSellShares.toFixed(

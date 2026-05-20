@@ -16,7 +16,7 @@
  *
  * @example
  * ```typescript
- * import { createOpenClawAdapter } from '@babylon/agent-harness';
+ * import { createOpenClawAdapter } from '@feed/agent-harness';
  *
  * // CLI mode — spawn `openclaw agent` per decision (no gateway)
  * const ocCli = createOpenClawAdapter({ mode: 'cli', model: 'gpt-4o' });
@@ -77,7 +77,7 @@ function detectWorkspaceRoot(): string {
   const __dir = new URL(import.meta.url).pathname.replace(/\/[^/]+$/, '');
   let current = resolve(__dir);
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(current, 'babylon', 'package.json'))) return current;
+    if (existsSync(join(current, 'feed', 'package.json'))) return current;
     current = join(current, '..');
   }
   return join(__dir, '../../../../../../..');
@@ -114,7 +114,7 @@ function findOpenClawBin(workspaceRoot: string): string {
 
 // ─── Prompt construction ──────────────────────────────────────────────────────
 
-const OPENCLAW_SYSTEM = `You are an autonomous trading agent in Babylon, a satirical prediction market game.
+const OPENCLAW_SYSTEM = `You are an autonomous trading agent in Feed, a satirical prediction market game.
 
 Decide your next action based on the game state. Respond with ONLY valid JSON:
 {"action":"BUY_YES","marketId":"id","outcome":"YES","amount":50,"content":null,"reasoning":"reason"}

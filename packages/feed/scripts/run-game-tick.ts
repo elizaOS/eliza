@@ -14,9 +14,9 @@
  *   --interval=N  Seconds between ticks (default: 60, only with --loop)
  */
 
-import { closeDatabase } from '@babylon/db';
-import { executeGameTick } from '@babylon/engine';
-import { logger } from '@babylon/shared';
+import { closeDatabase } from '@feed/db';
+import { executeGameTick } from '@feed/engine';
+import { logger } from '@feed/shared';
 
 async function runTick(): Promise<void> {
   logger.info(

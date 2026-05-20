@@ -8,8 +8,8 @@
  * Returns the current game tutorial onboarding status for the authenticated user.
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { getOrCreateOnboarding } from '@babylon/engine';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { getOrCreateOnboarding } from '@feed/engine';
 import type { NextRequest } from 'next/server';
 
 /**

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Babylon CLI - Unified command-line interface for Babylon operations
+ * @fileoverview Feed CLI - Unified command-line interface for Feed operations
  *
  * Provides a comprehensive CLI for managing database, admin users, game state,
  * training pipelines, models, agents, and system status.
@@ -28,10 +28,10 @@ const VERSION = '0.2.0';
  */
 function printHelp(): void {
   console.log(`
-Babylon CLI v${VERSION}
+Feed CLI v${VERSION}
 
 USAGE:
-  babylon <domain> <command> [options]
+  feed <domain> <command> [options]
 
 DOMAINS:
   db        Database management (start, stop, status, migrate, reset)
@@ -44,21 +44,21 @@ DOMAINS:
   test      Load & stress testing (load, a2a)
 
 EXAMPLES:
-  babylon db start                 Start PostgreSQL container
-  babylon db migrate               Run database migrations
-  babylon admin grant alice        Grant admin to user 'alice'
-  babylon status                   Show all system status
-  babylon game start               Start the continuous game
-  babylon game status              Check game runtime status
-  babylon train list               List available archetypes
-  babylon train pipeline -a trader Train trader archetype
-  babylon agent spawn --count 5    Spawn 5 test agents
+  feed db start                 Start PostgreSQL container
+  feed db migrate               Run database migrations
+  feed admin grant alice        Grant admin to user 'alice'
+  feed status                   Show all system status
+  feed game start               Start the continuous game
+  feed game status              Check game runtime status
+  feed train list               List available archetypes
+  feed train pipeline -a trader Train trader archetype
+  feed agent spawn --count 5    Spawn 5 test agents
 
 OPTIONS:
   -h, --help      Show help for any command
   -v, --version   Show version number
 
-Run 'babylon <domain> --help' for domain-specific help.
+Run 'feed <domain> --help' for domain-specific help.
 `);
 }
 
@@ -68,11 +68,11 @@ Run 'babylon <domain> --help' for domain-specific help.
  * @internal
  */
 function printVersion(): void {
-  console.log(`babylon v${VERSION}`);
+  console.log(`feed v${VERSION}`);
 }
 
 /**
- * Main entry point for the Babylon CLI.
+ * Main entry point for the Feed CLI.
  *
  * Parses command-line arguments and routes to the appropriate domain handler.
  * Handles global flags (--help, --version) and delegates to domain-specific commands.
@@ -133,7 +133,7 @@ async function main(): Promise<void> {
 
     default:
       console.error(`Unknown domain: ${domain}`);
-      console.log("\nRun 'babylon --help' for usage information.");
+      console.log("\nRun 'feed --help' for usage information.");
       process.exit(1);
   }
   process.exit(0);

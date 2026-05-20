@@ -5,7 +5,7 @@
  * Main entry point for all HuggingFace operations.
  */
 
-import { benchmarkResults, db, trainedModels, trajectories } from '@babylon/db';
+import { benchmarkResults, db, trainedModels, trajectories } from '@feed/db';
 import { count, desc, eq, gte, isNotNull } from 'drizzle-orm';
 import { ModelBenchmarkService } from '../benchmark/ModelBenchmarkService';
 import { getExportToHuggingFace } from '../dependencies';
@@ -85,9 +85,9 @@ export class HuggingFaceIntegrationService {
           datasetName:
             options.datasetName ||
             process.env.HF_DATASET_NAME ||
-            'babylonlabs/agent-benchmarks',
+            'feedlabs/agent-benchmarks',
           description:
-            'Weekly benchmark results for Babylon autonomous trading agents',
+            'Weekly benchmark results for Feed autonomous trading agents',
         });
 
         result.datasets.benchmarks = {
@@ -122,7 +122,7 @@ export class HuggingFaceIntegrationService {
           datasetName:
             options.trajectoryDatasetName ||
             process.env.HF_TRAJECTORY_DATASET_NAME ||
-            'babylonlabs/agent-trajectories',
+            'feedlabs/agent-trajectories',
           format: 'jsonl',
         });
 
@@ -206,12 +206,12 @@ export class HuggingFaceIntegrationService {
                     ? `${options.modelNamePrefix}-${model.version}`
                     : process.env.HF_MODEL_NAME
                       ? `${process.env.HF_MODEL_NAME}-${model.version}`
-                      : `babylonlabs/babylon-agent-${model.version}`;
+                      : `feedlabs/feed-agent-${model.version}`;
 
                   const uploadResult = await this.modelUploader.uploadModel({
                     modelId,
                     modelName,
-                    description: `Babylon autonomous trading agent - v${model.version}`,
+                    description: `Feed autonomous trading agent - v${model.version}`,
                     includeWeights: true,
                   });
 
@@ -377,7 +377,7 @@ export class HuggingFaceIntegrationService {
       await ModelBenchmarkService.getStandardBenchmarkPaths();
     if (standardBenchmarks.length === 0) {
       warnings.push(
-        'No standard benchmarks found. Run: babylon train generate'
+        'No standard benchmarks found. Run: feed train generate'
       );
     }
 

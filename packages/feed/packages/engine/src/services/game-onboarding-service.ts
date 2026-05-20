@@ -13,14 +13,14 @@ import {
   type GameOnboardingState,
   type GameOnboardingStep,
   gameOnboarding,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   generateSnowflakeId,
   getNextOnboardingStep,
   logger,
   ONBOARDING_STEP_ORDER,
   ONBOARDING_STEP_POINTS,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { formatError } from '../utils/error-utils';
 import { EarnedPointsService } from './earned-points-service';
 

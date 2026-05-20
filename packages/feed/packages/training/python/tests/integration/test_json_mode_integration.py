@@ -88,7 +88,7 @@ class TestJsonTrajectoryLoading:
         temp_trajectory_dir: Path,
         trajectory_group: list[TrajectoryFixture],
     ):
-        """Test loading Babylon-style trajectories.jsonl exports."""
+        """Test loading Feed-style trajectories.jsonl exports."""
         export_path = temp_trajectory_dir / "trajectories.jsonl"
         lines = [json.dumps(traj.to_json_file_format()["trajectory"]) for traj in trajectory_group]
         export_path.write_text("\n".join(lines) + "\n")
@@ -162,7 +162,7 @@ class TestArchetypeExtractionFromSteps:
         """Test extracting archetype from step's action parameters."""
         step = create_trading_step(0, "buy_prediction", "trader")
 
-        # Simulate extraction logic from babylon_env.py
+        # Simulate extraction logic from feed_env.py
         action = step.get("action", {})
         params = action.get("parameters", {})
         archetype = params.get("archetype")

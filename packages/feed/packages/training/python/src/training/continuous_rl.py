@@ -1,12 +1,12 @@
 """
-Continuous Reinforcement Learning Agent for Babylon
+Continuous Reinforcement Learning Agent for Feed
 
 DEPRECATED: Use shared_model_rl.py instead. This module is kept for backwards
 compatibility. The SharedModelTrainer in shared_model_rl.py replaces both this
 module and team_rl.py with a single shared model approach.
 
 Each ContinuousRLAgent wraps a single model and optimizer, connects to a shared
-Babylon game via SimulationBridge, and continuously learns from interactions.
+Feed game via SimulationBridge, and continuously learns from interactions.
 
 The training loop:
   1. Forward pass: generate action for current game state (TurboQuant KV cache)
@@ -142,7 +142,7 @@ class RewardTracker:
 class ContinuousRLAgent:
     """
     A single agent with its own model that learns continuously from a shared
-    Babylon game. Wraps: model + optimizer + Kondo gate + TurboQuant cache.
+    Feed game. Wraps: model + optimizer + Kondo gate + TurboQuant cache.
     """
 
     def __init__(self, agent_id: str, config: ContinuousRLConfig):
@@ -277,7 +277,7 @@ class ContinuousRLAgent:
     def _build_prompt(self, scenario: Scenario) -> str:
         """Build chat-template prompt from scenario context."""
         system_msg = (
-            f"You are a {self.config.agent_archetype} agent in Babylon prediction markets. "
+            f"You are a {self.config.agent_archetype} agent in Feed prediction markets. "
             "Respond with <think>...</think> reasoning then a JSON action."
         )
         messages = [

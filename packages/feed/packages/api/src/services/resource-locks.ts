@@ -8,7 +8,7 @@
  * Uses DistributedLockService under the hood with resource-specific lock IDs.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { randomBytes } from 'crypto';
 import { DistributedLockService } from './distributed-lock-service';
 

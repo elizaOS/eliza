@@ -8,7 +8,7 @@
  *
  * Design notes:
  * - broadcastChatMessage is injected as broadcastFn to avoid importing
- *   @babylon/api from packages/agents (architectural separation)
+ *   @feed/api from packages/agents (architectural separation)
  * - Only handles team-chat mode (coordinator dispatch always targets a team chat)
  * - Always uses ModelType.TEXT_SMALL (free tier = 0 pts cost)
  * - Max 4 iterations (vs 5 in the coordinator) to stay within latency budget
@@ -21,9 +21,9 @@
  * - All dispatches instrumented with action-type and timing telemetry
  */
 
-import { db, eq, messages, userAgentConfigs } from '@babylon/db';
-import type { MessageMetadata, MessageTag } from '@babylon/shared';
-import { checkUserInput, logger } from '@babylon/shared';
+import { db, eq, messages, userAgentConfigs } from '@feed/db';
+import type { MessageMetadata, MessageTag } from '@feed/shared';
+import { checkUserInput, logger } from '@feed/shared';
 import {
   composePromptFromState,
   type Memory,
@@ -42,7 +42,7 @@ import { notifyTeamChatMessage } from './team-chat-notifications';
 // Types
 // =============================================================================
 
-/** Minimal broadcast function signature matching broadcastChatMessage from @babylon/api */
+/** Minimal broadcast function signature matching broadcastChatMessage from @feed/api */
 export type BroadcastFn = (
   chatId: string,
   message: {
@@ -64,7 +64,7 @@ export interface CoordinatorDispatchParams {
   teamChatId: string;
   ownerName?: string;
   ownerUsername?: string;
-  /** Injected from route layer — avoids importing @babylon/api in packages/agents */
+  /** Injected from route layer — avoids importing @feed/api in packages/agents */
   broadcastFn: BroadcastFn;
 }
 
@@ -552,7 +552,7 @@ export async function dispatchAgentChat(
 
     state.data = {
       ...state.data,
-      // Cast: Babylon ActionTraceResult is a superset of elizaos ActionResult
+      // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
         traceActionResults as unknown as typeof state.data.actionResults,
     };
@@ -803,7 +803,7 @@ export async function dispatchAgentChat(
     };
     summaryState.data = {
       ...summaryState.data,
-      // Cast: Babylon ActionTraceResult is a superset of elizaos ActionResult
+      // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
         traceActionResults as unknown as typeof summaryState.data.actionResults,
     };

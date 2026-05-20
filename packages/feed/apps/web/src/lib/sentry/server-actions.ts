@@ -78,8 +78,8 @@ export function wrapServerActionWithSentry<T extends unknown[], R>(
         op: 'server.action',
         name: `server-action.${actionName}`,
         attributes: {
-          'babylon.surface': 'server-action',
-          'babylon.action': actionName,
+          'feed.surface': 'server-action',
+          'feed.action': actionName,
         },
       },
       async () => {

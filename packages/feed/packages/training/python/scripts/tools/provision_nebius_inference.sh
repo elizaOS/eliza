@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provision a persistent Nebius H100 VM running vLLM for Babylon agent inference.
+# Provision a persistent Nebius H100 VM running vLLM for Feed agent inference.
 #
 # This creates a long-running inference server that:
 # 1. Serves Qwen3.5-4B (or 9B) via OpenAI-compatible API
 # 2. Supports LoRA adapter hot-swap for continuous training
-# 3. Babylon agents connect via GROQ_BASE_URL
+# 3. Feed agents connect via GROQ_BASE_URL
 #
 # Usage:
 #   ./provision_nebius_inference.sh                    # Default: 4B on H100
@@ -16,7 +16,7 @@ set -euo pipefail
 MODEL="Qwen/Qwen3.5-4B"
 GPU_TYPE="h100"
 PORT=9001
-INSTANCE_NAME="babylon-inference-$(date +%s)"
+INSTANCE_NAME="feed-inference-$(date +%s)"
 EXISTING_HOST=""
 
 while [[ $# -gt 0 ]]; do
@@ -101,7 +101,7 @@ echo '  Endpoint: http://$IP:$PORT/v1'
 echo '  LoRA: enabled (hot-swap via API)'
 echo '================================================'
 echo ''
-echo 'To connect Babylon agents:'
+echo 'To connect Feed agents:'
 echo '  export GROQ_BASE_URL=http://$IP:$PORT/v1'
 echo '  export GROQ_API_KEY=dummy'
 echo '  export GROQ_PRIMARY_MODEL=$MODEL'
@@ -111,7 +111,7 @@ echo ""
 echo "================================================"
 echo "  NEBIUS INFERENCE SERVER: http://$IP:$PORT/v1"
 echo ""
-echo "  Set in Babylon .env.local:"
+echo "  Set in Feed .env.local:"
 echo "    GROQ_BASE_URL=http://$IP:$PORT/v1"
 echo "    GROQ_API_KEY=dummy"
 echo "    GROQ_PRIMARY_MODEL=$MODEL"

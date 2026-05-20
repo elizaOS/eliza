@@ -27,8 +27,8 @@ import {
   shares,
   userInteractions,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 
 const REPLY_TEMPLATES = [
   'Great insight! I was thinking the same thing about this.',

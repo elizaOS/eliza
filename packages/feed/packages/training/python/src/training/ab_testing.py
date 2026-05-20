@@ -1,5 +1,5 @@
 """
-A/B Testing Framework for Babylon Agent Training
+A/B Testing Framework for Feed Agent Training
 
 Compares trained agent models against baseline models using standardized evaluation scenarios.
 

@@ -10,7 +10,7 @@ import {
   logger,
   type PaymentVerificationParams,
   type PaymentVerificationResult,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   formatEther,
   hexlify,

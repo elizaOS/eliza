@@ -22,11 +22,11 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: babylon_test
+          POSTGRES_USER: feed_test
           POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: babylon_test
+          POSTGRES_DB: feed_test
         options: >-
-          --health-cmd "pg_isready -U babylon_test"
+          --health-cmd "pg_isready -U feed_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -73,7 +73,7 @@ jobs:
           pytest tests/integration/test_db_integration.py -v -x
         env:
           PYTHONPATH: src
-          DATABASE_URL: postgresql://babylon_test:test_password@localhost:5434/babylon_test
+          DATABASE_URL: postgresql://feed_test:test_password@localhost:5434/feed_test
 
   test-unit-integration:
     name: Unit & Integration Tests

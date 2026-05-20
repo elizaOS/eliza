@@ -4,7 +4,7 @@ import {
   cn,
   DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   type NotificationDigestSettings,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { useEffect, useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';

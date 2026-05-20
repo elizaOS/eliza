@@ -10,7 +10,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { requireAdmin, withErrorHandling } from '@babylon/api';
+import { requireAdmin, withErrorHandling } from '@feed/api';
 import type { NextRequest } from 'next/server';
 
 const TRACE_DIR = path.resolve(process.cwd(), 'runs', 'dag-traces');

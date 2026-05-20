@@ -17,7 +17,7 @@
  *
  * Usage:
  * ```typescript
- * import { StaticDataRegistry } from '@babylon/engine';
+ * import { StaticDataRegistry } from '@feed/engine';
  *
  * // Get static actor data (no DB call!)
  * const actor = StaticDataRegistry.getActor('ailon-musk');
@@ -31,12 +31,12 @@
  * ```
  */
 
-// Default pack — imported statically since @babylon/engine depends on @babylon/pack-default
+// Default pack — imported statically since @feed/engine depends on @feed/pack-default
 import {
   actors as defaultPackActors,
   manifest as defaultPackManifest,
   organizations as defaultPackOrganizations,
-} from '@babylon/pack-default';
+} from '@feed/pack-default';
 import type {
   ActorTier,
   ActorTierOverrides,
@@ -45,7 +45,7 @@ import type {
   PackData,
   PackManifest,
   PackOrganization,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { actors as actorsData } from '../data/actors';
@@ -100,7 +100,7 @@ export interface StaticActor {
   profileBanner?: string;
 }
 
-/** Organization type enum matching @babylon/shared */
+/** Organization type enum matching @feed/shared */
 export type OrgType =
   | 'company'
   | 'media'

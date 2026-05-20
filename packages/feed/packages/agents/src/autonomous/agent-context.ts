@@ -5,8 +5,8 @@
  * Eliminates duplicate boilerplate across autonomous services.
  */
 
-import { db, eq, users } from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+import { db, eq, users } from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 
 export interface AgentContext {
   agentUserId: string;

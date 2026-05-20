@@ -87,7 +87,7 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@babylon/api';
+import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
 import {
   and,
   asUser,
@@ -102,8 +102,8 @@ import {
   posts,
   reactions,
   shares,
-} from '@babylon/db';
-import { logger, PostFeedQuerySchema } from '@babylon/shared';
+} from '@feed/db';
+import { logger, PostFeedQuerySchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 /**

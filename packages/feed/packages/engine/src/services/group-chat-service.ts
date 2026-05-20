@@ -33,9 +33,9 @@ import {
   messages,
   userInteractions,
   users,
-} from '@babylon/db';
-import type { GroupChat } from '@babylon/shared';
-import { generateSnowflakeId } from '@babylon/shared';
+} from '@feed/db';
+import type { GroupChat } from '@feed/shared';
+import { generateSnowflakeId } from '@feed/shared';
 import { notifyGroupChatInvite } from './group-chat-invite-notifier';
 
 /**

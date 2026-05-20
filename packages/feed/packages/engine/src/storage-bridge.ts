@@ -2,7 +2,7 @@
  * Storage Bridge
  *
  * Provides a simple interface for switching between database modes.
- * The engine uses @babylon/db for all storage operations.
+ * The engine uses @feed/db for all storage operations.
  *
  * ## Modes
  * - **postgres** (default): PostgreSQL database for production
@@ -11,7 +11,7 @@
  *
  * ## Usage
  * ```typescript
- * import { initializeSimulationMode, db } from '@babylon/engine';
+ * import { initializeSimulationMode, db } from '@feed/engine';
  *
  * // For simulation/training - stores to JSON files
  * await initializeSimulationMode('./output');
@@ -56,7 +56,7 @@ import {
   resetToPostgresMode,
   type StorageMode,
   saveJsonSnapshot,
-} from '@babylon/db';
+} from '@feed/db';
 
 // Re-export db for convenience
 // Re-export storage mode utilities

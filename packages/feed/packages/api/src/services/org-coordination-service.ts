@@ -9,7 +9,7 @@
  * - TTL: 12 hours (reactions older than this are stale)
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { getRedisClient } from '../redis/client';
 
 const ORG_REACTIONS_PREFIX = 'org-reactions:';

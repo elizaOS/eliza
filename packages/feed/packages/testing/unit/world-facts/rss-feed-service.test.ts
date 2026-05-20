@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { rssFeedService } from '@babylon/engine';
+import { rssFeedService } from '@feed/engine';
 
 describe('RSSFeedService', () => {
   test('should parse RSS 2.0 format', async () => {

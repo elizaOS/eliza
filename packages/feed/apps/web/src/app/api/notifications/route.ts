@@ -188,7 +188,7 @@ import {
   invalidateCachePattern,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@feed/api';
 import {
   and,
   count,
@@ -201,13 +201,13 @@ import {
   inArray,
   notifications,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   logger,
   MarkNotificationsReadSchema,
   NotificationsQuerySchema,
   toISO,
-} from '@babylon/shared';
+} from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getMissingNotificationSchemaErrorCode } from './schema-compat';

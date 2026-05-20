@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import {

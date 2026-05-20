@@ -7,7 +7,7 @@ const apiDocsHtml = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Babylon API Docs</title>
+    <title>Feed API Docs</title>
     <link rel="stylesheet" href="/api-docs/assets/swagger-ui.css" />
     <style>
       :root {
@@ -96,14 +96,14 @@ const apiDocsHtml = `<!doctype html>
   <body>
     <main>
       <header>
-        <h1>Babylon API Docs</h1>
+        <h1>Feed API Docs</h1>
         <p>
-          Interactive OpenAPI documentation for Babylon routes. The JSON spec is
+          Interactive OpenAPI documentation for Feed routes. The JSON spec is
           generated from the route annotations in this repository.
         </p>
         <div class="actions">
           <a class="primary" href="/api/docs">Open JSON Spec</a>
-          <a class="secondary" href="https://github.com/BabylonSocial/babylon">
+          <a class="secondary" href="https://github.com/FeedSocial/feed">
             Repository
           </a>
         </div>

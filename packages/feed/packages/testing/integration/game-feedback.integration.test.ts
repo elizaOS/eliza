@@ -6,11 +6,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import { NextRequest } from 'next/server';
 
 // Mock Linear sync to prevent actual API calls in tests
-mock.module('@babylon/api/linear', () => ({
+mock.module('@feed/api/linear', () => ({
   syncFeedbackToLinear: async () => {
     return;
   },
@@ -19,7 +19,7 @@ mock.module('@babylon/api/linear', () => ({
 
 // Mock auth to return a test user (includes requireAdmin for admin endpoint tests)
 const testUserId = `test-user-${Date.now()}`;
-mock.module('@babylon/api', () => {
+mock.module('@feed/api', () => {
   return {
     RATE_LIMIT_CONFIGS: {
       SUBMIT_FEEDBACK: {

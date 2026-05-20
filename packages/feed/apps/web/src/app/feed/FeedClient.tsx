@@ -1,7 +1,7 @@
 'use client';
 
-import type { FeedPost } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+import type { FeedPost } from '@feed/shared';
+import { logger } from '@feed/shared';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';

@@ -95,10 +95,10 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@babylon/api';
-import type { JsonValue } from '@babylon/db';
-import { db } from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/api';
+import type { JsonValue } from '@feed/db';
+import { db } from '@feed/db';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

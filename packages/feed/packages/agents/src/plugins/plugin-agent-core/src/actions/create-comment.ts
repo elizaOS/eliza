@@ -5,7 +5,7 @@
  * Use CHECK_POST_DETAIL or CHECK_COMMENT_DETAIL first to get IDs.
  */
 
-import { and, comments, db, eq, isNull, posts } from '@babylon/db';
+import { and, comments, db, eq, isNull, posts } from '@feed/db';
 import type {
   Action,
   ActionResult,

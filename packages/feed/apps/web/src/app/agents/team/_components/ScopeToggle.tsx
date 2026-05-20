@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@feed/shared';
 import type { TeamScope } from '@/lib/agents/team-trading-summary';
 
 /**

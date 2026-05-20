@@ -35,9 +35,9 @@ if str(_pkg_root) not in sys.path:
     sys.path.insert(0, str(_pkg_root))
 
 from src.training.shared_model_rl import (
-    BabylonCRLConfig,
+    FeedCRLConfig,
     SharedModelConfig,
-    run_babylon_crl,
+    run_feed_crl,
     run_shared_model_training,
 )
 from src.training.simulation_bridge import (
@@ -217,9 +217,9 @@ class MockSharedBridge:
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    # ── Babylon CRL mode: model serves via vLLM, Babylon drives agents ──
-    if args.babylon:
-        crl_config = BabylonCRLConfig(
+    # ── Feed CRL mode: model serves via vLLM, Feed drives agents ──
+    if args.feed:
+        crl_config = FeedCRLConfig(
             model_name=args.model,
             device=args.device,
             agents_per_team=args.agents_per_team,
@@ -236,7 +236,7 @@ async def main_async(args: argparse.Namespace) -> None:
             checkpoint_dir=args.checkpoint_dir,
             checkpoint_every=args.checkpoint_every,
             game_seed=args.seed,
-            babylon_url=args.babylon_url,
+            feed_url=args.feed_url,
             poll_interval=args.poll_interval,
             min_batch_size=args.min_batch,
             vllm_port=args.vllm_port,
@@ -244,14 +244,14 @@ async def main_async(args: argparse.Namespace) -> None:
             reload_every_n_steps=args.reload_every,
         )
         logger.info("=" * 70)
-        logger.info("BABYLON CRL MODE")
+        logger.info("FEED CRL MODE")
         logger.info(f"Model: {args.model} | vLLM port: {args.vllm_port}")
-        logger.info(f"Babylon: {args.babylon_url} | Poll: {args.poll_interval}s")
+        logger.info(f"Feed: {args.feed_url} | Poll: {args.poll_interval}s")
         logger.info("=" * 70)
-        results = await run_babylon_crl(crl_config)
+        results = await run_feed_crl(crl_config)
 
         print("\n" + "=" * 70)
-        print("BABYLON CRL RESULTS")
+        print("FEED CRL RESULTS")
         print("=" * 70)
         print(f"Training steps: {results['train_steps']}")
         stats = results.get("final_stats", {})
@@ -376,16 +376,16 @@ def main():
         "Empty = all teams (shared model). Other teams still act as opponents.",
     )
 
-    # Babylon CRL mode (Nebius deployment)
+    # Feed CRL mode (Nebius deployment)
     parser.add_argument(
-        "--babylon",
+        "--feed",
         action="store_true",
-        help="Babylon CRL mode: serve via vLLM, train from Babylon trajectories",
+        help="Feed CRL mode: serve via vLLM, train from Feed trajectories",
     )
     parser.add_argument(
-        "--babylon-url",
+        "--feed-url",
         default="http://localhost:3000",
-        help="Babylon web app URL for trajectory export",
+        help="Feed web app URL for trajectory export",
     )
     parser.add_argument(
         "--poll-interval", type=float, default=30.0, help="Seconds between trajectory polls"

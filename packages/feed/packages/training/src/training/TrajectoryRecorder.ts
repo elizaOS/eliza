@@ -14,8 +14,8 @@ import {
   llmCallLogs,
   rewardJudgments,
   trajectories,
-} from '@babylon/db'; // keep this at db not engine to avoid circular dep
-import type { JsonValue } from '@babylon/shared';
+} from '@feed/db'; // keep this at db not engine to avoid circular dep
+import type { JsonValue } from '@feed/shared';
 import { logger } from '../utils/logger';
 import { generateSnowflakeId } from '../utils/snowflake';
 import { computeDeterministicRewardJudgment } from './reward-judgments';

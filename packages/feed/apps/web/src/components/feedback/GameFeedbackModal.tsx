@@ -6,7 +6,7 @@
 
 'use client';
 
-import { cn, logger, parseJsonString } from '@babylon/shared';
+import { cn, logger, parseJsonString } from '@feed/shared';
 import { Loader2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';

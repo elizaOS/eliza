@@ -28,7 +28,7 @@
  */
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, cn } from '@babylon/shared';
+import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
 import {
   Activity,
   AlertCircle,
@@ -177,7 +177,7 @@ export function NPCPortfolioCard({
           Total Portfolio Value
         </div>
         <div className="font-bold text-3xl text-foreground">
-          {BABYLON_POINTS_SYMBOL}
+          {FEED_POINTS_SYMBOL}
           {portfolio.totalValue.toLocaleString()}
         </div>
         <div className="mt-2 flex items-center gap-4">
@@ -192,7 +192,7 @@ export function NPCPortfolioCard({
                 portfolio.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
               }
             >
-              {BABYLON_POINTS_SYMBOL}
+              {FEED_POINTS_SYMBOL}
               {Math.abs(portfolio.unrealizedPnL).toLocaleString()}
             </span>
             <span className="text-muted-foreground text-xs">unrealized</span>
@@ -204,7 +204,7 @@ export function NPCPortfolioCard({
                   portfolio.realizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
                 }
               >
-                {BABYLON_POINTS_SYMBOL}
+                {FEED_POINTS_SYMBOL}
                 {Math.abs(portfolio.realizedPnL).toLocaleString()}
               </span>
               <span className="text-xs">realized</span>
@@ -219,7 +219,7 @@ export function NPCPortfolioCard({
         <div className="rounded-lg bg-muted/30 p-3">
           <div className="mb-1 text-muted-foreground text-xs">Available</div>
           <div className="font-bold text-foreground text-lg">
-            {BABYLON_POINTS_SYMBOL}
+            {FEED_POINTS_SYMBOL}
             {portfolio.availableBalance.toLocaleString()}
           </div>
         </div>
@@ -276,7 +276,7 @@ export function NPCPortfolioCard({
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-muted-foreground">
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {position.size.toLocaleString()}
                   </span>
                   {position.leverage && position.leverage > 1 && (
@@ -292,7 +292,7 @@ export function NPCPortfolioCard({
                     }
                   >
                     {position.unrealizedPnL >= 0 ? '+' : ''}
-                    {BABYLON_POINTS_SYMBOL}
+                    {FEED_POINTS_SYMBOL}
                     {position.unrealizedPnL.toLocaleString()}
                   </span>
                 </div>

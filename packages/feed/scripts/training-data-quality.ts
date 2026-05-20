@@ -23,7 +23,7 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 
 // ── CLI args ──────────────────────────────────────────────────────────
 const { values: args } = parseArgs({
@@ -752,7 +752,7 @@ async function main() {
   if (!warningsOnly) console.log(heading('TRAINING-SPECIFIC'));
 
   // Real name leakage — derive from actor/org data instead of hardcoding
-  const { StaticDataRegistry } = await import('@babylon/engine');
+  const { StaticDataRegistry } = await import('@feed/engine');
   const realNames: string[] = [];
   for (const actor of StaticDataRegistry.getAllActors()) {
     const pack = StaticDataRegistry.getPackActor(actor.id);

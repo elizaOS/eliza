@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'mark-zuckerborg',
@@ -83,7 +83,7 @@ const actor = {
     temperature: 0.8,
     maxTokens: 1100,
   },
-  babylon: {
+  feed: {
     alignment: 'neutral',
     team: 'gray',
     scamProfile: 'wary',

@@ -5,7 +5,7 @@
  * (ActorContextBuilder, MarketContextService, etc.)
  */
 
-import { and, db, desc, gte, inArray, isNull, lte, posts } from '@babylon/db';
+import { and, db, desc, gte, inArray, isNull, lte, posts } from '@feed/db';
 import { StaticDataRegistry } from '../services/static-data-registry';
 import type { FeedPostContext } from '../types/market-context';
 

@@ -111,7 +111,7 @@ const mockDb = {
 const mockTable = {};
 const mockOperator = () => ({});
 
-mock.module('@babylon/db', () => ({
+mock.module('@feed/db', () => ({
   db: mockDb,
   // Schema tables
   markets: mockTable,
@@ -176,7 +176,7 @@ mock.module('../prompts/world-context', () => ({
   checkRealityGrounding: () => ({ isGrounded: true }),
 }));
 
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { MarketDecisionEngine } from '../MarketDecisionEngine';
 import { MarketContextService } from '../services/market-context-service';
 import type { NPCMarketContext, NPCPosition } from '../types/market-context';
@@ -212,7 +212,7 @@ class MockLLMClient {
   private callCount = 0;
 
   constructor() {
-    // No super() call - this is a standalone mock that doesn't extend BabylonLLMClient
+    // No super() call - this is a standalone mock that doesn't extend FeedLLMClient
   }
 
   getProvider(): string {
@@ -244,27 +244,27 @@ class MockLLMClient {
 }
 
 /**
- * Partial interface for MockLLMClient that matches BabylonLLMClient's required methods
+ * Partial interface for MockLLMClient that matches FeedLLMClient's required methods
  */
 interface MockLLMClientInterface
-  extends Pick<BabylonLLMClient, 'getProvider' | 'generateJSON'> {
+  extends Pick<FeedLLMClient, 'getProvider' | 'generateJSON'> {
   setMockResponse<T extends MockResponse>(response: T): void;
   getCallCount(): number;
   resetCallCount(): void;
 }
 
-// Type assertion to make MockLLMClient compatible with BabylonLLMClient interface
+// Type assertion to make MockLLMClient compatible with FeedLLMClient interface
 // Returns both the mock instance (for test methods) and the LLM client (for engine)
 const createMockLLMClient = (): {
   mock: MockLLMClient;
-  client: BabylonLLMClient;
+  client: FeedLLMClient;
 } => {
   const mockInstance = new MockLLMClient();
   // Cast via the partial interface to ensure type safety
   const mockAsInterface: MockLLMClientInterface = mockInstance;
   return {
     mock: mockInstance,
-    client: mockAsInterface as BabylonLLMClient,
+    client: mockAsInterface as FeedLLMClient,
   };
 };
 
@@ -340,7 +340,7 @@ function createMockNPC(id: string, name: string): NPCMarketContext {
 }
 
 describe('MarketDecisionEngine - Token Management', () => {
-  let mockLLM: BabylonLLMClient;
+  let mockLLM: FeedLLMClient;
   let mockLLMInstance: MockLLMClient;
   let mockContext: MockContextService;
   let originalMathRandom: typeof Math.random;

@@ -17,7 +17,7 @@
  * The exact percentage within a bucket is selected using seeded RNG for reproducibility.
  */
 
-import type { WorldEvent } from '@babylon/shared';
+import type { WorldEvent } from '@feed/shared';
 
 /**
  * Volatility bucket for price movements

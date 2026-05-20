@@ -1,10 +1,10 @@
 'use client';
 
 import {
-  BABYLON_POINTS_SYMBOL,
+  FEED_POINTS_SYMBOL,
   cn,
   formatCompactCurrency,
-} from '@babylon/shared';
+} from '@feed/shared';
 import { Award, DollarSign, RefreshCw, TrendingUp, Users } from 'lucide-react';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import {
@@ -286,7 +286,7 @@ export function FeesTab() {
             <YAxis
               stroke="#888"
               fontSize={12}
-              tickFormatter={(value) => `${BABYLON_POINTS_SYMBOL}${value}`}
+              tickFormatter={(value) => `${FEED_POINTS_SYMBOL}${value}`}
             />
             <Tooltip
               contentStyle={{
@@ -299,7 +299,7 @@ export function FeesTab() {
                   ? Number(value[0] ?? 0)
                   : Number(value ?? 0);
                 return [
-                  `${BABYLON_POINTS_SYMBOL}${numericValue.toFixed(2)}`,
+                  `${FEED_POINTS_SYMBOL}${numericValue.toFixed(2)}`,
                   'Fees',
                 ];
               }}

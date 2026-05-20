@@ -22,18 +22,18 @@ import {
   eq,
   gte,
   users,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   type ActorData,
   loadActorById,
   StaticDataRegistry,
-} from '@babylon/engine';
+} from '@feed/engine';
 import {
   COORDINATOR_RUNTIME_ID as COORDINATOR_RUNTIME_ID_STRING,
   COORDINATOR_SYSTEM_PROMPT,
   GROQ_MODELS,
   type PackActor,
-} from '@babylon/shared';
+} from '@feed/shared';
 import {
   AgentRuntime,
   type Character,
@@ -42,8 +42,8 @@ import {
 } from '@elizaos/core';
 import anthropicPlugin from '@elizaos/plugin-anthropic';
 import openaiPlugin from '@elizaos/plugin-openai';
-import { babylonPlugin } from '../plugins/babylon';
-import { enhanceRuntimeWithBabylon } from '../plugins/babylon/integration';
+import { feedPlugin } from '../plugins/feed';
+import { enhanceRuntimeWithFeed } from '../plugins/feed/integration';
 import { groqPlugin } from '../plugins/groq';
 import { agentCorePlugin } from '../plugins/plugin-agent-core/src';
 // TODO: experiencePlugin disabled due to missing plugin implementation
@@ -64,7 +64,7 @@ import { type AgentRegistration, AgentType } from '../types/agent-registry';
 import type { JsonValue } from '../types/common';
 
 /**
- * Extended AgentRuntime with Babylon-specific properties
+ * Extended AgentRuntime with Feed-specific properties
  * @internal
  */
 interface ExtendedAgentRuntime extends AgentRuntime {
@@ -107,7 +107,7 @@ const COORDINATOR_RUNTIME_ID = COORDINATOR_RUNTIME_ID_STRING as UUID;
 
 /**
  * Creates adapter stub methods for ElizaOS runtime.
- * Babylon doesn't use ElizaOS's memory/DB system, so we stub these out.
+ * Feed doesn't use ElizaOS's memory/DB system, so we stub these out.
  */
 function createAdapterStubs(existingAdapter: unknown): unknown {
   const adapterAgents = new Map<string, Record<string, unknown>>();
@@ -1051,7 +1051,7 @@ export class AgentRuntimeManager {
     );
 
     // Build character from agent user config
-    // Use type assertion — Babylon stores style as plain JSON objects,
+    // Use type assertion — Feed stores style as plain JSON objects,
     // but alpha elizaos Character expects protobuf StyleGuides.
     const character = {
       name: agentUser.displayName || agentUser.username || 'Agent',
@@ -1077,7 +1077,7 @@ export class AgentRuntimeManager {
     const postgresUrl =
       process.env.DATABASE_URL ||
       process.env.POSTGRES_URL ||
-      `postgres://postgres:password@localhost:${dbPort}/babylon`;
+      `postgres://postgres:password@localhost:${dbPort}/feed`;
 
     logger.info(
       `Creating runtime for agent user ${agentUserId}`,
@@ -1118,7 +1118,7 @@ export class AgentRuntimeManager {
 
     runtime.currentModel = 'groq';
 
-    // Stub adapter methods - Babylon uses its own DB, not ElizaOS's
+    // Stub adapter methods - Feed uses its own DB, not ElizaOS's
     runtime.adapter = createAdapterStubs(
       runtime.adapter
     ) as typeof runtime.adapter;
@@ -1158,7 +1158,7 @@ export class AgentRuntimeManager {
 
     // Initialize runtime to signal services that runtime is ready
     // This prevents 30s timeout errors in services waiting for runtime initialization
-    // Skip ElizaOS plugin-sql migrations — Babylon manages its own schema via Drizzle.
+    // Skip ElizaOS plugin-sql migrations — Feed manages its own schema via Drizzle.
     // ElizaOS tables are included in packages/db/src/schema/eliza.ts and migrated with
     // `bun run db:generate && bun run db:migrate`. The framework's runtime migrator is
     // not designed for serverless and adds ~2 min cold-start overhead per agent.
@@ -1180,24 +1180,24 @@ export class AgentRuntimeManager {
       agentUserId
     );
 
-    // Wrap Babylon plugin BEFORE registering (so wrapped version is used)
+    // Wrap Feed plugin BEFORE registering (so wrapped version is used)
     // This ensures all actions and provider accesses are logged when executed
-    let wrappedBabylonPlugin = babylonPlugin;
-    if (babylonPlugin.actions) {
-      wrappedBabylonPlugin = wrapPluginActions(
-        wrappedBabylonPlugin,
+    let wrappedFeedPlugin = feedPlugin;
+    if (feedPlugin.actions) {
+      wrappedFeedPlugin = wrapPluginActions(
+        wrappedFeedPlugin,
         trajectoryLogger
       );
     }
-    if (babylonPlugin.providers) {
-      wrappedBabylonPlugin = wrapPluginProviders(
-        wrappedBabylonPlugin,
+    if (feedPlugin.providers) {
+      wrappedFeedPlugin = wrapPluginProviders(
+        wrappedFeedPlugin,
         trajectoryLogger
       );
     }
 
-    // Enhance with wrapped Babylon plugin (so wrapped version is registered)
-    await enhanceRuntimeWithBabylon(runtime, agentUserId, wrappedBabylonPlugin);
+    // Enhance with wrapped Feed plugin (so wrapped version is registered)
+    await enhanceRuntimeWithFeed(runtime, agentUserId, wrappedFeedPlugin);
 
     // Store trajectory logger reference on runtime for easy access
     // This allows actions/providers to access the logger
@@ -1277,7 +1277,7 @@ export class AgentRuntimeManager {
     };
 
     // Build Character configuration
-    // Use type assertion for style — Babylon stores style as plain JSON,
+    // Use type assertion for style — Feed stores style as plain JSON,
     // but the alpha elizaos Character type expects a protobuf StyleGuides message.
     // The runtime normalizes this at init time.
     const character = {
@@ -1291,7 +1291,7 @@ export class AgentRuntimeManager {
     } as Character;
 
     // Create runtime with standard plugins
-    // Pass userId for Babylon integration (User table lookup)
+    // Pass userId for Feed integration (User table lookup)
     return this.createRuntimeWithPlugins(
       registration.agentId,
       character,
@@ -1324,7 +1324,7 @@ export class AgentRuntimeManager {
 
     if (packActor) {
       // Build full Character from PackActor with ALL Eliza fields
-      // Babylon stores style/messageExamples as plain JSON objects;
+      // Feed stores style/messageExamples as plain JSON objects;
       // ElizaOS Character type expects protobuf wrappers ($typeName, etc.).
       // The runtime normalizes these at init time — cast through unknown.
       character = {
@@ -1344,9 +1344,9 @@ export class AgentRuntimeManager {
         },
       } as unknown as Character;
 
-      // Attach babylon metadata so MultiStepExecutor can access autonomy flags
-      (character as unknown as Record<string, unknown>).babylon =
-        packActor.babylon;
+      // Attach feed metadata so MultiStepExecutor can access autonomy flags
+      (character as unknown as Record<string, unknown>).feed =
+        packActor.feed;
     } else {
       // Fallback: build minimal Character from ActorData (backward compat)
       const actorData: ActorData | null = loadActorById(actor.id);
@@ -1413,7 +1413,7 @@ export class AgentRuntimeManager {
    *
    * @param agentId - The agent's unique identifier (used for Eliza runtime)
    * @param character - Character configuration
-   * @param userId - Optional User table ID for USER_CONTROLLED agents (used for Babylon integration)
+   * @param userId - Optional User table ID for USER_CONTROLLED agents (used for Feed integration)
    * @param isNpc - Whether this is an NPC agent (skips OpenAI plugin to avoid validation spam)
    */
   private async createRuntimeWithPlugins(
@@ -1427,7 +1427,7 @@ export class AgentRuntimeManager {
     const postgresUrl =
       process.env.DATABASE_URL ||
       process.env.POSTGRES_URL ||
-      `postgres://postgres:password@localhost:${dbPort}/babylon`;
+      `postgres://postgres:password@localhost:${dbPort}/feed`;
 
     // Create runtime with standard plugins
     // NPCs use GROQ only - skip OpenAI/Anthropic to avoid API validation spam during bootstrap
@@ -1467,7 +1467,7 @@ export class AgentRuntimeManager {
     }
     runtime.currentModel = 'groq';
 
-    // Stub adapter methods - Babylon uses its own DB, not ElizaOS's
+    // Stub adapter methods - Feed uses its own DB, not ElizaOS's
     runtime.adapter = createAdapterStubs(
       runtime.adapter
     ) as typeof runtime.adapter;
@@ -1497,10 +1497,10 @@ export class AgentRuntimeManager {
       agentId
     );
 
-    // Wrap and enhance with Babylon plugin
+    // Wrap and enhance with Feed plugin
     // Use userId for USER_CONTROLLED agents (User table lookup), agentId for NPCs
-    const babylonAgentId = userId || agentId;
-    await this.enhanceWithBabylon(runtime, babylonAgentId, trajectoryLogger);
+    const feedAgentId = userId || agentId;
+    await this.enhanceWithFeed(runtime, feedAgentId, trajectoryLogger);
 
     // Store trajectory logger reference on runtime
     runtime.trajectoryLogger = trajectoryLogger;
@@ -1584,30 +1584,30 @@ export class AgentRuntimeManager {
   }
 
   /**
-   * Enhance runtime with Babylon plugin (wrapped for trajectory logging)
+   * Enhance runtime with Feed plugin (wrapped for trajectory logging)
    */
-  private async enhanceWithBabylon(
+  private async enhanceWithFeed(
     runtime: AgentRuntime,
     agentId: string,
     trajectoryLogger: TrajectoryLoggerService
   ): Promise<void> {
-    // Wrap Babylon plugin BEFORE registering (so wrapped version is used)
-    let wrappedBabylonPlugin = babylonPlugin;
-    if (babylonPlugin.actions) {
-      wrappedBabylonPlugin = wrapPluginActions(
-        wrappedBabylonPlugin,
+    // Wrap Feed plugin BEFORE registering (so wrapped version is used)
+    let wrappedFeedPlugin = feedPlugin;
+    if (feedPlugin.actions) {
+      wrappedFeedPlugin = wrapPluginActions(
+        wrappedFeedPlugin,
         trajectoryLogger
       );
     }
-    if (babylonPlugin.providers) {
-      wrappedBabylonPlugin = wrapPluginProviders(
-        wrappedBabylonPlugin,
+    if (feedPlugin.providers) {
+      wrappedFeedPlugin = wrapPluginProviders(
+        wrappedFeedPlugin,
         trajectoryLogger
       );
     }
 
-    // Enhance with wrapped Babylon plugin
-    await enhanceRuntimeWithBabylon(runtime, agentId, wrappedBabylonPlugin);
+    // Enhance with wrapped Feed plugin
+    await enhanceRuntimeWithFeed(runtime, agentId, wrappedFeedPlugin);
   }
 
   /**
@@ -1673,7 +1673,7 @@ export class AgentRuntimeManager {
    * Key differences from agent runtimes:
    * - Uses plugin-user-core instead of plugin-agent-core
    * - Has limited actions (read-only, informational)
-   * - Does not have Babylon plugin enhancement (no agent-specific features)
+   * - Does not have Feed plugin enhancement (no agent-specific features)
    * - Shared across all users
    */
   private async createCoordinatorRuntime(): Promise<AgentRuntime> {
@@ -1682,14 +1682,14 @@ export class AgentRuntimeManager {
     const postgresUrl =
       process.env.DATABASE_URL ||
       process.env.POSTGRES_URL ||
-      `postgres://postgres:password@localhost:${dbPort}/babylon`;
+      `postgres://postgres:password@localhost:${dbPort}/feed`;
 
     // Character configuration for coordinator
     const character: Character = {
       name: 'Coordinator',
       system: COORDINATOR_SYSTEM_PROMPT,
       bio: [
-        'Team chat coordinator for Babylon - helps users understand and coordinate their AI agents',
+        'Team chat coordinator for Feed - helps users understand and coordinate their AI agents',
       ],
       messageExamples: [],
       plugins: [],
@@ -1724,7 +1724,7 @@ export class AgentRuntimeManager {
 
     runtime.currentModel = 'groq';
 
-    // Stub adapter methods - Babylon uses its own DB
+    // Stub adapter methods - Feed uses its own DB
     runtime.adapter = createAdapterStubs(
       runtime.adapter
     ) as typeof runtime.adapter;
@@ -1755,8 +1755,8 @@ export class AgentRuntimeManager {
     // Store trajectory logger reference
     runtime.trajectoryLogger = trajectoryLogger;
 
-    // NOTE: We intentionally do NOT call enhanceWithBabylon here
-    // The coordinator doesn't need agent-specific Babylon features
+    // NOTE: We intentionally do NOT call enhanceWithFeed here
+    // The coordinator doesn't need agent-specific Feed features
 
     return runtime;
   }

@@ -29,7 +29,7 @@
 
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import {
   AlertCircle,
   Cpu,

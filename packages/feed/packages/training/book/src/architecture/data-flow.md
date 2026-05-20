@@ -23,7 +23,7 @@ flowchart TB
     end
     
     subgraph TRAIN["4. Training Loop"]
-        GROUPS --> |batch| ENV[BabylonRLAIFEnv]
+        GROUPS --> |batch| ENV[FeedRLAIFEnv]
         ENV --> |prompt| VLLM[vLLM Server]
         VLLM --> |completion| ENV
         ENV --> |score| SCORER[Reward Pipeline]
@@ -127,7 +127,7 @@ await recorder.endTrajectory(trajectoryId, { finalPnL, finalBalance });
 Python loads trajectories from DB or JSON:
 
 ```python
-# From babylon_env.py - _load_trajectories method
+# From feed_env.py - _load_trajectories method
 async with self.db_pool.acquire() as conn:
     rows = await conn.fetch("""
         SELECT 
@@ -204,7 +204,7 @@ A single training batch uses Atropos's `ScoredDataGroup`:
 # Imported from Atropos library
 from atroposlib.envs.base import ScoredDataGroup
 
-# Built in babylon_env.py after scoring
+# Built in feed_env.py after scoring
 scored_group = ScoredDataGroup()
 scored_group.tokens = tokenized_completions  # List[List[int]]
 scored_group.scores = rewards                 # List[float]

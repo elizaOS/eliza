@@ -5,7 +5,7 @@
  * so a crash after charging cannot leave a stale row that would double-charge on retry.
  */
 
-import type { TradingFeeOutboxPort } from '@babylon/core/markets/shared';
+import type { TradingFeeOutboxPort } from '@feed/core/markets/shared';
 import {
   db,
   dbWrite,
@@ -13,9 +13,9 @@ import {
   type Transaction,
   tradingFeeOutbox,
   withTransaction,
-} from '@babylon/db';
-import { FeeService, type FeeType, isValidFeeType } from '@babylon/engine';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@feed/db';
+import { FeeService, type FeeType, isValidFeeType } from '@feed/engine';
+import { generateSnowflakeId, logger } from '@feed/shared';
 import { asc } from 'drizzle-orm';
 
 const DRAIN_BATCH_SIZE = 50;

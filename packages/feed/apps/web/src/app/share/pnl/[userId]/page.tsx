@@ -3,7 +3,7 @@
  * Shareable P&L page with OG meta tags
  */
 
-import { db } from '@babylon/db';
+import { db } from '@feed/db';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
@@ -21,7 +21,7 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { userId } = await params;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://babylon.market';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market';
   const ogImageUrl = `${appUrl}/api/og/pnl/${userId}`;
 
   // Get user data
@@ -33,13 +33,13 @@ export async function generateMetadata({
     },
   });
 
-  const displayName = user?.displayName || user?.username || 'Babylon User';
+  const displayName = user?.displayName || user?.username || 'Feed User';
 
   return {
-    title: `${displayName}'s P&L on Babylon`,
-    description: `Check out ${displayName}'s trading performance on Babylon. Trading narratives, sharing the upside.`,
+    title: `${displayName}'s P&L on Feed`,
+    description: `Check out ${displayName}'s trading performance on Feed. Trading narratives, sharing the upside.`,
     openGraph: {
-      title: `${displayName}'s P&L on Babylon`,
+      title: `${displayName}'s P&L on Feed`,
       description: 'Trading narratives, sharing the upside',
       images: [
         {
@@ -53,7 +53,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${displayName}'s P&L on Babylon`,
+      title: `${displayName}'s P&L on Feed`,
       description: 'Trading narratives, sharing the upside',
       images: [ogImageUrl],
     },
@@ -62,7 +62,7 @@ export async function generateMetadata({
       'fc:frame': 'vNext',
       'fc:frame:image': ogImageUrl,
       'fc:frame:image:aspect_ratio': '1.91:1',
-      'fc:frame:button:1': 'View on Babylon',
+      'fc:frame:button:1': 'View on Feed',
       'fc:frame:button:1:action': 'link',
       'fc:frame:button:1:target': `${appUrl}/markets`,
     },

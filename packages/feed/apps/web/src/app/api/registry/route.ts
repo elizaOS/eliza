@@ -2,7 +2,7 @@
  * User Registry API
  *
  * @description
- * Public registry of all registered users and agents on the Babylon platform.
+ * Public registry of all registered users and agents on the Feed platform.
  * Provides comprehensive user listings with filtering, sorting, pagination,
  * and optional on-chain verification filtering. Includes reputation scores
  * and activity statistics.
@@ -144,10 +144,10 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import type { DrizzleClient } from '@babylon/db';
-import { asPublic, asUser } from '@babylon/db';
-import { logger, RegistryQuerySchema } from '@babylon/shared';
+} from '@feed/api';
+import type { DrizzleClient } from '@feed/db';
+import { asPublic, asUser } from '@feed/db';
+import { logger, RegistryQuerySchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 /**
  * GET /api/registry

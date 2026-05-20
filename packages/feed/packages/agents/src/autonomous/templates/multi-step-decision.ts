@@ -1,12 +1,12 @@
 /**
- * Multi-Step Decision Template for Babylon Agents
+ * Multi-Step Decision Template for Feed Agents
  *
  * Determines the next action an agent should take in a tick.
  * Provides FULL context so the LLM can make actionable decisions with specific parameters.
  * Services are "dumb executors" - all reasoning happens here.
  */
 
-import { NPC_POST_QUALITY_RULES } from '@babylon/engine';
+import { NPC_POST_QUALITY_RULES } from '@feed/engine';
 
 // =============================================================================
 // Types
@@ -952,8 +952,8 @@ ${
   // Prediction markets are shown read-only for conversation context.
   const npcUnifiedPipeline =
     isNpc &&
-    (process.env.BABYLON_UNIFIED_NPC_PIPELINE === 'true' ||
-      process.env.BABYLON_UNIFIED_NPC_PIPELINE === '1');
+    (process.env.FEED_UNIFIED_NPC_PIPELINE === 'true' ||
+      process.env.FEED_UNIFIED_NPC_PIPELINE === '1');
 
   // Build conditional sections (only show context for enabled features)
   const tradingSection = canTrade
@@ -1057,7 +1057,7 @@ ${context.contextRefreshSummary}
     {
       name: 'system',
       priority: 1,
-      content: `You are ${agentName}, an autonomous agent on Babylon prediction markets.
+      content: `You are ${agentName}, an autonomous agent on Feed prediction markets.
 ${creatorSection}${npcContextSection}${tradePostEncouragement}${groupChatCoordinationEncouragement}# Current Execution Context
 **Step**: ${iterationCount}/${maxIterations}
 **Actions Completed This Tick**: ${traceActionResults.length}

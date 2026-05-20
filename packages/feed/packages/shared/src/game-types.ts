@@ -1,5 +1,5 @@
 /**
- * Shared Type Definitions for Babylon Game
+ * Shared Type Definitions for Feed Game
  *
  * Centralized TypeScript types to eliminate duplication and ensure consistency
  */

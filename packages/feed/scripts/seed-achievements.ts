@@ -7,7 +7,7 @@
  * into the AchievementDefinition and ChallengeDefinition tables.
  *
  * Safe to run multiple times — uses ON CONFLICT DO UPDATE to keep definitions
- * in sync with the source of truth in @babylon/shared.
+ * in sync with the source of truth in @feed/shared.
  *
  * Usage:
  *   bun run scripts/seed-achievements.ts
@@ -18,12 +18,12 @@ import {
   challengeDefinitions,
   closeDatabase,
   db,
-} from '@babylon/db';
+} from '@feed/db';
 import {
   ACHIEVEMENT_DEFINITIONS,
   ALL_CHALLENGE_DEFINITIONS,
   logger,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 async function main(): Promise<void> {
   logger.info(

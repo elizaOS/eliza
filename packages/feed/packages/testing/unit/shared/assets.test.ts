@@ -12,7 +12,7 @@ import {
   isAbsoluteUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@babylon/shared/utils/assets';
+} from '@feed/shared/utils/assets';
 
 describe('Asset URL Utilities', () => {
   const originalEnv = process.env;
@@ -87,9 +87,9 @@ describe('Asset URL Utilities', () => {
     });
 
     it('should use environment variable CDN URL', () => {
-      process.env.NEXT_PUBLIC_STATIC_ASSETS_URL = 'https://assets.babylon.com';
+      process.env.NEXT_PUBLIC_STATIC_ASSETS_URL = 'https://assets.feed.com';
       const result = getStaticAssetUrl('/images/profile.jpg');
-      expect(result).toBe('https://assets.babylon.com/images/profile.jpg');
+      expect(result).toBe('https://assets.feed.com/images/profile.jpg');
     });
 
     it('should prefer provided CDN URL over environment variable', () => {

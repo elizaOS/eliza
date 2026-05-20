@@ -5,7 +5,7 @@
  * @access Authenticated
  *
  * @description
- * Verifies that a user is following @playbabylon on Farcaster.
+ * Verifies that a user is following @playfeed on Farcaster.
  * Awards points if verification succeeds.
  *
  * @openapi
@@ -14,7 +14,7 @@
  *     tags:
  *       - Users
  *     summary: Verify Farcaster follow
- *     description: Verifies user is following @playbabylon and awards points (authenticated user only)
+ *     description: Verifies user is following @playfeed and awards points (authenticated user only)
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -51,17 +51,17 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@feed/api';
+import { db, eq, users } from '@feed/db';
+import { logger, UserIdParamSchema } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
-// Babylon Farcaster FID (playbabylon)
-const BABYLON_FARCASTER_FID = process.env.FARCASTER_FID || '1521916'; // playbabylon FID
+// Feed Farcaster FID (playfeed)
+const FEED_FARCASTER_FID = process.env.FARCASTER_FID || '1521916'; // playfeed FID
 
 /**
  * POST /api/users/[userId]/verify-farcaster-follow
- * Verify that a user is following @playbabylon on Farcaster
+ * Verify that a user is following @playfeed on Farcaster
  */
 export const POST = withErrorHandling(
   async (
@@ -137,14 +137,14 @@ export const POST = withErrorHandling(
 
     logger.info(
       'Attempting to verify Farcaster follow',
-      { userId: canonicalUserId, userFid, babylonFid: BABYLON_FARCASTER_FID },
+      { userId: canonicalUserId, userFid, feedFid: FEED_FARCASTER_FID },
       'POST /api/users/[userId]/verify-farcaster-follow'
     );
 
-    // Use Neynar API to check relationship between user and Babylon
-    // Using viewer_fid to get viewer_context from Babylon's perspective
+    // Use Neynar API to check relationship between user and Feed
+    // Using viewer_fid to get viewer_context from Feed's perspective
     const neynarResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${userFid}&viewer_fid=${BABYLON_FARCASTER_FID}`,
+      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${userFid}&viewer_fid=${FEED_FARCASTER_FID}`,
       {
         headers: {
           accept: 'application/json',
@@ -166,24 +166,24 @@ export const POST = withErrorHandling(
       if (neynarData.users && neynarData.users.length > 0) {
         const userData = neynarData.users[0];
 
-        // Check viewer_context to see if user follows Babylon
-        // viewer_context is from Babylon's perspective (viewer_fid=BABYLON_FARCASTER_FID):
-        //   - followed_by: true = user follows Babylon ✅ (this is what we want!)
-        //   - following: true = Babylon follows user (not what we want)
+        // Check viewer_context to see if user follows Feed
+        // viewer_context is from Feed's perspective (viewer_fid=FEED_FARCASTER_FID):
+        //   - followed_by: true = user follows Feed ✅ (this is what we want!)
+        //   - following: true = Feed follows user (not what we want)
         const viewerContext = userData.viewer_context;
 
         if (viewerContext && viewerContext.followed_by) {
           isFollowing = true;
           logger.info(
-            'User is following @playbabylon',
+            'User is following @playfeed',
             { userId: canonicalUserId, userFid },
             'POST /api/users/[userId]/verify-farcaster-follow'
           );
         } else {
           verificationError =
-            'You are not following @playbabylon on Farcaster. Please follow first.';
+            'You are not following @playfeed on Farcaster. Please follow first.';
           logger.warn(
-            'User is not following @playbabylon',
+            'User is not following @playfeed',
             { userId: canonicalUserId, userFid, viewerContext },
             'POST /api/users/[userId]/verify-farcaster-follow'
           );
@@ -226,7 +226,7 @@ export const POST = withErrorHandling(
         verified: false,
         message:
           verificationError ||
-          'Could not verify follow. Please ensure you are following @playbabylon on Farcaster.',
+          'Could not verify follow. Please ensure you are following @playfeed on Farcaster.',
         reputation: {
           awarded: 0,
           newReputationTotal: 0,

@@ -51,9 +51,9 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { asUser } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { asUser } from '@feed/db';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

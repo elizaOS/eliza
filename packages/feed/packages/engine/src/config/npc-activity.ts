@@ -33,7 +33,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@feed/shared';
 import { clamp01 } from '../utils/math-utils';
 
 // =============================================================================

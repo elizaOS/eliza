@@ -6,18 +6,18 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { BabylonLLMClient } from '../llm/openai-client';
+import type { FeedLLMClient } from '../llm/openai-client';
 import { TrendingTopicsEngine } from '../TrendingTopicsEngine';
 import type { FeedPost } from '../types/shared';
 
 /**
  * Mock LLM client interface for testing
  */
-interface MockLLMClient extends Pick<BabylonLLMClient, 'generateJSON'> {}
+interface MockLLMClient extends Pick<FeedLLMClient, 'generateJSON'> {}
 
 describe('TrendingTopicsEngine', () => {
   let engine: TrendingTopicsEngine;
-  let mockLLM: BabylonLLMClient;
+  let mockLLM: FeedLLMClient;
 
   beforeEach(() => {
     // Mock LLM client - implements only generateJSON method
@@ -40,7 +40,7 @@ describe('TrendingTopicsEngine', () => {
         ],
       })),
     };
-    mockLLM = mockImpl as BabylonLLMClient;
+    mockLLM = mockImpl as FeedLLMClient;
 
     engine = new TrendingTopicsEngine(mockLLM);
     // Use default interval of 4 ticks (every 4 hours)

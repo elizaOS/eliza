@@ -1,4 +1,4 @@
-import type { PackActor } from '@babylon/shared';
+import type { PackActor } from '@feed/shared';
 
 const actor = {
   id: 'marco-deluca',
@@ -78,7 +78,7 @@ const actor = {
     'Founder @OlympusMedia | Authentic Storytelling | Viral by Design | 50M+ Impressions | The Science of Engagement | Content That Resonates (and 2M bots)',
   pfpDescription:
     'Italian-American male in his late 20s with dark wavy hair styled perfectly, olive skin, dark brown eyes, and a charming smile that could sell anything (and does). Wearing a designer leather jacket. Background: multiple screens showing social media dashboards with big numbers, all going up.',
-  babylon: {
+  feed: {
     alignment: 'evil',
     team: 'red',
     scamProfile: 'manipulator',

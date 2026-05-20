@@ -20,7 +20,7 @@ import {
   autonomousCoordinator,
   npcBootstrapService,
   releaseAgentLock,
-} from '@babylon/agents';
+} from '@feed/agents';
 import {
   DistributedLockService,
   getCacheOrFetch,
@@ -28,11 +28,11 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, games } from '@babylon/db';
+} from '@feed/api';
+import { db, eq, games } from '@feed/db';
 import {
   ActorSocialActions,
-  BabylonLLMClient,
+  FeedLLMClient,
   FollowingMechanics,
   generateNPCRepliesFromPreviousTicks,
   getActiveEventsForPosting,
@@ -51,8 +51,8 @@ import {
   StaticDataRegistry,
   secureRandom,
   worldFactsService,
-} from '@babylon/engine';
-import { extractErrorMessage, logger, toISO } from '@babylon/shared';
+} from '@feed/engine';
+import { extractErrorMessage, logger, toISO } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
@@ -578,7 +578,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     if (false) {
       // Legacy discourse path — kept for reference, will be deleted in cleanup phase
       try {
-        const llmClient = BabylonLLMClient.forGameTick();
+        const llmClient = FeedLLMClient.forGameTick();
 
         // Build lightweight shared context for NPC-to-NPC banter (no LLM call)
         const [worldFacts, trendingContext] = await Promise.all([

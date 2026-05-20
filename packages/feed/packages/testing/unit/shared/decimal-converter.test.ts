@@ -8,7 +8,7 @@ import {
   convertBalanceToStrings,
   toSafeNumber,
   toSafeString,
-} from '@babylon/shared';
+} from '@feed/shared';
 
 describe('Decimal Converter', () => {
   describe('toSafeString', () => {

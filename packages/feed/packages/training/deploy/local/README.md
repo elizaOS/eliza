@@ -1,6 +1,6 @@
-# Babylon Training - Local Development
+# Feed Training - Local Development
 
-Run Babylon RL training locally with Docker.
+Run Feed RL training locally with Docker.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ cp ../env.example ../.env
 ./run.sh --profile 12gb --steps 100
 
 # Use specific image
-./run.sh --image yourorg/babylon-training:latest
+./run.sh --image yourorg/feed-training:latest
 
 # Interactive shell (for debugging)
 ./run.sh --interactive
@@ -42,7 +42,7 @@ cp ../env.example ../.env
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--image <image>` | Docker image | `revlentless/babylon-training:latest` |
+| `--image <image>` | Docker image | `revlentless/feed-training:latest` |
 | `--env-file <path>` | Environment file | `deploy/.env` (relative to training root) |
 | `--profile <profile>` | GPU profile | `12gb` |
 | `--steps <n>` | Training steps | `100` |
@@ -63,9 +63,9 @@ cp ../env.example ../.env
 You can also configure via environment:
 
 ```bash
-export BABYLON_IMAGE="yourorg/babylon-training:latest"
-export BABYLON_PROFILE="24gb"
-export BABYLON_STEPS="500"
+export FEED_IMAGE="yourorg/feed-training:latest"
+export FEED_PROFILE="24gb"
+export FEED_STEPS="500"
 
 ./run.sh
 ```
@@ -121,7 +121,7 @@ Benchmark results are saved to `../../benchmark-results/`.
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--image <image>` | Docker image | `revlentless/babylon-benchmark:latest` |
+| `--image <image>` | Docker image | `revlentless/feed-benchmark:latest` |
 | `--model <name>` | Model in trained_models/ | `final_model` |
 | `--base-model <name>` | Base model for vLLM (must match training!) | `Qwen/Qwen2.5-0.5B-Instruct` |
 | `--hf-model <id>` | HuggingFace model to benchmark | - |

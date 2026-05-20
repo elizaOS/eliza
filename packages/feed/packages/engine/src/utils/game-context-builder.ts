@@ -30,7 +30,7 @@ import {
   posts,
   questions as questionsTable,
   worldEvents,
-} from '@babylon/db';
+} from '@feed/db';
 import { parseStringArraySafe } from '../services/jsonb-validators';
 import type {
   Actor,

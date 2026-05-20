@@ -39,8 +39,8 @@
  * ```
  */
 
-import { successResponse, withErrorHandling } from '@babylon/api';
-import { logger, TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from '@babylon/shared';
+import { successResponse, withErrorHandling } from '@feed/api';
+import { logger, TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 
 const TOTAL_BANNERS = 100;

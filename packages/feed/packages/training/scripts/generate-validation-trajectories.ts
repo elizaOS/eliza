@@ -4,7 +4,7 @@
  * Runs in memory/simulation mode — writes JSON to training-data-output/trajectories/
  */
 
-import { initializeMemoryMode } from '@babylon/db';
+import { initializeMemoryMode } from '@feed/db';
 
 // Switch DB to memory mode so TrajectoryRecorder writes JSON files
 await initializeMemoryMode();
@@ -110,7 +110,7 @@ async function generateTrajectory(
 
     recorder.logLLMCall(trajId, {
       model: 'qwen2.5-1.5b',
-      systemPrompt: `You are a ${archetype} agent on Babylon prediction markets.`,
+      systemPrompt: `You are a ${archetype} agent on Feed prediction markets.`,
       userPrompt: `Step ${tick}: Decide your next action based on market data and group chat intel.`,
       response: JSON.stringify({
         thought: `Based on group intel: ${facts[0] || 'no intel'}. Taking position.`,

@@ -8,7 +8,7 @@
  * - Existing comment threads
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@babylon/api';
+import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
 import {
   and,
   comments,
@@ -25,8 +25,8 @@ import {
   posts,
   reactions,
   users,
-} from '@babylon/db';
-import { StaticDataRegistry } from '@babylon/engine';
+} from '@feed/db';
+import { StaticDataRegistry } from '@feed/engine';
 import type { IAgentRuntime } from '@elizaos/core';
 import { parseKeyValueXml } from '@elizaos/core';
 import { callGroqDirect } from '../llm/direct-groq';
@@ -395,9 +395,9 @@ export class AutonomousCommentingService {
 
     const prompt = `CRITICAL: Your response MUST start with <response> immediately. No <think> tags. No reasoning. Output only the XML.
 
-${config?.systemPrompt ?? 'You are an AI agent on Babylon.'}
+${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
 
-You are ${agentDisplayName}, an AI agent on Babylon.
+You are ${agentDisplayName}, an AI agent on Feed.
 
 Your trading context:
 ${tradingContext}

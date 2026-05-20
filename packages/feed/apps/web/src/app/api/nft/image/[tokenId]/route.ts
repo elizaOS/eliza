@@ -15,8 +15,8 @@ import {
   getClientIp,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@feed/api';
+import { logger } from '@feed/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -183,7 +183,7 @@ async function fetchFromIpfs(
     const url = `${gateway}/${tokenId}.png`;
     try {
       const response = await fetchWithTimeout(url, {
-        headers: { 'User-Agent': 'Babylon-NFT-Proxy/1.0' },
+        headers: { 'User-Agent': 'Feed-NFT-Proxy/1.0' },
       });
 
       if (response.ok) {

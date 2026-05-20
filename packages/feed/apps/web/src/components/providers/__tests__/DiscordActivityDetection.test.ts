@@ -118,7 +118,7 @@ describe('Discord Activity Detection Heuristics', () => {
 
     it('should NOT detect standard web context', () => {
       const result = isLikelyDiscord(
-        'babylon.market',
+        'feed.market',
         new URLSearchParams(),
         false
       );

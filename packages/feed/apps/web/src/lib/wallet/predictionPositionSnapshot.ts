@@ -1,7 +1,7 @@
 import {
   calculatePredictionPositionSnapshot as calculateCorePredictionPositionSnapshot,
   type PredictionPositionSnapshot,
-} from '@babylon/core/markets/prediction';
+} from '@feed/core/markets/prediction';
 
 export type { PredictionPositionSnapshot };
 

@@ -31,13 +31,13 @@ export function useEmbedMode(): EmbedContextValue {
 }
 
 /**
- * Detects embed mode from URL params and listens for BABYLON_AUTH
+ * Detects embed mode from URL params and listens for FEED_AUTH
  * postMessage from the embedding host (Milady desktop/web).
  *
  * Flow:
  * 1. Detect ?embedded=true in URL → set isEmbedded
- * 2. Send { type: "BABYLON_READY" } to parent window
- * 3. Listen for { type: "BABYLON_AUTH", authToken, agentId } response
+ * 2. Send { type: "FEED_READY" } to parent window
+ * 3. Listen for { type: "FEED_AUTH", authToken, agentId } response
  * 4. Store credentials in context for use by API layer
  */
 export function EmbedModeProvider({ children }: { children: ReactNode }) {
@@ -63,14 +63,14 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
     // Notify parent that we're ready for auth
     if (window.parent && window.parent !== window) {
       try {
-        window.parent.postMessage({ type: 'BABYLON_READY' }, '*');
+        window.parent.postMessage({ type: 'FEED_READY' }, '*');
       } catch {
         // Cross-origin restriction — parent will still post to us
       }
     }
   }, []);
 
-  // Listen for BABYLON_AUTH from parent
+  // Listen for FEED_AUTH from parent
   useEffect(() => {
     if (!isEmbedded) return;
 
@@ -101,7 +101,7 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
     function handleMessage(event: MessageEvent) {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
-      if (data.type !== 'BABYLON_AUTH') return;
+      if (data.type !== 'FEED_AUTH') return;
 
       const secret =
         typeof data.authToken === 'string' ? data.authToken.trim() : null;
@@ -109,7 +109,7 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
 
       if (id) {
         setAgentId(id);
-        (window as unknown as Record<string, unknown>).__babylonEmbedAgentId =
+        (window as unknown as Record<string, unknown>).__feedEmbedAgentId =
           id;
       }
       setParentOrigin(event.origin);
@@ -119,14 +119,14 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
         void authenticateWithCredentials(id, secret).then((sessionToken) => {
           if (sessionToken) {
             setAgentSessionToken(sessionToken);
-            (window as unknown as Record<string, unknown>).__babylonEmbedToken =
+            (window as unknown as Record<string, unknown>).__feedEmbedToken =
               sessionToken;
           }
         });
       } else if (secret) {
         // Fallback: use the token directly (pre-authenticated session token)
         setAgentSessionToken(secret);
-        (window as unknown as Record<string, unknown>).__babylonEmbedToken =
+        (window as unknown as Record<string, unknown>).__feedEmbedToken =
           secret;
       }
     }
