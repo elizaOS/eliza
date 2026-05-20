@@ -1372,6 +1372,32 @@ describe("capability router", () => {
 		});
 	});
 
+	it("rejects remote plugin manifests with malformed provenance digests", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						provenance: {
+							issuer: "cloud-build",
+							subject: "cloud://remote-weather",
+							digestSha256: "not-a-sha256",
+							signatureAlgorithm: "ed25519",
+							signature: "signature",
+						},
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.provenance",
+			message: "digestSha256 must be a SHA-256 hex digest.",
+		});
+	});
+
 	it("rejects remote plugin manifests with invalid action entries", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({

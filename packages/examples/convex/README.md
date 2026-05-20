@@ -34,7 +34,7 @@ Deploy an elizaOS agent as a Convex backend. Messages are processed through `run
 
 - Node.js 18+
 - A Convex account ([convex.dev](https://www.convex.dev/))
-- At least one LLM API key (OpenAI, Anthropic, xAI, Google GenAI, or Groq)
+- At least one supported LLM API key (OpenAI, Anthropic, or Google GenAI)
 
 ## Quick Start
 
@@ -69,9 +69,7 @@ Or for other providers:
 
 ```bash
 convex env set ANTHROPIC_API_KEY your-key
-convex env set XAI_API_KEY your-key
 convex env set GOOGLE_GENERATIVE_AI_API_KEY your-key
-convex env set GROQ_API_KEY your-key
 ```
 
 ### 4. Test with curl
@@ -172,9 +170,7 @@ Retrieve all messages in a conversation (ordered by creation time).
 | ------------------------------ | -------- | ------------------------------- |
 | `OPENAI_API_KEY`               | One of   | OpenAI API key                  |
 | `ANTHROPIC_API_KEY`            | One of   | Anthropic API key               |
-| `XAI_API_KEY`                  | One of   | xAI (Grok) API key             |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | One of   | Google GenAI (Gemini) API key   |
-| `GROQ_API_KEY`                 | One of   | Groq API key                    |
 
 Set via `convex env set KEY value`.
 

@@ -12,6 +12,10 @@ from benchmarks.orchestrator.db import (
     recover_stale_running_runs,
     update_run_result,
 )
+from benchmarks.orchestrator.adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+)
 from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
 from benchmarks.orchestrator.types import BenchmarkAdapter, ExecutionContext, ScoreSummary
 
@@ -58,6 +62,7 @@ def _seed_run(
     metrics: dict[str, Any] | None = None,
     token_metrics: dict[str, Any] | None = None,
     extra_config: dict[str, Any] | None = None,
+    result_json_path: str | None = None,
 ) -> None:
     insert_run_start(
         conn,
@@ -91,7 +96,7 @@ def _seed_run(
         unit="ratio" if score is not None else None,
         higher_is_better=True if score is not None else None,
         metrics=metrics or {"n": 2},
-        result_json_path=None,
+        result_json_path=result_json_path,
         artifacts=[],
         error=None,
         high_score_label=None,
@@ -278,6 +283,71 @@ def test_rebuild_latest_prunes_preserved_snapshot_excluded_by_current_compatibil
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    }
+
+
+def test_rebuild_latest_prunes_mislabeled_hermes_native_env_snapshots(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    preserved = tmp_path / "latest" / "hermes_tblite__eliza.json"
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    preserved.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "hermes_tblite",
+                "benchmark_directory": "hermes-adapter",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 0.0,
+                "run_id": "run_mislabeled_tblite_eliza",
+                "run_group_id": "rg_old",
+                "signature": "sig-tblite-eliza-old",
+                "comparison_signature": "cmp-tblite-eliza-old",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "bfcl": _adapter("bfcl"),
+            "hermes_tblite": _adapter("hermes_tblite", agent_compatibility=("hermes",)),
+        },
+    )
+
+    assert not preserved.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert "hermes_tblite::eliza" not in index["latest"]
+    assert index["matrix_contract"]["benchmarks"]["hermes_tblite"]["cells"]["eliza"] == {
+        "required": False,
+        "state": "unsupported",
+        "status": "unsupported",
+        "score": None,
+        "run_id": None,
+        "reason": "harness 'eliza' not in adapter compatibility (hermes)",
     }
 
 
@@ -1519,7 +1589,48 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
+
+
+def test_rebuild_latest_matrix_contract_marks_no_required_real_harness_incomplete(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["gaia"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="gaia",
+        agent="eliza",
+        run_id="run_unsupported",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"gaia": _adapter("gaia", agent_compatibility=())},
+    )
+
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    contract = index["matrix_contract"]
+    assert contract["status"] == "incomplete"
+    assert contract["summary"]["complete_benchmarks"] == 0
+    assert contract["summary"]["incomplete_benchmarks"] == 1
+    assert contract["summary"]["no_required_real_harness_benchmarks"] == 1
+    assert contract["benchmarks"]["gaia"]["complete"] is False
+    assert (
+        contract["benchmarks"]["gaia"]["cells"]["eliza"]["reason"]
+        == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+    )
 
 
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
@@ -1564,7 +1675,58 @@ def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
+
+
+def test_rebuild_latest_restores_compatibility_repair_when_harness_is_supported_again(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["terminal_bench"],
+        repo_meta={},
+    )
+    result_path = tmp_path / "terminal-result.json"
+    result_path.write_text(
+        json.dumps({"summary": {"accuracy": 0.75}}, sort_keys=True),
+        encoding="utf-8",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="terminal_bench",
+        agent="hermes",
+        run_id="run_restorable",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "latest_row_violates_current_compatibility",
+            "supported_harnesses": [],
+        },
+        result_json_path=str(result_path),
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"terminal_bench": _adapter("terminal_bench")},
+    )
+
+    latest = json.loads(
+        (tmp_path / "latest" / "terminal_bench__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest["status"] == "succeeded"
+    assert latest["score"] == 0.75
+    assert latest["metrics"]["harness"] == "hermes"
+    assert "reason" not in latest["metrics"]
 
 
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(

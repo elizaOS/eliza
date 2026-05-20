@@ -71,8 +71,12 @@ test("smartglasses example packet path", async () => {
   await service.startTranslate();
   await service.setTranslateLanguages(0x02, 0x05);
   await service.sendTranslateText("translated", "bonjour", 3);
+  await service.scanWifi();
+  await service.configureWifi("TestNet", "secret");
+  await service.getWifiStatus();
   await service.sendConnectionReady();
   await service.sendConnectionReady("both", "official");
+  await service.sendConnectionReady("both", "android-f4");
   await service.exitFunction();
   await service.requestSerial("right");
   await service.sendAppWhitelist({ apps: ["eliza"] });
@@ -135,6 +139,14 @@ test("smartglasses example packet path", async () => {
     transport.writes.filter(
       (write) =>
         write.data[0] === G1Command.Init &&
+        write.data[1] === 0x01 &&
+        (write.side === "left" || write.side === "right"),
+    ).length,
+  ).toBeGreaterThanOrEqual(3);
+  expect(
+    transport.writes.filter(
+      (write) =>
+        write.data[0] === G1Command.RightInit &&
         write.data[1] === 0x01 &&
         (write.side === "left" || write.side === "right"),
     ).length,
@@ -220,7 +232,17 @@ test("smartglasses example packet path", async () => {
     audioSequenceGaps: 0,
     microphoneEnabled: false,
     lastSerialNumber: "G1RIGHTSERIAL001",
+    wifiAvailable: true,
+    lastWifiStatus: {
+      status: "mock-wifi-ready",
+      networks: ["MockNet"],
+    },
   });
+  expect(transport.wifiRequests).toEqual([
+    { op: "scan" },
+    { op: "configure", ssid: "TestNet", password: "secret" },
+    { op: "status" },
+  ]);
 });
 
 test("hardware evidence helper requires display, serial, tap mic toggles, and audio", () => {
@@ -243,7 +265,7 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     lastAudioEncoding: "lc3",
     lastAudioSequence: 9,
     audioSequenceGaps: 0,
-    physicalState: null,
+    physicalState: "wearing",
     batteryState: null,
     deviceState: null,
     lastSerialNumber: "G1RIGHTSERIAL001",
@@ -260,6 +282,14 @@ test("hardware evidence helper requires display, serial, tap mic toggles, and au
     type: "serial",
     label: "serial_number",
     serialNumber: "G1RIGHTSERIAL001",
+  } satisfies G1Event);
+  recordHardwareEvent(report, {
+    side: "left",
+    raw: Uint8Array.from([G1Command.StartAi, 0x06]),
+    type: "state",
+    label: "wearing",
+    stateCategory: "physical",
+    stateName: "wearing",
   } satisfies G1Event);
   recordHardwareEvent(report, {
     side: "left",
@@ -339,6 +369,100 @@ test("hardware report validator rejects incomplete reports", () => {
       "missingMicDisableTapEvent",
       "missingNonEmptyAudioChunk",
       "missingRightLensAudioChunk",
+      "wearingStateNotObserved",
     ]),
   );
+});
+
+test("hardware report validator flags cradle state separately from tap and audio gaps", () => {
+  const report = createHardwareEvidenceReport({
+    initMode: "official",
+  });
+
+  recordHardwareEvent(report, {
+    side: "left",
+    raw: Uint8Array.from([G1Command.StartAi, 0x09]),
+    type: "state",
+    label: "charged_in_cradle",
+    stateCategory: "physical",
+    stateName: "charged_in_cradle",
+  } satisfies G1Event);
+  updateHardwareEvidenceStatus(report, {
+    available: true,
+    connected: true,
+    transport: "mock",
+    microphoneEnabled: false,
+    heartbeatRunning: false,
+    heartbeatIntervalMs: null,
+    lastHeartbeatAt: null,
+    lastEvent: null,
+    lastTranscript: null,
+    audioChunksReceived: 0,
+    lastAudioEncoding: null,
+    lastAudioSequence: null,
+    audioSequenceGaps: 0,
+    physicalState: "charged_in_cradle",
+    batteryState: "cradle_fully_charged",
+    deviceState: "connected",
+    lastSerialNumber: null,
+  });
+
+  expect(report.headsetState).toMatchObject({
+    physical: "charged_in_cradle",
+    battery: "cradle_fully_charged",
+    device: "connected",
+  });
+  expect(report.setupHint).toContain("remove them from the charging base");
+  expect(validateHardwareReport(report)).toEqual(
+    expect.arrayContaining(["headsetInCradle", "wearingStateNotObserved"]),
+  );
+});
+
+test("hardware evidence status updates replace stale cradle state with wearing state", () => {
+  const report = createHardwareEvidenceReport({
+    initMode: "lens-specific",
+  });
+
+  updateHardwareEvidenceStatus(report, {
+    available: true,
+    connected: true,
+    transport: "mock",
+    microphoneEnabled: false,
+    heartbeatRunning: false,
+    heartbeatIntervalMs: null,
+    lastHeartbeatAt: null,
+    lastEvent: null,
+    lastTranscript: null,
+    audioChunksReceived: 0,
+    lastAudioEncoding: null,
+    lastAudioSequence: null,
+    audioSequenceGaps: 0,
+    physicalState: "charged_in_cradle",
+    batteryState: "cradle_fully_charged",
+    deviceState: "connected",
+    lastSerialNumber: null,
+  });
+  updateHardwareEvidenceStatus(report, {
+    available: true,
+    connected: true,
+    transport: "mock",
+    microphoneEnabled: false,
+    heartbeatRunning: false,
+    heartbeatIntervalMs: null,
+    lastHeartbeatAt: null,
+    lastEvent: null,
+    lastTranscript: null,
+    audioChunksReceived: 0,
+    lastAudioEncoding: null,
+    lastAudioSequence: null,
+    audioSequenceGaps: 0,
+    physicalState: "wearing",
+    batteryState: "cradle_fully_charged",
+    deviceState: "connected",
+    lastSerialNumber: null,
+  });
+
+  expect(report.headsetState.physical).toBe("wearing");
+  expect(validateHardwareReport(report)).not.toContain("headsetInCradle");
+  expect(validateHardwareReport(report)).not.toContain("wearingStateNotObserved");
 });

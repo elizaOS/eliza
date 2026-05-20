@@ -96,8 +96,11 @@ export function outboundReadiness(args: {
         `Shortcuts CLI unavailable: ${args.shortcuts?.error ?? "unknown error"}`,
       );
     } else if (!args.shortcuts.shortcuts?.includes(args.shortcutsSendShortcutName)) {
+      const installed = args.shortcuts.shortcuts ?? [];
       reasons.push(
-        `Shortcut "${args.shortcutsSendShortcutName}" is not installed`,
+        installed.length > 0
+          ? `Shortcut "${args.shortcutsSendShortcutName}" is not installed; installed shortcuts: ${installed.join(", ")}`
+          : `Shortcut "${args.shortcutsSendShortcutName}" is not installed`,
       );
     }
   }

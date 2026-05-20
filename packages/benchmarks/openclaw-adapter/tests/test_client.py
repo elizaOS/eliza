@@ -349,6 +349,21 @@ def test_build_openai_body_preserves_messages_and_tool_pairs(fake_binary: Path) 
     assert messages[3]["tool_call_id"] == "call_1"
 
 
+def test_build_openai_body_preserves_multimodal_user_content(fake_binary: Path) -> None:
+    c = OpenClawClient(binary_path=fake_binary, direct_openai_compatible=True)
+    image_content = [
+        {"type": "text", "text": "What text is visible?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abcd"}},
+    ]
+
+    body = c.build_openai_compatible_body(
+        "ignored when messages are present",
+        {"messages": [{"role": "user", "content": image_content}]},
+    )
+
+    assert body["messages"] == [{"role": "user", "content": image_content}]
+
+
 def test_client_session_id_passed(
     client: OpenClawClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -365,7 +380,7 @@ def test_client_session_id_passed(
 
 
 def test_client_send_message_passes_env(
-    client: OpenClawClient,
+    fake_binary: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The spawned env must include CEREBRAS_API_KEY mirrored into OPENAI_API_KEY,
@@ -373,6 +388,7 @@ def test_client_send_message_passes_env(
     monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
     monkeypatch.setenv("CEREBRAS_API_KEY", "sk-test-key")
     monkeypatch.setenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
+    client = OpenClawClient(binary_path=fake_binary, provider="cerebras")
     captured: dict[str, object] = {}
 
     def _fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:

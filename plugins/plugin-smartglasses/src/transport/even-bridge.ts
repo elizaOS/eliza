@@ -8,9 +8,19 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport } from "./types.js";
+import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
 
 type EvenBridge = {
+  requestWifiScan?: () => Promise<unknown> | unknown;
+  requestWifiStatus?: () => Promise<unknown> | unknown;
+  setWifiCredentials?: (
+    ssid: string,
+    password: string,
+  ) => Promise<unknown> | unknown;
+  sendWifiCredentials?: (
+    ssid: string,
+    password: string,
+  ) => Promise<unknown> | unknown;
   rawBridge?: {
     audioControl?: (enabled: boolean) => Promise<unknown> | unknown;
     callEvenApp?: (
@@ -164,6 +174,56 @@ export class EvenBridgeTransport implements SmartglassesTransport {
       return;
     }
     await this.write("right", encodeMicCommand(enabled));
+  }
+
+  async scanWifi(): Promise<SmartglassesWifiResult> {
+    this.assertWifiSupported();
+    const raw = this.bridge.requestWifiScan
+      ? await this.bridge.requestWifiScan()
+      : await this.bridge.rawBridge?.callEvenApp?.("request_wifi_scan");
+    return normalizeWifiResult(raw, "Wi-Fi scan requested");
+  }
+
+  async getWifiStatus(): Promise<SmartglassesWifiResult> {
+    this.assertWifiSupported();
+    const raw = this.bridge.requestWifiStatus
+      ? await this.bridge.requestWifiStatus()
+      : await this.bridge.rawBridge?.callEvenApp?.("request_wifi_status");
+    return normalizeWifiResult(raw, "Wi-Fi status requested");
+  }
+
+  async configureWifi(
+    ssid: string,
+    password: string,
+  ): Promise<SmartglassesWifiResult> {
+    this.assertWifiSupported();
+    const raw = this.bridge.setWifiCredentials
+      ? await this.bridge.setWifiCredentials(ssid, password)
+      : this.bridge.sendWifiCredentials
+        ? await this.bridge.sendWifiCredentials(ssid, password)
+        : await this.bridge.rawBridge?.callEvenApp?.("set_wifi_credentials", {
+            ssid,
+            password,
+          });
+    return normalizeWifiResult(raw, `Wi-Fi credentials sent for ${ssid}`);
+  }
+
+  supportsWifi(): boolean {
+    return Boolean(
+      this.bridge.requestWifiScan ||
+        this.bridge.requestWifiStatus ||
+        this.bridge.setWifiCredentials ||
+        this.bridge.sendWifiCredentials ||
+        this.bridge.rawBridge?.callEvenApp,
+    );
+  }
+
+  private assertWifiSupported(): void {
+    if (!this.supportsWifi()) {
+      throw new Error(
+        "Wi-Fi is only available when the native smartglasses bridge exposes Wi-Fi APIs",
+      );
+    }
   }
 
   private supportsEvenHubDisplay(): boolean {
@@ -513,6 +573,47 @@ function normalizeBridgeSubscription(
     subscription.remove?.bind(subscription) ??
     null
   );
+}
+
+function normalizeWifiResult(
+  raw: unknown,
+  fallbackStatus: string,
+): SmartglassesWifiResult {
+  return {
+    available: true,
+    status: parseWifiStatus(raw) ?? fallbackStatus,
+    networks: parseWifiNetworks(raw),
+    raw,
+  };
+}
+
+function parseWifiStatus(raw: unknown): string | null {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const value =
+    record.status ??
+    record.state ??
+    record.message ??
+    record.result ??
+    record.connectedSsid ??
+    record.ssid;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseWifiNetworks(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const record = raw as Record<string, unknown>;
+  const value = record.networks ?? record.networks_neo ?? record.results;
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((network) => {
+      if (typeof network === "string") return network;
+      if (!network || typeof network !== "object") return "";
+      const item = network as Record<string, unknown>;
+      return String(item.ssid ?? item.SSID ?? item.name ?? "");
+    })
+    .filter((ssid) => ssid.trim().length > 0);
 }
 
 function createEvenHubTextPage(textBytes: Uint8Array): Record<string, unknown> {

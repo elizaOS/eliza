@@ -81,6 +81,26 @@ function listAdbDevices() {
     .map((line) => line.split(/\s+/)[0]);
 }
 
+function listHostUsbDevices() {
+  if (process.platform !== "darwin") return [];
+  const result = run("ioreg", ["-p", "IOUSB", "-l", "-w", "0"]);
+  if (result.status !== 0 || !result.stdout.trim()) return [];
+
+  const devices = [];
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const nameMatch = line.match(/"USB Product Name"\s*=\s*"([^"]+)"/);
+    const registryMatch = line.match(/\+\-o\s+([^@<]+)@/);
+    const name = nameMatch?.[1] ?? registryMatch?.[1];
+    if (!name) continue;
+    const trimmed = name.trim();
+    if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) {
+      continue;
+    }
+    if (!devices.includes(trimmed)) devices.push(trimmed);
+  }
+  return devices.slice(0, 10);
+}
+
 function readBridgeDoctor() {
   const result = run("curl", ["-sS", "--max-time", "5", "http://127.0.0.1:8795/doctor"]);
   if (result.status !== 0 || !result.stdout.trim()) return null;
@@ -125,6 +145,7 @@ async function main() {
 
   while (Date.now() <= deadline) {
     const devices = listAdbDevices();
+    const hostUsbDevices = listHostUsbDevices();
     const bridgeDoctor = readBridgeDoctor();
     const bridgeReady = bridgeOutboundReady(bridgeDoctor);
 
@@ -157,7 +178,7 @@ async function main() {
       .map((check) => `${check.name}: ${check.detail}`)
       .join(" | ");
     console.log(
-      `[sms-gateway-watch] waiting: adb devices=0; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
+      `[sms-gateway-watch] waiting: adb devices=0; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
     );
     await sleep(Math.max(1, args.intervalSeconds) * 1000);
   }

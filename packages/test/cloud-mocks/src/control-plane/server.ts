@@ -2,6 +2,13 @@ import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { ControlPlaneStore, type Job, type Sandbox } from "./store";
 
+type DatabaseJob = {
+  id: string;
+  type: string;
+  data: unknown;
+  max_attempts?: number | null;
+};
+
 export interface ControlPlaneMockOptions {
   /** Bearer token required on every request. Defaults to env or "test-token". */
   token?: string;
@@ -108,14 +115,6 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (c.req.path.startsWith("/api/v1/admin/")) return next();
     // Compat endpoints are public stubs.
     if (c.req.path.startsWith("/api/compat/")) return next();
-    const auth = c.req.header("authorization") ?? c.req.header("Authorization");
-    if (
-      !auth ||
-      !auth.startsWith("Bearer ") ||
-      auth.slice(7).trim() !== token
-    ) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
     if (expectedAuxToken) {
       const aux = c.req.header("x-container-control-plane-token")?.trim();
       if (aux !== expectedAuxToken) {
@@ -125,8 +124,159 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         );
       }
     }
+    const auth = c.req.header("authorization") ?? c.req.header("Authorization");
+    if (!auth?.startsWith("Bearer ") || auth.slice(7).trim() !== token) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
     await next();
   });
+
+  function readJobString(job: DatabaseJob, key: string): string {
+    const data =
+      job.data && typeof job.data === "object"
+        ? (job.data as Record<string, unknown>)
+        : {};
+    const value = data[key];
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(`DB-backed mock job ${job.id} missing ${key}`);
+    }
+    return value;
+  }
+
+  async function processDbBackedJobs(
+    databaseUrl: string,
+    origin: string,
+    limit: number,
+  ): Promise<{
+    claimed: number;
+    succeeded: number;
+    failed: number;
+    errors: Array<{ jobId: string; error: string }>;
+  }> {
+    const [
+      { agentSandboxesRepository },
+      { jobsRepository },
+      { runWithCloudBindingsAsync },
+      { JOB_TYPES },
+    ] = await Promise.all([
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
+      import("@elizaos/cloud-shared/db/repositories/jobs.ts"),
+      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
+      import("@elizaos/cloud-shared/lib/services/provisioning-job-types.ts"),
+    ]);
+
+    return runWithCloudBindingsAsync(
+      { DATABASE_URL: databaseUrl },
+      async () => {
+        const result = {
+          claimed: 0,
+          succeeded: 0,
+          failed: 0,
+          errors: [] as Array<{ jobId: string; error: string }>,
+        };
+        const batchSize = Math.max(1, Math.floor(limit));
+        const provisionJobs = await jobsRepository.claimPendingJobs({
+          type: JOB_TYPES.AGENT_PROVISION,
+          limit: batchSize,
+        });
+        const deleteJobs = await jobsRepository.claimPendingJobs({
+          type: JOB_TYPES.AGENT_DELETE,
+          limit: Math.max(0, batchSize - provisionJobs.length),
+        });
+
+        for (const job of [...provisionJobs, ...deleteJobs]) {
+          result.claimed += 1;
+          try {
+            if (job.type === JOB_TYPES.AGENT_DELETE) {
+              const agentId = readJobString(job, "agentId");
+              const organizationId = readJobString(job, "organizationId");
+              const existing = await agentSandboxesRepository.findByIdAndOrg(
+                agentId,
+                organizationId,
+              );
+              if (
+                existing?.sandbox_id &&
+                store.getSandbox(existing.sandbox_id)
+              ) {
+                store.updateSandbox(existing.sandbox_id, { status: "deleted" });
+              }
+              await agentSandboxesRepository.delete(agentId, organizationId);
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: {
+                  cloudAgentId: agentId,
+                  containerStopped: true,
+                  rowDeleted: true,
+                },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
+            const agentId = readJobString(job, "agentId");
+            const organizationId = readJobString(job, "organizationId");
+            const userId = readJobString(job, "userId");
+            const agentName = readJobString(job, "agentName");
+            const sandbox = store.createSandbox({
+              organizationId,
+              userId,
+              agentId,
+            });
+            store.updateSandbox(sandbox.id, { status: "running" });
+            const container = store.createContainer({
+              name: agentName,
+              projectName: `agent-${agentId.slice(0, 8)}`,
+              organizationId,
+              userId,
+              image: defaultAgentImage,
+              actionMs: containerActionMs,
+            });
+            store.updateContainer(container.id, {
+              status: "running",
+              pendingActionAt: undefined,
+              pendingAction: undefined,
+            });
+
+            const bridgeUrl = `${origin}/api/compat/agents/${encodeURIComponent(
+              sandbox.id,
+            )}`;
+            const healthUrl = `${bridgeUrl}/health`;
+            await agentSandboxesRepository.update(agentId, {
+              status: "running",
+              database_status: "ready",
+              database_uri: databaseUrl,
+              sandbox_id: sandbox.id,
+              bridge_url: bridgeUrl,
+              health_url: healthUrl,
+              last_heartbeat_at: now(),
+              error_message: null,
+            });
+            await jobsRepository.updateStatus(job.id, "completed", {
+              result: {
+                cloudAgentId: agentId,
+                status: "running",
+                bridgeUrl,
+                healthUrl,
+              },
+              completed_at: now(),
+            });
+            result.succeeded += 1;
+          } catch (error) {
+            result.failed += 1;
+            const message =
+              error instanceof Error ? error.message : String(error);
+            result.errors.push({ jobId: job.id, error: message });
+            await jobsRepository.incrementAttempt(
+              job.id,
+              message,
+              job.max_attempts ?? 3,
+            );
+          }
+        }
+        return result;
+      },
+    );
+  }
 
   function requireForwardedAuth(
     c: Context,
@@ -219,7 +369,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const parsed =
       rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
     const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
-    const result = await tick(limit);
+    const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
+    const result = databaseUrl
+      ? await processDbBackedJobs(databaseUrl, new URL(c.req.url).origin, limit)
+      : await tick(limit);
     return c.json({ success: true, data: result });
   };
   app.post("/cron/process-provisioning-jobs", processProvisioningJobsHandler);
@@ -250,11 +403,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
 
   function requireAdmin(c: Context): Response | null {
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
-    if (
-      !auth ||
-      !auth.startsWith("Bearer ") ||
-      auth.slice(7).trim() !== adminToken
-    ) {
+    if (!auth?.startsWith("Bearer ") || auth.slice(7).trim() !== adminToken) {
       return c.json({ success: false, error: "Unauthorized (admin)" }, 401);
     }
     return null;
@@ -630,7 +779,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   // so use a single catchall handler that inspects the suffix.
   const poolCatchallHandler = async (c: Context) => {
     const name = c.req.param("name");
-    if (!name || !name.startsWith("pool-")) {
+    if (!name?.startsWith("pool-")) {
       return c.json({ success: false, error: "Not found" }, 404);
     }
     await latency();

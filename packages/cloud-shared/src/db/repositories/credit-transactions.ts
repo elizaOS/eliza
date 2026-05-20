@@ -85,6 +85,26 @@ export class CreditTransactionsRepository {
     return !!row;
   }
 
+  /**
+   * Returns true if the organization has already received the Eliza App
+   * starter credits. WHY dbWrite (primary): onboarding provisioning can call
+   * this immediately before crediting, so avoid stale read replicas.
+   */
+  async hasElizaAppInitialFreeCredits(organizationId: string): Promise<boolean> {
+    const [row] = await dbWrite
+      .select({ id: creditTransactions.id })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.organization_id, organizationId),
+          eq(creditTransactions.type, "credit"),
+          sql`${creditTransactions.metadata}->>'type' = 'initial_free_credits'`,
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================

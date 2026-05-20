@@ -888,8 +888,6 @@ export async function stageAndroidAgentRuntime({
     "pglite.data",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
-    "ort-wasm-simd-threaded.mjs",
-    "ort-wasm-simd-threaded.wasm",
     "plugins-manifest.json",
   ];
   for (const name of pgliteAssets) {

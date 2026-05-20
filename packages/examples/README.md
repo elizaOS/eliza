@@ -12,6 +12,10 @@ The normal local validation path does not need API keys:
 bun install
 ```
 
+For human-gated setup instructions with links for Roblox, Minecraft,
+cloud CLIs, social bots, hardware, and wallet/trading examples, open
+[`setup-guide.html`](./setup-guide.html).
+
 For total live testing, configure the credentials below. Never commit `.env`
 files, private keys, app passwords, or bot tokens.
 
@@ -24,9 +28,9 @@ all of these; otherwise set the provider used by the example you are running.
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Most server, chat, cloud, social, MCP, REST, and deployment examples | Required for examples that only use OpenAI. Some examples fall back to local ELIZA mode when unset. |
 | `ANTHROPIC_API_KEY` | `chat`, `form`, `code`, `convex`, `discord`, `bluesky`, `trader` | Required when forcing Anthropic or testing Anthropic provider flows. |
-| `XAI_API_KEY` | `chat`, `form`, `convex`, `twitter-xai` | Required for the X/Grok example. |
+| `XAI_API_KEY` | `chat`, `form`, `twitter-xai` | Required for the X/Grok example. |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | `chat`, `form`, `convex`, app examples, browser extension, avatar | Required for Google GenAI provider flows. |
-| `GROQ_API_KEY` | `chat`, `form`, `convex`, app examples, browser extension, avatar | Required for Groq provider flows. |
+| `GROQ_API_KEY` | `chat`, `form`, app examples, browser extension, avatar | Required for Groq provider flows. |
 | `OPENROUTER_API_KEY` / `LLM_API_KEY` | `moltbook`, app examples, optional model-provider paths | `moltbook` reads `LLM_API_KEY` first, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. |
 | `ELEVENLABS_API_KEY` | `avatar` | Required for voice output in the avatar demo. |
 
@@ -37,7 +41,7 @@ all of these; otherwise set the provider used by the example you are running.
 | `POSTGRES_URL` | `next`, `rest-api/*`, `telegram`, `discord`, `bluesky`, `twitter-xai`, `text-adventure`, `tic-tac-toe` | Optional in many examples because PGLite is used by default; required for production-like persistence. |
 | `DATABASE_URL` | `farcaster` | Optional PostgreSQL URL for the Farcaster agent. |
 | `CONVEX_URL` | `convex` test client | HTTP Actions URL printed by `convex dev` or from a deployed Convex project. |
-| Convex env keys | `convex` | Set one model provider in Convex with `convex env set OPENAI_API_KEY ...` or equivalent. |
+| Convex env keys | `convex` | Set one supported model provider in Convex with `convex env set OPENAI_API_KEY ...`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY`. |
 | `SUPABASE_FUNCTION_URL`, `SUPABASE_ANON_KEY` | `supabase` test client | Required to test deployed Supabase Edge Functions. |
 | Supabase secrets | `supabase` | Set `OPENAI_API_KEY` with `supabase secrets set OPENAI_API_KEY=...`. |
 | Vercel env | `vercel` | Set `OPENAI_API_KEY` in Vercel env. `VERCEL_URL` can point the test client at a deployment. |

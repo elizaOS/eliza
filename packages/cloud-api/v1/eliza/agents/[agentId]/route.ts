@@ -250,7 +250,7 @@ app.patch("/", async (c) => {
       userId: user.id,
     });
 
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
       // Logged inside the service.
     });
 

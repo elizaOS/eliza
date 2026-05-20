@@ -29,4 +29,3 @@ CREATE INDEX IF NOT EXISTS phone_gateway_devices_phone_number_idx
     ON phone_gateway_devices(phone_number);
 CREATE INDEX IF NOT EXISTS phone_gateway_devices_is_active_idx
     ON phone_gateway_devices(is_active);
-

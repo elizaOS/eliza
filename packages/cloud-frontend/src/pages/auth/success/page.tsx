@@ -1,5 +1,6 @@
 import { CheckCircle, Loader2, MessageCircle } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 
 // Platform display names
@@ -109,8 +110,13 @@ function LoadingFallback() {
 
 export default function AuthSuccessPage() {
   return (
-    <Suspense fallback={<LoadingFallback />}>
-      <AuthSuccessContent />
-    </Suspense>
+    <>
+      <Helmet>
+        <title>Connection Successful | Eliza Cloud</title>
+      </Helmet>
+      <Suspense fallback={<LoadingFallback />}>
+        <AuthSuccessContent />
+      </Suspense>
+    </>
   );
 }

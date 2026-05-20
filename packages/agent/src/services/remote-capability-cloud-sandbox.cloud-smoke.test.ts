@@ -28,6 +28,14 @@ const cloudLive =
   process.env.ELIZAOS_CLOUD_API_KEY.trim()
     ? it
     : it.skip;
+const cloudProvisionTimeoutMs = readPositiveIntegerEnv(
+  "ELIZA_REMOTE_CAPABILITY_CLOUD_PROVISION_TIMEOUT_MS",
+  600_000,
+);
+const cloudLiveTestTimeoutMs = Math.max(
+  cloudProvisionTimeoutMs + 120_000,
+  720_000,
+);
 const registeredPluginNames: string[] = [];
 
 describe("cloud capability sandbox live smoke", () => {
@@ -61,7 +69,7 @@ describe("cloud capability sandbox live smoke", () => {
             "Expose at least one action, provider, route, JSON model handler, lifecycle hook, event handler, service method, app bridge hook, evaluator, response-handler evaluator, response-handler field evaluator, and compiled view.",
           ],
           endpointId,
-          timeoutMs: 180_000,
+          timeoutMs: cloudProvisionTimeoutMs,
           pollIntervalMs: 5_000,
           onProgress: (status, detail) => {
             console.log(`[cloud-capability-live] ${status}: ${detail ?? ""}`);
@@ -146,9 +154,16 @@ describe("cloud capability sandbox live smoke", () => {
         }
       }
     },
-    240_000,
+    cloudLiveTestTimeoutMs,
   );
 });
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function makeRuntime(): IAgentRuntime {
   const runtime = {

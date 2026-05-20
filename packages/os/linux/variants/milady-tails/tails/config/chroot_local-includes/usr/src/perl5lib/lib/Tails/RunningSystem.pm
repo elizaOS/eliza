@@ -157,7 +157,7 @@ method _build_initial_install_version () {
         'os_release_file' => $self->initial_install_os_release_file,
     )
 }
-method _build_baseurl () { 'https://tails.net' }
+method _build_baseurl () { $ENV{ELIZAOS_BASE_UPDATE_URL} // 'https://elizaos.ai' }
 method _build_udisks () { Tails::UDisks->new(); }
 
 method _build_build_target () {
@@ -206,7 +206,7 @@ method _build_boot_block_device () {
             $self->main_window,
             __(q{Error}),
             __(
-                q{The device Tails is running from cannot be found. Maybe you used the 'toram' option?},
+                q{The device elizaOS is running from cannot be found. Maybe you used the 'toram' option?},
             ),
         );
     };
@@ -234,7 +234,7 @@ method _build_boot_drive () {
         $self->display_error(
             $self->main_window,
             __(
-                q{The drive Tails is running from cannot be found. Maybe you used the 'toram' option?},
+                q{The drive elizaOS is running from cannot be found. Maybe you used the 'toram' option?},
             ),
             '',
         );

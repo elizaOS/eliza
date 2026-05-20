@@ -862,6 +862,20 @@
       "when": 1778657900000,
       "tag": "0123_add_secret_ballots",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1778658000000,
+      "tag": "0123_add_agent_phone_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1778658100000,
+      "tag": "0124_add_phone_gateway_devices",
+      "breakpoints": true
     }
   ]
 }

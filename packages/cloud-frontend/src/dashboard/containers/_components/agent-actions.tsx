@@ -13,7 +13,7 @@ import {
   Play,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { openWebUIWithPairing } from "@/lib/hooks/open-web-ui";
@@ -30,21 +30,30 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const jobActionById = useRef(new Map<string, string>());
 
   const poller = useJobPoller({
-    onComplete: () =>
+    onComplete: (job) => {
+      const action = jobActionById.current.get(job.jobId);
+      jobActionById.current.delete(job.jobId);
       toast.success(
-        t("cloud.containers.agentActions.provisioningCompleted", {
-          defaultValue: "Agent provisioning completed",
+        t("cloud.containers.agentActions.jobCompleted", {
+          defaultValue: "{action} completed",
+          action: action ?? "Agent job",
         }),
-      ),
-    onFailed: (job) =>
+      );
+    },
+    onFailed: (job) => {
+      const action = jobActionById.current.get(job.jobId);
+      jobActionById.current.delete(job.jobId);
       toast.error(
         job.error ??
-          t("cloud.containers.agentActions.provisioningFailed", {
-            defaultValue: "Provisioning failed",
+          t("cloud.containers.agentActions.jobFailed", {
+            defaultValue: "{action} failed",
+            action: action ?? "Agent job",
           }),
-      ),
+      );
+    },
   });
 
   const trackedJob = poller.getStatus(agentId);
@@ -87,6 +96,7 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
       // 409 + jobId — operation already in flight, attach to the existing
       // job so the toast resolves when it actually completes.
       if (res.status === 409 && jobId) {
+        jobActionById.current.set(jobId, action);
         poller.track(agentId, jobId);
         toast.info(
           t("cloud.containers.agentActions.actionAlreadyInProgress", {
@@ -117,6 +127,7 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
       // user it's running. Avoids the toast lying ("Snapshot saved")
       // before the daemon actually finished.
       if (res.status === 202 && jobId) {
+        jobActionById.current.set(jobId, action);
         poller.track(agentId, jobId);
         const queuedMessages: Record<string, string> = {
           provision: t("cloud.containers.agentActions.provisioningQueued", {

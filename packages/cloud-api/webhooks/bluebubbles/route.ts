@@ -109,7 +109,13 @@ export async function handleBlueBubblesWebhookPayload(
   c: AppContext,
   payload: unknown,
 ): Promise<Response> {
-  const bridgeId = c.req.param("bridgeId") || c.req.param("orgId") || "default";
+  const bridgeId =
+    readEnvString(c, "BLUEBUBBLES_BRIDGE_ID") ??
+    c.req.param("bridgeId") ??
+    c.req.header("x-eliza-bridge") ??
+    c.req.query("bridge") ??
+    c.req.param("orgId") ??
+    "default";
 
   if (!authorized(c)) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -153,32 +159,51 @@ export async function handleBlueBubblesWebhookPayload(
 
   const organizationId =
     readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID") ?? DEFAULT_GATEWAY_ORG_ID;
+  const configuredRecipient = readEnvString(
+    c,
+    "BLUEBUBBLES_GATEWAY_PHONE_NUMBER",
+  );
   const recipient =
-    readEnvString(c, "BLUEBUBBLES_GATEWAY_PHONE_NUMBER") ??
+    configuredRecipient ??
     readPayloadString(data.metadata, "localPhoneNumber") ??
     readPayloadString(data.metadata, "phoneNumber") ??
     DEFAULT_GATEWAY_PHONE_NUMBER;
-  const phoneAccountId =
-    readPayloadString(data.metadata, "phoneAccountId") ?? recipient;
-  const phoneAccountLabel =
-    readPayloadString(data.metadata, "phoneAccountLabel") ?? recipient;
-  const gatewayDevice = await registerPhoneGatewayDevice({
-    organizationId,
-    provider: "blooio",
-    phoneNumber: recipient,
-    bridgeId,
-    phoneAccountId,
-    phoneAccountLabel,
-    friendlyName: phoneAccountLabel,
-    sendMethod: "bluebubbles-local-bridge",
-    cloudWebhookUrl: c.req.url,
-    metadata: {
-      eventType: type,
-      chatGuid: data.chats?.[0]?.guid ?? undefined,
-      chatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
-      detectedService: data.handle?.service ?? undefined,
-    },
-  });
+  const phoneAccountId = configuredRecipient
+    ? recipient
+    : (readPayloadString(data.metadata, "phoneAccountId") ?? recipient);
+  const phoneAccountLabel = configuredRecipient
+    ? recipient
+    : (readPayloadString(data.metadata, "phoneAccountLabel") ?? recipient);
+  let gatewayDevice = {
+    id: null as string | null,
+    registered: false,
+  };
+
+  try {
+    gatewayDevice = await registerPhoneGatewayDevice({
+      organizationId,
+      provider: "blooio",
+      phoneNumber: recipient,
+      bridgeId,
+      phoneAccountId,
+      phoneAccountLabel,
+      friendlyName: phoneAccountLabel,
+      sendMethod: "bluebubbles-local-bridge",
+      cloudWebhookUrl: c.req.url,
+      metadata: {
+        eventType: type,
+        chatGuid: data.chats?.[0]?.guid ?? undefined,
+        chatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
+        detectedService: data.handle?.service ?? undefined,
+      },
+    });
+  } catch (error) {
+    logger.warn("[BlueBubblesWebhook] Gateway device registration failed", {
+      bridgeId,
+      recipient,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   try {
     const routed = await agentGatewayRouterService.routePhoneMessage({

@@ -68,8 +68,12 @@ await service.sendTranslateText("translated", "bonjour", 3);
 await service.setHeadUpAngle(20);
 await service.setSilentMode(false);
 await service.setGlassesWearDetection(true);
+await service.scanWifi();
+await service.configureWifi("ExampleNet", "secret");
+await service.getWifiStatus();
 await service.sendConnectionReady();
 await service.sendConnectionReady("both", "official");
+await service.sendConnectionReady("both", "android-f4");
 await service.exitFunction();
 await service.requestSerial("right");
 await service.sendAppWhitelist({ apps: ["eliza"] });
@@ -174,6 +178,16 @@ if (
   throw new Error("Example did not send official same-init packets");
 }
 if (
+  transport.writes.filter(
+    (write) =>
+      write.data[0] === G1Command.RightInit &&
+      write.data[1] === 0x01 &&
+      (write.side === "left" || write.side === "right"),
+  ).length < 3
+) {
+  throw new Error("Example did not send Android F4 same-init packets");
+}
+if (
   !transport.writes.some((write) => write.data[0] === G1Command.ExitFunction)
 ) {
   throw new Error("Example did not send native function-exit packets");
@@ -249,4 +263,17 @@ if (
   )
 ) {
   throw new Error("Example did not send generated BMP packets");
+}
+if (
+  JSON.stringify(transport.wifiRequests) !==
+  JSON.stringify([
+    { op: "scan" },
+    { op: "configure", ssid: "ExampleNet", password: "secret" },
+    { op: "status" },
+  ])
+) {
+  throw new Error("Example did not exercise Wi-Fi service methods");
+}
+if (service.getStatus().lastWifiStatus?.status !== "mock-wifi-ready") {
+  throw new Error("Example did not preserve Wi-Fi status");
 }

@@ -42,10 +42,13 @@ try {
   const microphoneAction = runtime.actions.find(
     (action) => action.name === "SMARTGLASSES_MICROPHONE",
   );
+  const controlAction = runtime.actions.find(
+    (action) => action.name === "SMARTGLASSES_CONTROL",
+  );
   const statusProvider = runtime.providers.find(
     (provider) => provider.name === "smartglassesStatus",
   );
-  if (!displayAction || !microphoneAction || !statusProvider) {
+  if (!displayAction || !microphoneAction || !controlAction || !statusProvider) {
     throw new Error("Runtime did not register smartglasses components");
   }
 
@@ -54,6 +57,19 @@ try {
   } as never);
   await microphoneAction.handler(runtime, {
     content: { text: "enable microphone" },
+  } as never);
+  const wifiScanResult = await controlAction.handler(runtime, {
+    content: { text: '{"op":"wifi_scan"}' },
+  } as never);
+  await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"wifi_configure","ssid":"RuntimeNet","password":"secret"}',
+    },
+  } as never);
+  await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"dashboard_time_weather","temperatureInCelsius":21}',
+    },
   } as never);
   transport.emitRaw("left", Uint8Array.from([G1Command.StartAi, 0x00]));
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -70,6 +86,9 @@ try {
   const micPackets = transport.writes.filter(
     (write) => write.data[0] === G1Command.OpenMic,
   );
+  const dashboardPackets = transport.writes.filter(
+    (write) => write.data[0] === G1Command.DashboardContent,
+  );
 
   if (autoInitPackets.length < 2)
     throw new Error("Runtime smoke did not auto-init both lenses");
@@ -79,8 +98,37 @@ try {
     throw new Error("Runtime smoke did not enable the microphone");
   if (!micPackets.some((write) => write.data[1] === 0))
     throw new Error("Runtime smoke did not disable the microphone from tap");
+  if (dashboardPackets.length === 0)
+    throw new Error("Runtime smoke did not route control packets");
+  if (transport.wifiRequests.at(-2)?.op !== "scan")
+    throw new Error("Runtime smoke did not scan Wi-Fi through control action");
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({
+      op: "configure",
+      ssid: "RuntimeNet",
+      password: "secret",
+    })
+  ) {
+    throw new Error(
+      "Runtime smoke did not configure Wi-Fi through control action",
+    );
+  }
+  if (
+    !wifiScanResult.values ||
+    (wifiScanResult.values.operationResult as { status?: string } | undefined)
+      ?.status !== "mock-wifi-ready"
+  ) {
+    throw new Error("Runtime smoke did not return Wi-Fi action status");
+  }
   if (!provider.text.includes("Smartglasses: connected=true"))
     throw new Error("Runtime smoke provider did not report connection state");
+  if (!provider.text.includes("wifi=available"))
+    throw new Error("Runtime smoke provider did not report Wi-Fi capability");
+  if (
+    !provider.text.includes("wifiStatus=mock credentials sent for RuntimeNet")
+  )
+    throw new Error("Runtime smoke provider did not report Wi-Fi status");
 
   console.log(
     JSON.stringify(
@@ -95,6 +143,7 @@ try {
           .filter((name) => name.includes("smartglasses")),
         service: SMARTGLASSES_SERVICE_NAME,
         connected: status.connected,
+        wifiRequests: transport.wifiRequests,
         writes: transport.writes.length,
       },
       null,

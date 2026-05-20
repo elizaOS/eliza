@@ -17,7 +17,7 @@ use Tails::RunningSystem;
 my $running_system = Tails::RunningSystem->new;
 
 if (! $running_system->started_from_writable_device) {
-    say STDERR "Tails was started from a DVD or a read-only device";
+    say STDERR "elizaOS was started from a DVD or a read-only device";
     exit 16;
 }
 

@@ -5,9 +5,9 @@ export const smartglassesStatusAction: Action = {
   name: "SMARTGLASSES_STATUS",
   similes: ["EVEN_GLASSES_STATUS", "GLASSES_STATUS"],
   description:
-    "Report smartglasses connection, transport, microphone, latest event, and audio streaming status.",
+    "Report smartglasses connection, transport, microphone, Wi-Fi bridge capability/status, latest event, and audio streaming status.",
   descriptionCompressed:
-    "smartglasses-status: connection, mic, last event, audio chunks",
+    "smartglasses-status: connection, mic, Wi-Fi, last event, audio chunks",
   contexts: ["smartglasses", "debug", "operations"],
   validate: async () => true,
   handler: async (runtime: IAgentRuntime): Promise<ActionResult> => {
@@ -37,6 +37,11 @@ export const smartglassesStatusAction: Action = {
       `batteryState: ${status.batteryState ?? "(none)"}`,
       `deviceState: ${status.deviceState ?? "(none)"}`,
       `lastSerialNumber: ${status.lastSerialNumber ?? "(none)"}`,
+      `wifiAvailable: ${status.wifiAvailable}`,
+      `lastWifiStatus: ${status.lastWifiStatus?.status ?? "(none)"}`,
+      `lastWifiNetworks: ${
+        status.lastWifiStatus?.networks.join(", ") || "(none)"
+      }`,
       `lastEvent: ${status.lastEvent?.label ?? "(none)"}`,
     ];
     return { success: true, text: lines.join("\n"), values: { ...status } };

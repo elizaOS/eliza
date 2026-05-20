@@ -1,6 +1,6 @@
 [Unit]
 Description=Notify the user if htpdate failed
-Documentation=https://tails.net/contribute/design/Time_syncing/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 
 [Service]
 Type=oneshot

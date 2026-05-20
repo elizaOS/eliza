@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realDbSchemas from "../../../db/schemas";
+
 const blooioApiRequest = mock();
 const secretsGet = mock();
 const insertValues = mock();
@@ -15,17 +17,29 @@ const dbWrite = {
 };
 
 mock.module("../../../db/client", () => ({
+  db: {},
+  dbRead: {},
   dbWrite,
+  getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
+  runWithDbCache: (fn: () => unknown) => fn(),
+  runWithDbCacheAsync: async (fn: () => Promise<unknown>) => fn(),
+  withReadDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
+  withWriteDb: async (fn: (db: unknown) => Promise<unknown>) => fn(dbWrite),
 }));
 
 mock.module("../../../db/schemas", () => ({
+  ...realDbSchemas,
+  anonymousSessions: {},
   agentPhoneContacts: {
     provider: "provider",
     contact_identifier: "contact_identifier",
     agent_id: "agent_id",
   },
   agentPhoneNumbers: {},
+  appRequests: {},
+  appUsers: {},
   phoneMessageLog: {},
+  phoneGatewayDevices: {},
 }));
 
 mock.module("../secrets", () => ({

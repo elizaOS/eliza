@@ -5,8 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "Starting elizaOS USB Installer..."
-echo "  Backend API → http://localhost:3742"
-echo "  UI          → http://localhost:5174"
+echo "  Backend API -> http://127.0.0.1:3742"
+echo "  UI          -> http://127.0.0.1:5174"
+if [ "${ELIZAOS_USB_ENABLE_RAW_WRITE:-0}" != "1" ]; then
+  echo "  Raw writes  -> disabled (set ELIZAOS_USB_ENABLE_RAW_WRITE=1 to test removable media)"
+else
+  echo "  Raw writes  -> enabled"
+fi
 echo ""
 
 # Start the Bun backend server

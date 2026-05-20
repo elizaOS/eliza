@@ -305,6 +305,15 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
         requestTimeoutMs: 15_000,
         allowedModuleIds: ["remote-plugin"],
+        trustPolicy: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
       },
       { connectEndpointProvider },
     );
@@ -337,6 +346,16 @@ describe("handleRemoteCapabilityRoutes", () => {
       unloadMissing: true,
       requestTimeoutMs: 15_000,
       allowedModuleIds: ["remote-plugin"],
+      trustPolicy: {
+        allowedProvenanceIssuers: ["eliza-cloud-build"],
+        trustedProvenancePublicKeys: {
+          "eliza-cloud-build":
+            "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+        },
+        requireSignedProvenance: true,
+        requireVerifiedProvenance: true,
+        requireProvenanceDigestMatch: true,
+      },
     });
     expect(error).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(ctx.res, {
@@ -395,6 +414,35 @@ describe("handleRemoteCapabilityRoutes", () => {
     );
     expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
       JSON.stringify({ tools: ["remote-plugin"] }),
+    );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY).toBe(
+      JSON.stringify({
+        tools: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireSignedProvenance: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    );
+    expect(ctx.persistConfigEnv).toHaveBeenCalledWith(
+      "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+      JSON.stringify({
+        tools: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireSignedProvenance: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
     );
   });
 

@@ -29,6 +29,7 @@ const CORS_METHODS = "POST, OPTIONS";
  */
 async function __hono_POST(
   request: Request,
+  env: AppEnv["Bindings"],
   { params }: { params: Promise<{ agentId: string }> },
 ) {
   try {
@@ -90,7 +91,7 @@ async function __hono_POST(
 
     // Best-effort wake of the orchestrator so the user does not wait for the
     // next cron tick. Same pattern as provision + delete.
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(env).catch(() => {
       // Logged inside the service; nothing actionable here.
     });
 
@@ -130,7 +131,7 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
+  __hono_POST(c.req.raw, c.env, {
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
   }),
 );

@@ -28,7 +28,7 @@ def test_server_manager_does_not_default_stub_embedding_env(
 
     manager = ElizaServerManager(repo_root=tmp_path, port=0)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
     monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
@@ -54,7 +54,7 @@ def test_server_manager_does_not_default_stub_embedding_for_benchmark_harness(
 
     manager = ElizaServerManager(repo_root=tmp_path, port=0)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
     monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
@@ -80,7 +80,7 @@ def test_server_manager_uses_ephemeral_port_by_default(monkeypatch, tmp_path: Pa
     monkeypatch.delenv("ELIZA_BENCH_PORT", raising=False)
     manager = ElizaServerManager(repo_root=tmp_path)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
 
@@ -106,7 +106,7 @@ def test_server_manager_respects_explicit_stub_embedding_override(
 
     manager = ElizaServerManager(repo_root=tmp_path, port=0)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
     monkeypatch.setenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "0")
@@ -132,7 +132,7 @@ def test_server_manager_maps_cerebras_env_to_openai_compatible_settings(
 
     manager = ElizaServerManager(repo_root=tmp_path, port=0)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -174,7 +174,7 @@ def test_server_manager_maps_elizaos_task_agent_to_native_adapter(
 
     manager = ElizaServerManager(repo_root=tmp_path, port=0)
     monkeypatch.setattr(manager.client, "is_ready", lambda: True)
-    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
     monkeypatch.delenv("ELIZA_ACP_DEFAULT_AGENT", raising=False)

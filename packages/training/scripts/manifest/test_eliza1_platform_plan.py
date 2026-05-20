@@ -53,10 +53,14 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     tier_plan = build_plan()["4b"]
     assert "dflash/drafter-4b.gguf" in tier_plan.required_files
     assert "dflash/target-meta.json" in tier_plan.required_files
+    assert "dflash/validation-real.json" in tier_plan.required_files
+    assert "dflash/runtime-smoke-native.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
     small_plan = build_plan()["0_8b"]
     assert "dflash/drafter-0_8b.gguf" in small_plan.required_files
     assert "dflash/target-meta.json" in small_plan.required_files
+    assert "dflash/validation-real.json" in small_plan.required_files
+    assert "dflash/runtime-smoke-native.json" in small_plan.required_files
     assert "licenses/LICENSE.dflash" in small_plan.required_files
 
 
@@ -190,6 +194,12 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
         if rel.split("/", 1)[0]
         in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
     )
+    required_uploaded_paths = sorted(
+        {
+            "bundles/2b/eliza-1.manifest.json",
+            *(f"bundles/2b/{rel}" for rel in plan["2b"].required_files),
+        }
+    )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
             {
@@ -230,7 +240,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                         "status": "uploaded",
                         "commit": "abc123",
                         "url": f"https://huggingface.co/{ELIZA_1_HF_REPO}/commit/abc123",
-                        "uploadedPaths": required_weights,
+                        "uploadedPaths": required_uploaded_paths,
                     },
                 },
             }
@@ -238,6 +248,76 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert blockers["2b"] == []
+
+
+def test_release_status_blockers_rejects_incomplete_uploaded_paths(
+    tmp_path: Path,
+) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    required_weights = sorted(
+        rel
+        for rel in plan["2b"].required_files
+        if rel.split("/", 1)[0]
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
+    )
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "base-v1",
+                "publishEligible": True,
+                "finetuned": False,
+                "sourceModels": {
+                    "text": {"repo": "Qwen/Qwen3.5-2B-Base"},
+                    "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
+                    "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+                    "vad": {"repo": "ggml-org/whisper-vad"},
+                    "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
+                    "drafter": {
+                        "repo": ELIZA_1_HF_REPO,
+                        "file": "bundles/2b/dflash/drafter-2b.gguf",
+                    },
+                },
+                "final": {
+                    "weights": False,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "weights": required_weights,
+                "checksumManifest": "checksums/SHA256SUMS",
+                "hf": {
+                    "repoId": ELIZA_1_HF_REPO,
+                    "repoPath": "bundles/2b",
+                    "status": "uploaded",
+                    "uploadEvidence": {
+                        "repoId": ELIZA_1_HF_REPO,
+                        "pathPrefix": "bundles/2b",
+                        "status": "uploaded",
+                        "commit": "abc123",
+                        "url": f"https://huggingface.co/{ELIZA_1_HF_REPO}/commit/abc123",
+                        "uploadedPaths": [
+                            "bundles/2b/eliza-1.manifest.json",
+                            "bundles/2b/README.md",
+                        ],
+                    },
+                },
+            }
+        )
+    )
+
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+
+    assert any(
+        "hf.uploadEvidence.uploadedPaths missing required path" in item
+        and "bundles/2b/evidence/release.json" in item
+        and "bundles/2b/dflash/drafter-2b.gguf" in item
+        for item in blockers["2b"]
+    )
 
 
 def test_release_status_blockers_base_v1_blocks_pending_upload(

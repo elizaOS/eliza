@@ -171,8 +171,8 @@ export interface EmbedResult {
  * loadable, is the binary on disk). Loading a specific model is `load()`.
  */
 export interface LocalInferenceBackend {
-	/** Identifier — `"capacitor-llama"` or `"llama-server"`. */
-	readonly id: "capacitor-llama" | "llama-server";
+	/** Identifier for the concrete backend implementation. */
+	readonly id: "capacitor-llama" | "node-llama-cpp" | "llama-server";
 	available(): Promise<boolean>;
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
@@ -539,7 +539,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return this.llamaServer.available();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-server" | null {
+	activeBackendId():
+		| "capacitor-llama"
+		| "node-llama-cpp"
+		| "llama-server"
+		| null {
 		return this.active ? this.active.id : null;
 	}
 

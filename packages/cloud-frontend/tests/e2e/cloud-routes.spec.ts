@@ -34,6 +34,9 @@ const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 const HOMEPAGE_TITLE_FALLBACK = /Eliza Cloud - Launch Eliza/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
+  "/os": HOMEPAGE_TITLE_FALLBACK,
+  "/blog": HOMEPAGE_TITLE_FALLBACK,
+  "/sandbox-proxy": HOMEPAGE_TITLE_FALLBACK,
 };
 
 interface CapturedFailures {
@@ -98,10 +101,21 @@ function assertNoFailures(route: string, captured: CapturedFailures) {
 
 const publicRoutes = [
   "/",
+  "/os",
+  "/blog",
   "/login",
   "/terms-of-service",
   "/privacy-policy",
   "/docs",
+  "/sandbox-proxy",
+  "/bsc",
+  "/chat/agent_1",
+  "/auth/success?platform=github",
+  "/auth/cli-login?session=cli_session_1",
+  "/auth/error?reason=auth_failed",
+  "/auth/callback/email",
+  "/app-auth/authorize",
+  "/invite/accept",
   "/payment/pay_req_1",
   "/payment/app-charge/app_1/charge_1",
   "/payment/success?payment_request_id=pay_req_1",
@@ -197,6 +211,31 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path.includes("/characters/agent_1/public")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              name: "Test Agent",
+              username: "test-agent",
+              avatarUrl: null,
+              bio: "A shared test agent.",
+              creatorUsername: "tester",
+            },
+          },
+        });
+      }
+
+      if (path.includes("/api/v1/cli-login/")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            apiKeyPrefix: "eliza_test",
+          },
+        });
+      }
+
       if (path.includes("/sensitive-requests/")) {
         return route.fulfill({
           json: {
@@ -213,6 +252,80 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path === "/api/v1/redemptions/balance") {
+        return route.fulfill({
+          json: {
+            balance: {
+              totalEarned: 250,
+              availableBalance: 125,
+              pendingBalance: 25,
+              totalRedeemed: 100,
+              totalPending: 25,
+              totalConvertedToCredits: 0,
+            },
+            bySource: [
+              { source: "agent", totalEarned: 150, count: 3 },
+              { source: "miniapp", totalEarned: 100, count: 2 },
+            ],
+            recentEarnings: [
+              {
+                id: "earning_1",
+                source: "agent",
+                sourceId: "agent_1",
+                amount: 25,
+                description: "Test agent usage",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            limits: {
+              minRedemptionUsd: 10,
+              maxSingleRedemptionUsd: 1000,
+              userDailyLimitUsd: 1000,
+              userHourlyLimitUsd: 250,
+            },
+            eligibility: {
+              canRedeem: true,
+              dailyLimitRemaining: 1000,
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions/status") {
+        return route.fulfill({
+          json: {
+            operational: true,
+            networks: {
+              base: { available: true },
+              solana: { available: true },
+              ethereum: { available: true },
+              bnb: { available: true },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions") {
+        return route.fulfill({
+          json: {
+            redemptions: [],
+          },
+        });
+      }
+
+      if (path.endsWith("/models/status")) {
+        return route.fulfill({
+          json: {
+            models: [
+              { modelId: "openai/gpt-image-1", available: true },
+              { modelId: "black-forest-labs/flux-pro", available: true },
+              { modelId: "google/imagen-4", available: true },
+            ],
+            timestamp: Date.now(),
+          },
+        });
+      }
+
       if (path.endsWith("/models")) {
         return route.fulfill({
           json: {
@@ -225,6 +338,119 @@ async function installApiMocks(page: Page) {
                 type: "text",
               },
             ],
+          },
+        });
+      }
+
+      if (path === "/api/analytics/breakdown") {
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              filters: {
+                startDate: startDate.toISOString(),
+                endDate: now.toISOString(),
+                granularity: "day",
+                timeRange: "weekly",
+              },
+              overallStats: {
+                totalRequests: 12,
+                totalInputTokens: 1200,
+                totalOutputTokens: 800,
+                totalCost: 0.42,
+                successRate: 0.98,
+              },
+              timeSeriesData: [
+                {
+                  timestamp: startDate.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              costTrending: {
+                currentDailyBurn: 0.06,
+                previousDailyBurn: 0.04,
+                burnChangePercent: 50,
+                projectedMonthlyBurn: 1.8,
+                daysUntilBalanceZero: null,
+                monthlyBurnPercent: 2,
+                monthlyBurnPercentClamped: 2,
+                burnAlertThresholdExceeded: false,
+              },
+              providerBreakdown: [
+                {
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  successRate: 0.98,
+                  percentage: 100,
+                },
+              ],
+              modelBreakdown: [
+                {
+                  model: "gpt-4.1-mini",
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  avgCostPerToken: 0.00021,
+                  successRate: 0.98,
+                },
+              ],
+              trends: {
+                requestsChange: 10,
+                costChange: 5,
+                tokensChange: 8,
+                successRateChange: 1,
+                period: "previous week",
+              },
+              organization: {
+                creditBalance: "100.00",
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/analytics/projections") {
+        const now = new Date();
+        const next = new Date(now);
+        next.setDate(now.getDate() + 1);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              historicalData: [
+                {
+                  timestamp: now.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              projections: [
+                {
+                  timestamp: next.toISOString(),
+                  projectedCost: 0.5,
+                  projectedRequests: 14,
+                  confidenceLower: 0.35,
+                  confidenceUpper: 0.7,
+                },
+              ],
+              alerts: [],
+              creditBalance: 100,
+            },
           },
         });
       }
@@ -296,7 +522,7 @@ for (const route of publicRoutes) {
     // must not silently fall back to the homepage title.
     const pathKey = route.split("?")[0];
     const titleRule = ROUTE_TITLE_RULES[pathKey];
-    if (pathKey !== "/") {
+    if (pathKey !== "/" && !titleRule) {
       // Wait up to 5s for Helmet on the actual page to win over the global
       // RootLayout title. Lazy-loaded routes (Suspense + dynamic import)
       // need a beat after networkidle before their <Helmet> applies.

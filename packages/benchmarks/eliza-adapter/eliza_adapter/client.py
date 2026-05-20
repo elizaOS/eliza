@@ -353,11 +353,11 @@ class ElizaClient:
     # Public API
     # ------------------------------------------------------------------
 
-    def health(self) -> dict[str, object]:
+    def health(self, timeout_s: float | None = None) -> dict[str, object]:
         """GET /api/benchmark/health — check if the server is up."""
         if self._delegate is not None:
             return self._delegate.health()
-        return self._get("/api/benchmark/health")
+        return self._get("/api/benchmark/health", timeout_s=timeout_s)
 
     def reset(
         self,
@@ -622,10 +622,10 @@ class ElizaClient:
             return {"Authorization": f"Bearer {self._token}"}
         return {}
 
-    def _get(self, path: str) -> dict[str, object]:
+    def _get(self, path: str, *, timeout_s: float | None = None) -> dict[str, object]:
         url = f"{self.base_url}{path}"
         req = urllib.request.Request(url, method="GET", headers=self._auth_headers())
-        return self._do(req)
+        return self._do(req, timeout_s=timeout_s)
 
     def _post(self, path: str, body: dict[str, object]) -> dict[str, object]:
         url = f"{self.base_url}{path}"
@@ -640,14 +640,15 @@ class ElizaClient:
         return self._do(req)
 
     @staticmethod
-    def _do(req: urllib.request.Request) -> dict[str, object]:
+    def _do(req: urllib.request.Request, *, timeout_s: float | None = None) -> dict[str, object]:
         # Long ceiling: vending-bench day 1 with a fresh runtime (full plugin
         # init + first slow LLM call) regularly takes >5 min. Override via
         # ELIZA_BENCH_HTTP_TIMEOUT env var if the operator wants a tighter cap.
-        try:
-            timeout_s = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", "1800"))
-        except ValueError:
-            timeout_s = 1800.0
+        if timeout_s is None:
+            try:
+                timeout_s = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", "1800"))
+            except ValueError:
+                timeout_s = 1800.0
         try:
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 raw = resp.read().decode("utf-8")

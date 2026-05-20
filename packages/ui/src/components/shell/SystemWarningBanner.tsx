@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
-import { Z_SYSTEM_BANNER } from "../../lib/floating-layers";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
+
+// z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
+// Kept as a literal so Tailwind v4's source scanner emits the utility.
 
 const AUTO_DISMISS_MS = 20_000;
 
@@ -53,7 +55,7 @@ export function SystemWarningBanner() {
           role="alert"
           aria-live="assertive"
           data-window-titlebar-banner="true"
-          className={`shrink-0 z-[${Z_SYSTEM_BANNER}] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm`}
+          className="shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm"
         >
           <span className="truncate">{message}</span>
           <Button

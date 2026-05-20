@@ -13,7 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -382,6 +382,11 @@ interface LifecycleJobOptions<TData extends object> {
   /** Extra structured-log fields beyond the standard jobId/agentId/orgId. */
   logExtras?: Record<string, unknown>;
   /**
+   * Extra predicates that make in-flight reuse match operation-specific
+   * inputs, e.g. logs tail length or snapshot type.
+   */
+  idempotencyPredicates?: SQL[];
+  /**
    * Called inside the transaction after the sandbox row is fetched and
    * before the existing-job lookup. Throw to abort the enqueue (e.g.
    * provision's `expectedUpdatedAt` race check).
@@ -459,6 +464,7 @@ export class ProvisioningJobService {
             eq(jobs.type, opts.jobType),
             eq(jobs.organization_id, opts.organizationId),
             eq(jobs.agent_id, opts.agentId),
+            ...(opts.idempotencyPredicates ?? []),
             sql`${jobs.status} IN ('pending', 'in_progress')`,
           ),
         )
@@ -749,6 +755,7 @@ export class ProvisioningJobService {
       estimatedDurationMs: 15_000,
       logName: "agent_logs",
       logExtras: { tail: params.tail },
+      idempotencyPredicates: [sql`${jobs.data}->>'tail' = ${String(params.tail)}`],
     });
   }
 
@@ -787,6 +794,7 @@ export class ProvisioningJobService {
       estimatedDurationMs: 45_000,
       logName: "agent_snapshot",
       logExtras: { snapshotType },
+      idempotencyPredicates: [sql`${jobs.data}->>'snapshotType' = ${snapshotType}`],
     });
   }
 

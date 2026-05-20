@@ -1,5 +1,7 @@
 import {
+  createCloudAgent,
   pollSandboxStatus,
+  startAgentProvisioning,
   tickProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
@@ -13,39 +15,21 @@ test.describe("provision", () => {
     // its CloudSetupSession flow varies build-to-build. The end-state contract
     // is what matters: a provisioning job exists, the cron tick processes it,
     // the sandbox ends `running`.
-    const createRes = await fetch(`${stack.urls.api}/api/v1/eliza/agents`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${seededUser.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: "e2e-provision-agent",
-        plan: "starter",
-      }),
-    });
-
-    expect(
-      [200, 201, 202],
-      `agent create returned ${createRes.status}: ${await createRes.clone().text()}`,
-    ).toContain(createRes.status);
-
-    const created = (await createRes.json()) as {
-      id?: string;
-      sandboxId?: string;
-      data?: { id?: string; sandboxId?: string };
-    };
-    const sandboxId =
-      created.sandboxId ??
-      created.id ??
-      created.data?.sandboxId ??
-      created.data?.id;
-    expect(sandboxId, "expected sandbox id from create response").toBeTruthy();
+    const sandboxId = await createCloudAgent(
+      { apiUrl: stack.urls.api },
+      seededUser.apiKey,
+      "e2e-provision-agent",
+    );
+    await startAgentProvisioning(
+      { apiUrl: stack.urls.api },
+      seededUser.apiKey,
+      sandboxId,
+    );
 
     await pollSandboxStatus(
       { apiUrl: stack.urls.api },
       seededUser.apiKey,
-      sandboxId as string,
+      sandboxId,
       "running",
       {
         timeoutMs: 30_000,

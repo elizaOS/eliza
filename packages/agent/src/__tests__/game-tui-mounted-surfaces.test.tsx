@@ -34,7 +34,7 @@ function stubComponent(name: string) {
 
 const uiMock = vi.hoisted(() => ({
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, props.children),
+    React.createElement("button", { type: "button", ...props }, props.children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   client: { sendAppRunMessage, controlAppRun },

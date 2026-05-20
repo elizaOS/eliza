@@ -7,10 +7,18 @@ const routePhoneMessage = mock(async () => ({
   userId: "user-1",
   organizationId: "org-1",
 }));
-const registerPhoneGatewayDevice = mock(async () => ({
-  id: "gateway-device-1",
-  registered: true,
-}));
+type RegisterPhoneGatewayDeviceResult = {
+  id: string | null;
+  registered: boolean;
+  skippedReason?: string;
+};
+
+const registerPhoneGatewayDevice = mock(
+  async (): Promise<RegisterPhoneGatewayDeviceResult> => ({
+    id: "gateway-device-1",
+    registered: true,
+  }),
+);
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
@@ -26,10 +34,15 @@ const { default: app } = await import("./route");
 
 const env = {
   BLUEBUBBLES_GATEWAY_SECRET: "test-secret",
+  BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+14159611510",
 };
 
-function request(body: unknown, headers: Record<string, string> = {}) {
-  return new Request("https://api.example.test/", {
+function request(
+  body: unknown,
+  headers: Record<string, string> = {},
+  url = "https://api.example.test/",
+) {
+  return new Request(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -107,6 +120,27 @@ describe("BlueBubbles webhook", () => {
     expect(registerPhoneGatewayDevice).not.toHaveBeenCalled();
   });
 
+  test("skips unsupported BlueBubbles events before gateway registration", async () => {
+    const response = await app.fetch(
+      request(
+        {
+          ...inboundPayload,
+          type: "message.updated",
+        },
+        { "x-eliza-gateway-secret": "test-secret" },
+      ),
+      env,
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      skipped: "unsupported_event",
+      type: "message.updated",
+    });
+    expect(routePhoneMessage).not.toHaveBeenCalled();
+    expect(registerPhoneGatewayDevice).not.toHaveBeenCalled();
+  });
+
   test("routes inbound BlueBubbles messages through the shared Blooio phone gateway", async () => {
     const response = await app.fetch(
       request(inboundPayload, { "x-eliza-gateway-secret": "test-secret" }),
@@ -165,6 +199,138 @@ describe("BlueBubbles webhook", () => {
         phoneGatewayDeviceRegistered: true,
       },
     });
+  });
+
+  test("routes inbound messages even when gateway device registration is unavailable", async () => {
+    registerPhoneGatewayDevice.mockResolvedValueOnce({
+      id: null,
+      registered: false,
+      skippedReason: "write_failed",
+    } satisfies RegisterPhoneGatewayDeviceResult);
+
+    const response = await app.fetch(
+      request(inboundPayload, { "x-eliza-gateway-secret": "test-secret" }),
+      env,
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      handled: true,
+      reason: "unknown_owner",
+      gatewayDeviceId: null,
+      gatewayDeviceRegistered: false,
+    });
+    expect(routePhoneMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          phoneGatewayDeviceRegistered: false,
+        }),
+      }),
+    );
+  });
+
+  test("routes inbound messages even when gateway device registration throws", async () => {
+    registerPhoneGatewayDevice.mockRejectedValueOnce(
+      new Error("gateway table unavailable"),
+    );
+
+    const response = await app.fetch(
+      request(inboundPayload, { "x-eliza-gateway-secret": "test-secret" }),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      handled: true,
+      reason: "unknown_owner",
+      gatewayDeviceId: null,
+      gatewayDeviceRegistered: false,
+    });
+    expect(routePhoneMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          phoneGatewayDeviceId: undefined,
+          phoneGatewayDeviceRegistered: false,
+        }),
+      }),
+    );
+  });
+
+  test("pins gateway routing to 415-961-1510 when payload metadata names the personal line", async () => {
+    const response = await app.fetch(
+      request(
+        {
+          ...inboundPayload,
+          data: {
+            ...inboundPayload.data,
+            metadata: {
+              localPhoneNumber: "+14153024399",
+              phoneNumber: "+14153024399",
+              phoneAccountId: "+14153024399",
+              phoneAccountLabel: "Personal line (+14153024399)",
+            },
+          },
+        },
+        { "x-eliza-gateway-secret": "test-secret" },
+      ),
+      env,
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      handled: true,
+      gatewayDeviceRegistered: true,
+    });
+    expect(registerPhoneGatewayDevice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phoneNumber: "+14159611510",
+        phoneAccountId: "+14159611510",
+        phoneAccountLabel: "+14159611510",
+      }),
+    );
+    expect(routePhoneMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "+14159611510",
+        metadata: expect.objectContaining({
+          localPhoneNumber: "+14159611510",
+          phoneNumber: "+14159611510",
+          phoneAccountId: "+14159611510",
+          phoneAccountLabel: "+14159611510",
+        }),
+      }),
+    );
+  });
+
+  test("uses bridge query/header identity when the Blooio compatibility route forwards BlueBubbles", async () => {
+    const response = await app.fetch(
+      request(
+        inboundPayload,
+        {
+          "x-eliza-gateway-secret": "test-secret",
+          "x-eliza-bridge": "bluebubbles",
+        },
+        "https://api.example.test/?bridge=bluebubbles",
+      ),
+      env,
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      gatewayDeviceRegistered: true,
+    });
+    expect(registerPhoneGatewayDevice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bridgeId: "bluebubbles",
+      }),
+    );
+    expect(routePhoneMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          bluebubblesBridgeId: "bluebubbles",
+        }),
+      }),
+    );
   });
 
   test("preserves onboarding replies after the user provides a preferred name", async () => {

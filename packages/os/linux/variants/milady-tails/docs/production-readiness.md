@@ -57,8 +57,10 @@ must stay visible:
 
 - clean checkouts do not contain the staged app payload; a build must run
   `just milady-app` before a full ISO build
-- app/runtime update materialization still needs a stronger no-follow,
-  root-owned quarantine/copy path before production updater use
+- app/runtime update materialization now verifies a complete signed file
+  inventory, rejects symlinks, re-hashes files while copying, and selects
+  only a root-owned materialized runtime store; production still needs real
+  release keys, downloader UX, revocation metadata, and rollback tests
 - update promotion health checks currently rely on unauthenticated local
   loopback probes and need a stronger promotion token or root-owned state
   handoff
@@ -68,11 +70,10 @@ must stay visible:
   release blockers in strict security smoke
 - generated optional-plugin stubs and live embedding fallback are demo
   compatibility glue, not final production packaging
-- residual visible upstream help/support/update links still exist in
-  low-frequency inherited surfaces, including Tor Connection Assistant, USB
-  Cloner help, WhisperBack, low-RAM/UEFI/error notifications, and inherited
-  updater/security messages. These should be rebranded or routed to elizaOS
-  support/update infrastructure before a polished public release.
+- common inherited help/support/update surfaces are routed to elizaOS
+  docs/support or gated until elizaOS infrastructure exists. Internal Tails
+  module names, service users, labels such as `TailsData`, and audited
+  updater plumbing remain where renaming would break the live-OS stack.
 - Phase 9's earlier passwordless apt/sudoers direction is superseded by the
   capability-broker security model. Privileged package, service, network,
   and device actions need exact broker schemas, user approval or enterprise
@@ -127,8 +128,8 @@ Clear near-term wins before marketing this as a production AI OS:
 4. Prove Privacy Mode behavior for agent, renderer, embedded browser, and
    OAuth surfaces.
 5. Replace demo runtime staging with deterministic signed app artifacts.
-6. Harden update materialization with no-follow copy semantics or a
-   root-owned quarantine.
+6. Add a production promotion token or root-owned health handoff for signed
+   app/runtime updates.
 7. Generate and publish release SBOM, license bundle, provenance, checksums,
    signatures, and known-gaps notes.
 
@@ -205,7 +206,10 @@ Current checked persistence policy:
 
 Current checked update policy:
 
-- inherited Tails IUK signature-verification tests must remain present
+- inherited Tails IUK signature-verification tests must remain present, but
+  automatic base OS update checks are gated by
+  `/etc/elizaos/base-updates-enabled` until elizaOS owns the feed, signing
+  key, and release process
 - app/runtime verifier requires a detached signature, complete file inventory,
   hash validation, and materialization into a root-owned runtime store before
   launcher selection

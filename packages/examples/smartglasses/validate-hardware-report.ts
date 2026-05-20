@@ -25,11 +25,13 @@ if ((import.meta as { main?: boolean }).main) {
           ok: false,
           reportPath,
           failures,
-          checks: report.checks,
-          status: report.status,
-        },
-        null,
-        2,
+        checks: report.checks,
+        status: report.status,
+        headsetState: report.headsetState,
+        setupHint: report.setupHint,
+      },
+      null,
+      2,
       ),
     );
     process.exit(1);
@@ -46,6 +48,7 @@ if ((import.meta as { main?: boolean }).main) {
         events: report.events.length,
         audioChunks: report.audio.length,
         serial: report.status?.lastSerialNumber ?? null,
+        headsetState: report.headsetState,
         audioEncoding: report.status?.lastAudioEncoding ?? null,
         audioSequenceGaps: report.status?.audioSequenceGaps ?? null,
       },
@@ -59,6 +62,31 @@ export function validateHardwareReport(
   report: HardwareEvidenceReport,
 ): string[] {
   const failures = [...missingHardwareEvidence(report)];
+  const headsetState = report.headsetState ?? {
+    physical: report.status?.physicalState ?? null,
+    battery: report.status?.batteryState ?? null,
+    device: report.status?.deviceState ?? null,
+  };
+  const physical = headsetState.physical;
+  const battery = headsetState.battery;
+  const physicalCradleStates = new Set([
+    "cradle_open",
+    "cradle_closed",
+    "charged_in_cradle",
+  ]);
+  const batteryCradleStates = new Set([
+    "glasses_fully_charged",
+    "cradle_charging_cable_changed",
+    "cradle_fully_charged",
+  ]);
+  if (
+    physical !== "wearing" &&
+    ((physical && physicalCradleStates.has(physical)) ||
+      (battery && batteryCradleStates.has(battery)))
+  ) {
+    failures.push("headsetInCradle");
+  }
+  if (physical !== "wearing") failures.push("wearingStateNotObserved");
   if (!report.ok) failures.push("reportNotMarkedOk");
   if (!report.finishedAt) failures.push("missingFinishedAt");
   if (!report.status?.connected) failures.push("statusNotConnected");

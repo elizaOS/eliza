@@ -53,7 +53,10 @@ import {
 } from "../protocol.js";
 import { getGlobalEvenBridgeTransport } from "../transport/even-bridge.js";
 import { getNobleG1Transport } from "../transport/noble.js";
-import type { SmartglassesTransport } from "../transport/types.js";
+import type {
+  SmartglassesTransport,
+  SmartglassesWifiResult,
+} from "../transport/types.js";
 import { getWebBluetoothG1Transport } from "../transport/web-bluetooth.js";
 
 export const SMARTGLASSES_SERVICE_NAME = "smartglasses";
@@ -95,6 +98,8 @@ export interface SmartglassesStatus {
   batteryState: string | null;
   deviceState: string | null;
   lastSerialNumber: string | null;
+  wifiAvailable: boolean;
+  lastWifiStatus: SmartglassesWifiResult | null;
 }
 
 type TranscriptCallback = (text: string, isFinal: boolean) => void;
@@ -152,6 +157,7 @@ export class SmartglassesService extends Service {
   private batteryState: string | null = null;
   private deviceState: string | null = null;
   private lastSerialNumber: string | null = null;
+  private lastWifiStatus: SmartglassesWifiResult | null = null;
   private displaySeq = 0;
   private heartbeatSeq = 0;
   private dashboardSeq = 0;
@@ -195,8 +201,16 @@ export class SmartglassesService extends Service {
   async connect(): Promise<void> {
     if (!this.transport)
       throw new Error("No smartglasses transport is configured");
-    if (this.transport.isConnected()) return;
+    if (this.transport.isConnected()) {
+      this.attachTransportListeners();
+      return;
+    }
     await this.transport.connect();
+    this.attachTransportListeners();
+  }
+
+  private attachTransportListeners(): void {
+    if (!this.transport || this.disposers.length > 0) return;
     this.disposers.push(
       this.transport.onEvent((event) => void this.handleEvent(event)),
     );
@@ -253,6 +267,8 @@ export class SmartglassesService extends Service {
       batteryState: this.batteryState,
       deviceState: this.deviceState,
       lastSerialNumber: this.lastSerialNumber,
+      wifiAvailable: this.isWifiAvailable(),
+      lastWifiStatus: this.lastWifiStatus,
     };
   }
 
@@ -492,6 +508,31 @@ export class SmartglassesService extends Service {
 
   async setGlassesWearDetection(enabled: boolean): Promise<void> {
     await this.writeBoth(encodeGlassesWear(enabled));
+  }
+
+  async scanWifi(): Promise<SmartglassesWifiResult> {
+    const wifi = this.requireWifiCapability("scanWifi");
+    const result = await wifi.scanWifi();
+    this.lastWifiStatus = result;
+    return result;
+  }
+
+  async getWifiStatus(): Promise<SmartglassesWifiResult> {
+    const wifi = this.requireWifiCapability("getWifiStatus");
+    const result = await wifi.getWifiStatus();
+    this.lastWifiStatus = result;
+    return result;
+  }
+
+  async configureWifi(
+    ssid: string,
+    password: string,
+  ): Promise<SmartglassesWifiResult> {
+    if (!ssid.trim()) throw new Error("Wi-Fi SSID is required");
+    const wifi = this.requireWifiCapability("configureWifi");
+    const result = await wifi.configureWifi(ssid.trim(), password);
+    this.lastWifiStatus = result;
+    return result;
   }
 
   async startNavigation(): Promise<void> {
@@ -792,6 +833,32 @@ export class SmartglassesService extends Service {
     await this.transport.write(side, packet);
   }
 
+  private requireWifiCapability<
+    K extends "scanWifi" | "getWifiStatus" | "configureWifi",
+  >(
+    method: K,
+  ): SmartglassesTransport & Required<Pick<SmartglassesTransport, K>> {
+    if (!this.transport)
+      throw new Error("No smartglasses transport is configured");
+    if (!this.isWifiAvailable() || !this.transport[method]) {
+      throw new Error(
+        "Wi-Fi is only available through a native smartglasses bridge transport",
+      );
+    }
+    return this.transport as SmartglassesTransport &
+      Required<Pick<SmartglassesTransport, K>>;
+  }
+
+  private isWifiAvailable(): boolean {
+    if (!this.transport) return false;
+    if (this.transport.supportsWifi) return this.transport.supportsWifi();
+    return Boolean(
+      this.transport.scanWifi ||
+        this.transport.getWifiStatus ||
+        this.transport.configureWifi,
+    );
+  }
+
   private nextDisplaySeq(): number {
     const seq = this.displaySeq & 0xff;
     this.displaySeq = (this.displaySeq + 1) & 0xff;
@@ -947,6 +1014,13 @@ function readConnectionReadyModeSetting(
     value === "same-init"
   )
     return "official";
+  if (
+    value === "android-f4" ||
+    value === "android" ||
+    value === "even-demo-android" ||
+    value === "f4"
+  )
+    return "android-f4";
   return "lens-specific";
 }
 

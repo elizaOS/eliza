@@ -8,8 +8,11 @@ from typing import Any
 
 from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
@@ -119,9 +122,24 @@ def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tu
         return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
     if adapter_id == "hyperliquid_bench" and not allowed_harnesses:
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+    if adapter_id == "terminal_bench" and not allowed_harnesses:
+        return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+    if (
+        adapter_id
+        in {
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }
+        and not allowed_harnesses
+    ):
+        return HERMES_SANDBOX_UNAVAILABLE_REASON
     if adapter_id == "vision_language":
         if not allowed_harnesses:
             return VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+        if harness in {"hermes", "openclaw"}:
+            return VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
         return VISION_LANGUAGE_FIXED_RUNTIME_REASON
     allowed = ", ".join(allowed_harnesses) or "none"
     return f"harness '{harness}' not in adapter compatibility ({allowed})"

@@ -109,6 +109,20 @@ try {
       content: { text: '{"op":"g1_setup","json":{"calendar_enable":true}}' },
     } as never,
   );
+  const wifiScanResult = await controlAction.handler(
+    runtime as never,
+    {
+      content: { text: '{"op":"wifi_scan"}' },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: '{"op":"wifi_configure","ssid":"PackageNet","password":"secret"}',
+      },
+    } as never,
+  );
   await controlAction.handler(
     runtime as never,
     {
@@ -180,6 +194,14 @@ try {
     {
       content: {
         text: '{"op":"connection_ready","initMode":"official"}',
+      },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: '{"op":"connection_ready","initMode":"android-f4"}',
       },
     } as never,
   );
@@ -280,11 +302,43 @@ try {
   ) {
     throw new Error("Package smoke did not send official same-init packets");
   }
+  if (
+    transport.writes.filter(
+      (write) =>
+        write.data[0] === G1Command.RightInit &&
+        write.data[1] === 0x01 &&
+        (write.side === "left" || write.side === "right"),
+    ).length < 3
+  ) {
+    throw new Error("Package smoke did not send Android F4 same-init packets");
+  }
   if (!commands.includes(G1Command.Heartbeat)) {
     throw new Error("Package smoke did not send heartbeat packets");
   }
   if (!commands.includes(G1Command.DashboardContent)) {
     throw new Error("Package smoke did not send dashboard content packets");
+  }
+  if (transport.wifiRequests.at(-2)?.op !== "scan") {
+    throw new Error("Package smoke did not scan Wi-Fi through control action");
+  }
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({
+      op: "configure",
+      ssid: "PackageNet",
+      password: "secret",
+    })
+  ) {
+    throw new Error(
+      "Package smoke did not configure Wi-Fi through control action",
+    );
+  }
+  if (
+    !wifiScanResult.values ||
+    (wifiScanResult.values.operationResult as { status?: string } | undefined)
+      ?.status !== "mock-wifi-ready"
+  ) {
+    throw new Error("Package smoke did not return Wi-Fi action status");
   }
   if (!commands.includes(G1Command.Navigation)) {
     throw new Error("Package smoke did not send navigation packets");
@@ -339,6 +393,16 @@ try {
   if (!String(status.text).includes("serial=G1RIGHTSERIAL001")) {
     throw new Error("Package smoke provider did not report serial number");
   }
+  if (!String(status.text).includes("wifi=available")) {
+    throw new Error("Package smoke provider did not report Wi-Fi capability");
+  }
+  if (
+    !String(status.text).includes(
+      "wifiStatus=mock credentials sent for PackageNet",
+    )
+  ) {
+    throw new Error("Package smoke provider did not report Wi-Fi status");
+  }
 
   console.log(
     JSON.stringify(
@@ -350,6 +414,7 @@ try {
         services: smartglassesPlugin.services?.length ?? 0,
         emitted: emitted.map((entry) => entry.event),
         status: status.text,
+        wifiRequests: transport.wifiRequests,
         writes: transport.writes.length,
       },
       null,

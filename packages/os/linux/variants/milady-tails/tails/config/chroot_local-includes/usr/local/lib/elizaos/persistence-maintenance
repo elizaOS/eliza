@@ -6,7 +6,7 @@ run_dir=/run/elizaos
 flag="${run_dir}/persistence-maintenance"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
-units="elizaos-agent.service elizaos-renderer.service elizaos-pill.service milady.service"
+units="elizaos-agent.service elizaos-renderer.service milady.service"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -34,7 +34,6 @@ start_elizaos_units() {
     user_systemctl reset-failed ${units}
     user_systemctl start --no-block elizaos-agent.service
     user_systemctl start --no-block elizaos-renderer.service
-    user_systemctl start --no-block elizaos-pill.service
     user_systemctl start --no-block milady.service
 }
 

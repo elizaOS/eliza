@@ -20,9 +20,11 @@ from typing import Any, Mapping
 try:
     from scripts.manifest.audit_hf_eliza1_release import audit_hf_release
     from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS
+    from scripts.manifest.eliza1_platform_plan import text_artifact_name
 except ImportError:  # pragma: no cover - script execution path
     from audit_hf_eliza1_release import audit_hf_release  # type: ignore
     from eliza1_manifest import ELIZA_1_TIERS  # type: ignore
+    from eliza1_platform_plan import text_artifact_name  # type: ignore
 
 TIER_ORDER: tuple[str, ...] = ELIZA_1_TIERS
 BACKEND_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda", "rocm")
@@ -126,49 +128,131 @@ def _eval_suite_command(eval_python: str, bundle: str, tier: str, *extra: str) -
     return " ".join(args)
 
 
+def _process_guard_command(eval_python: str) -> str:
+    return f"{eval_python} packages/training/scripts/manifest/release_process_guard.py"
+
+
+def _guarded(eval_python: str, command: str) -> str:
+    return f"{_process_guard_command(eval_python)} && {command}"
+
+
 def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str, eval_python: str) -> str:
     bundle = _bundle_dir(bundle_root, tier)
     if backend == "cpu":
-        return (
+        return _guarded(
+            eval_python,
             f"make -C {verify_dir} reference-test && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cpu', '--threads', '8')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cpu', '--threads', '8')}",
         )
     if backend == "metal":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}",
         )
     if backend == "vulkan":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}",
         )
     if backend == "cuda":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}",
         )
     if backend == "rocm":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}",
         )
     raise ValueError(f"unsupported backend {backend!r}")
 
 
-def _imagegen_command(accelerator: str) -> str:
-    return (
+def _imagegen_command(accelerator: str, eval_python: str) -> str:
+    return _guarded(
+        eval_python,
         f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
-        "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json && "
+        "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json "
+        f"| python3 -c \"import json,sys; p=json.load(sys.stdin); "
+        f"assert p.get('available') is True, p; "
+        f"assert p.get('requiredAccelerator') == '{accelerator}', p; "
+        f"assert '{accelerator}' in p.get('accelerators', []), p\" && "
         "bun test plugins/plugin-local-inference/__tests__/imagegen-routing.test.ts "
         "plugins/plugin-local-inference/__tests__/imagegen-publishing.test.ts "
         "plugins/plugin-local-inference/__tests__/imagegen-sd-cpp-probe.test.ts && "
         f"publish evidence/imagegen/{accelerator}.json and refresh "
-        "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass"
+        "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass",
+    )
+
+
+def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
+    bundle = _bundle_dir(bundle_root, tier)
+    validation_tier = "27b" if tier == "27b-256k" else tier
+    target_gguf = Path(bundle) / text_artifact_name(tier, "256k")
+    return _guarded(
+        eval_python,
+        f"{eval_python} packages/training/scripts/dflash/validate_drafter.py "
+        f"--tier {validation_tier} "
+        f"--target-gguf {target_gguf} "
+        f"--drafter-gguf {bundle}/dflash/drafter-{tier}.gguf "
+        "--skip-acceptance-rollout "
+        f"--report-out {bundle}/dflash/validation-real.json && "
+        "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs "
+        f"--tier {tier} "
+        f"--target-model {target_gguf} "
+        f"--drafter-model {bundle}/dflash/drafter-{tier}.gguf "
+        "--spec-type dflash "
+        "--bench --bench-tokens 128 --bench-context 128 "
+        f"--report {bundle}/dflash/runtime-smoke-native.json "
+        f"--bench-report {bundle}/evals/dflash-native-bench.json && "
+        f"{_eval_suite_command(eval_python, bundle, tier, '--threads', '8', '--timeout', '600')} && "
+        f"{eval_python} packages/training/scripts/manifest/dflash_tuning_report.py "
+        f"{bundle} --out {bundle}/evals/dflash-tuning-report.json && "
+        f"publish bundles/{tier}/dflash/target-meta.json, "
+        f"bundles/{tier}/dflash/validation-real.json, "
+        f"bundles/{tier}/dflash/runtime-smoke-native.json, and "
+        f"bundles/{tier}/evals/dflash-accept.json only after native runtime acceptanceRate and speedup meet the release gates",
+    )
+
+
+def _finetune_command(eval_python: str) -> str:
+    return _guarded(
+        eval_python,
+        "hf download elizaos/eliza-1-training --type dataset --include 'sft/0_8b/*' "
+        "--local-dir /tmp/eliza-1-training && "
+        "cd packages/training && "
+        "uv run --extra train python scripts/run_pipeline.py "
+        "--registry-key qwen3.5-0.8b "
+        "--train-file /tmp/eliza-1-training/sft/0_8b/train.jsonl "
+        "--val-file /tmp/eliza-1-training/sft/0_8b/val.jsonl "
+        "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl "
+        "--epochs 1 --run-name eliza-1-0_8b-finetuned-v2 && "
+        "uv run --extra train python scripts/benchmark/native_tool_call_bench.py "
+        "--model checkpoints/eliza-1-0_8b-finetuned-v2/final "
+        "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl "
+        "--out-dir /tmp/eliza-1-finetune-native-tool-call && "
+        "publish bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf plus "
+        "evidence/training/fine-tune-comparison.json only after baseline-vs-finetuned "
+        "eliza_bench, native_tool_call, and structured_response reports pass",
+    )
+
+
+def _release_evidence_command(bundle_root: str, tier: str, eval_python: str) -> str:
+    bundle = _bundle_dir(bundle_root, tier)
+    bundles_root = str(Path(bundle).parent)
+    return (
+        f"{eval_python} packages/training/scripts/manifest/finalize_eliza1_evidence.py {bundle} && "
+        f"{eval_python} packages/training/scripts/publish/publish_eliza1_model_repo.py "
+        f"--bundles-root {bundles_root} --tier {tier} --dry-run && "
+        f"publish bundles/{tier}/evidence/release.json and bundles/{tier}/checksums/SHA256SUMS "
+        "only after final flags are true or the releaseState/base-v1 exception is explicitly satisfied"
     )
 
 
@@ -204,6 +288,60 @@ def build_queue(
                     "with huggingface_hub.HfApi.create_commit"
                 ),
                 evidence=tuple(f"bundles/{tier}/{path}" for path in missing),
+                source=name,
+                detail=detail,
+            )
+        )
+
+    for check in _failed_checks(summary, "other"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        tier = _parse_tier(name)
+        if not tier or "manifest files cover required runtime artifacts" not in name:
+            continue
+        missing = tuple(part.strip() for part in detail.split(",") if part.strip())
+        items.append(
+            QueueItem(
+                id=f"{tier}:manifest-runtime-surface",
+                tier=tier,
+                category="manifestIntegrity",
+                priority=20 + _tier_sort_key(tier),
+                requires_hardware=False,
+                command=(
+                    f"refresh bundles/{tier}/eliza-1.manifest.json so files.* includes "
+                    "the listed runtime artifacts with final sha256 values"
+                ),
+                evidence=(
+                    f"bundles/{tier}/eliza-1.manifest.json",
+                    *(f"bundles/{tier}/{path}" for path in missing),
+                ),
+                source=name,
+                detail=detail,
+            )
+        )
+
+    for check in _failed_checks(summary, "checksumIntegrity"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        tier = _parse_tier(name)
+        if not tier:
+            continue
+        missing = tuple(part.strip() for part in detail.split(",") if part.strip())
+        items.append(
+            QueueItem(
+                id=f"{tier}:checksum-surface",
+                tier=tier,
+                category="checksumIntegrity",
+                priority=30 + _tier_sort_key(tier),
+                requires_hardware=False,
+                command=(
+                    f"refresh bundles/{tier}/checksums/SHA256SUMS after the listed "
+                    "runtime artifacts exist and match the manifest"
+                ),
+                evidence=(
+                    f"bundles/{tier}/checksums/SHA256SUMS",
+                    *(f"bundles/{tier}/{path}" for path in missing),
+                ),
                 source=name,
                 detail=detail,
             )
@@ -252,14 +390,17 @@ def build_queue(
                 priority=200 + _tier_sort_key(tier),
                 requires_hardware=False,
                 command=(
-                    _eval_suite_command(
+                    _guarded(
                         eval_python,
-                        bundle,
-                        tier,
-                        "--threads",
-                        "8",
-                        "--timeout",
-                        "600",
+                        _eval_suite_command(
+                            eval_python,
+                            bundle,
+                            tier,
+                            "--threads",
+                            "8",
+                            "--timeout",
+                            "600",
+                        ),
                     )
                 ),
                 evidence=(
@@ -288,7 +429,7 @@ def build_queue(
                     category="imagegenEvidence",
                     priority=priority,
                     requires_hardware=requires_hardware,
-                    command=_imagegen_command(accelerator),
+                    command=_imagegen_command(accelerator, eval_python),
                     evidence=(
                         "evidence/imagegen/sd-cpp-runtime.json",
                         f"evidence/imagegen/{accelerator}.json",
@@ -297,6 +438,79 @@ def build_queue(
                     detail=detail,
                 )
             )
+
+    for check in _failed_checks(summary, "mtpDrafter"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        tier = _parse_tier(name)
+        if not tier:
+            continue
+        items.append(
+            QueueItem(
+                id=f"{tier}:mtp-drafter",
+                tier=tier,
+                category="mtpDrafter",
+                priority=400 + _tier_sort_key(tier),
+                requires_hardware=True,
+                command=_mtp_command(bundle_root, tier, eval_python),
+                evidence=(
+                    f"bundles/{tier}/dflash/target-meta.json",
+                    f"bundles/{tier}/dflash/validation-real.json",
+                    f"bundles/{tier}/dflash/runtime-smoke-native.json",
+                    f"bundles/{tier}/evals/dflash-accept.json",
+                    f"bundles/{tier}/evals/dflash-tuning-report.json",
+                ),
+                source=name,
+                detail=detail,
+            )
+        )
+
+    for check in _failed_checks(summary, "fineTuneComparison"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        items.append(
+            QueueItem(
+                id="0_8b:fine-tune-comparison",
+                tier="0_8b",
+                category="fineTuneComparison",
+                priority=500,
+                requires_hardware=True,
+                command=_finetune_command(eval_python),
+                evidence=(
+                    "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf",
+                    "evidence/training/0_8b/eliza-bench.json",
+                    "evidence/training/0_8b/native-tool-call.json",
+                    "evidence/training/0_8b/structured-response.json",
+                    "evidence/training/fine-tune-comparison.json",
+                ),
+                source=name,
+                detail=detail,
+            )
+        )
+
+    for check in _failed_checks(summary, "releaseEvidence"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        tier = _parse_tier(name)
+        if not tier:
+            continue
+        items.append(
+            QueueItem(
+                id=f"{tier}:release-evidence",
+                tier=tier,
+                category="releaseEvidence",
+                priority=600 + _tier_sort_key(tier),
+                requires_hardware=True,
+                command=_release_evidence_command(bundle_root, tier, eval_python),
+                evidence=(
+                    f"bundles/{tier}/evidence/release.json",
+                    f"bundles/{tier}/checksums/SHA256SUMS",
+                    f"bundles/{tier}/eliza-1.manifest.json",
+                ),
+                source=name,
+                detail=detail,
+            )
+        )
 
     return sorted(items, key=lambda item: (item.priority, item.id))
 
@@ -383,6 +597,9 @@ def main(argv: list[str] | None = None) -> int:
             "backendVerification",
             "manifestEvalGates",
             "imagegenEvidence",
+            "mtpDrafter",
+            "fineTuneComparison",
+            "releaseEvidence",
         ),
         help="Only emit one category of work.",
     )

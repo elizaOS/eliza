@@ -11,19 +11,20 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   encodeBrightness,
   encodeClearScreen,
   encodeConnectionReady,
   encodeGetSerial,
-  encodeMicCommand,
   encodeSilentMode,
   encodeTextPackets,
   type G1Event,
   type GlassSide,
   paginateDisplayText,
 } from "../protocol.js";
+import { EvenBridgeTransport } from "../transport/even-bridge.js";
+import type { SmartglassesTransport } from "../transport/types.js";
 import {
   getWebBluetoothG1Transport,
   WebBluetoothG1Transport,
@@ -50,9 +51,18 @@ interface HardwareReport {
     status: string;
     networks: string[];
   };
+  headsetState: {
+    physical: string | null;
+    battery: string | null;
+    device: string | null;
+  };
 }
 
 type BridgeResult = unknown;
+type BridgeSubscription =
+  | undefined
+  | (() => void)
+  | { unsubscribe?: () => void; off?: () => void; remove?: () => void };
 
 type SmartglassesBridge = {
   requestWifiScan?: () => Promise<BridgeResult> | BridgeResult;
@@ -65,7 +75,37 @@ type SmartglassesBridge = {
     ssid: string,
     password: string,
   ) => Promise<BridgeResult> | BridgeResult;
+  audioControl?: (enabled: boolean) => Promise<BridgeResult> | BridgeResult;
+  clearDisplay?: () => Promise<BridgeResult> | BridgeResult;
+  createStartUpPageContainer?: (
+    container: Record<string, unknown>,
+  ) => Promise<BridgeResult> | BridgeResult;
+  displayText?: (
+    params: Record<string, unknown>,
+  ) => Promise<BridgeResult> | BridgeResult;
+  onEvent?: (callback: (event: unknown) => void) => BridgeSubscription;
+  onEvenHubEvent?: (callback: (event: unknown) => void) => BridgeSubscription;
+  rebuildPageContainer?: (
+    container: Record<string, unknown>,
+  ) => Promise<BridgeResult> | BridgeResult;
+  sendStartUpPage?: (
+    container: unknown,
+  ) => Promise<BridgeResult> | BridgeResult;
+  setMicState?: (
+    sendPcmData: boolean,
+    sendTranscript: boolean,
+    bypassVad: boolean,
+  ) => Promise<BridgeResult> | BridgeResult;
+  write?: (
+    side: GlassSide,
+    data: Uint8Array,
+  ) => Promise<BridgeResult> | BridgeResult;
+  send?: (
+    side: GlassSide,
+    data: Uint8Array,
+  ) => Promise<BridgeResult> | BridgeResult;
   rawBridge?: {
+    audioControl?: (enabled: boolean) => Promise<BridgeResult> | BridgeResult;
     callEvenApp?: (
       name: string,
       payload?: Record<string, unknown>,
@@ -136,9 +176,49 @@ function normalizeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function getBridge(): SmartglassesBridge | null {
   if (typeof window === "undefined") return null;
   return window.__mentraBridge ?? window.__evenBridge ?? null;
+}
+
+function isMicEnableTap(label?: string | null): boolean {
+  return label === "single_tap" || label === "long_press";
+}
+
+function isMicDisableTap(label?: string | null): boolean {
+  return label === "double_tap" || label === "stop_ai_recording";
+}
+
+function isCradleOrChargingState(
+  physicalState: string | null,
+  batteryState: string | null,
+): boolean {
+  return (
+    physicalState === "cradle_open" ||
+    physicalState === "cradle_closed" ||
+    physicalState === "charged_in_cradle" ||
+    batteryState === "glasses_fully_charged" ||
+    batteryState === "cradle_charging_cable_changed" ||
+    batteryState === "cradle_fully_charged"
+  );
+}
+
+function headsetValidationBlocker(
+  physicalState: string | null,
+  batteryState: string | null,
+): string | null {
+  if (physicalState === "wearing") return null;
+  const stateText =
+    [physicalState, batteryState].filter(Boolean).join(" / ") ||
+    "no wearing state observed";
+  if (isCradleOrChargingState(physicalState, batteryState)) {
+    return `Glasses are still reporting ${stateText}. Remove them from the charging base and wear them before tap or microphone validation.`;
+  }
+  return `Tap and microphone validation requires a wearing state; current state is ${stateText}.`;
 }
 
 function parseWifiNetworks(result: unknown): string[] {
@@ -183,7 +263,7 @@ async function callWifiBridge(
 }
 
 export function SmartglassesView() {
-  const [transport, setTransport] = useState<WebBluetoothG1Transport | null>(
+  const [transport, setTransport] = useState<SmartglassesTransport | null>(
     null,
   );
   const [lenses, setLenses] = useState<Record<GlassSide, LensState>>({
@@ -202,6 +282,9 @@ export function SmartglassesView() {
   const [wifiStatus, setWifiStatus] = useState("Not checked");
   const [wifiNetworks, setWifiNetworks] = useState<string[]>([]);
   const [activePlatform, setActivePlatform] = useState<PlatformKey>("desktop");
+  const [physicalState, setPhysicalState] = useState<string | null>(null);
+  const [batteryState, setBatteryState] = useState<string | null>(null);
+  const [deviceState, setDeviceState] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, boolean>>({
     headsetConnected: false,
     init: false,
@@ -209,8 +292,13 @@ export function SmartglassesView() {
     serial: false,
     settings: false,
     microphone: false,
+    tapMicEnable: false,
+    tapMicDisable: false,
+    audio: false,
+    transcript: false,
     eventStream: false,
   });
+  const testsRef = useRef(tests);
 
   const bridge = getBridge();
   const webBluetoothAvailable = Boolean(getWebBluetoothG1Transport());
@@ -229,14 +317,22 @@ export function SmartglassesView() {
         status: wifiStatus,
         networks: wifiNetworks,
       },
+      headsetState: {
+        physical: physicalState,
+        battery: batteryState,
+        device: deviceState,
+      },
     }),
     [
       bridge,
       events,
       headsetConnected,
       lenses,
+      physicalState,
       tests,
       transport,
+      batteryState,
+      deviceState,
       wifiNetworks,
       wifiStatus,
     ],
@@ -249,31 +345,67 @@ export function SmartglassesView() {
   }
 
   function markTest(id: string, value = true): void {
-    setTests((current) => ({ ...current, [id]: value }));
+    setTests((current) => {
+      const next = { ...current, [id]: value };
+      testsRef.current = next;
+      return next;
+    });
   }
 
   async function connectHeadset(): Promise<void> {
     setBusy("connect");
     setError(null);
     try {
-      const nextTransport = transport ?? new WebBluetoothG1Transport();
+      const nextTransport =
+        transport ??
+        (bridge
+          ? new EvenBridgeTransport(bridge)
+          : new WebBluetoothG1Transport());
       setTransport(nextTransport);
       const eventDispose = nextTransport.onEvent((event: G1Event) => {
         markTest("eventStream");
+        if (event.stateCategory === "physical") {
+          setPhysicalState(event.stateName ?? event.label ?? null);
+        } else if (event.stateCategory === "battery") {
+          setBatteryState(event.stateName ?? event.label ?? null);
+        } else if (event.stateCategory === "device") {
+          setDeviceState(event.stateName ?? event.label ?? null);
+        }
+        if (isMicEnableTap(event.label)) {
+          markTest("tapMicEnable");
+          setMicEnabled(true);
+        }
+        if (isMicDisableTap(event.label)) {
+          markTest("tapMicDisable");
+          setMicEnabled(false);
+        }
         appendEvent(
           "event",
           `${event.side} ${event.type}${event.label ? ` ${event.label}` : ""}`,
         );
       });
       const audioDispose = nextTransport.onAudio((audio, _rate, side) => {
+        if (audio.byteLength > 0) markTest("audio");
         appendEvent("audio", `${side} ${audio.byteLength} bytes`);
       });
+      const transcriptDispose = nextTransport.onTranscript?.(
+        (text, isFinal) => {
+          markTest("transcript");
+          appendEvent("transcript", `${isFinal ? "final" : "partial"} ${text}`);
+        },
+      );
       try {
-        await connectLens(nextTransport, "left");
-        await connectLens(nextTransport, "right");
+        if (nextTransport instanceof WebBluetoothG1Transport) {
+          await connectLens(nextTransport, "left");
+          await connectLens(nextTransport, "right");
+        } else {
+          await nextTransport.connect();
+          setLenses({ left: "connected", right: "connected" });
+        }
       } catch (err) {
         eventDispose();
         audioDispose();
+        transcriptDispose?.();
         throw err;
       }
       await nextTransport.write("left", encodeConnectionReady("left"));
@@ -298,7 +430,7 @@ export function SmartglassesView() {
     try {
       await timeout(
         nextTransport.connectLens(side),
-        20_000,
+        60_000,
         `Timed out connecting the ${side} lens`,
       );
       setLenses((current) => ({ ...current, [side]: "connected" }));
@@ -309,7 +441,7 @@ export function SmartglassesView() {
     }
   }
 
-  async function requireTransport(): Promise<WebBluetoothG1Transport> {
+  async function requireTransport(): Promise<SmartglassesTransport> {
     if (!transport || !headsetConnected) {
       throw new Error("Connect the whole headset before running this test");
     }
@@ -371,12 +503,68 @@ export function SmartglassesView() {
     }
   }
 
+  async function runGuidedValidation(): Promise<void> {
+    setBusy("guided");
+    setError(null);
+    let nextTransport: SmartglassesTransport | null = null;
+    try {
+      nextTransport = await requireTransport();
+      const blocker = headsetValidationBlocker(physicalState, batteryState);
+      if (blocker) {
+        throw new Error(blocker);
+      }
+      await nextTransport.openMicrophone(false);
+      setMicEnabled(false);
+      markTest("microphone");
+
+      const pages = paginateDisplayText(
+        "Validation: single tap, speak clearly, then double tap.",
+      );
+      for (const page of pages) {
+        for (const packet of encodeTextPackets(page, 1)) {
+          await nextTransport.writeBoth(packet);
+        }
+      }
+      markTest("display");
+      appendEvent("validation", "Single tap, speak clearly, then double tap");
+
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
+        const current = testsRef.current;
+        if (current.tapMicEnable && current.audio && current.tapMicDisable) {
+          appendEvent("validation", "Side-tap microphone validation passed");
+          return;
+        }
+        await sleep(500);
+      }
+
+      const current = testsRef.current;
+      const missing = [
+        !current.tapMicEnable && "tap mic enable",
+        !current.audio && "right/bridge audio",
+        !current.tapMicDisable && "tap mic disable",
+      ].filter(Boolean);
+      throw new Error(`Guided validation missing: ${missing.join(", ")}`);
+    } catch (err) {
+      setError(normalizeError(err));
+      appendEvent("error", normalizeError(err));
+    } finally {
+      try {
+        await nextTransport?.openMicrophone(false);
+        setMicEnabled(false);
+      } catch {
+        // The validation result should preserve the original failure.
+      }
+      setBusy(null);
+    }
+  }
+
   async function toggleMic(enabled: boolean): Promise<void> {
     setBusy(enabled ? "mic-on" : "mic-off");
     setError(null);
     try {
       const nextTransport = await requireTransport();
-      await nextTransport.write("right", encodeMicCommand(enabled));
+      await nextTransport.openMicrophone(enabled);
       setMicEnabled(enabled);
       markTest("microphone");
       appendEvent("microphone", enabled ? "Enabled" : "Disabled");
@@ -489,7 +677,7 @@ export function SmartglassesView() {
               <button
                 type="button"
                 onClick={() => void connectHeadset()}
-                disabled={!webBluetoothAvailable || busy !== null}
+                disabled={(!bridge && !webBluetoothAvailable) || busy !== null}
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Bluetooth className="h-4 w-4" />
@@ -506,6 +694,11 @@ export function SmartglassesView() {
                 iOS/Android/Desktop bridge or open this view in Chrome or Edge.
               </p>
             )}
+            <HeadsetStateHint
+              physicalState={physicalState}
+              batteryState={batteryState}
+              deviceState={deviceState}
+            />
           </Panel>
 
           <Panel>
@@ -553,13 +746,19 @@ export function SmartglassesView() {
                 <Mic className="h-4 w-4" />
                 {micEnabled ? "Mic Off" : "Mic On"}
               </ActionButton>
+              <ActionButton
+                onClick={runGuidedValidation}
+                disabled={!headsetConnected || busy !== null}
+              >
+                Guided Validation
+              </ActionButton>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(tests).map(([id, ok]) => (
-                <div key={id}>
-                  <CheckRow ok={ok === true} label={labelForTest(id)} />
-                </div>
-              ))}
+              {(Object.entries(tests) as Array<[string, boolean]>).map(
+                ([id, ok]) => (
+                  <CheckRow key={id} ok={ok} label={labelForTest(id)} />
+                ),
+              )}
             </div>
           </Panel>
 
@@ -653,6 +852,14 @@ export function SmartglassesView() {
             <div className="mt-3 grid gap-2 text-xs">
               <ReportRow label="Transport" value={report.transport ?? "none"} />
               <ReportRow label="Bridge" value={bridge ? "available" : "none"} />
+              <ReportRow
+                label="State"
+                value={
+                  [physicalState, batteryState, deviceState]
+                    .filter(Boolean)
+                    .join(" / ") || "none"
+                }
+              />
               <ReportRow label="Events" value={String(events.length)} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -767,7 +974,48 @@ function LensStatus({ side, state }: { side: GlassSide; state: LensState }) {
   );
 }
 
-function CheckRow({ ok, label }: { ok: boolean; label: string }) {
+function HeadsetStateHint({
+  physicalState,
+  batteryState,
+  deviceState,
+}: {
+  physicalState: string | null;
+  batteryState: string | null;
+  deviceState: string | null;
+}) {
+  const states = [physicalState, batteryState, deviceState].filter(Boolean);
+  const stateText = states.length > 0 ? states.join(" / ") : "No state yet";
+  const blocked = isCradleOrChargingState(physicalState, batteryState);
+  const ready = physicalState === "wearing";
+  return (
+    <div
+      className={`mt-3 rounded-md border px-3 py-2 text-xs ${
+        blocked
+          ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+          : ready
+            ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
+            : "border-border/60 bg-muted/20 text-muted"
+      }`}
+    >
+      <span className="font-medium">Headset state:</span> {stateText}
+      {blocked && (
+        <span>
+          {" "}
+          Remove the glasses from the charging base and wear them before tap or
+          microphone validation.
+        </span>
+      )}
+      {!blocked && !ready && (
+        <span>
+          {" "}
+          Tap/audio validation requires the glasses to report a wearing state.
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CheckRow({ ok, label }: { ok: boolean; label: string; key?: string }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-border/50 px-3 py-2">
       {ok ? (
@@ -797,6 +1045,10 @@ function labelForTest(id: string): string {
     serial: "Serial request",
     settings: "Settings",
     microphone: "Microphone",
+    tapMicEnable: "Tap mic enable",
+    tapMicDisable: "Tap mic disable",
+    audio: "Audio",
+    transcript: "Transcript",
     eventStream: "Events",
   };
   return labels[id] ?? id;

@@ -53,7 +53,7 @@ app.get("/", async (c) => {
       tail,
     });
 
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
       // Logged inside the service.
     });
 

@@ -18,13 +18,35 @@
   ],
   "config": {
     "SMARTGLASSES_TRANSPORT": {
-      "type": "string",
+      "type": "select",
       "required": false,
       "sensitive": false,
       "default": "auto",
       "label": "Transport",
       "help": "Preferred smartglasses transport: auto, even-bridge, web-bluetooth, or noble.",
-      "advanced": false
+      "advanced": false,
+      "options": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "description": "Use an injected transport, native bridge, Web Bluetooth, then Noble in order."
+        },
+        {
+          "value": "even-bridge",
+          "label": "Native Bridge",
+          "description": "Use an iOS, Android, desktop, EvenHub, or Mentra bridge exposed by the host."
+        },
+        {
+          "value": "web-bluetooth",
+          "label": "Web Bluetooth",
+          "description": "Use browser BLE pairing for direct G1 access."
+        },
+        {
+          "value": "noble",
+          "label": "Noble BLE",
+          "description": "Use Node/Bun BLE through the optional Noble transport."
+        }
+      ]
     },
     "SMARTGLASSES_SCAN_TIMEOUT_MS": {
       "type": "number",
@@ -47,13 +69,30 @@
       "advanced": false
     },
     "SMARTGLASSES_INIT_MODE": {
-      "type": "string",
+      "type": "select",
       "required": false,
       "sensitive": false,
       "default": "lens-specific",
       "label": "Init Mode",
-      "help": "Connection-ready init mode: lens-specific or official same-init.",
-      "advanced": true
+      "help": "Connection-ready init mode: lens-specific, official same-init, or Android F4 same-init.",
+      "advanced": true,
+      "options": [
+        {
+          "value": "lens-specific",
+          "label": "Lens Specific",
+          "description": "Send 0x4D 0x01 to the left lens and 0xF4 0x01 to the right lens."
+        },
+        {
+          "value": "official",
+          "label": "iOS Same Init",
+          "description": "Send 0x4D 0x01 to both lenses, matching EvenDemoApp iOS."
+        },
+        {
+          "value": "android-f4",
+          "label": "Android F4 Same Init",
+          "description": "Send 0xF4 0x01 to both lenses, matching EvenDemoApp Android."
+        }
+      ]
     }
   },
   "render": {

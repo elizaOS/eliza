@@ -29,8 +29,22 @@ export interface SmartglassesTransport {
       metadata?: Record<string, unknown>,
     ) => void,
   ): () => void;
+  scanWifi?(): Promise<SmartglassesWifiResult>;
+  getWifiStatus?(): Promise<SmartglassesWifiResult>;
+  configureWifi?(
+    ssid: string,
+    password: string,
+  ): Promise<SmartglassesWifiResult>;
+  supportsWifi?(): boolean;
 }
 
 export interface SmartglassesTransportFactory {
   create(): SmartglassesTransport | null;
+}
+
+export interface SmartglassesWifiResult {
+  available: boolean;
+  status: string;
+  networks: string[];
+  raw?: unknown;
 }

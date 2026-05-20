@@ -107,6 +107,16 @@ HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
 )
+TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON = (
+    "Terminal-Bench Docker execution unavailable "
+    "(start Docker Desktop/daemon so real Docker-backed tasks can run); "
+    "harness not run"
+)
+HERMES_SANDBOX_UNAVAILABLE_REASON = (
+    "Hermes sandbox execution unavailable "
+    "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
+    "harness not run"
+)
 VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON = (
     "vision-language real eliza-1 VLM runtime/input bundle unavailable; "
     "harness not run"
@@ -115,6 +125,11 @@ VISION_LANGUAGE_FIXED_RUNTIME_REASON = (
     "vision-language currently runs the fixed eliza-1 VLM runtime only; "
     "Hermes/OpenClaw harness adapters are not implemented"
 )
+VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON = (
+    "vision-language Hermes/OpenClaw VLM runtime unavailable "
+    "(set VISION_LANGUAGE_MODEL plus provider credentials for a multimodal "
+    "OpenAI-compatible model); harness not run"
+)
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
@@ -122,15 +137,18 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_gaia_official_dataset() else ()
     if benchmark_id == "hyperliquid_bench":
         return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
+    if benchmark_id == "terminal_bench":
+        return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+    if benchmark_id == "hermes_swe_env":
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     }:
-        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+        return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
         return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
     if benchmark_id == "voicebench_quality":
@@ -138,7 +156,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "voiceagentbench":
         return ALL_HARNESSES if _has_voiceagentbench_real_audio_dataset() else ()
     if benchmark_id == "vision_language":
-        return ("eliza",) if _has_vision_language_real_inputs() else ()
+        return _vision_language_compatible_harnesses()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
@@ -216,6 +234,32 @@ def _has_gauntlet_real_surfpool_backend() -> bool:
 
 
 _HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
+
+
+_TERMINAL_BENCH_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_terminal_bench_docker_backend() -> bool:
+    """Return true when Docker can answer quickly enough to run real tasks."""
+    global _TERMINAL_BENCH_DOCKER_AVAILABLE
+    if _TERMINAL_BENCH_DOCKER_AVAILABLE is not None:
+        return _TERMINAL_BENCH_DOCKER_AVAILABLE
+    if not shutil.which("docker"):
+        _TERMINAL_BENCH_DOCKER_AVAILABLE = False
+        return False
+    try:
+        completed = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+        _TERMINAL_BENCH_DOCKER_AVAILABLE = completed.returncode == 0
+        return _TERMINAL_BENCH_DOCKER_AVAILABLE
+    except (OSError, subprocess.TimeoutExpired):
+        _TERMINAL_BENCH_DOCKER_AVAILABLE = False
+        return False
 
 
 def _has_hermes_sandbox_backend() -> bool:
@@ -371,6 +415,13 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
     manifest = bundle / "eliza-1.manifest.json"
     if not manifest.is_file():
         return False
+    try:
+        manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    runtime = manifest_payload.get("runtime") if isinstance(manifest_payload, dict) else None
+    if not isinstance(runtime, dict) or "dflash" not in runtime:
+        return False
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [
         bundle / "text" / f"eliza-1-{slug}-64k.gguf",
@@ -392,6 +443,62 @@ def _has_textvqa_real_inputs() -> bool:
 def _has_vision_language_real_inputs() -> bool:
     tier = os.environ.get("VISION_LANGUAGE_TIER") or "eliza-1-9b"
     return _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
+
+
+def _has_vision_language_harness_runtime() -> bool:
+    provider = (os.environ.get("VISION_LANGUAGE_PROVIDER") or "openai").strip().lower()
+    model = (os.environ.get("VISION_LANGUAGE_MODEL") or "").strip()
+    if not model:
+        return False
+    if not _is_vision_language_multimodal_model(provider=provider, model=model):
+        return False
+    key_envs = {
+        "cerebras": ("CEREBRAS_API_KEY", "OPENAI_API_KEY"),
+        "openai": ("OPENAI_API_KEY",),
+        "openrouter": ("OPENROUTER_API_KEY", "OPENAI_API_KEY"),
+        "groq": ("GROQ_API_KEY", "OPENAI_API_KEY"),
+        "vllm": ("OPENAI_API_KEY",),
+    }.get(provider, ("OPENAI_API_KEY",))
+    return any(os.environ.get(name) for name in key_envs)
+
+
+def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
+    if os.environ.get("VISION_LANGUAGE_MULTIMODAL") == "1":
+        return True
+    provider_key = provider.strip().lower()
+    model_key = model.strip().lower()
+    if not model_key:
+        return False
+    if provider_key == "cerebras":
+        return False
+    multimodal_markers = (
+        "gpt-4o",
+        "gpt-4.1",
+        "o4-mini",
+        "qwen-vl",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "qwen3-vl",
+        "llava",
+        "pixtral",
+        "gemini",
+        "claude-3",
+        "claude-4",
+        "vision",
+        "vlm",
+    )
+    return any(marker in model_key for marker in multimodal_markers)
+
+
+def _vision_language_compatible_harnesses() -> tuple[str, ...]:
+    if not _has_textvqa_real_inputs():
+        return ()
+    harnesses: list[str] = []
+    if _has_vision_language_real_inputs():
+        harnesses.append("eliza")
+    if _has_vision_language_harness_runtime():
+        harnesses.extend(["hermes", "openclaw"])
+    return tuple(harnesses)
 
 
 def _voicebench_resolve_audio_path(raw_path: str, manifest_path: Path) -> Path:
@@ -1042,9 +1149,13 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
 def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
     adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
-    return {
+    env = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
+    harness = str(ctx.request.agent or "").strip().lower()
+    if harness == "eliza":
+        env["ELIZA_BENCH_SKIP_CORE_PLUGINS"] = "true"
+    return env
 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -2481,7 +2592,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "user_strategy": "grounded",
         },
         "terminal_bench": {
-            "max_tasks": 1,
+            "max_tasks": 2,
+            "task_ids": ["hello-world", "classifier-debug"],
             # Upstream run-tests.sh commonly bootstraps uv/pytest in-container.
             # Keep real corpus grading publishable by allowing that setup path.
             "network_mode": "bridge",
@@ -2502,6 +2614,16 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "sub_benchmark": "textvqa",
             "samples": 5,
             "tier": "eliza-1-9b",
+            **(
+                {"model_provider": os.environ["VISION_LANGUAGE_PROVIDER"]}
+                if os.environ.get("VISION_LANGUAGE_PROVIDER")
+                else {}
+            ),
+            **(
+                {"model": os.environ["VISION_LANGUAGE_MODEL"]}
+                if os.environ.get("VISION_LANGUAGE_MODEL")
+                else {}
+            ),
         },
         "abliteration-robustness": {
             "max_examples": 2,
@@ -2858,7 +2980,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
                 "max_tasks": 1,
-                "max_turns": 6,
+                "max_turns": 8,
                 "profile": "small",
             },
         ),

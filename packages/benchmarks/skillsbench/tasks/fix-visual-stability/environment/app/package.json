@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "bun install --force --no-save && next build",
     "start": "next start"
   },
   "dependencies": {

@@ -146,34 +146,46 @@ function hasPreferredName(session: OnboardingSession): boolean {
   return Boolean(session.name?.trim() && !isPlaceholderPhoneName(session.name));
 }
 
-function isPhoneLikePlatform(input: OnboardingChatInput): boolean {
+function isPhoneLikePlatformIdentity(args: {
+  trustedPlatformIdentity?: boolean;
+  platform?: OnboardingPlatform;
+  platformUserId?: string;
+}): boolean {
   return (
-    input.trustedPlatformIdentity === true &&
-    (input.platform === "blooio" || input.platform === "twilio") &&
-    /^\+?[1-9]\d{7,15}$/.test(input.platformUserId ?? "")
+    args.trustedPlatformIdentity === true &&
+    (args.platform === "blooio" || args.platform === "twilio") &&
+    /^\+?[1-9]\d{7,15}$/.test(args.platformUserId ?? "")
   );
 }
 
-async function maybeBindTrustedPlatformIdentity(
+async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): Promise<OnboardingSession> {
-  if (session.userId || !isPhoneLikePlatform(input) || !input.platformUserId) {
+  if (
+    !input.authenticatedUser ||
+    !isPhoneLikePlatformIdentity({
+      trustedPlatformIdentity: true,
+      platform: session.platform ?? input.platform,
+      platformUserId: session.platformUserId ?? input.platformUserId,
+    })
+  ) {
     return session;
   }
 
-  const result = await elizaAppUserService.findOrCreateByPhone(input.platformUserId);
-  return {
-    ...session,
-    userId: result.user.id,
-    organizationId: result.organization.id,
-    name:
-      session.name ??
-      input.platformDisplayName ??
-      (result.isNew || isPlaceholderPhoneName(result.user.name ?? undefined)
-        ? undefined
-        : (result.user.name ?? undefined)),
-  };
+  const phoneNumber = session.platformUserId ?? input.platformUserId;
+  if (!phoneNumber) return session;
+
+  try {
+    await elizaAppUserService.linkPhoneToUser(input.authenticatedUser.userId, phoneNumber);
+  } catch (error) {
+    logger.warn("[eliza-app onboarding] phone link after login failed", {
+      userId: input.authenticatedUser.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return session;
 }
 
 function getCerebrasClient(): ReturnType<typeof createOpenAI> | null {
@@ -229,6 +241,16 @@ function sanitizeReplyText(reply: string): string {
   return reply.replaceAll("httpshttps://", "https://").replaceAll("httphttp://", "http://").trim();
 }
 
+function ensureExactLoginUrl(reply: string, loginUrl: string): string {
+  const sanitized = sanitizeReplyText(reply);
+
+  const withoutGeneratedUrls = sanitized
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+  return `${withoutGeneratedUrls ? `${withoutGeneratedUrls}\n\n` : ""}Connect Eliza Cloud here: ${loginUrl}`;
+}
+
 async function generateOnboardingReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
@@ -273,7 +295,9 @@ State:
         content: message.content,
       })),
     });
-    return sanitizeReplyText(text) || fallbackReply(args);
+    const sanitized = sanitizeReplyText(text);
+    if (!sanitized) return fallbackReply(args);
+    return args.requiresLogin ? ensureExactLoginUrl(sanitized, args.loginUrl) : sanitized;
   } catch (error) {
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),
@@ -382,7 +406,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     };
   }
 
-  session = await maybeBindTrustedPlatformIdentity(session, input);
+  session = await maybeLinkAuthenticatedPlatformIdentity(session, input);
 
   const userMessage = input.message?.trim();
   let preferredNameProvidedThisTurn = false;
@@ -398,7 +422,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   const requiresLogin = !session.userId || !session.organizationId;
   const preferredNameCaptured =
     hasPreferredName(session) &&
-    (!isPhoneLikePlatform(input) ||
+    (!isPhoneLikePlatformIdentity(input) ||
       preferredNameProvidedThisTurn ||
       Boolean(input.authenticatedUser));
   let provisioning: ElizaAppProvisioningStatus = {
@@ -429,7 +453,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   }
 
   const loginUrl = onboardingAppPath(
-    `/get-started?onboardingSession=${encodeURIComponent(session.id)}`,
+    `/get-started/?onboardingSession=${encodeURIComponent(session.id)}`,
   );
   const panelUrl = controlPanelUrl(session.agentId);
   const reply = await generateOnboardingReply({

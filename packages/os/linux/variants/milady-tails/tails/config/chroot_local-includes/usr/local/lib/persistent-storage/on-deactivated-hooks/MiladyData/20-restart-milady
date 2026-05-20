@@ -9,7 +9,7 @@ restart_user_unit() {
         HOME=/home/amnesia \
         XDG_RUNTIME_DIR="${runtime_dir}" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=${runtime_dir}/bus" \
-        systemctl --user restart elizaos-agent.service elizaos-renderer.service elizaos-pill.service milady.service >/dev/null 2>&1 || true
+        systemctl --user restart elizaos-agent.service elizaos-renderer.service milady.service >/dev/null 2>&1 || true
 }
 
 restart_user_unit

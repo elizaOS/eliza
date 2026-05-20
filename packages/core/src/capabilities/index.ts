@@ -376,6 +376,14 @@ export type RemotePluginLifecycleManifest = {
 export type RemotePluginConfigValue = string | number | boolean | null;
 export type RemotePluginConfig = Record<string, RemotePluginConfigValue>;
 
+export type RemotePluginModuleProvenance = {
+	issuer: string;
+	subject: string;
+	digestSha256: string;
+	signatureAlgorithm: string;
+	signature: string;
+};
+
 export type RemotePluginModuleManifest = {
 	id: string;
 	name: string;
@@ -402,6 +410,7 @@ export type RemotePluginModuleManifest = {
 	lifecycle?: RemotePluginLifecycleManifest;
 	routes?: RemotePluginRouteManifest[];
 	views?: RemotePluginViewManifest[];
+	provenance?: RemotePluginModuleProvenance;
 	metadata?: JsonObject;
 };
 
@@ -846,6 +855,14 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 				contentType: "text/javascript",
 			},
 		],
+		provenance: {
+			issuer: "fixture-build",
+			subject: "fixture://remote-plugin",
+			digestSha256:
+				"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			signatureAlgorithm: "ed25519",
+			signature: "fixture-signature",
+		},
 		metadata: {
 			fixtureVersion: CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
 		},
@@ -2653,6 +2670,13 @@ function requireRemotePluginModule(
 		requireRemotePluginRoute,
 	);
 	const views = optionalArray(object, "views", method, requireRemotePluginView);
+	const provenance =
+		object.provenance === undefined
+			? undefined
+			: requireRemotePluginModuleProvenance(
+					object.provenance,
+					`${method}.provenance`,
+				);
 	const metadata = optionalJsonObject(object, "metadata", method);
 	return {
 		id: requireRemotePluginModuleId(object, "id", method),
@@ -2683,7 +2707,30 @@ function requireRemotePluginModule(
 		...(lifecycle === undefined ? {} : { lifecycle }),
 		...(routes === undefined ? {} : { routes }),
 		...(views === undefined ? {} : { views }),
+		...(provenance === undefined ? {} : { provenance }),
 		...(metadata === undefined ? {} : { metadata }),
+	};
+}
+
+function requireRemotePluginModuleProvenance(
+	value: JsonValue,
+	method: string,
+): RemotePluginModuleProvenance {
+	const object = requireObject(value, method);
+	const digestSha256 = requireNonEmptyString(object, "digestSha256", method);
+	if (!/^[0-9a-f]{64}$/i.test(digestSha256)) {
+		throw decodeError(method, "digestSha256 must be a SHA-256 hex digest.");
+	}
+	return {
+		issuer: requireNonEmptyString(object, "issuer", method),
+		subject: requireNonEmptyString(object, "subject", method),
+		digestSha256: digestSha256.toLowerCase(),
+		signatureAlgorithm: requireNonEmptyString(
+			object,
+			"signatureAlgorithm",
+			method,
+		),
+		signature: requireNonEmptyString(object, "signature", method),
 	};
 }
 

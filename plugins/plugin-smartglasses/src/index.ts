@@ -49,6 +49,16 @@ export const smartglassesPlugin: Plugin = {
           description:
             "Exercise display, serial, microphone, and settings paths and build a diagnostics report.",
         },
+        {
+          id: "guided-side-tap-audio-validation",
+          description:
+            "Guide single-tap microphone enable, speech audio, and double-tap microphone disable validation.",
+        },
+        {
+          id: "configure-wifi",
+          description:
+            "Scan and configure headset Wi-Fi when a native bridge exposes Wi-Fi APIs.",
+        },
       ],
     },
   ],
@@ -59,7 +69,8 @@ export const smartglassesPlugin: Plugin = {
         label: "Smartglasses",
         icon: "Glasses",
         path: "/apps/smartglasses",
-        componentExport: "@elizaos/plugin-smartglasses#SmartglassesView",
+        componentExport:
+          "@elizaos/plugin-smartglasses/register#SmartglassesView",
       },
     ],
   },
@@ -110,9 +121,9 @@ export { getNobleG1Transport, NobleG1Transport } from "./transport/noble.js";
 export type {
   SmartglassesTransport,
   SmartglassesTransportFactory,
+  SmartglassesWifiResult,
 } from "./transport/types.js";
 export {
   getWebBluetoothG1Transport,
   WebBluetoothG1Transport,
 } from "./transport/web-bluetooth.js";
-export { SmartglassesView } from "./ui/SmartglassesView.js";

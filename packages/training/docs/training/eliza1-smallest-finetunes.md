@@ -63,12 +63,16 @@ Distill the smallest drafter only after the 0.8B target model is fixed:
 ```bash
 bash scripts/dflash/jobs/distill_dflash_0_8b.sh
 python scripts/dflash/validate_drafter.py \
-  --target bundles/0_8b/text/eliza-1-0_8b-128k.gguf \
-  --drafter bundles/0_8b/dflash/drafter-0_8b.gguf
+  --tier 0_8b \
+  --target-gguf bundles/0_8b/text/eliza-1-0_8b-256k.gguf \
+  --drafter-gguf bundles/0_8b/dflash/drafter-0_8b.gguf \
+  --report-out bundles/0_8b/dflash/validation-real.json
 ```
 
 Publish only if the DFlash acceptance gate improves or preserves latency
 without regressing correctness.
+The half-context 128k text GGUF remains a runtime variant, but drafter
+validation targets the native 256k text artifact.
 
 ## ASR
 

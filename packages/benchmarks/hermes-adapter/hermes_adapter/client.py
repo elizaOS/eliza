@@ -942,8 +942,15 @@ def _build_openai_messages(
             if role not in {"system", "user", "assistant", "tool"}:
                 continue
             content = item.get("content")
-            content_str = "" if content is None else str(content)
-            msg: dict[str, object] = {"role": str(role), "content": content_str}
+            content_for_message: object
+            content_str = ""
+            if isinstance(content, list) and role == "user":
+                content_for_message = _jsonable(content)
+                content_str = json.dumps(content_for_message, ensure_ascii=True)
+            else:
+                content_str = "" if content is None else str(content)
+                content_for_message = content_str
+            msg: dict[str, object] = {"role": str(role), "content": content_for_message}
             if role == "assistant":
                 tcs = item.get("tool_calls")
                 if isinstance(tcs, Sequence) and not isinstance(tcs, (str, bytes)):
@@ -1232,8 +1239,13 @@ def _main() -> int:
             if role not in {"system", "user", "assistant", "tool"}:
                 continue
             content = item.get("content")
-            content_str = "" if content is None else str(content)
-            msg = {"role": role, "content": content_str}
+            if isinstance(content, list) and role == "user":
+                content_for_message = content
+                content_str = json.dumps(content, ensure_ascii=True)
+            else:
+                content_str = "" if content is None else str(content)
+                content_for_message = content_str
+            msg = {"role": role, "content": content_for_message}
             if role == "assistant":
                 tcs = item.get("tool_calls")
                 if isinstance(tcs, list):

@@ -232,6 +232,18 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     )
     if total_tasks <= 0:
         raise ValueError("terminal_bench: zero-task score is not publishable")
+    results = root.get("results")
+    if isinstance(results, list) and results:
+        docker_unavailable = [
+            item
+            for item in results
+            if isinstance(item, dict)
+            and "Docker daemon is not reachable" in str(item.get("error_message") or "")
+        ]
+        if len(docker_unavailable) == len(results):
+            raise ValueError(
+                "terminal_bench: Docker-unavailable task failures are not publishable scores"
+            )
     return ScoreExtraction(
         score=acc,
         unit="ratio",

@@ -45,7 +45,8 @@ class TestTerminal implements Terminal {
   }
 
   text(): string {
-    return this.writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI escape sequences
+    return this.writes.join("").replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   }
 }
 

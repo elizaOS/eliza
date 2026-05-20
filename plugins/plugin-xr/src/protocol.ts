@@ -9,9 +9,20 @@ export type XRDeviceType = "quest3" | "xreal" | "simulator";
 
 // ── Client → Server (text frames) ──────────────────────────────────────────
 
+/** View panel state reported back from the XR device */
+export interface XRViewPanelState {
+  viewId: string;
+  active: boolean;
+  width?: number;
+  height?: number;
+}
+
 export type XRClientControl =
   | { type: "hello"; deviceType: XRDeviceType; sessionId: string }
-  | { type: "ping" };
+  | { type: "ping" }
+  | { type: "view_ready"; viewId: string }
+  | { type: "view_closed"; viewId: string }
+  | { type: "view_event"; viewId: string; event: string; payload?: unknown };
 
 // ── Client → Server (binary frames) ────────────────────────────────────────
 
@@ -39,11 +50,47 @@ export type XRBinaryHeader = XRAudioHeader | XRFrameHeader;
 
 // ── Server → Client (text frames) ──────────────────────────────────────────
 
+/** XR panel sizing options */
+export interface XRPanelConfig {
+  /** Panel width relative to default (0.5 = half, 2.0 = double) */
+  scale?: number;
+  /** Follow mode: billboard | fixed | follow */
+  followMode?: "billboard" | "fixed" | "follow";
+  /** Distance from camera in metres */
+  distance?: number;
+  /** Whether to show as full-overlay or floating panel */
+  fullscreen?: boolean;
+}
+
 export type XRServerControl =
   | { type: "ready"; sessionId: string }
   | { type: "transcript"; text: string; final: boolean }
   | { type: "agent_text"; text: string }
-  | { type: "pong" };
+  | { type: "pong" }
+  // ── View commands ────────────────────────────────────────────────────────
+  /** Open (or bring to front) a view by its registered view id */
+  | {
+      type: "view_open";
+      viewId: string;
+      agentBaseUrl: string;
+      config?: XRPanelConfig;
+    }
+  /** Close a specific view panel */
+  | { type: "view_close"; viewId: string }
+  /** Switch the "active" (foreground) view */
+  | { type: "view_switch"; viewId: string }
+  /** Resize / reposition the active or named panel */
+  | { type: "view_resize"; viewId?: string; config: XRPanelConfig }
+  /** Send all available views to the device for the launcher */
+  | {
+      type: "views_catalog";
+      views: Array<{
+        id: string;
+        label: string;
+        icon?: string;
+        description?: string;
+      }>;
+    };
 
 // ── Server → Client (binary frames) ────────────────────────────────────────
 

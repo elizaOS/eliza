@@ -7,12 +7,27 @@ export interface ProvisioningChatMessage {
   content: string;
 }
 
-interface StatusResponse {
+interface ChatResponse {
+  success?: boolean;
+  data?: {
+    reply?: string;
+    launchUrl?: string | null;
+    handoffComplete?: boolean;
+    provisioning?: { status?: string; agentId?: string; bridgeUrl?: string };
+    messages?: Array<{
+      role?: "user" | "assistant";
+      content?: string;
+      createdAt?: string;
+    }>;
+  };
+}
+
+interface LegacyStatusResponse {
   success?: boolean;
   data?: { status?: string; agentId?: string; bridgeUrl?: string };
 }
 
-interface ChatResponse {
+interface LegacyChatResponse {
   success?: boolean;
   data?: {
     reply?: string;
@@ -20,6 +35,12 @@ interface ChatResponse {
     bridgeUrl?: string;
     agentId?: string;
   };
+}
+
+interface OnboardingChatApiMessage {
+  role?: "user" | "assistant";
+  content?: string;
+  createdAt?: string;
 }
 
 function uid(): string {
@@ -35,10 +56,38 @@ const WELCOME: ProvisioningChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "Hi! I'm Eliza. Your personal AI space is warming up — typically 2–4 minutes. Ask me anything while you wait!",
+    "Hi! I'm Eliza. I can set up your private cloud agent and keep this setup chat with it.",
 };
 
-export function useElizaAppProvisioningChat(active: boolean) {
+function toChatMessages(
+  messages: OnboardingChatApiMessage[] | undefined,
+): ProvisioningChatMessage[] {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [WELCOME];
+  }
+  return messages
+    .filter(
+      (
+        message,
+      ): message is OnboardingChatApiMessage & {
+        role: "user" | "assistant";
+        content: string;
+      } =>
+        (message.role === "user" || message.role === "assistant") &&
+        typeof message.content === "string" &&
+        message.content.trim().length > 0,
+    )
+    .map((message, index) => ({
+      id: `${message.createdAt ?? "message"}-${index}`,
+      role: message.role,
+      content: message.content,
+    }));
+}
+
+export function useElizaAppProvisioningChat(
+  active: boolean,
+  onboardingSessionId?: string | null,
+) {
   const [messages, setMessages] = useState<ProvisioningChatMessage[]>([
     WELCOME,
   ]);
@@ -50,6 +99,19 @@ export function useElizaAppProvisioningChat(active: boolean) {
   const provisionedRef = useRef(false);
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
+  const usesSharedOnboarding = Boolean(onboardingSessionId);
+
+  const applyOnboardingResponse = useCallback((data: ChatResponse["data"]) => {
+    if (!data) return;
+    const provisioning = data.provisioning;
+    if (provisioning?.status) setContainerStatus(provisioning.status);
+    if (provisioning?.agentId) setAgentId(provisioning.agentId);
+    if (provisioning?.bridgeUrl) setBridgeUrl(provisioning.bridgeUrl);
+    const nextMessages = toChatMessages(data.messages);
+    if (nextMessages.length > 0) {
+      setMessages(nextMessages);
+    }
+  }, []);
 
   useEffect(() => {
     if (!active || provisionedRef.current) return;
@@ -57,22 +119,42 @@ export function useElizaAppProvisioningChat(active: boolean) {
 
     (async () => {
       try {
-        const res = await elizacloudAuthFetch<StatusResponse>(
-          "/api/eliza-app/provisioning-agent",
+        if (!usesSharedOnboarding) {
+          const res = await elizacloudAuthFetch<LegacyStatusResponse>(
+            "/api/eliza-app/provisioning-agent",
+            {
+              method: "POST",
+            },
+          );
+          if (res.success && res.data) {
+            setContainerStatus(res.data.status ?? "pending");
+            if (res.data.agentId) setAgentId(res.data.agentId);
+            if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
+          }
+          return;
+        }
+
+        const res = await elizacloudAuthFetch<ChatResponse>(
+          "/api/eliza-app/onboarding/chat",
           {
             method: "POST",
+            body: JSON.stringify({
+              sessionId: onboardingSessionId ?? undefined,
+              platform: onboardingSessionId ? "blooio" : "web",
+            }),
           },
         );
-        if (res.success && res.data) {
-          setContainerStatus(res.data.status ?? "pending");
-          if (res.data.agentId) setAgentId(res.data.agentId);
-          if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-        }
+        if (res.success && res.data) applyOnboardingResponse(res.data);
       } catch {
         return;
       }
     })();
-  }, [active]);
+  }, [
+    active,
+    applyOnboardingResponse,
+    onboardingSessionId,
+    usesSharedOnboarding,
+  ]);
 
   useEffect(() => {
     if (!active || isReady) return;
@@ -81,28 +163,57 @@ export function useElizaAppProvisioningChat(active: boolean) {
     const poll = async () => {
       if (stoppedRef.current) return;
       try {
-        const res = await elizacloudAuthFetch<StatusResponse>(
-          "/api/eliza-app/provisioning-agent",
+        if (!usesSharedOnboarding) {
+          const res = await elizacloudAuthFetch<LegacyStatusResponse>(
+            "/api/eliza-app/provisioning-agent",
+          );
+          if (stoppedRef.current) return;
+          if (res.success && res.data) {
+            const newStatus = res.data.status ?? containerStatus;
+            setContainerStatus(newStatus);
+            if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
+            if (res.data.bridgeUrl) {
+              setBridgeUrl(res.data.bridgeUrl);
+            }
+            if (newStatus === "running" && res.data.bridgeUrl) {
+              stoppedRef.current = true;
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: uid(),
+                  role: "assistant",
+                  content:
+                    "Your AI space is ready! You can start chatting in full now.",
+                },
+              ]);
+            }
+          }
+          return;
+        }
+
+        const res = await elizacloudAuthFetch<ChatResponse>(
+          "/api/eliza-app/onboarding/chat",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              sessionId: onboardingSessionId ?? undefined,
+              platform: onboardingSessionId ? "blooio" : "web",
+            }),
+          },
         );
         if (stoppedRef.current) return;
         if (res.success && res.data) {
-          const newStatus = res.data.status ?? containerStatus;
+          const provisioning = res.data.provisioning;
+          const newStatus = provisioning?.status ?? containerStatus;
           setContainerStatus(newStatus);
-          if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
-          if (res.data.bridgeUrl) {
-            setBridgeUrl(res.data.bridgeUrl);
+          if (provisioning?.agentId && !agentId)
+            setAgentId(provisioning.agentId);
+          if (provisioning?.bridgeUrl) {
+            setBridgeUrl(provisioning.bridgeUrl);
           }
-          if (newStatus === "running" && res.data.bridgeUrl) {
+          if (newStatus === "running" && provisioning?.bridgeUrl) {
             stoppedRef.current = true;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: uid(),
-                role: "assistant",
-                content:
-                  "Your AI space is ready! You can start chatting in full now.",
-              },
-            ]);
+            applyOnboardingResponse(res.data);
           }
         }
       } catch {
@@ -116,7 +227,15 @@ export function useElizaAppProvisioningChat(active: boolean) {
       stoppedRef.current = true;
       clearInterval(timer);
     };
-  }, [active, isReady, containerStatus, agentId]);
+  }, [
+    active,
+    agentId,
+    applyOnboardingResponse,
+    containerStatus,
+    isReady,
+    onboardingSessionId,
+    usesSharedOnboarding,
+  ]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -131,28 +250,46 @@ export function useElizaAppProvisioningChat(active: boolean) {
       setIsLoading(true);
 
       try {
+        if (!usesSharedOnboarding) {
+          const res = await elizacloudAuthFetch<LegacyChatResponse>(
+            "/api/eliza-app/provisioning-agent/chat",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                message: content.trim(),
+                agentId: agentId ?? undefined,
+              }),
+            },
+          );
+          if (res.success && res.data) {
+            if (res.data.containerStatus)
+              setContainerStatus(res.data.containerStatus);
+            if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
+            if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
+            const reply = res.data.reply;
+            if (reply) {
+              setMessages((prev) => [
+                ...prev,
+                { id: uid(), role: "assistant", content: reply },
+              ]);
+            }
+          }
+          return;
+        }
+
         const res = await elizacloudAuthFetch<ChatResponse>(
-          "/api/eliza-app/provisioning-agent/chat",
+          "/api/eliza-app/onboarding/chat",
           {
             method: "POST",
             body: JSON.stringify({
+              sessionId: onboardingSessionId ?? undefined,
               message: content.trim(),
-              agentId: agentId ?? undefined,
+              platform: onboardingSessionId ? "blooio" : "web",
             }),
           },
         );
         if (res.success && res.data) {
-          if (res.data.containerStatus)
-            setContainerStatus(res.data.containerStatus);
-          if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-          if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
-          const reply = res.data.reply;
-          if (reply) {
-            setMessages((prev) => [
-              ...prev,
-              { id: uid(), role: "assistant", content: reply },
-            ]);
-          }
+          applyOnboardingResponse(res.data);
         }
       } catch {
         setMessages((prev) => [
@@ -168,7 +305,13 @@ export function useElizaAppProvisioningChat(active: boolean) {
         setIsLoading(false);
       }
     },
-    [agentId, isLoading],
+    [
+      agentId,
+      applyOnboardingResponse,
+      isLoading,
+      onboardingSessionId,
+      usesSharedOnboarding,
+    ],
   );
 
   return {

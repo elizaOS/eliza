@@ -4,7 +4,12 @@ import { smartglassesControlAction } from "../actions/control.js";
 import { displaySmartglassesTextAction } from "../actions/display-text.js";
 import { smartglassesMicrophoneAction } from "../actions/microphone.js";
 import { smartglassesStatusAction } from "../actions/status.js";
-import { G1Command, G1ScreenAction, G1TextStatus } from "../protocol.js";
+import {
+  G1Command,
+  G1ScreenAction,
+  G1SubCommand,
+  G1TextStatus,
+} from "../protocol.js";
 import {
   SMARTGLASSES_SERVICE_NAME,
   SmartglassesService,
@@ -15,9 +20,14 @@ function memory(text: string): Memory {
   return { content: { text } } as Memory;
 }
 
+function memoryJson(value: Record<string, unknown>): Memory {
+  return memory(JSON.stringify(value));
+}
+
 function expectResult(result: unknown): asserts result is {
   success: boolean;
   text?: string;
+  values?: Record<string, unknown>;
 } {
   expect(result).toBeTruthy();
 }
@@ -65,6 +75,23 @@ describe("smartglasses actions", () => {
     expect(transport.writes.at(-1)?.data[4]).toBe(
       G1TextStatus.TextShow | G1ScreenAction.NewContent,
     );
+
+    const pacedDisplayResult = await displaySmartglassesTextAction.handler(
+      runtime,
+      memory(
+        '{"text":"paced display","mode":"ai","pageHoldMs":0,"completionDelayMs":0}',
+      ),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(pacedDisplayResult);
+    expect(pacedDisplayResult.success).toBe(true);
+    expect(pacedDisplayResult.values).toMatchObject({
+      mode: "ai",
+      pageHoldMs: 0,
+      completionDelayMs: 0,
+    });
 
     const micResult = await smartglassesMicrophoneAction.handler(
       runtime,
@@ -144,6 +171,23 @@ describe("smartglasses actions", () => {
     expect(stopHeartbeatLoopResult.success).toBe(true);
     expect(service.getStatus().heartbeatRunning).toBe(false);
 
+    const clearResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"clear"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(clearResult);
+    expect(clearResult.success).toBe(true);
+    expect(Array.from(transport.writes.at(-1)?.data ?? [])).toEqual([
+      G1Command.StartAi,
+      G1SubCommand.Stop,
+      0,
+      0,
+      0,
+    ]);
+
     const exitResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"exit_dashboard"}'),
@@ -171,6 +215,22 @@ describe("smartglasses actions", () => {
         (write) => write.data[0] === G1Command.ExitFunction,
       ),
     ).toBe(true);
+
+    const startAiResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"start_ai","subcommand":"start","param":[1,2]}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(startAiResult);
+    expect(startAiResult.success).toBe(true);
+    expect(Array.from(transport.writes.at(-1)?.data ?? [])).toEqual([
+      G1Command.StartAi,
+      G1SubCommand.Start,
+      1,
+      2,
+    ]);
 
     const connectionReadyResult = await smartglassesControlAction.handler(
       runtime,
@@ -203,6 +263,23 @@ describe("smartglasses actions", () => {
     ).toEqual([
       [G1Command.Init, 0x01],
       [G1Command.Init, 0x01],
+    ]);
+
+    const androidConnectionReadyResult =
+      await smartglassesControlAction.handler(
+        runtime,
+        memory('{"op":"connection_ready","initMode":"android-f4"}'),
+        undefined,
+        undefined,
+        callback as never,
+      );
+    expectResult(androidConnectionReadyResult);
+    expect(androidConnectionReadyResult.success).toBe(true);
+    expect(
+      transport.writes.slice(-2).map((write) => Array.from(write.data)),
+    ).toEqual([
+      [G1Command.RightInit, 0x01],
+      [G1Command.RightInit, 0x01],
     ]);
 
     const serialResult = await smartglassesControlAction.handler(
@@ -253,6 +330,53 @@ describe("smartglasses actions", () => {
       ),
     ).toBe(true);
 
+    const wifiScanResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wifi_scan"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wifiScanResult);
+    expect(wifiScanResult.success).toBe(true);
+    expect(wifiScanResult.values?.operationResult).toMatchObject({
+      status: "mock-wifi-ready",
+      networks: ["MockNet"],
+    });
+    expect(transport.wifiRequests.at(-1)).toEqual({ op: "scan" });
+
+    const wifiConfigureResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wifi_configure","ssid":"Home","password":"secret"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wifiConfigureResult);
+    expect(wifiConfigureResult.success).toBe(true);
+    expect(transport.wifiRequests.at(-1)).toEqual({
+      op: "configure",
+      ssid: "Home",
+      password: "secret",
+    });
+    expect(service.getStatus().lastWifiStatus?.status).toBe(
+      "mock credentials sent for Home",
+    );
+
+    const wifiStatusResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wifi_status"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wifiStatusResult);
+    expect(wifiStatusResult.success).toBe(true);
+    expect(wifiStatusResult.values?.operationResult).toMatchObject({
+      status: "mock-wifi-ready",
+    });
+    expect(transport.wifiRequests.at(-1)).toEqual({ op: "status" });
+
     const dashboardLayoutResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"dashboard_layout","layout":"dual"}'),
@@ -290,6 +414,50 @@ describe("smartglasses actions", () => {
     expect(dashboardTimeResult.success).toBe(true);
     expect(transport.writes.at(-1)?.data[4]).toBe(0x01);
 
+    const dashboardToggleResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"dashboard","enabled":true,"position":4}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(dashboardToggleResult);
+    expect(dashboardToggleResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.DashboardPosition);
+
+    const silentModeResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"silent_mode","enabled":false}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(silentModeResult);
+    expect(silentModeResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.SilentMode);
+
+    const headupResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"headup_angle","angle":20}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(headupResult);
+    expect(headupResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.HeadUpAngle);
+
+    const wearDetectionResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wear_detection","enabled":true}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wearDetectionResult);
+    expect(wearDetectionResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.GlassesWear);
+
     const navigationResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"navigation_start"}'),
@@ -313,6 +481,41 @@ describe("smartglasses actions", () => {
     expectResult(navigationDirectionsResult);
     expect(navigationDirectionsResult.success).toBe(true);
     expect(transport.writes.at(-1)?.data[4]).toBe(0x01);
+
+    const primaryImageBits = Array.from({ length: 136 * 136 }, () => 0);
+    const navigationPrimaryResult = await smartglassesControlAction.handler(
+      runtime,
+      memoryJson({
+        op: "navigation_primary_image",
+        image: primaryImageBits,
+        overlay: primaryImageBits,
+      }),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(navigationPrimaryResult);
+    expect(navigationPrimaryResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.Navigation);
+    expect(transport.writes.at(-1)?.data[4]).toBe(0x02);
+
+    const secondaryImage = Buffer.from(
+      new Uint8Array(488 * 136).fill(255),
+    ).toString("base64");
+    const navigationSecondaryResult = await smartglassesControlAction.handler(
+      runtime,
+      memoryJson({
+        op: "navigation_secondary_image",
+        image: secondaryImage,
+      }),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(navigationSecondaryResult);
+    expect(navigationSecondaryResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.Navigation);
+    expect(transport.writes.at(-1)?.data[4]).toBe(0x03);
 
     const navigationPollerResult = await smartglassesControlAction.handler(
       runtime,
@@ -368,6 +571,19 @@ describe("smartglasses actions", () => {
     expectResult(translateLanguagesResult);
     expect(translateLanguagesResult.success).toBe(true);
     expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.TranslateLanguages);
+
+    const translateOriginalResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"translate_original","text":"hello","syncId":4}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(translateOriginalResult);
+    expect(translateOriginalResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(
+      G1Command.TranslateOriginalText,
+    );
 
     const translateTextResult = await smartglassesControlAction.handler(
       runtime,
@@ -448,6 +664,28 @@ describe("smartglasses actions", () => {
             (G1TextStatus.TextShow | G1ScreenAction.NewContent),
         ),
     ).toBe(true);
+
+    const noteAddResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"note_add","noteNumber":1,"title":"Eliza","text":"Note"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(noteAddResult);
+    expect(noteAddResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.Note);
+
+    const noteDeleteResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"note_delete","noteNumber":1}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(noteDeleteResult);
+    expect(noteDeleteResult.success).toBe(true);
+    expect(transport.writes.at(-1)?.data[0]).toBe(G1Command.Note);
 
     const voiceNoteFetchResult = await smartglassesControlAction.handler(
       runtime,

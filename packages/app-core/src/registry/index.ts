@@ -18,6 +18,7 @@ export {
   indexEntries,
   type LoadedRegistry,
   mergeWithRuntime,
+  normalizeConnectorAuth,
   type RegistryValidationError,
 } from "./loader.js";
 export * from "./schema.js";

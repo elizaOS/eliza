@@ -3,7 +3,10 @@ import { SmartglassesService } from "../../../plugins/plugin-smartglasses/src/se
 import { WebBluetoothG1Transport } from "../../../plugins/plugin-smartglasses/src/transport/web-bluetooth.js";
 import {
   createHardwareEvidenceReport,
+  headsetSetupHint,
+  isCradleOrChargingState,
   markHardwareMicrophoneCommand,
+  missingHardwareEvidence,
   recordHardwareAudio,
   recordHardwareEvent,
   recordHardwareWrite,
@@ -15,6 +18,9 @@ type BrowserWithBluetooth = Navigator & {
 };
 
 const logEl = document.getElementById("log") as HTMLPreElement;
+const connectHeadsetButton = document.getElementById(
+  "connect-headset",
+) as HTMLButtonElement;
 const connectLeftButton = document.getElementById(
   "connect-left",
 ) as HTMLButtonElement;
@@ -29,6 +35,9 @@ const clearButton = document.getElementById("clear") as HTMLButtonElement;
 const micOnButton = document.getElementById("mic-on") as HTMLButtonElement;
 const micOffButton = document.getElementById("mic-off") as HTMLButtonElement;
 const settingsButton = document.getElementById("settings") as HTMLButtonElement;
+const guidedValidationButton = document.getElementById(
+  "guided-validation",
+) as HTMLButtonElement;
 const finalizeReportButton = document.getElementById(
   "finalize-report",
 ) as HTMLButtonElement;
@@ -39,15 +48,33 @@ const downloadReportButton = document.getElementById(
   "download-report",
 ) as HTMLButtonElement;
 const textArea = document.getElementById("text") as HTMLTextAreaElement;
+const missingEl = document.getElementById("missing") as HTMLUListElement;
+const headsetStateEl = document.getElementById(
+  "headset-state",
+) as HTMLDivElement;
 
 const service = new SmartglassesService();
 let transport: WebBluetoothG1Transport | null = null;
-const initMode: G1ConnectionReadyMode =
-  new URLSearchParams(window.location.search).get("initMode") === "official"
-    ? "official"
+const initMode: G1ConnectionReadyMode = new URLSearchParams(
+  window.location.search,
+).get("initMode") as G1ConnectionReadyMode;
+const effectiveInitMode: G1ConnectionReadyMode =
+  initMode === "official" || initMode === "android-f4"
+    ? initMode
     : "lens-specific";
-const report = createHardwareEvidenceReport({ initMode });
+const report = createHardwareEvidenceReport({ initMode: effectiveInitMode });
 let initialized = false;
+let connecting = false;
+let headsetConnectStep: "left" | "right" = "left";
+const headsetState: {
+  physical: string | null;
+  battery: string | null;
+  device: string | null;
+} = {
+  physical: null,
+  battery: null,
+  device: null,
+};
 
 function setHardwareReport(): void {
   (
@@ -66,6 +93,7 @@ function log(message: string, data?: unknown): void {
 function updateReport(): void {
   updateHardwareEvidenceStatus(report, service.getStatus());
   setHardwareReport();
+  renderMissingChecks();
   log("evidence", {
     ok: report.ok,
     checks: report.checks,
@@ -77,7 +105,54 @@ function reportJson(): string {
   updateHardwareEvidenceStatus(report, service.getStatus());
   report.finishedAt = new Date().toISOString();
   setHardwareReport();
+  renderMissingChecks();
   return `${JSON.stringify(report, null, 2)}\n`;
+}
+
+function renderMissingChecks(): void {
+  const missing = missingHardwareEvidence(report);
+  missingEl.replaceChildren(
+    ...(missing.length === 0
+      ? [document.createElement("li")]
+      : missing.map((check) => {
+          const item = document.createElement("li");
+          item.textContent = check;
+          return item;
+        })),
+  );
+  if (missing.length === 0) {
+    missingEl.firstElementChild!.textContent = "All required evidence captured";
+  }
+}
+
+function updateHeadsetState(event?: {
+  stateCategory?: string;
+  stateName?: string;
+  label?: string;
+}): void {
+  if (event?.stateCategory === "physical") {
+    headsetState.physical = event.stateName ?? event.label ?? null;
+  } else if (event?.stateCategory === "battery") {
+    headsetState.battery = event.stateName ?? event.label ?? null;
+  } else if (event?.stateCategory === "device") {
+    headsetState.device = event.stateName ?? event.label ?? null;
+  }
+  const states = [
+    headsetState.physical,
+    headsetState.battery,
+    headsetState.device,
+  ].filter(Boolean);
+  const blocked = isCradleOrChargingState(
+    headsetState.physical,
+    headsetState.battery,
+  );
+  const ready = headsetState.physical === "wearing";
+  const setupHint = headsetSetupHint({ headsetState });
+  headsetStateEl.classList.toggle("warning", blocked);
+  headsetStateEl.classList.toggle("ready", ready);
+  headsetStateEl.textContent = `Headset state: ${
+    states.join(" / ") || "no state yet"
+  }. ${setupHint ?? "Wearing state observed; tap/audio validation can run."}`;
 }
 
 function instrumentTransport(nextTransport: WebBluetoothG1Transport): void {
@@ -100,17 +175,31 @@ function instrumentTransport(nextTransport: WebBluetoothG1Transport): void {
 }
 
 function setConnected(enabled: boolean): void {
-  connectLeftButton.disabled = enabled;
-  connectRightButton.disabled = enabled;
+  connectHeadsetButton.disabled = enabled || connecting;
+  connectHeadsetButton.textContent = enabled
+    ? "Headset Connected"
+    : headsetConnectStep === "left"
+      ? "Connect Headset"
+      : "Connect Headset Right";
+  connectLeftButton.disabled = enabled || connecting;
+  connectRightButton.disabled = enabled || connecting;
   disconnectButton.disabled = !enabled;
   displayButton.disabled = !enabled;
   clearButton.disabled = !enabled;
   micOnButton.disabled = !enabled;
   micOffButton.disabled = !enabled;
   settingsButton.disabled = !enabled;
+  guidedValidationButton.disabled = !enabled;
   finalizeReportButton.disabled = !enabled;
   copyReportButton.disabled = !enabled;
   downloadReportButton.disabled = !enabled;
+}
+
+function setConnecting(enabled: boolean): void {
+  connecting = enabled;
+  connectHeadsetButton.disabled = enabled;
+  connectLeftButton.disabled = enabled;
+  connectRightButton.disabled = enabled;
 }
 
 function getOrCreateTransport(): WebBluetoothG1Transport {
@@ -122,6 +211,7 @@ function getOrCreateTransport(): WebBluetoothG1Transport {
   transport = new WebBluetoothG1Transport(browserNavigator.bluetooth);
   instrumentTransport(transport);
   transport.onEvent((event) => {
+    updateHeadsetState(event);
     recordHardwareEvent(report, event);
     log("event", event);
     updateReport();
@@ -152,8 +242,9 @@ async function initializeIfReady(): Promise<void> {
   if (!transport?.isConnected() || initialized) return;
   initialized = true;
   try {
+    await service.connect();
     report.checks.connected = true;
-    await service.sendConnectionReady("both", initMode);
+    await service.sendConnectionReady("both", effectiveInitMode);
     await service.requestSerial("both");
     setConnected(true);
     log("connected", service.getStatus());
@@ -164,20 +255,44 @@ async function initializeIfReady(): Promise<void> {
   }
 }
 
-async function connectLens(side: "left" | "right"): Promise<void> {
+async function connectLens(side: "left" | "right"): Promise<boolean> {
   try {
     const nextTransport = getOrCreateTransport();
     await withTimeout(
       nextTransport.connectLens(side),
-      15_000,
+      60_000,
       `${side} lens connection timed out`,
     );
     log(`${side} connected`);
     await initializeIfReady();
+    return true;
   } catch (error) {
     log(`${side} connect failed`, String(error));
+    return false;
   }
 }
+
+async function connectHeadset(): Promise<void> {
+  setConnecting(true);
+  try {
+    const side = headsetConnectStep;
+    log(
+      "connect headset",
+      side === "left"
+        ? "Select the left lens. Then click Connect Headset Right."
+        : "Select the right lens to complete the headset.",
+    );
+    const connected = await connectLens(side);
+    if (connected && side === "left") headsetConnectStep = "right";
+  } finally {
+    setConnecting(false);
+    setConnected(Boolean(transport?.isConnected()));
+  }
+}
+
+connectHeadsetButton.addEventListener("click", () => {
+  void connectHeadset();
+});
 
 connectLeftButton.addEventListener("click", () => {
   void connectLens("left");
@@ -190,6 +305,7 @@ connectRightButton.addEventListener("click", () => {
 disconnectButton.addEventListener("click", async () => {
   await service.disconnect();
   initialized = false;
+  headsetConnectStep = "left";
   setConnected(false);
   log("disconnected");
 });
@@ -218,13 +334,81 @@ micOffButton.addEventListener("click", async () => {
 });
 
 settingsButton.addEventListener("click", async () => {
+  await sendSettings();
+  log("settings sent");
+  updateReport();
+});
+
+guidedValidationButton.addEventListener("click", async () => {
+  await runGuidedValidation();
+});
+
+async function sendSettings(): Promise<void> {
   await service.setBrightness(10, true);
   await service.setDashboard(true, 4);
   await service.setHeadUpAngle(20);
   await service.setGlassesWearDetection(true);
-  log("settings sent");
-  updateReport();
-});
+}
+
+async function runGuidedValidation(): Promise<void> {
+  if (!transport?.isConnected()) {
+    log("guided validation skipped", "Connect both lenses first");
+    return;
+  }
+  updateHardwareEvidenceStatus(report, service.getStatus());
+  if (
+    isCradleOrChargingState(
+      report.headsetState.physical,
+      report.headsetState.battery,
+    )
+  ) {
+    log("guided validation skipped", report.setupHint);
+    renderMissingChecks();
+    return;
+  }
+  guidedValidationButton.disabled = true;
+  try {
+    log(
+      "guided validation",
+      "sending display/settings; then single tap, speak, and double tap",
+    );
+    await service.setMicrophoneEnabled(false);
+    await service.displayText(
+      "Hardware validation: single tap, speak for audio, then double tap.",
+    );
+    await sendSettings();
+    updateReport();
+    log("action required", "single tap now, speak clearly, then double tap");
+
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline && !report.ok) {
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      updateHardwareEvidenceStatus(report, service.getStatus());
+      renderMissingChecks();
+      if (
+        report.checks.tapObserved &&
+        report.checks.microphoneEnabledByTap &&
+        report.checks.audioObserved &&
+        !report.checks.microphoneDisabledByTap
+      ) {
+        log("action required", "double tap now to disable microphone");
+      }
+    }
+
+    await service.setMicrophoneEnabled(false);
+    updateReport();
+    const missing = missingHardwareEvidence(report);
+    if (missing.length === 0) {
+      log("guided validation pass", { checks: report.checks });
+    } else {
+      log("guided validation incomplete", { missing });
+    }
+  } catch (error) {
+    log("guided validation failed", String(error));
+  } finally {
+    guidedValidationButton.disabled = false;
+  }
+}
 
 finalizeReportButton.addEventListener("click", () => {
   const json = reportJson();
@@ -252,7 +436,9 @@ downloadReportButton.addEventListener("click", () => {
   log("report download started", { filename: link.download });
 });
 
-log("ready", { initMode });
+log("ready", { initMode: effectiveInitMode });
+renderMissingChecks();
+updateHeadsetState();
 
 function withTimeout<T>(
   promise: Promise<T>,

@@ -50,14 +50,37 @@ export const PYANNOTE_CLASS_TO_SPEAKERS: ReadonlyArray<ReadonlyArray<number>> =
 export class DiarizerUnavailableError extends Error {
 	readonly code:
 		| "ort-missing"
+		| "native-missing"
+		| "library-missing"
+		| "model-missing"
 		| "model-unavailable"
 		| "model-load-failed"
+		| "model-shape-mismatch"
+		| "forward-not-implemented"
 		| "invalid-input";
 	constructor(code: DiarizerUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "DiarizerUnavailableError";
 		this.code = code;
 	}
+}
+
+const DIARIZER_UNAVAILABLE_CODES = new Set<string>([
+	"ort-missing",
+	"native-missing",
+	"library-missing",
+	"model-missing",
+	"model-unavailable",
+	"model-load-failed",
+	"model-shape-mismatch",
+	"forward-not-implemented",
+	"invalid-input",
+]);
+
+function coerceDiarizerCode(code: unknown): DiarizerUnavailableError["code"] {
+	return typeof code === "string" && DIARIZER_UNAVAILABLE_CODES.has(code)
+		? (code as DiarizerUnavailableError["code"])
+		: "model-load-failed";
 }
 
 /**
@@ -92,20 +115,73 @@ export interface Diarizer {
 	dispose(): Promise<void>;
 }
 
+type DiarizerGgmlFacade = {
+	segment(pcm: Float32Array): Promise<{ labels: ArrayLike<number> }>;
+	dispose(): Promise<void>;
+};
+
 /**
- * Stub class kept for back-compat with code that still imports
- * `PyannoteDiarizer`. The ONNX-backed implementation was removed when
- * `onnxruntime-node` became optional; the static `load()` always rejects
- * with `DiarizerUnavailableError`. Callers should select a different
- * `Diarizer` implementation.
+ * Backward-compatible pyannote facade. The ONNX implementation has been
+ * replaced by the GGML binding, but several callers still import
+ * `PyannoteDiarizer` from this module.
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: legacy API surface
-export class PyannoteDiarizer {
-	static async load(_path: string): Promise<never> {
-		throw new DiarizerUnavailableError(
-			"model-unavailable",
-			"[pyannote] ONNX backend is no longer bundled with plugin-local-inference",
-		);
+export class PyannoteDiarizer implements Diarizer {
+	readonly sampleRate = PYANNOTE_SAMPLE_RATE;
+
+	private constructor(
+		private readonly impl: DiarizerGgmlFacade,
+		readonly modelId: PyannoteDiarizerModelId,
+	) {}
+
+	static async load(
+		ggufPath: string,
+		modelId: PyannoteDiarizerModelId = PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+	): Promise<PyannoteDiarizer> {
+		const { existsSync } = await import("node:fs");
+		if (!existsSync(ggufPath)) {
+			throw new DiarizerUnavailableError(
+				"model-missing",
+				`[pyannote] GGUF not found at ${ggufPath}`,
+			);
+		}
+		const { DiarizerGgml } = await import("./diarizer-ggml");
+		return new PyannoteDiarizer(new DiarizerGgml({ ggufPath }), modelId);
+	}
+
+	async diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput> {
+		try {
+			const out = await this.impl.segment(pcm);
+			const probs = new Float32Array(out.labels.length * PYANNOTE_CLASS_COUNT);
+			for (let frame = 0; frame < out.labels.length; frame += 1) {
+				const label = out.labels[frame] ?? -1;
+				if (label < 0 || label >= PYANNOTE_CLASS_COUNT) {
+					throw new DiarizerUnavailableError(
+						"model-load-failed",
+						`[pyannote] GGML emitted invalid class ${label} at frame ${frame}`,
+					);
+				}
+				probs[frame * PYANNOTE_CLASS_COUNT + label] = 1;
+			}
+			return classifyFramesToSegments(
+				probs,
+				out.labels.length,
+				PYANNOTE_CLASS_COUNT,
+				0,
+				PYANNOTE_FRAME_STRIDE_MS,
+			);
+		} catch (err) {
+			if (err instanceof Error && err.name === "DiarizerGgmlUnavailableError") {
+				throw new DiarizerUnavailableError(
+					coerceDiarizerCode((err as { code?: unknown }).code),
+					err.message,
+				);
+			}
+			throw err;
+		}
+	}
+
+	async dispose(): Promise<void> {
+		await this.impl.dispose();
 	}
 }
 

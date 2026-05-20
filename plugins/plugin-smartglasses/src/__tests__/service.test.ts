@@ -373,6 +373,34 @@ describe("SmartglassesService", () => {
     });
   });
 
+  it("subscribes to events when the injected transport is already connected", async () => {
+    const transport = new MockSmartglassesTransport();
+    await transport.connect();
+    const service = new SmartglassesService();
+    service.setTransport(transport);
+
+    await service.connect();
+    transport.emitRaw(
+      "right",
+      Uint8Array.from([
+        G1Command.GetSerial,
+        0xc9,
+        ...new TextEncoder().encode("PRECONNECTED001"),
+        0,
+      ]),
+    );
+    await Promise.resolve();
+
+    expect(service.getStatus()).toMatchObject({
+      connected: true,
+      lastSerialNumber: "PRECONNECTED001",
+      lastEvent: {
+        type: "serial",
+        label: "serial_number",
+      },
+    });
+  });
+
   it("maps bridge scroll events to manual page controls", async () => {
     const transport = new MockSmartglassesTransport();
     const service = new SmartglassesService();
@@ -423,6 +451,16 @@ describe("SmartglassesService", () => {
       batteryState: "cradle_charging_cable_changed",
       deviceState: "connected",
     });
+  });
+
+  it("does not report Wi-Fi as available for transports without Wi-Fi support", async () => {
+    const transport = new MockSmartglassesTransport();
+    const service = new SmartglassesService();
+    transport.supportsWifi = () => false;
+    service.setTransport(transport);
+
+    expect(service.getStatus().wifiAvailable).toBe(false);
+    await expect(service.scanWifi()).rejects.toThrow(/Wi-Fi/);
   });
 
   it("emits raw LC3 metadata for direct G1 microphone chunks", async () => {
@@ -625,6 +663,26 @@ describe("SmartglassesService", () => {
       ).toEqual([
         [G1Command.Init, 0x01],
         [G1Command.Init, 0x01],
+      ]);
+      await service.stop();
+    } finally {
+      setSmartglassesTransportForRuntime(null);
+    }
+  });
+
+  it("honors Android EvenDemoApp F4 init mode during Eliza-managed startup", async () => {
+    const transport = new MockSmartglassesTransport();
+    setSmartglassesTransportForRuntime(transport);
+    try {
+      const service = await SmartglassesService.start({
+        getSetting: (key: string) =>
+          key === SMARTGLASSES_INIT_MODE_SETTING ? "android-f4" : undefined,
+      } as never);
+      expect(
+        transport.writes.slice(-2).map((write) => Array.from(write.data)),
+      ).toEqual([
+        [G1Command.RightInit, 0x01],
+        [G1Command.RightInit, 0x01],
       ]);
       await service.stop();
     } finally {

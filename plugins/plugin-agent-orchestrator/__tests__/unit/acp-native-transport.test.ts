@@ -69,7 +69,7 @@ async function waitForWrites(p: MockProc, count: number): Promise<void> {
   );
 }
 
-async function waitForSpawnCount(count: number): Promise<void> {
+async function waitForSpawnCalls(count: number): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 1_000) {
     if (spawnMock.mock.calls.length >= count) return;
@@ -250,6 +250,9 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     const { client, p } = await startClient({ timeoutMs: 10 });
 
     const prompted = client.prompt("session-1", "keep going");
+    const promptRejection = expect(prompted).rejects.toThrow(
+      "ACP request timed out: session/prompt",
+    );
     await waitForWrites(p, 2);
     expect(writeAt(p, 1)).toMatchObject({
       id: 2,
@@ -265,9 +268,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
       method: "session/cancel",
       params: { sessionId: "session-1" },
     });
-    await expect(prompted).rejects.toThrow(
-      "ACP request timed out: session/prompt",
-    );
+    await promptRejection;
     emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
@@ -514,9 +515,7 @@ describe("NativeAcpClient terminal actions", () => {
       method: "terminal/create",
       params: { command: "node", args: ["-v"], cwd },
     });
-    // wait for createTerminal to call spawn() (after resolveDirectoryPath I/O)
-    // before emitting the spawn event so waitForSpawn's listener is registered
-    await waitForSpawnCount(2);
+    await waitForSpawnCalls(2);
     terminalProc.emit("spawn");
     const created = await waitForResponse(agentProc, "terminal-create");
     const terminalId = (created.result as { terminalId: string } | undefined)

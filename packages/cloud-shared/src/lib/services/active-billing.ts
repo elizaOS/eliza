@@ -3,6 +3,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
+import type { AppEnv } from "../../types/cloud-worker-env";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
 import { logger } from "../utils/logger";
@@ -30,7 +31,7 @@ export interface ActiveBillableResource {
 
 export interface InfrastructureCancellationAction {
   attempted: boolean;
-  status: "not_needed" | "stopped" | "deleted" | "failed";
+  status: "not_needed" | "queued" | "stopped" | "deleted" | "failed";
   message: string;
   error?: string;
 }
@@ -52,6 +53,7 @@ export interface CancelBillableResourceOptions {
   resourceId: string;
   resourceType?: BillableResourceType;
   mode?: "stop" | "delete";
+  triggerEnv?: AppEnv["Bindings"];
 }
 
 function iso(date: Date | null | undefined): string | null {
@@ -229,7 +231,7 @@ class ActiveBillingService {
     message: string;
     infrastructureAction: InfrastructureCancellationAction;
   }> {
-    const { organizationId, resourceId, resourceType, mode = "stop" } = options;
+    const { organizationId, resourceId, resourceType, mode = "stop", triggerEnv } = options;
     const now = new Date();
 
     if (!resourceType || resourceType === "container") {
@@ -350,6 +352,7 @@ class ActiveBillingService {
           organizationId,
           agent.user_id,
           mode,
+          triggerEnv,
         );
         const unitPrice =
           agent.status === "running"
@@ -388,7 +391,7 @@ class ActiveBillingService {
         const [updated] = await dbWrite
           .update(agentSandboxes)
           .set({
-            status: infrastructureAction.status === "stopped" ? "stopped" : agent.status,
+            status: agent.status,
             billing_status: "suspended",
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
@@ -405,8 +408,8 @@ class ActiveBillingService {
         return {
           stoppedBilling: true,
           message:
-            infrastructureAction.status === "stopped"
-              ? "Managed agent was stopped and billing has been suspended."
+            infrastructureAction.status === "queued"
+              ? "Managed agent stop was queued and billing has been suspended."
               : "Managed agent billing has been suspended; infrastructure stop needs operator follow-up.",
           infrastructureAction,
           resource: {
@@ -486,6 +489,7 @@ async function cancelAgentInfrastructure(
   organizationId: string,
   userId: string,
   mode: "stop" | "delete",
+  triggerEnv?: AppEnv["Bindings"],
 ): Promise<InfrastructureCancellationAction> {
   try {
     // Both the delete and stop paths SSH into the assigned core. They
@@ -507,11 +511,11 @@ async function cancelAgentInfrastructure(
         userId,
       });
     }
-    void provisioningJobService.triggerImmediate().catch(() => {});
+    void provisioningJobService.triggerImmediate(triggerEnv).catch(() => {});
 
     return {
       attempted: true,
-      status: mode === "delete" ? "deleted" : "stopped",
+      status: mode === "delete" ? "deleted" : "queued",
       message:
         mode === "delete"
           ? "Managed agent deletion queued; the orchestrator will tear down runtime, database, and control-plane row."

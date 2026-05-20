@@ -6,8 +6,10 @@ from typing import Any
 
 from benchmarks.orchestrator.adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
-    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
 )
 from benchmarks.orchestrator.calibration_report import build_calibration_report
@@ -286,6 +288,46 @@ def test_calibration_report_explains_hyperliquid_live_credential_gate(
     assert row["real_pattern"] == "no_required_real_harnesses"
 
 
+def test_calibration_report_explains_terminal_bench_docker_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"terminal_bench"},
+        agent_compatibility={"terminal_bench": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+        "hermes": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+        "openclaw": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    }
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
+def test_calibration_report_explains_hermes_sandbox_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"hermes_tblite"},
+        agent_compatibility={"hermes_tblite": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": HERMES_SANDBOX_UNAVAILABLE_REASON,
+        "hermes": HERMES_SANDBOX_UNAVAILABLE_REASON,
+        "openclaw": HERMES_SANDBOX_UNAVAILABLE_REASON,
+    }
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
 def test_calibration_report_explains_vision_language_fixed_runtime(
     tmp_path: Path,
 ) -> None:
@@ -299,8 +341,8 @@ def test_calibration_report_explains_vision_language_fixed_runtime(
     assert row["real_required_harnesses"] == ["eliza"]
     assert row["real_unsupported_harnesses"] == ["hermes", "openclaw"]
     assert row["real_unsupported_reasons"] == {
-        "hermes": VISION_LANGUAGE_FIXED_RUNTIME_REASON,
-        "openclaw": VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+        "hermes": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+        "openclaw": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     }
 
 
