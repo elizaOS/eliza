@@ -69,6 +69,8 @@
               "user/add-capability",
               "user/connect-discord",
               "user/connect-telegram",
+              "user/lifeops-setup",
+              "user/developer-docs",
               "user/troubleshooting"
             ]
           },
@@ -134,8 +136,10 @@
               "connectors/tlon",
               "connectors/twilio",
               "connectors/blooio",
+              "connectors/bluebubbles",
               "connectors/nextcloud-talk",
-              "connectors/zalo"
+              "connectors/zalo",
+              "connectors/zalouser"
             ]
           }
         ]
@@ -159,6 +163,10 @@
               "apps/overview",
               "apps/desktop",
               "apps/desktop-local-development",
+              "apps/desktop-main-process-reset",
+              "apps/desktop-vrm-three-and-spark",
+              "apps/electrobun-darwin-macos-webgpu-version",
+              "electrobun-startup",
               "apps/desktop/deep-linking",
               "apps/desktop/native-modules",
               "apps/mobile",
@@ -173,7 +181,9 @@
               "dashboard/chat",
               "dashboard/apps",
               "dashboard/pairing",
-              "dashboard/stream"
+              "dashboard/stream",
+              "apps/dashboard/settings",
+              "apps/dashboard/talk-mode"
             ]
           }
         ]
@@ -244,7 +254,8 @@
               "model-providers",
               "chat-commands",
               "plugin-setup-guide",
-              "action-catalog"
+              "action-catalog",
+              "skills/streaming"
             ]
           }
         ]
@@ -264,15 +275,29 @@
           {
             "group": "Developer Guides",
             "pages": [
+              "guides/beginners-user-guide",
               "guides/beginners-development-guide",
               "guides/developer-playbook",
               "guides/first-extension-walkthrough",
               "guides/custom-actions",
               "guides/hooks",
+              "guides/triggers",
               "guides/coding-swarms",
               "guides/config-includes",
               "guides/config-templates",
               "guides/agent-export",
+              "guides/autonomous-mode",
+              "guides/documents",
+              "guides/emotes",
+              "guides/media-generation",
+              "guides/themes",
+              "guides/sandbox",
+              "guides/local-models",
+              "guides/training",
+              "guides/wallet-basics",
+              "guides/wallet",
+              "guides/whatsapp",
+              "guides/registry",
               "guides/platform-secure-store",
               "guides/onboarding-and-support",
               "guides/onboarding-ui-flow",
