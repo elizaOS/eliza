@@ -188,6 +188,39 @@ replacement) and the SC/Loop overrides, which the model fires
 more aggressively. Both are RTL design choices for area cost, not
 correctness bugs.
 
+## R8.1 restart verification
+
+The R8 partial commit (`4a8ca2a961`) was followed by a restart pass
+that re-ran the full evidence chain to confirm the R8 numbers
+reproduce and no regression slipped in:
+
+- `make bpu-lint` — PASS (Verilator 5.049 strict-lint clean across
+  all 13 BPU modules, including the renamed `e1_bpu_ras`).
+- `make cocotb-bpu` — 33/33 tests across 9 modules
+  (`ras`, `ftq`, `ftb`, `uftb`, `loop_predictor`, `tage`, `ittage`,
+  `sc`, `bpu_top`). 0 fail, 0 skip.
+- `make mpki-eval-rtl` — re-measured CBP-5 RTL MPKI: aggregate
+  3.958, `sample_fp_trace` 4.186, `sample_int_trace` 3.729. Numbers
+  reproduce bit-exact (mispredict counts identical to R8 commit).
+- `make formal-bpu` — `ras` formal harness elaborates with the
+  renamed `e1_bpu_ras` module (no module-not-found error); the BMC
+  failure on `ras_formal.sv:89` is the pre-existing
+  yosys-async-reset-initial-state limitation documented in
+  `build/reports/bpu/formal-status.yaml` and is not a regression
+  introduced by R8.
+
+The R8 target (RTL within ~2× of the behavioural model on CBP-5
+sample traces) is met:
+
+| trace | model MPKI | RTL MPKI | ratio |
+| --- | ---: | ---: | ---: |
+| sample_fp_trace  | 3.078 | 4.186 | 1.36× |
+| sample_int_trace | 2.074 | 3.729 | 1.80× |
+
+No further RTL tuning is queued for R8.1; the residual is structural
+(set-associative SRAM vs flat-dict model FTB, area-cost-driven SC
+override threshold) and is not a correctness gap.
+
 ## CBP2016 64KB TAGE-SC-L reference summary (workload-class averages)
 
 These are CSV-derived averages over all CBP2025 training traces by
