@@ -274,13 +274,19 @@ export function ElizaAgentsTable({
     }
   }, [mergeApiData]);
 
+  const jobActionById = useRef(new Map<string, string>());
+
   const poller = useJobPoller({
-    onComplete: () => {
-      toast.success("Agent provisioning completed");
+    onComplete: (job) => {
+      const action = jobActionById.current.get(job.jobId);
+      jobActionById.current.delete(job.jobId);
+      toast.success(`${action ?? "Agent job"} completed`);
       void refreshData();
     },
     onFailed: (job) => {
-      toast.error(job.error ?? "Provisioning failed");
+      const action = jobActionById.current.get(job.jobId);
+      jobActionById.current.delete(job.jobId);
+      toast.error(job.error ?? `${action ?? "Agent job"} failed`);
       void refreshData();
     },
   });
@@ -371,6 +377,7 @@ export function ElizaAgentsTable({
       if (res.status === 409) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
+          jobActionById.current.set(jobId, "Agent provisioning");
           poller.track(id, jobId);
           toast.info("Provisioning already in progress");
           return;
@@ -388,6 +395,7 @@ export function ElizaAgentsTable({
       if (res.status === 202) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
+          jobActionById.current.set(jobId, "Agent provisioning");
           poller.track(id, jobId);
           toast.success("Agent provisioning queued");
           return;
@@ -420,19 +428,28 @@ export function ElizaAgentsTable({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "suspend" }),
       });
+      const data = await res.json().catch(() => ({}));
+      const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
+
+      if (res.status === 409 && jobId) {
+        jobActionById.current.set(jobId, "Agent suspend");
+        poller.track(id, jobId);
+        toast.info("Suspend already in progress");
+        return;
+      }
+
       if (!res.ok && res.status !== 202) {
         // Revert optimistic update
         void refreshData();
-        throw new Error("Suspend failed");
+        throw new Error((data as { error?: string }).error ?? "Suspend failed");
       }
 
       // 202 + jobId: the daemon executes the suspend asynchronously.
       // Track the job so the table reflects the real completion (and
       // the success toast doesn't lie before the container actually
       // stops).
-      const data = await res.json().catch(() => ({}));
-      const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
       if (res.status === 202 && jobId) {
+        jobActionById.current.set(jobId, "Agent suspend");
         poller.track(id, jobId);
         toast.success("Suspend queued");
         return;
@@ -487,7 +504,10 @@ export function ElizaAgentsTable({
         icon={Boxes}
         action={
           <CreateElizaAgentDialog
-            onProvisionQueued={(agentId, jobId) => poller.track(agentId, jobId)}
+            onProvisionQueued={(agentId, jobId) => {
+              jobActionById.current.set(jobId, "Agent provisioning");
+              poller.track(agentId, jobId);
+            }}
             onCreated={refreshData}
           />
         }
@@ -524,7 +544,10 @@ export function ElizaAgentsTable({
             </SelectContent>
           </Select>
           <CreateElizaAgentDialog
-            onProvisionQueued={(agentId, jobId) => poller.track(agentId, jobId)}
+            onProvisionQueued={(agentId, jobId) => {
+              jobActionById.current.set(jobId, "Agent provisioning");
+              poller.track(agentId, jobId);
+            }}
             onCreated={refreshData}
           />
         </div>

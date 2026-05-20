@@ -108,7 +108,7 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
             const timedOutJob: TrackedJob = {
               ...job,
               status: "failed",
-              error: "Timed out waiting for provisioning to complete",
+              error: "Timed out waiting for job to complete",
             };
 
             setJobMap((prev) => {
