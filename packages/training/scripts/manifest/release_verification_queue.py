@@ -198,7 +198,8 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
         f"--bench-report {bundle}/evals/dflash-native-bench.json && "
         f"{_eval_suite_command(eval_python, bundle, tier, '--threads', '8', '--timeout', '600')} && "
         f"publish bundles/{tier}/dflash/target-meta.json, "
-        f"bundles/{tier}/dflash/validation-real.json, and "
+        f"bundles/{tier}/dflash/validation-real.json, "
+        f"bundles/{tier}/dflash/runtime-smoke-native.json, and "
         f"bundles/{tier}/evals/dflash-accept.json only after native runtime acceptanceRate meets the release gate"
     )
 
@@ -433,6 +434,7 @@ def build_queue(
                 evidence=(
                     f"bundles/{tier}/dflash/target-meta.json",
                     f"bundles/{tier}/dflash/validation-real.json",
+                    f"bundles/{tier}/dflash/runtime-smoke-native.json",
                     f"bundles/{tier}/evals/dflash-accept.json",
                 ),
                 source=name,

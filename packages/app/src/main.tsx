@@ -92,7 +92,7 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import React, { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,

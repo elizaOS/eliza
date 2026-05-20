@@ -5,7 +5,7 @@
 
 [Unit]
 Description=Wait for Tor to Have Bootstrapped
-Documentation=https://tails.net/contribute/design/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 
 [Service]

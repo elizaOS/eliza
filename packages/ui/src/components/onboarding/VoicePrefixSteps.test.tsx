@@ -32,7 +32,7 @@ const baseProps = {
 describe("VoicePrefixSteps", () => {
   it("renders the welcome step with the mic permission CTA", () => {
     const onAdvance = vi.fn();
-    render(
+    const { container } = render(
       <VoicePrefixSteps
         {...baseProps}
         step="welcome"
@@ -41,7 +41,15 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
-    expect(screen.getByTestId("voice-prefix-welcome-request-mic")).toBeTruthy();
+    expect(screen.getByTestId("voice-prefix-steps").className).toContain(
+      "text-[#06133F]",
+    );
+    expect(container.querySelector("main")?.className).toContain(
+      "bg-[#FFFFFF]",
+    );
+    expect(
+      screen.getByTestId("voice-prefix-welcome-request-mic").className,
+    ).toContain("bg-[#0B35F1]");
   });
 
   it("renders the tier banner for the chosen tier", () => {

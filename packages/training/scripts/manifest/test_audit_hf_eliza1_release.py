@@ -140,6 +140,7 @@ def _text_fetcher(
     dflash_target_meta: Mapping[str, str] | None = None,
     dflash_accept_reports: Mapping[str, str] | None = None,
     dflash_validation_reports: Mapping[str, str] | None = None,
+    dflash_runtime_reports: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
     aggregate_reports: Mapping[str, str] | None = None,
     platform_evidence: Mapping[str, str] | None = None,
@@ -211,6 +212,13 @@ def _text_fetcher(
             dflash_validation_reports[tier]
             if dflash_validation_reports and tier in dflash_validation_reports
             else _passing_dflash_validation_report(tier)
+        )
+        payloads[
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/dflash/runtime-smoke-native.json"
+        ] = (
+            dflash_runtime_reports[tier]
+            if dflash_runtime_reports and tier in dflash_runtime_reports
+            else _passing_dflash_runtime_report(tier)
         )
         payloads[
             f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evidence/release.json"
@@ -614,6 +622,41 @@ def _passing_dflash_validation_report(tier: str) -> str:
                     "gate": 0.48,
                     "proposed": 2000,
                     "accepted": 1440,
+                },
+            },
+        }
+    )
+
+
+def _passing_dflash_runtime_report(tier: str) -> str:
+    return __import__("json").dumps(
+        {
+            "schemaVersion": 1,
+            "tier": tier,
+            "metadataStatus": "metadata_loadable",
+            "metadataFailures": [],
+            "runtime": [
+                {
+                    "status": 0,
+                    "dflash": {
+                        "requiresTrueDrafting": True,
+                        "draftingActive": True,
+                        "drafted": 2000,
+                        "accepted": 1440,
+                        "acceptanceRate": 0.72,
+                    },
+                }
+            ],
+            "bench": {
+                "available": True,
+                "status": "pass",
+                "drafted": 2000,
+                "accepted": 1440,
+                "acceptanceRate": 0.72,
+                "speedup": 1.21,
+                "summary": {
+                    "status": "pass",
+                    "dflashDraftingActive": True,
                 },
             },
         }
@@ -1184,6 +1227,37 @@ def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
         in check["detail"]
         and "dflash/validation-real.json.acceptanceRate: 0.041666666666666664 < gate 0.4"
         in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_native_mtp_runtime_smoke_pass() -> None:
+    bad_report = __import__("json").loads(_passing_dflash_runtime_report("4b"))
+    bad_report["metadataStatus"] = "metadata_invalid"
+    bad_report["metadataFailures"] = ["drafter.matchesTargetCheckpoint=false"]
+    bad_report["runtime"][0]["dflash"]["accepted"] = 0
+    bad_report["bench"]["acceptanceRate"] = 0.1
+    bad_report["bench"]["speedup"] = 0.95
+    bad_report["bench"]["summary"]["dflashDraftingActive"] = False
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(
+            dflash_runtime_reports={"4b": __import__("json").dumps(bad_report)}
+        ),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "4b MTP drafter release evidence passed"
+        and "dflash/runtime-smoke-native.json.metadataStatus: 'metadata_invalid'"
+        in check["detail"]
+        and "dflash/runtime-smoke-native.json.runtime.dflash: no accepted native draft"
+        in check["detail"]
+        and "dflash/runtime-smoke-native.json.bench.acceptanceRate: 0.1 < gate 0.48"
+        in check["detail"]
+        and "dflash/runtime-smoke-native.json.bench.speedup: 0.95" in check["detail"]
         for check in failed
     )
 

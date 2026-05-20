@@ -3416,6 +3416,7 @@ export async function startApiServer(opts?: {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal error";
+      logger.error({ err }, `[eliza-api] Request handler failed: ${msg}`);
       addLog("error", msg, "api", ["server", "api"]);
       error(res, msg, 500);
     }

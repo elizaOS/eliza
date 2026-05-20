@@ -26,7 +26,10 @@ describe("remote capability endpoint providers", () => {
 
   it("builds the same endpoint/module trust policy for every provider kind", () => {
     expect(
-      buildRemoteCapabilityEndpointTrustPolicy("home-runner", ["home-plugin"]),
+      buildRemoteCapabilityEndpointTrustPolicy(
+        { id: "home-runner", baseUrl: "https://home-runner.example.test" },
+        ["home-plugin", "home-plugin"],
+      ),
     ).toEqual({
       allowedEndpointIds: ["home-runner"],
       allowedModuleIds: ["home-plugin"],
@@ -633,9 +636,9 @@ describe("remote capability endpoint providers", () => {
     await expect(
       directRemoteCapabilityEndpointProvider().provision({
         endpoint: {
-          id: "mobile-companion",
-          baseUrl: "https://mobile.example.test",
-          token: "mobile-token",
+          id: " mobile-companion ",
+          baseUrl: "https://mobile.example.test/?debug=true#fragment",
+          token: " mobile-token ",
         },
         allowedModuleIds: ["mobile-plugin"],
       }),
@@ -655,8 +658,8 @@ describe("remote capability endpoint providers", () => {
       e2bCapabilityEndpointProvider.provision({
         baseUrl: " https://runner.example.test/root?token=leak#frag ",
         endpointId: " e2b-runner ",
-        token: "secret",
-        allowedModuleIds: ["runner-plugin"],
+        token: " secret ",
+        allowedModuleIds: [" runner-plugin ", "runner-plugin"],
       }),
     ).resolves.toEqual({
       providerId: "e2b",
@@ -666,6 +669,18 @@ describe("remote capability endpoint providers", () => {
         token: "secret",
       },
       allowedModuleIds: ["runner-plugin"],
+    });
+
+    await expect(
+      homeMachineCapabilityEndpointProvider.provision({
+        baseUrl: "https://home.example.test/capability/",
+      }),
+    ).resolves.toMatchObject({
+      providerId: "home-machine",
+      endpoint: {
+        id: "home-machine",
+        baseUrl: "https://home.example.test/capability",
+      },
     });
 
     await expect(

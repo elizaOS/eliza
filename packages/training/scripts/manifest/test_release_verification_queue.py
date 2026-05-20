@@ -294,6 +294,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert "--bench --bench-tokens 128" in mtp.command
     assert "--report /bundles/eliza-1-4b.bundle/dflash/runtime-smoke-native.json" in mtp.command
     assert "--bench-report /bundles/eliza-1-4b.bundle/evals/dflash-native-bench.json" in mtp.command
+    assert "bundles/4b/dflash/runtime-smoke-native.json" in mtp.evidence
     assert "bundles/4b/evals/dflash-accept.json" in mtp.evidence
     finetune = items[1]
     assert finetune.requires_hardware is True

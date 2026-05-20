@@ -754,6 +754,7 @@ def _dflash_target_meta_blockers(
     tier: str,
     acceptance_report: Mapping[str, Any] | None = None,
     validation_report: Mapping[str, Any] | None = None,
+    runtime_report: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     if meta.get("publishEligible") is not True:
@@ -851,6 +852,72 @@ def _dflash_target_meta_blockers(
                 blockers.append(
                     f"dflash/validation-real.json.acceptanceRate: {report_rate} < gate {gate}"
                 )
+    if runtime_report is None:
+        blockers.append("dflash/runtime-smoke-native.json: missing")
+    else:
+        metadata_status = runtime_report.get("metadataStatus")
+        if metadata_status != "metadata_loadable":
+            blockers.append(f"dflash/runtime-smoke-native.json.metadataStatus: {metadata_status!r}")
+        metadata_failures = runtime_report.get("metadataFailures")
+        if metadata_failures not in (None, []):
+            blockers.append(
+                f"dflash/runtime-smoke-native.json.metadataFailures: {metadata_failures!r}"
+            )
+        runtime_runs = runtime_report.get("runtime")
+        if not isinstance(runtime_runs, list) or not runtime_runs:
+            blockers.append("dflash/runtime-smoke-native.json.runtime: missing")
+        else:
+            accepted_run = False
+            for run in runtime_runs:
+                if not isinstance(run, Mapping) or run.get("status") != 0:
+                    continue
+                dflash = run.get("dflash")
+                if not isinstance(dflash, Mapping):
+                    continue
+                accepted_run = (
+                    dflash.get("requiresTrueDrafting") is True
+                    and dflash.get("draftingActive") is True
+                    and isinstance(dflash.get("drafted"), int)
+                    and dflash.get("drafted") > 0
+                    and isinstance(dflash.get("accepted"), int)
+                    and dflash.get("accepted") > 0
+                    and not dflash.get("dflashFailure")
+                )
+                if accepted_run:
+                    break
+            if not accepted_run:
+                blockers.append("dflash/runtime-smoke-native.json.runtime.dflash: no accepted native draft")
+        bench = runtime_report.get("bench")
+        if not isinstance(bench, Mapping):
+            blockers.append("dflash/runtime-smoke-native.json.bench: missing")
+        else:
+            bench_rate = bench.get("acceptanceRate")
+            if bench.get("available") is not True:
+                blockers.append(f"dflash/runtime-smoke-native.json.bench.available: {bench.get('available')!r}")
+            if bench.get("status") != "pass":
+                blockers.append(f"dflash/runtime-smoke-native.json.bench.status: {bench.get('status')!r}")
+            if not isinstance(bench.get("drafted"), int) or bench.get("drafted") <= 0:
+                blockers.append(f"dflash/runtime-smoke-native.json.bench.drafted: {bench.get('drafted')!r}")
+            if not isinstance(bench.get("accepted"), int) or bench.get("accepted") <= 0:
+                blockers.append(f"dflash/runtime-smoke-native.json.bench.accepted: {bench.get('accepted')!r}")
+            if isinstance(gate, (int, float)) and isinstance(bench_rate, (int, float)) and bench_rate < gate:
+                blockers.append(
+                    f"dflash/runtime-smoke-native.json.bench.acceptanceRate: {bench_rate} < gate {gate}"
+                )
+            speedup = bench.get("speedup")
+            if not isinstance(speedup, (int, float)) or speedup <= 1.0:
+                blockers.append(f"dflash/runtime-smoke-native.json.bench.speedup: {speedup!r}")
+            summary = bench.get("summary")
+            if isinstance(summary, Mapping):
+                if summary.get("status") != "pass":
+                    blockers.append(
+                        f"dflash/runtime-smoke-native.json.bench.summary.status: {summary.get('status')!r}"
+                    )
+                if summary.get("dflashDraftingActive") is not True:
+                    blockers.append(
+                        "dflash/runtime-smoke-native.json.bench.summary.dflashDraftingActive: "
+                        f"{summary.get('dflashDraftingActive')!r}"
+                    )
     return blockers
 
 
@@ -1472,11 +1539,20 @@ def audit_hf_release(
                 validation_report = json.loads(validation_report_text)
             except (RuntimeError, json.JSONDecodeError):
                 validation_report = None
+            runtime_report = None
+            try:
+                runtime_report_text = fetch_text(
+                    _raw_model_url(model_repo, f"{prefix}dflash/runtime-smoke-native.json")
+                )
+                runtime_report = json.loads(runtime_report_text)
+            except (RuntimeError, json.JSONDecodeError):
+                runtime_report = None
             dflash_meta_blockers = _dflash_target_meta_blockers(
                 dflash_meta,
                 tier=tier,
                 acceptance_report=acceptance_report,
                 validation_report=validation_report,
+                runtime_report=runtime_report,
             )
             report.check(
                 f"{tier} MTP drafter release evidence passed",

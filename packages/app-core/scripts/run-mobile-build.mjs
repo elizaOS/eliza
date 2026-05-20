@@ -57,7 +57,7 @@ import {
   findForbiddenRuntimeImportGroups,
   findForbiddenRuntimeStrings,
   formatForbiddenRuntimeFindings,
-} from "../../bun-ios-runtime/scripts/ios-app-store-runtime-policy.mjs";
+} from "../../native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
@@ -141,7 +141,11 @@ const androidAgentSpikeDir = path.join(
 );
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
 const IOS_BUN_ENGINE_ABI_VERSION = "3";
-const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+const iosBunRuntimePackageRoot = path.join(
+  packagesRoot,
+  "native",
+  "bun-runtime",
+);
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
   "artifacts",
@@ -163,8 +167,6 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "pglite.wasm",
   "initdb.wasm",
   "pglite.data",
-  "ort-wasm-simd-threaded.mjs",
-  "ort-wasm-simd-threaded.wasm",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
   "plugins-manifest.json",
@@ -482,7 +484,7 @@ function resolvePackageAbsolutePath(
 
 function resolveNativePluginPackagePath(pkgName, relativeTo) {
   if (pkgName === "@elizaos/bun-ios-runtime") {
-    const localPackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+    const localPackageRoot = path.join(packagesRoot, "native", "bun-runtime");
     if (fs.existsSync(path.join(localPackageRoot, "package.json"))) {
       return path.relative(relativeTo, localPackageRoot);
     }

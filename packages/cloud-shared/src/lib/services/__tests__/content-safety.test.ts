@@ -17,6 +17,10 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+mock.module("../../runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: mock(() => process.env),
+}));
+
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   restoreEnv("OPENAI_API_KEY", ORIGINAL_OPENAI_API_KEY);

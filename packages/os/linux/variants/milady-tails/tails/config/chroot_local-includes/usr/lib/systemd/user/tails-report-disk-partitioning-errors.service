@@ -1,6 +1,6 @@
 [Unit]
 Description=Report possible errors about disk partitioning
-Documentation=https://tails.net/install
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 ConditionPathExists=/var/lib/live/config/tails.disk-partitioning-errors
 

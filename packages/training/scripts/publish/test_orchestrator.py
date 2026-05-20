@@ -252,6 +252,47 @@ def _build_fixture_bundle(
         ),
     )
     _write(
+        bundle / "dflash" / "runtime-smoke-native.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "metadataStatus": "metadata_loadable",
+                "metadataFailures": [],
+                "checks": {
+                    "drafterShape": "plain-ar",
+                    "targetCheckpointMatchesTarget": True,
+                    "targetDrafterTokenizerCompatible": True,
+                },
+                "runtime": [
+                    {
+                        "status": 0,
+                        "dflash": {
+                            "requiresTrueDrafting": True,
+                            "drafted": 2,
+                            "accepted": 1,
+                            "acceptanceRate": 0.5,
+                            "draftingActive": True,
+                        },
+                    }
+                ],
+                "bench": {
+                    "available": True,
+                    "status": "pass",
+                    "drafted": 2,
+                    "accepted": 1,
+                    "acceptanceRate": 0.71,
+                    "speedup": 1.2,
+                    "summary": {
+                        "status": "pass",
+                        "dflashDraftingActive": True,
+                    },
+                },
+            },
+            indent=2,
+        ),
+    )
+    _write(
         bundle / "evals" / "metal_verify.json",
         json.dumps(
             {
@@ -768,6 +809,33 @@ def test_dflash_release_rejects_failed_real_validation_report(tmp_path: Path) ->
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
+def test_dflash_release_requires_native_runtime_smoke_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "dflash" / "runtime-smoke-native.json").unlink()
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_dflash_release_rejects_failed_native_runtime_smoke_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "dflash" / "runtime-smoke-native.json"
+    report = json.loads(report_path.read_text())
+    report["metadataStatus"] = "metadata_invalid"
+    report["metadataFailures"] = ["drafter.matchesTargetCheckpoint=false"]
+    report["runtime"][0]["dflash"]["accepted"] = 0
+    report["bench"]["acceptanceRate"] = 0.1
+    report["bench"]["speedup"] = 0.95
+    report_path.write_text(json.dumps(report) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 def test_dflash_release_allows_structural_validation_with_native_acceptance_report(
     tmp_path: Path,
 ) -> None:
@@ -781,6 +849,7 @@ def test_dflash_release_allows_structural_validation_with_native_acceptance_repo
         "detail": "skipped (--skip-acceptance-rollout); native acceptance is in evals/dflash-accept.json",
     }
     report_path.write_text(json.dumps(report) + "\n")
+    _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))

@@ -23,7 +23,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,14 +56,12 @@ interface ProbeResult {
 function runProbe(env: Record<string, string | undefined>): ProbeResult {
 	const nodeBin = process.env.NODE_BIN ?? process.env.NODE ?? "node";
 	const mergedEnv = { ...process.env, ...env };
-	const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-out-"));
-	const outPath = join(dir, "probe.json");
 	const result =
 		typeof Bun !== "undefined"
 			? Bun.spawnSync({
 					cmd: [nodeBin, PROBE_SCRIPT, "--json"],
 					env: mergedEnv as Record<string, string>,
-					stdout: Bun.file(outPath),
+					stdout: "pipe",
 					stderr: "pipe",
 				})
 			: spawnSync(nodeBin, [PROBE_SCRIPT, "--json"], {
@@ -73,11 +71,9 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 				});
 	const status = "exitCode" in result ? result.exitCode : result.status;
 	const stdout =
-		typeof Bun !== "undefined"
-			? readFileSync(outPath, "utf8")
-			: typeof result.stdout === "string"
-				? result.stdout
-				: new TextDecoder().decode(result.stdout ?? new Uint8Array());
+		typeof result.stdout === "string"
+			? result.stdout
+			: new TextDecoder().decode(result.stdout ?? new Uint8Array());
 	const stderr =
 		typeof result.stderr === "string"
 			? result.stderr
