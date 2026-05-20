@@ -193,6 +193,34 @@ function isMicDisableTap(label?: string | null): boolean {
   return label === "double_tap" || label === "stop_ai_recording";
 }
 
+function isCradleOrChargingState(
+  physicalState: string | null,
+  batteryState: string | null,
+): boolean {
+  return (
+    physicalState === "cradle_open" ||
+    physicalState === "cradle_closed" ||
+    physicalState === "charged_in_cradle" ||
+    batteryState === "glasses_fully_charged" ||
+    batteryState === "cradle_charging_cable_changed" ||
+    batteryState === "cradle_fully_charged"
+  );
+}
+
+function headsetValidationBlocker(
+  physicalState: string | null,
+  batteryState: string | null,
+): string | null {
+  if (physicalState === "wearing") return null;
+  const stateText =
+    [physicalState, batteryState].filter(Boolean).join(" / ") ||
+    "no wearing state observed";
+  if (isCradleOrChargingState(physicalState, batteryState)) {
+    return `Glasses are still reporting ${stateText}. Remove them from the charging base and wear them before tap or microphone validation.`;
+  }
+  return `Tap and microphone validation requires a wearing state; current state is ${stateText}.`;
+}
+
 function parseWifiNetworks(result: unknown): string[] {
   if (!result || typeof result !== "object") return [];
   const value = result as Record<string, unknown>;
@@ -481,6 +509,10 @@ export function SmartglassesView() {
     let nextTransport: SmartglassesTransport | null = null;
     try {
       nextTransport = await requireTransport();
+      const blocker = headsetValidationBlocker(physicalState, batteryState);
+      if (blocker) {
+        throw new Error(blocker);
+      }
       await nextTransport.openMicrophone(false);
       setMicEnabled(false);
       markTest("microphone");
@@ -953,13 +985,7 @@ function HeadsetStateHint({
 }) {
   const states = [physicalState, batteryState, deviceState].filter(Boolean);
   const stateText = states.length > 0 ? states.join(" / ") : "No state yet";
-  const blocked =
-    physicalState === "cradle_open" ||
-    physicalState === "cradle_closed" ||
-    physicalState === "charged_in_cradle" ||
-    batteryState === "glasses_fully_charged" ||
-    batteryState === "cradle_charging_cable_changed" ||
-    batteryState === "cradle_fully_charged";
+  const blocked = isCradleOrChargingState(physicalState, batteryState);
   const ready = physicalState === "wearing";
   return (
     <div

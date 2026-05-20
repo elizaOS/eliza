@@ -23,6 +23,7 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_token_evidence,
     build_run_config,
     build_cell,
+    build_exit_code_summary,
     classify_failure,
     collect_outcome_metrics,
     collect_token_metrics,
@@ -299,6 +300,18 @@ def test_report_gate_combines_coverage_benchmark_and_required_stats() -> None:
         "benchmark_gate": True,
         "required_stats_gate": False,
     }
+
+
+def test_exit_code_summary_documents_gate_contract() -> None:
+    exit_codes = build_exit_code_summary()
+
+    assert exit_codes["ok"]["code"] == 0
+    assert exit_codes["preflight_failed"]["code"] == 2
+    assert exit_codes["comparable_gate_failed"]["code"] == 3
+    assert exit_codes["token_evidence_failed"]["code"] == 4
+    assert exit_codes["required_stats_failed"]["code"] == 5
+    assert exit_codes["coverage_gate_failed"]["code"] == 6
+    assert exit_codes["report_gate_failed"]["code"] == 7
 
 
 def test_classifies_common_failure_shapes() -> None:
@@ -609,6 +622,9 @@ def test_token_evidence_flags_missing_and_present_telemetry() -> None:
     assert summary["token_evidence"]["status_counts"]["missing"] == 1
     assert "## Token Evidence" in markdown
     assert "| swe_bench | opencode | missing | 0 | 0 | 0 | 0 |" in markdown
+    assert summary["exit_codes"]["report_gate_failed"]["code"] == 7
+    assert "## Exit Codes" in markdown
+    assert "| 7 | report_gate_failed |" in markdown
 
 
 def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> None:
@@ -780,6 +796,7 @@ def test_enforce_report_exits_nonzero_for_combined_gate_failure(tmp_path: Path) 
     assert summary["coverage_gate"]["ok"] is False
     assert summary["report_gate"]["ok"] is False
     assert summary["report_gate"]["blocking_gates"] == ["benchmark coverage"]
+    assert summary["exit_codes"]["report_gate_failed"]["code"] == 7
 
 
 def test_enforce_report_takes_precedence_over_individual_gate_codes(tmp_path: Path) -> None:

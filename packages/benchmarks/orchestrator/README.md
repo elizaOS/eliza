@@ -276,6 +276,19 @@ Use `--enforce-report` for a single release-readiness exit code over the
 combined report gate. It fails unless coverage, comparability, and required
 stats all pass for the generated report.
 
+The generated `summary.json` includes an `exit_codes` map for automation. The
+current contract is:
+
+| code | name | meaning |
+| --- | --- | --- |
+| 0 | `ok` | run completed without an enforced gate failure |
+| 2 | `preflight_failed` | preflight checks failed |
+| 3 | `comparable_gate_failed` | ElizaOS was not comparable-or-better than OpenCode on every selected benchmark |
+| 4 | `token_evidence_failed` | one or more selected cells lacked usable LLM token telemetry |
+| 5 | `required_stats_failed` | one or more selected benchmarks lacked required outcome or token stats |
+| 6 | `coverage_gate_failed` | the run did not cover every included code-agent benchmark |
+| 7 | `report_gate_failed` | the combined release-readiness report gate failed |
+
 Before a run, use `--preflight` to check the OpenCode adapter executable,
 benchmark working directories, command executables, and provider keys for live
 runs. Smoke and dry-run preflights do not require provider keys because they do

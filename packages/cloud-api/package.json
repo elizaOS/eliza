@@ -10,7 +10,7 @@
     "dev:full": "node ../scripts/cloud/admin/dev/cloud-api-dev.mjs --with-control-plane",
     "agent:build": "node ../scripts/cloud/admin/dev/build-cloud-agent-image.mjs",
     "build": "tsc --noEmit",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
     "typecheck": "tsc --noEmit",
     "test": "bun test __tests__",

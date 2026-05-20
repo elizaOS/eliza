@@ -21,7 +21,7 @@ const readyAppleEvents = [
 
 const readyShortcuts = {
   available: true,
-  shortcuts: ["Eliza Cloud Send Message"],
+  shortcuts: ["Eliza Cloud Send Message Ready"],
 };
 
 const base = {
@@ -31,7 +31,7 @@ const base = {
   pendingReplies: [],
   appleEvents: readyAppleEvents,
   shortcuts: readyShortcuts,
-  shortcutsSendShortcutName: "Eliza Cloud Send Message",
+  shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
 };
 
 describe("BlueBubbles local bridge readiness", () => {
@@ -90,7 +90,7 @@ describe("BlueBubbles local bridge readiness", () => {
     ).toEqual({ method: "shortcuts", ready: true, reasons: [] });
   });
 
-  it("explains missing Shortcuts setup", () => {
+  it("explains missing ready Shortcuts setup", () => {
     expect(
       outboundReadiness({
         ...base,
@@ -100,7 +100,7 @@ describe("BlueBubbles local bridge readiness", () => {
     ).toEqual({
       method: "shortcuts",
       ready: false,
-      reasons: ['Shortcut "Eliza Cloud Send Message" is not installed'],
+      reasons: ['Shortcut "Eliza Cloud Send Message Ready" is not installed'],
     });
   });
 

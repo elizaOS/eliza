@@ -152,7 +152,7 @@ const blueBubblesSendTimeoutMs = Number.parseInt(
   10,
 );
 const shortcutsSendShortcutName = (
-  process.env.BLUEBUBBLES_SHORTCUT_NAME ?? "Eliza Cloud Send Message"
+  process.env.BLUEBUBBLES_SHORTCUT_NAME ?? "Eliza Cloud Send Message Ready"
 ).trim();
 const pendingReplyRetryEnabled =
   process.env.BLUEBUBBLES_PENDING_RETRY_ENABLED === "true";

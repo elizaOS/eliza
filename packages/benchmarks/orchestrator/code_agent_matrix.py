@@ -36,6 +36,42 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CODE_CAPABILITIES = "code.read,code.write,code.edit,code.search,code.shell"
 DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
+EXIT_OK = 0
+EXIT_PREFLIGHT_FAILED = 2
+EXIT_COMPARABLE_GATE_FAILED = 3
+EXIT_TOKEN_EVIDENCE_FAILED = 4
+EXIT_REQUIRED_STATS_FAILED = 5
+EXIT_COVERAGE_GATE_FAILED = 6
+EXIT_REPORT_GATE_FAILED = 7
+EXIT_CODE_SPECS = (
+    (EXIT_OK, "ok", "run completed without an enforced gate failure"),
+    (EXIT_PREFLIGHT_FAILED, "preflight_failed", "preflight checks failed"),
+    (
+        EXIT_COMPARABLE_GATE_FAILED,
+        "comparable_gate_failed",
+        "ElizaOS was not comparable-or-better than OpenCode on every selected benchmark",
+    ),
+    (
+        EXIT_TOKEN_EVIDENCE_FAILED,
+        "token_evidence_failed",
+        "one or more selected cells lacked usable LLM token telemetry",
+    ),
+    (
+        EXIT_REQUIRED_STATS_FAILED,
+        "required_stats_failed",
+        "one or more selected benchmarks lacked required outcome or token stats",
+    ),
+    (
+        EXIT_COVERAGE_GATE_FAILED,
+        "coverage_gate_failed",
+        "the run did not cover every included code-agent benchmark",
+    ),
+    (
+        EXIT_REPORT_GATE_FAILED,
+        "report_gate_failed",
+        "the combined release-readiness report gate failed",
+    ),
+)
 
 FAILURE_CLASSES = (
     "pass",
@@ -1892,6 +1928,13 @@ def build_report_gate(summary: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_exit_code_summary() -> dict[str, dict[str, int | str]]:
+    return {
+        name: {"code": code, "message": message}
+        for code, name, message in EXIT_CODE_SPECS
+    }
+
+
 def summarize_results(results: list[CellResult]) -> dict[str, Any]:
     by_adapter: dict[str, dict[str, int]] = {}
     by_benchmark: dict[str, dict[str, int]] = {}
@@ -1921,6 +1964,7 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         "token_evidence": build_token_evidence(results),
         "coverage": build_coverage_summary(selected_benchmarks),
         "head_to_head": head_to_head,
+        "exit_codes": build_exit_code_summary(),
         "improvement_queue": build_improvement_queue(results, head_to_head),
         "cells": [asdict(result) for result in results],
     }
@@ -2010,6 +2054,38 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Enforce report: {run_config.get('enforce_report')}",
             ]
         )
+    exit_codes = summary.get("exit_codes")
+    if isinstance(exit_codes, dict):
+        rows = [
+            (name, spec)
+            for name, spec in exit_codes.items()
+            if isinstance(spec, dict)
+        ]
+        rows.sort(
+            key=lambda item: (
+                item[1].get("code")
+                if isinstance(item[1].get("code"), int)
+                else 999
+            )
+        )
+        if rows:
+            lines.extend(
+                [
+                    "",
+                    "## Exit Codes",
+                    "",
+                    "| code | name | meaning |",
+                    "| --- | --- | --- |",
+                ]
+            )
+            for name, spec in rows:
+                lines.append(
+                    "| {code} | {name} | {message} |".format(
+                        code=spec.get("code", ""),
+                        name=name,
+                        message=spec.get("message", ""),
+                    )
+                )
     preflight = summary.get("preflight")
     if isinstance(preflight, dict):
         lines.extend(
@@ -2649,10 +2725,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.preflight:
             print(json.dumps(preflight, indent=2, sort_keys=True))
-            return 0 if preflight["ok"] else 2
+            return EXIT_OK if preflight["ok"] else EXIT_PREFLIGHT_FAILED
         if not preflight["ok"]:
             print(json.dumps(preflight, indent=2, sort_keys=True))
-            return 2
+            return EXIT_PREFLIGHT_FAILED
         results = [
             run_cell(
                 cell,
@@ -2707,31 +2783,31 @@ def main(argv: list[str] | None = None) -> int:
         and isinstance(report_gate, dict)
         and not report_gate.get("ok")
     ):
-        return 7
+        return EXIT_REPORT_GATE_FAILED
     if args.enforce_comparable and not summary["benchmark_gate"]["ok"]:
-        return 3
+        return EXIT_COMPARABLE_GATE_FAILED
     coverage_gate = summary.get("coverage_gate")
     if (
         args.enforce_coverage
         and isinstance(coverage_gate, dict)
         and not coverage_gate.get("ok")
     ):
-        return 6
+        return EXIT_COVERAGE_GATE_FAILED
     token_evidence = summary.get("token_evidence")
     if (
         args.enforce_token_evidence
         and isinstance(token_evidence, dict)
         and not token_evidence.get("ok")
     ):
-        return 4
+        return EXIT_TOKEN_EVIDENCE_FAILED
     required_stats_gate = summary.get("required_stats_gate")
     if (
         args.enforce_required_stats
         and isinstance(required_stats_gate, dict)
         and not required_stats_gate.get("ok")
     ):
-        return 5
-    return 0
+        return EXIT_REQUIRED_STATS_FAILED
+    return EXIT_OK
 
 
 if __name__ == "__main__":

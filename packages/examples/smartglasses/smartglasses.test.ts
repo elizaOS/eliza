@@ -412,6 +412,7 @@ test("hardware report validator flags cradle state separately from tap and audio
     battery: "cradle_fully_charged",
     device: "connected",
   });
+  expect(report.setupHint).toContain("remove them from the charging base");
   expect(validateHardwareReport(report)).toEqual(
     expect.arrayContaining(["headsetInCradle", "wearingStateNotObserved"]),
   );

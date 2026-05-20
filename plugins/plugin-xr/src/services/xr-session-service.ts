@@ -17,6 +17,8 @@ import {
   encodeBinaryFrame,
   type XRClientControl,
   type XRDeviceType,
+  type XRPanelConfig,
+  type XRServerControl,
   type XRTTSAudioHeader,
 } from "../protocol.ts";
 import { AudioPipeline } from "./audio-pipeline.ts";
@@ -105,6 +107,48 @@ export class XRSessionService extends Service {
     conn.ws.send(JSON.stringify({ type: "agent_text", text }));
   }
 
+  sendControl(connectionId: string, msg: XRServerControl): void {
+    const conn = this.connections.get(connectionId);
+    if (!conn || conn.ws.readyState !== conn.ws.OPEN) return;
+    conn.ws.send(JSON.stringify(msg));
+  }
+
+  broadcastControl(msg: XRServerControl): void {
+    for (const conn of this.connections.values()) {
+      if (conn.ws.readyState === conn.ws.OPEN) {
+        conn.ws.send(JSON.stringify(msg));
+      }
+    }
+  }
+
+  openView(
+    connectionId: string,
+    viewId: string,
+    agentBaseUrl: string,
+    config?: XRPanelConfig,
+  ): void {
+    this.sendControl(connectionId, { type: "view_open", viewId, agentBaseUrl, config });
+  }
+
+  closeView(connectionId: string, viewId: string): void {
+    this.sendControl(connectionId, { type: "view_close", viewId });
+  }
+
+  switchView(connectionId: string, viewId: string): void {
+    this.sendControl(connectionId, { type: "view_switch", viewId });
+  }
+
+  resizeView(connectionId: string, viewId: string, config: XRPanelConfig): void {
+    this.sendControl(connectionId, { type: "view_resize", viewId, config });
+  }
+
+  sendViewsCatalog(
+    connectionId: string,
+    views: Array<{ id: string; label: string; icon?: string; description?: string }>,
+  ): void {
+    this.sendControl(connectionId, { type: "views_catalog", views });
+  }
+
   sendAudio(connectionId: string, audio: Buffer, sampleRate = 24000): void {
     const conn = this.connections.get(connectionId);
     if (!conn || conn.ws.readyState !== conn.ws.OPEN) return;
@@ -175,6 +219,21 @@ export class XRSessionService extends Service {
 
     if (msg.type === "ping") {
       ws.send(JSON.stringify({ type: "pong" }));
+      return;
+    }
+
+    if (msg.type === "view_ready") {
+      console.info(`[plugin-xr] view ready on ${connId}: ${msg.viewId}`);
+      return;
+    }
+
+    if (msg.type === "view_closed") {
+      console.info(`[plugin-xr] view closed on ${connId}: ${msg.viewId}`);
+      return;
+    }
+
+    if (msg.type === "view_event") {
+      console.info(`[plugin-xr] view event on ${connId}:`, msg.viewId, msg.event);
       return;
     }
   }
