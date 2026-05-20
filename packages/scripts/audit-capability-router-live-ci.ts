@@ -203,7 +203,7 @@ export const checks: Check[] = [
   {
     name: "product connect persists redacted trust audit records",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*appendTrustAuditRecord)(?=[\s\S]*readTrustAuditRecords)(?=[\s\S]*redactEndpoint\(audit\.endpoint\))(?=[\s\S]*trustDecisions:\s*audit\.sync\.trustDecisions)/,
+      /ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT[\s\S]{0,500}appendTrustAuditRecord[\s\S]{0,300}readTrustAuditRecords[\s\S]*redactEndpoint\(audit\.endpoint\)[\s\S]{0,800}trustDecisions:\s*audit\.sync\.trustDecisions/,
     source: "remote-capability-routes",
     message:
       "product connect persistence must record redacted capability-router trust-audit records.",
@@ -211,7 +211,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers redacted product trust audit records",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*provider:\s*"direct")(?=[\s\S]*allowedModuleIds:\s*\["remote-demo"\])(?=[\s\S]*trustDecisions:[\s\S]*trusted:\s*true)(?=[\s\S]*JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\))/,
+      /product-token[\s\S]{0,1200}allowedModuleIds:\s*\["remote-demo"\][\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT[\s\S]{0,800}provider:\s*"direct"[\s\S]{0,500}allowedModuleIds:\s*\["remote-demo"\][\s\S]{0,500}trustDecisions:[\s\S]{0,500}trusted:\s*true[\s\S]{0,500}JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\)/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove product connect persists trust audit records without bearer tokens.",
@@ -219,7 +219,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers Cloud provision restart reopened view",
     pattern:
-      /(?=[\s\S]*reopens a persisted Cloud-provisioned remote view after restart)(?=[\s\S]*connectCloudSandbox:[\s\S]*mockResolvedValue)(?=[\s\S]*cloud-product-token)(?=[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\))(?=[\s\S]*getView\("cloud\.restart\.view"\))(?=[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js)(?=[\s\S]*plugin\.asset\.get)(?=[\s\S]*Bearer cloud-product-token)/,
+      /reopens a persisted Cloud-provisioned remote view after restart[\s\S]*connectCloudSandbox:\s*vi\.fn\(\)\.mockResolvedValue[\s\S]*cloud-product-token[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\)[\s\S]*getView\("cloud\.restart\.view"\)[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js[\s\S]*plugin\.asset\.get[\s\S]*Bearer cloud-product-token/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove Cloud provision persistence can restart, reopen the remote view, and fetch its bundle with the persisted token.",
@@ -227,7 +227,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers signed provenance trust policy",
     pattern:
-      /(?=[\s\S]*requireSignedProvenance:\s*true)(?=[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\])(?=[\s\S]*provenanceIssuer:\s*"eliza-cloud-build")(?=[\s\S]*reason:\s*"missing-provenance")(?=[\s\S]*reason:\s*"provenance-issuer-not-allowed")(?=[\s\S]*requireVerifiedProvenance:\s*true)(?=[\s\S]*trustedProvenancePublicKeys)(?=[\s\S]*reason:\s*"invalid-provenance-signature")(?=[\s\S]*reason:\s*"missing-provenance-public-key")(?=[\s\S]*requireProvenanceDigestMatch:\s*true)(?=[\s\S]*reason:\s*"invalid-provenance-digest")/,
+      /requireSignedProvenance:\s*true[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*trustedProvenancePublicKeys[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
