@@ -6,136 +6,169 @@
 [![npm downloads](https://img.shields.io/npm/dw/plugin-undesirables.svg)](https://www.npmjs.org/package/plugin-undesirables)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![ElizaOS](https://img.shields.io/badge/ElizaOS-v2_Compatible-purple.svg)](https://elizaos.ai)
-[![MCP Server](https://img.shields.io/badge/MCP_Server-34_Tools-green.svg)](https://github.com/sailorpepe/undesirables-mcp-server)
-[![Actions](https://img.shields.io/badge/Actions-9_Total-brightgreen.svg)](https://www.npmjs.org/package/plugin-undesirables)
-[![x402](https://img.shields.io/badge/x402-Pay_Per_Request-orange.svg)](https://oracle.the-undesirables.com)
+[![MCP Server](https://img.shields.io/badge/MCP_Server-35+_Tools-green.svg)](https://github.com/sailorpepe/undesirables-mcp-server)
+[![x402](https://img.shields.io/badge/x402-Oracle_API-orange.svg)](https://oracle.the-undesirables.com)
 
-> Give any ElizaOS agent a persistent personality, market analysis skills, business automation, and content creation — all driven by a downloadable "soul workspace."
+> Personality-as-Code for ElizaOS agents. Live market data from 370K+ indexed products. Zero config required.
 
 ---
 
 ## What This Does
 
-Each of the 4,444 NFTs in [The Undesirables](https://the-undesirables.com) collection has a downloadable "soul workspace" — a structured personality profile with Big Five psychology scores, an archetype, a strategy style, guardrails, and a backstory. This plugin loads that workspace and injects the personality into every ElizaOS agent response.
+`plugin-undesirables` gives any ElizaOS agent a structured personality, live TCG market data, and 24 specialized skills — with zero configuration required.
 
-When you install `plugin-undesirables`, your agent gets:
+Install the plugin, and your agent immediately gets:
 
-- **Persistent personality** — structured workspace data (not a system prompt) with Big Five scores, an archetype, strategy, adjectives, guardrails, and backstory. Persists across sessions and colors every response.
-- **Market analysis with conviction** — filters market data through the agent's own risk tolerance and strategy. Returns opinionated takes with conviction scores.
-- **24 built-in skills** — portfolio checks, entry signals, exit strategies, whale tracking, meme creation, video production, music generation, and more. Auto-matches the right skill to your message.
-- **Business Pilot** — phone answering, SMS autoresponders, invoice chasers, appointment scheduling. Turn your agent into a business operations assistant.
-- **Meme Machine** — content creation, brand voice setup, content calendars, and industry-specific meme packs. Turn your agent into a social media manager.
+- **A working personality** — a demo soul loads automatically. NFT holders get their unique AI identity.
+- **Live market data** — real product prices from 370K+ indexed TCG products, injected into every relevant conversation.
+- **24 skills** — market analysis, portfolio checks, entry signals, exit strategies, risk assessment, content creation, and more.
+- **Passive market intelligence** — an evaluator that detects card/market topics and enriches the agent's context with live pricing data automatically.
+
+---
+
+## Architecture
+
+The Undesirables ecosystem has three tiers. The plugin is the free entry point.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  PLUGIN (npm install plugin-undesirables)                │
+│  Free — no keys, no wallets, no payments                 │
+│                                                          │
+│  ✓ Demo soul (loads automatically, zero config)          │
+│  ✓ All 24 skills                                         │
+│  ✓ 9 personality-driven actions                          │
+│  ✓ Live Oracle data (search + daily market snapshot)     │
+│  ✓ Passive market intelligence evaluator                 │
+│  ✓ NFT holder souls (unique personality + memory)        │
+├──────────────────────────────────────────────────────────┤
+│  ORACLE API (oracle.the-undesirables.com)                │
+│  Paid — x402 micropayments, USDC on Base                 │
+│                                                          │
+│  $0.10  AI card grading (PSA/Beckett via vision model)   │
+│  $0.015 Monte Carlo price simulation (Heston/Merton/Kou) │
+│  $0.05  NFT floor price oracle + forecast                │
+│  $0.05  Token price simulation (CoinGecko + Monte Carlo) │
+│  $1.00  Cross-platform prediction market arbitrage       │
+│  $0.50  Multi-outcome basket arbitrage                   │
+│  $0.25  Weather derivatives edge scanning                │
+├──────────────────────────────────────────────────────────┤
+│  MCP SERVER (pip install undesirables-mcp-server)        │
+│  Local — runs on your machine, 35+ tools                 │
+│                                                          │
+│  Full tool suite for Claude, Cursor, or any MCP client.  │
+│  All processing happens locally. Nothing leaves your     │
+│  machine unless you configure external API access.       │
+└─────────────────────────────────────────────────────────┘
+```
+
+The plugin provides free personality and data. The Oracle API provides paid computational intelligence. The MCP server provides local tool access. Each tier works independently.
 
 ---
 
 ## Quick Start
 
-### 1. Install
+### Option A: Zero Config (Demo Soul)
 
 ```bash
 npm install plugin-undesirables
 ```
 
-### 2. Get a Soul Workspace
-
-Go to [the-undesirables.com/soul](https://the-undesirables.com/soul), connect your wallet, and download your workspace. Unzip it somewhere on your machine.
-
-Each workspace contains:
-- `SOUL.md` — personality profile (Big Five scores, archetype, strategy, backstory)
-- `SYSTEM_PROMPT.txt` — the full instruction set
-- `MEMORY.md` — persistent memory file
-- `PREDICTIONS_LEDGER.json` — track record of market calls
-- `skills/` — 10-24 skill files depending on the agent's traits
-
-### 3. Configure
-
 Add to your ElizaOS `character.json`:
 
-**macOS / Linux:**
+```json
+{
+  "plugins": ["plugin-undesirables"]
+}
+```
+
+That's it. Your agent loads a demo personality with all 24 skills and live Oracle data. No wallet, no API key, no workspace download needed.
+
+### Option B: NFT Holder (Unique Soul)
+
+If you own an Undesirable NFT, download your soul workspace from [the-undesirables.com](https://the-undesirables.com) and point the plugin to it:
+
 ```json
 {
   "plugins": ["plugin-undesirables"],
   "settings": {
-    "UNDESIRABLES_WORKSPACE": "/Users/YourName/Desktop/soul_0420"
+    "UNDESIRABLES_WORKSPACE": "/path/to/your/soul_workspace"
   }
 }
 ```
 
-**Windows:**
-```json
-{
-  "plugins": ["plugin-undesirables"],
-  "settings": {
-    "UNDESIRABLES_WORKSPACE": "C:\\Users\\YourName\\Desktop\\soul_0420"
-  }
-}
-```
-
-### 4. Run
-
-```bash
-elizaos start --character your-character.json
-```
-
-Your agent now has a persistent personality that influences every conversation.
+Your agent gets a unique personality derived from your NFT's visual traits — Big Five psychology scores, an archetype, a strategy style, persistent memory, and a predictions ledger. No two souls are alike.
 
 ---
 
-## Actions (9 Total)
+## What's Included
 
-### Core Actions
+### Providers (2)
 
-| Action | Trigger Examples | What Happens |
-|--------|-----------------|--------------|
-| `UNDESIRABLE_MARKET_ANALYSIS` | "What do you think about ETH?" | Personality-driven market analysis with risk guardrails and conviction scoring |
-| `UNDESIRABLE_BUSINESS_PILOT` | "Set up phone answering for my barbershop" | Loads the Business Pilot skill, recommends top modules with setup steps |
-| `UNDESIRABLE_MEME_MACHINE` | "Create memes for my coffee shop" | Generates meme concepts, captions, content calendars, brand voice |
-| `UNDESIRABLE_LOAD_SKILL` | "Check my portfolio" / "Should I ape?" | Auto-matches your message to one of 24 skills and executes it |
+| Provider | What It Does |
+|----------|-------------|
+| `undesirables-oracle` | Fetches live product prices from 370K+ indexed TCG products and daily market snapshots. Triggers automatically when the conversation mentions cards, prices, or market topics. |
+| `undesirables-soul` | Injects the agent's personality context into every response. Loads demo soul by default or the NFT holder's unique soul when configured. |
 
-### Dedicated Trading Actions (NEW in v2.1.0)
+### Evaluators (1)
 
-| Action | Trigger Examples | What Happens |
-|--------|-----------------|--------------|
-| `UNDESIRABLE_WHALE_TRACKER` | "What are whales buying?" / "Smart money flows" | Tracks whale wallet movements, institutional buys/sells, and smart money flows |
-| `UNDESIRABLE_ENTRY_SIGNAL` | "Is now a good time to buy ETH?" / "Buy signal" | Evaluates price action, momentum, support/resistance — returns GO / WAIT / NO-GO |
-| `UNDESIRABLE_PORTFOLIO_CHECK` | "How does my portfolio look?" / "Am I diversified?" | Reviews portfolio health, concentration risk, and grades it A-F against guardrails |
-| `UNDESIRABLE_EXIT_STRATEGY` | "When should I sell my ETH?" / "Set up take profit" | Plans TP1/TP2/TP3 levels, stop loss placement, and time-based exit rules |
-| `UNDESIRABLE_RISK_ASSESSMENT` | "Is this memecoin safe?" / "How risky is leveraged ETH?" | Deep risk analysis — returns SAFE / CAUTION / DANGER with top 3 risk factors |
+| Evaluator | What It Does |
+|-----------|-------------|
+| `UNDESIRABLE_MARKET_INTELLIGENCE` | Runs passively on every message. When the conversation touches TCG card topics, it auto-enriches the agent's context with live pricing from the Oracle API. The agent becomes market-aware without anyone explicitly asking. |
 
-### All 24 Skills
+### Actions (9)
 
-| Skill | Trigger Words |
-|-------|--------------|
-| Portfolio Check | "portfolio", "balance", "holdings" |
-| Content Creation | "tweet", "write", "promote", "thread" |
-| Entry Signal | "should I buy", "buy signal", "good time to buy" |
-| Exit Strategy | "sell", "take profit", "stop loss" |
-| Risk Assessment | "risk", "downside", "worst case", "is this safe" |
-| Whale Tracker | "whale", "smart money", "what are whales buying" |
-| Conviction Score | "conviction", "confidence", "how sure" |
-| Snipe Launch | "snipe", "new launch", "just launched" |
-| Memecoin Scanner | "memecoin", "find me a gem", "degen scan" |
-| Ape Checklist | "should I ape", "ape check" |
-| Position Sizing | "position size", "how much should I buy" |
-| Volatility Scan | "volatile", "what's moving" |
-| Liquidation Watch | "liquidation levels", "longs", "shorts" |
-| MEV Detection | "mev", "sandwich", "front-running" |
-| Farm Yield | "yield farming", "liquidity", "best yield" |
-| Compound Strategy | "compound", "auto-compound", "apy" |
-| Copy Trade | "copy trade", "mirror this wallet" |
-| Rebalance Check | "rebalance", "allocation", "portfolio drift" |
-| Diversification | "diversify", "spread", "concentrate" |
-| Sector Rotation | "sector", "rotation", "cycle" |
-| Prediction Log | "predict", "forecast", "call" |
-| Image Generation | "image", "picture", "generate art" |
-| Music Generation | "music", "song", "beat" |
-| Video Production | "video", "promo", "render video" |
+| Action | What It Does |
+|--------|-------------|
+| `UNDESIRABLE_MARKET_ANALYSIS` | Personality-driven market analysis with conviction scoring and risk guardrails |
+| `UNDESIRABLE_BUSINESS_PILOT` | AI business automation — phone answering, SMS, invoicing, scheduling |
+| `UNDESIRABLE_MEME_MACHINE` | Content creation — meme concepts, brand voice, content calendars |
+| `UNDESIRABLE_LOAD_SKILL` | Routes user messages to the best-matching skill from the 24 available |
+| `UNDESIRABLE_WHALE_TRACKER` | Whale wallet movement analysis and smart money flow tracking |
+| `UNDESIRABLE_ENTRY_SIGNAL` | Entry evaluation — GO / WAIT / NO-GO with support/resistance levels |
+| `UNDESIRABLE_PORTFOLIO_CHECK` | Portfolio health assessment with A–F rating and concentration risk |
+| `UNDESIRABLE_EXIT_STRATEGY` | Exit planning — TP1/TP2/TP3 levels, stop losses, time-based rules |
+| `UNDESIRABLE_RISK_ASSESSMENT` | Risk rating 1–10 with SAFE / CAUTION / DANGER verdict |
+
+### Skills (24)
+
+All 24 skills are available to every user — demo and NFT holder alike.
+
+| Category | Skills |
+|----------|--------|
+| **Trading** | Market Analysis, Entry Signal, Exit Strategy, Conviction Score, Position Sizing |
+| **Portfolio** | Portfolio Check, Rebalance Check, Diversification, Sector Rotation |
+| **Risk** | Risk Assessment, Volatility Scan, Liquidation Watch, MEV Detection |
+| **DeFi** | Farm Yield, Compound Strategy, Snipe Launch, Memecoin Scanner, Ape Checklist |
+| **Social** | Whale Tracker, Copy Trade, Prediction Log |
+| **Content** | Content Creation, Image Generation, Music Generation, Video Production |
+
+---
+
+## Access Model
+
+| Feature | Demo (Free) | NFT Holder |
+|---------|:-----------:|:----------:|
+| All 24 skills | ✓ | ✓ |
+| Live Oracle data | ✓ | ✓ |
+| Market intelligence evaluator | ✓ | ✓ |
+| All 9 actions | ✓ | ✓ |
+| **Unique personality** | — | ✓ |
+| **Persistent memory** | — | ✓ |
+| **Predictions ledger** | — | ✓ |
+| **Custom voice & archetype** | — | ✓ |
+
+Skills are the distribution. Personality is the NFT value.
+
+- **4,444** total souls on Ethereum
+- **273** minted
+- **4,171** unclaimed at [scatter.art/the-undesirables](https://scatter.art/the-undesirables)
 
 ---
 
 ## How Personality Works
 
-Each soul workspace has a `SOUL.md` file with structured personality data:
+Each soul workspace contains a `SOUL.md` with structured personality data:
 
 ```yaml
 name: "Doña Crypto"
@@ -149,71 +182,56 @@ agreeableness: 45
 neuroticism: 28
 ```
 
-The `soulProvider` injects this context into **every** agent response automatically. Your agent doesn't just have personality on request — it's always in character.
+The `undesirables-soul` provider injects this context into **every** agent response. Two different Undesirable agents will give completely different takes on the same question, filtered through their individual psychology.
 
-This means two different Undesirable agents will give you completely different takes on the same market question, filtered through their individual psychology.
+Workspaces are keyed by `runtime.agentId`. Multiple Undesirable agents can run in the same ElizaOS instance without personality collision.
 
 ---
 
-## Multi-Agent Safety
+## Security
 
-Workspaces are keyed by `runtime.agentId`. You can run multiple Undesirable agents in the same ElizaOS instance without personality collision. Agent #420 won't leak into Agent #69's responses.
+| Measure | Implementation |
+|---------|---------------|
+| Path traversal protection | `getSafePath()` validates boundaries + resolves symlinks via `fs.realpathSync` |
+| YAML injection | Parsed with `js-yaml` `JSON_SCHEMA` (no function execution). `__proto__`, `constructor`, `prototype` keys stripped. |
+| Prompt isolation | Skill content wrapped with security warning — treated as inert reference material |
+| Oracle fetch | 8-second timeout via `AbortSignal`, `redirect: "error"` prevents SSRF |
+| Error handling | LLM failures return safe user-facing message — no prompt context leaked |
+| Multi-agent safety | Workspace state keyed by `agentId` — no cross-agent state leakage |
 
 ---
 
 ## Troubleshooting
 
-| Error | Fix |
-|-------|-----|
-| `Workspace /path/ does not exist` | Check the path in your `character.json`. It must be the **absolute** path to the unzipped workspace. Windows users: use double backslashes `\\`. |
-| `Invalid JSON Error` | Your `character.json` has a syntax error. Open it in VS Code or Cursor and fix the formatting. |
-| `No soul workspace loaded` | The `UNDESIRABLES_WORKSPACE` setting is missing or the path doesn't exist. |
-
----
-
-## What's New in v2.1.0
-
-- **5 new dedicated trading actions** — whale tracking, entry signals, portfolio checks, exit strategies, and risk assessment are now first-class actions (previously bundled in the generic `LOAD_SKILL` action)
-- **Better discoverability** — ElizaOS can now route directly to the right action without keyword matching
-- **Richer responses** — each action has specialized instructions (GO/WAIT/NO-GO for entries, A-F grades for portfolios, SAFE/CAUTION/DANGER for risk)
-- **9 total actions** (was 4)
-
-## What's New in v2.0
-
-- Action handlers route through `runtime.generateText()` instead of leaking raw prompt instructions
-- Multi-agent state isolation — workspaces keyed by `agentId`
-- Real `@elizaos/core` v2 types (no more hand-written stubs)
-- Async filesystem (`fs.promises`)
-- Secure YAML parsing (`js-yaml` with `JSON_SCHEMA`)
-- ESM module format
+| Issue | Solution |
+|-------|----------|
+| `Workspace /path/ does not exist` | Check the path in your `character.json`. Must be an absolute path. Windows: use double backslashes `\\`. |
+| No personality detected | If no `UNDESIRABLES_WORKSPACE` is set, the demo soul loads automatically. Check the console for `🐸` log messages. |
+| Oracle data not appearing | The Oracle provider triggers on TCG-related keywords. Try asking about a specific card by name. |
 
 ---
 
 ## Ecosystem
 
-### Plugins
-- [plugin-undesirables](https://www.npmjs.com/package/plugin-undesirables) — Soul personality + business tools (this package)
-- [@undesirables/plugin-tcg-oracle](https://github.com/sailorpepe/elizaos-tcg-oracle-plugin) — TCG market intelligence (search, grade, simulate)
+### Plugins & SDKs
+- **[plugin-undesirables](https://www.npmjs.com/package/plugin-undesirables)** — ElizaOS personality + market data (this package)
+- **[undesirables-mcp-server](https://pypi.org/project/undesirables-mcp-server/)** — 35+ tool MCP server ([GitHub](https://github.com/sailorpepe/undesirables-mcp-server) · [Glama](https://glama.ai/mcp/servers/sailorpepe/undesirables-mcp-server) · [Official MCP Registry](https://registry.modelcontextprotocol.io))
+- **[tcg-oracle-tools](https://pypi.org/project/tcg-oracle-tools/)** — Python SDK for the Oracle API
 
-### Servers & APIs
-- [MCP Server](https://github.com/sailorpepe/undesirables-mcp-server) — 34-tool MCP server ([PyPI](https://pypi.org/project/undesirables-mcp-server/) · [Glama](https://glama.ai/mcp/servers/sailorpepe/undesirables-mcp-server) · [Official Registry](https://registry.modelcontextprotocol.io))
-- [x402 Oracle API](https://oracle.the-undesirables.com) — Pay-per-request TCG + prediction market intelligence ([Swagger](https://oracle.the-undesirables.com/docs))
+### APIs
+- **[Oracle API](https://oracle.the-undesirables.com)** — x402 pay-per-request intelligence ([Swagger Docs](https://oracle.the-undesirables.com/docs))
 
 ### Apps
-- [TCG Oracle Desktop](https://github.com/sailorpepe/tcg-oracle-app) — macOS / Linux / Windows desktop app with AI card grading
-- [Desktop Installer](https://github.com/sailorpepe/undesirables-desktop/releases/tag/v1.3.0) — DMG, DEB, RPM, AppImage, MSI binaries
-- [TCG Oracle Tools](https://pypi.org/project/tcg-oracle-tools/) — Python SDK for the Oracle API
+- **[TCG Oracle Desktop](https://github.com/sailorpepe/undesirables-desktop/releases)** — macOS, Linux, Windows installer with AI card grading UI
 
 ### Data & Research
-- [Kaggle Dataset](https://www.kaggle.com/datasets/sailorpepe/tcg-market-intelligence) — 370K+ TCG products across 25 games
-- [HuggingFace Space](https://huggingface.co/spaces/sailorpepe/tcg-oracle) — Live demo
-- [Dev.to Tutorial](https://dev.to/sailor_pepe_7920f552c5b9a/build-an-autonomous-pokemon-card-trading-agent-with-ai-grading-monte-carlo-pricing-2b86) — Build guide
+- **[Kaggle Dataset](https://www.kaggle.com/datasets/sailorpepe/tcg-market-intelligence)** — 370K+ TCG products across 25 games
+- **[Dev.to Tutorial](https://dev.to/sailor_pepe_7920f552c5b9a/build-an-autonomous-pokemon-card-trading-agent-with-ai-grading-monte-carlo-pricing-2b86)** — Build guide
 
 ### Collection
-- [The Undesirables](https://the-undesirables.com) — 4,444 NFTs on Ethereum
-- [Soul Workspace](https://the-undesirables.com/soul) — Download your agent's personality
-- [Etherscan](https://etherscan.io/address/0xa893648a701c03b14bf2fb767b72b2c55ed5c17a) — Contract
-- [Scatter.art](https://scatter.art/the-undesirables) — Mint page
+- **[The Undesirables](https://the-undesirables.com)** — 4,444 AI agents on Ethereum
+- **[Scatter.art](https://scatter.art/the-undesirables)** — Mint page
+- **[Etherscan](https://etherscan.io/address/0xa893648a701c03b14bf2fb767b72b2c55ed5c17a)** — Contract
 
 ---
 
