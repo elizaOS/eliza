@@ -8,8 +8,12 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Memory, UUID } from "@elizaos/core";
-import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
+import type { GenerateTextParams, Memory, Plugin, UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  InMemoryDatabaseAdapter,
+  ModelType,
+} from "@elizaos/core";
 import { AutonomyService } from "../core/src/features/autonomy/service";
 
 const REPO_ROOT = path.resolve(
@@ -70,6 +74,59 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function createCerebrasTextPlugin(opts: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}): Plugin {
+  const complete = async (params: GenerateTextParams): Promise<string> => {
+    const response = await fetch(
+      `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${opts.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: opts.model,
+          messages: [
+            ...(params.system
+              ? [{ role: "system", content: params.system }]
+              : []),
+            { role: "user", content: params.prompt },
+          ],
+          temperature: params.temperature ?? 0.2,
+          max_tokens: params.maxTokens ?? 512,
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Cerebras request failed ${response.status}: ${await response.text()}`,
+      );
+    }
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return data.choices?.[0]?.message?.content ?? "";
+  };
+
+  return {
+    name: "cerebras-live-text-verifier",
+    description:
+      "Minimal Cerebras text model plugin for autonomy verification.",
+    models: {
+      [ModelType.TEXT_NANO]: complete,
+      [ModelType.TEXT_SMALL]: complete,
+      [ModelType.TEXT_MEDIUM]: complete,
+      [ModelType.TEXT_LARGE]: complete,
+      [ModelType.RESPONSE_HANDLER]: complete,
+      [ModelType.ACTION_PLANNER]: complete,
+    },
+  };
+}
+
 async function buildRuntime(model: string): Promise<AgentRuntime> {
   const apiKey = requireEnv("CEREBRAS_API_KEY");
   const baseUrl =
@@ -88,8 +145,6 @@ async function buildRuntime(model: string): Promise<AgentRuntime> {
   process.env.ALLOW_NO_DATABASE = "true";
   process.env.PROMPT_BATCHER_BATCH_SIZE = "1";
   process.env.PROMPT_BATCHER_MAX_SECTIONS_PER_CALL = "1";
-
-  const { openaiPlugin } = await import("../../plugins/plugin-openai/index.ts");
 
   const runtime = new AgentRuntime({
     character: {
@@ -117,7 +172,7 @@ async function buildRuntime(model: string): Promise<AgentRuntime> {
       },
     },
     adapter: new InMemoryDatabaseAdapter(),
-    plugins: [openaiPlugin],
+    plugins: [createCerebrasTextPlugin({ apiKey, baseUrl, model })],
     settings: {
       CEREBRAS_API_KEY: apiKey,
       OPENAI_API_KEY: apiKey,
