@@ -1,5 +1,5 @@
 /**
- * VoicePrefixSteps — 7-step voice onboarding sub-flow (R10 §3).
+ * VoicePrefixSteps — 6-step voice onboarding sub-flow (R10 §3).
  *
  * Self-contained renderer: caller mounts <VoicePrefixSteps step={…} … />
  * inside the onboarding shell and supplies callbacks. Each step renders a
@@ -10,8 +10,7 @@
  * - `tier` from I9 (defaults to "GOOD" when unknown — never blocks the flow).
  * - `profilesClient` from I2 (defaults are baked into the adapter when the
  *   server endpoints aren't live yet).
- * - `onModelDownloadStart` from I5 (caller no-ops when versioning isn't
- *   wired — we fall through to "Continue in background").
+ * - `onModelDownloadStart` from I5 starts the local bundle in the background.
  */
 
 import { Crown, Mic, Sparkles, Volume2 } from "lucide-react";
@@ -44,12 +43,14 @@ export interface VoicePrefixStepsProps {
   tierSummary?: string;
   /** Adapter to I2's voice profile endpoints. */
   profilesClient: VoiceProfilesClient;
-  /** Caller plays a scripted greeting via the chosen TTS (step 4). */
-  onAgentSpeak?: (script: string) => void;
+  /** Caller plays a scripted greeting via the chosen TTS (final step). */
+  onAgentSpeak?: (script: string) => void | Promise<void>;
   /** Caller requests microphone permission. Returns true if granted. */
   onRequestMicPermission?: () => Promise<boolean>;
-  /** Caller kicks off voice model download (I5). No-op if not wired. */
-  onModelDownloadStart?: () => void;
+  /** Voice/model bundle readiness shown during device check. */
+  voiceBundleReadiness?: VoiceBundleReadiness;
+  /** Caller kicks off voice model download in the background. */
+  onModelDownloadStart?: () => void | Promise<void>;
   /** Caller advances to the next step. */
   onAdvance: (next: VoicePrefixStep | null) => void;
   /** Caller goes back. */
@@ -62,6 +63,25 @@ export interface VoicePrefixStepsProps {
   ) => void;
   /** Optional initial display name for the OWNER (e.g. from cloud profile). */
   initialOwnerDisplayName?: string;
+}
+
+export type VoiceBundleDownloadStatus =
+  | "checking"
+  | "available"
+  | "queued"
+  | "downloading"
+  | "assets-ready"
+  | "engine-ready"
+  | "ready"
+  | "failed"
+  | "unsupported";
+
+export interface VoiceBundleReadiness {
+  modelId: string;
+  status: VoiceBundleDownloadStatus;
+  message: string;
+  percent?: number | null;
+  canStartDownload: boolean;
 }
 
 interface VoiceCaptureState {
@@ -83,14 +103,7 @@ const INITIAL_CAPTURE_STATE: VoiceCaptureState = {
 };
 
 const AGENT_GREETING_SCRIPT =
-  "Hi — I'm Eliza. I'll listen when you talk and reply out loud. " +
-  "To recognise your voice across conversations I need to learn how you " +
-  "sound. Ready?";
-
-const ELIZAOS_PRIMARY_BUTTON =
-  "border-[#0B35F1] bg-[#0B35F1] text-white shadow-[0_12px_28px_rgba(11,53,241,0.22)] hover:border-[#082BC7] hover:bg-[#082BC7] dark:text-white";
-const ELIZAOS_GHOST_BUTTON =
-  "text-[#0B35F1] hover:bg-[#EAF0FF] hover:text-[#082BC7]";
+  "Hi, I'm Eliza. I'll listen when you talk and reply out loud. Ready?";
 
 /** Convert a Blob to a raw base64 string (no data-URL prefix). */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -107,13 +120,29 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+async function requestBrowserMicPermission(): Promise<boolean> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function VoicePrefixSteps(
   props: VoicePrefixStepsProps,
 ): React.ReactElement {
   const tier = props.tier ?? DEFAULT_VOICE_DEVICE_TIER;
-  const stepMeta = VOICE_PREFIX_STEP_META[props.step];
   const allSteps = resolveVoicePrefixSteps(tier);
-  const stepIndex = allSteps.indexOf(props.step);
+  const activeStep = allSteps.includes(props.step) ? props.step : "welcome";
+  const stepMeta = VOICE_PREFIX_STEP_META[activeStep];
+  const stepIndex = Math.max(0, allSteps.indexOf(activeStep));
   const progressLabel = `Step ${stepIndex + 1} of ${allSteps.length}`;
 
   // Lifted state: per-step readiness for Continue. WelcomeStep reports back
@@ -121,15 +150,15 @@ export function VoicePrefixSteps(
   // (denial is still "ready" — the user has made a choice). Other steps don't
   // report and default to ready=true.
   const [welcomeReady, setWelcomeReady] = React.useState(false);
-  const continueDisabled = props.step === "welcome" && !welcomeReady;
+  const continueDisabled = activeStep === "welcome" && !welcomeReady;
 
   return (
     <div
-      className="flex w-full flex-col gap-4 text-[#06133F]"
+      className="flex max-h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden"
       data-testid="voice-prefix-steps"
-      data-step={props.step}
+      data-step={activeStep}
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#3550B8]">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-[var(--onboarding-text-faint)]">
         <span
           data-testid="voice-prefix-progress"
           role="progressbar"
@@ -141,81 +170,74 @@ export function VoicePrefixSteps(
           {progressLabel}
         </span>
         {stepMeta.optional ? (
-          <span className="rounded-full bg-[#EAF0FF] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#0B35F1]">
+          <span className="rounded-sm bg-white/24 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--onboarding-text-muted)]">
             optional
           </span>
         ) : null}
       </header>
 
       <h1
-        className="text-lg font-semibold text-[#06133F]"
+        className="shrink-0 text-2xl font-semibold text-[var(--onboarding-text-strong)]"
         data-testid="voice-prefix-step-name"
         aria-live="polite"
       >
         {stepMeta.defaultName}
       </h1>
       <p
-        className="text-sm text-[#3550B8]"
+        className="shrink-0 text-sm text-[var(--onboarding-text-muted)]"
         data-testid="voice-prefix-step-subtitle"
       >
         {stepMeta.defaultSubtitle}
       </p>
 
-      <main className="rounded-lg border border-[#D8E1FF] bg-[#FFFFFF] p-4 shadow-[0_18px_48px_rgba(11,53,241,0.10)]">
-        {props.step === "welcome" ? (
+      <main className="min-h-40 flex-1 overflow-y-auto rounded-sm bg-white/28 p-4 text-[var(--onboarding-text-primary)]">
+        {activeStep === "welcome" ? (
           <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
-        ) : props.step === "tier" ? (
-          <TierStep {...props} tier={tier} tierSummary={props.tierSummary} />
-        ) : props.step === "models" ? (
-          <ModelsStep {...props} />
-        ) : props.step === "agent-speaks" ? (
+        ) : activeStep === "tier" ? (
+          <VoiceReadinessStep
+            {...props}
+            tier={tier}
+            tierSummary={props.tierSummary}
+          />
+        ) : activeStep === "agent-speaks" ? (
           <AgentSpeaksStep {...props} />
-        ) : props.step === "user-speaks" ? (
+        ) : activeStep === "user-speaks" ? (
           <UserSpeaksStep {...props} />
-        ) : props.step === "owner-confirm" ? (
+        ) : activeStep === "owner-confirm" ? (
           <OwnerConfirmStep {...props} />
-        ) : props.step === "family" ? (
+        ) : activeStep === "family" ? (
           <FamilyStep {...props} />
-        ) : null}
+        ) : (
+          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
+        )}
       </main>
 
-      <footer className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {previousVoicePrefixStep(props.step, tier) ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className={ELIZAOS_GHOST_BUTTON}
-              onClick={() => {
-                const prev = previousVoicePrefixStep(props.step, tier);
-                if (prev) props.onAdvance(prev);
-                else props.onBack();
-              }}
-              data-testid="voice-prefix-back"
-            >
-              Back
-            </Button>
-          ) : null}
-          {props.step === "welcome" && props.onSkipPrefix ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className={ELIZAOS_GHOST_BUTTON}
-              onClick={props.onSkipPrefix}
-              data-testid="voice-prefix-skip-prefix"
-            >
-              Skip voice setup
-            </Button>
-          ) : null}
-        </div>
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        {previousVoicePrefixStep(activeStep, tier) ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 px-4"
+            onClick={() => {
+              const prev = previousVoicePrefixStep(activeStep, tier);
+              if (prev) props.onAdvance(prev);
+              else props.onBack();
+            }}
+            data-testid="voice-prefix-back"
+          >
+            Back
+          </Button>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <div className="flex items-center gap-2">
           {stepMeta.optional ? (
             <Button
               variant="ghost"
               size="sm"
-              className={ELIZAOS_GHOST_BUTTON}
+              className="min-h-11 px-4"
               onClick={() =>
-                props.onAdvance(nextVoicePrefixStep(props.step, tier))
+                props.onAdvance(nextVoicePrefixStep(activeStep, tier))
               }
               data-testid="voice-prefix-skip"
             >
@@ -224,10 +246,10 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
-            className={ELIZAOS_PRIMARY_BUTTON}
+            className="min-h-11 px-5"
             disabled={continueDisabled}
             onClick={() =>
-              props.onAdvance(nextVoicePrefixStep(props.step, tier))
+              props.onAdvance(nextVoicePrefixStep(activeStep, tier))
             }
             data-testid="voice-prefix-continue"
             aria-describedby={
@@ -258,32 +280,24 @@ function WelcomeStep(
     boolean | null
   >(null);
   const onRequest = React.useCallback(async () => {
-    if (!props.onRequestMicPermission) {
-      setPermissionGranted(true);
-      props.onPermissionResolved?.(true);
-      return;
-    }
-    const granted = await props.onRequestMicPermission();
+    const granted = await (props.onRequestMicPermission?.() ??
+      requestBrowserMicPermission());
     setPermissionGranted(granted);
-    // Either outcome counts as "user has decided" — Continue unlocks. The
-    // denial path keeps the warning message visible so the user knows they
-    // can still proceed but voice features will be limited.
     props.onPermissionResolved?.(true);
   }, [props.onRequestMicPermission, props.onPermissionResolved]);
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-welcome">
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#EAF0FF] text-[#0B35F1]">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm bg-accent/15 text-accent">
           <Sparkles className="h-5 w-5" />
         </span>
-        <p className="text-sm text-[#06133F]">
+        <p className="text-sm">
           You'll talk to your agent, and your agent will talk back. We'll take a
           minute to set that up.
         </p>
       </div>
       <Button
-        className={ELIZAOS_PRIMARY_BUTTON}
         onClick={() => void onRequest()}
         data-testid="voice-prefix-welcome-request-mic"
       >
@@ -291,7 +305,7 @@ function WelcomeStep(
       </Button>
       {permissionGranted === false ? (
         <p
-          className="text-xs text-[#3550B8]"
+          className="text-xs text-warn"
           data-testid="voice-prefix-welcome-mic-denied"
         >
           Microphone access was denied. You can grant it later in system
@@ -300,7 +314,7 @@ function WelcomeStep(
       ) : null}
       {permissionGranted === true ? (
         <p
-          className="text-xs text-[#0B35F1]"
+          className="text-xs text-ok"
           data-testid="voice-prefix-welcome-mic-granted"
         >
           Microphone access granted.
@@ -310,89 +324,147 @@ function WelcomeStep(
   );
 }
 
-// ── Step 2 — Hardware tier ───────────────────────────────────────────────
+// ── Step 2 — Hardware tier + voice bundle download ───────────────────────
 
-function TierStep(
+function VoiceReadinessStep(
   props: VoicePrefixStepsProps & {
     tier: VoiceDeviceTier;
     tierSummary?: string;
   },
 ): React.ReactElement {
+  const readiness = props.voiceBundleReadiness;
+  const canStart =
+    Boolean(props.onModelDownloadStart) &&
+    Boolean(readiness?.canStartDownload) &&
+    readiness?.status !== "checking";
+  const busy =
+    readiness?.status === "checking" ||
+    readiness?.status === "queued" ||
+    readiness?.status === "downloading";
+  const percent =
+    typeof readiness?.percent === "number"
+      ? Math.max(0, Math.min(100, readiness.percent))
+      : null;
+
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-tier">
-      <VoiceTierBanner
-        tier={props.tier}
-        summary={props.tierSummary}
-        className="border-[#C9D6FF] bg-[#F7F9FF] text-[#06133F]"
-      />
+      <VoiceTierBanner tier={props.tier} summary={props.tierSummary} />
       {props.tier === "POOR" ? (
-        <p className="text-xs text-[#3550B8]">
+        <p className="text-xs text-muted">
           We'll route voice through Eliza Cloud. You can still capture your
           voice profile for speaker recognition.
         </p>
       ) : null}
-    </div>
-  );
-}
-
-// ── Step 3 — Models ──────────────────────────────────────────────────────
-
-function ModelsStep(props: VoicePrefixStepsProps): React.ReactElement {
-  const startedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    props.onModelDownloadStart?.();
-  }, [props.onModelDownloadStart]);
-  return (
-    <div className="flex flex-col gap-3" data-testid="voice-prefix-models">
-      <p className="text-sm text-[#06133F]">
-        Downloading the voice bundle (ASR, turn detector, emotion classifier,
-        speaker encoder, VAD, wake-word, Kokoro voice). You can continue once
-        the essentials are in place — the rest finishes in the background.
-      </p>
-      <p
-        className="text-xs text-[#3550B8]"
-        data-testid="voice-prefix-models-background"
+      <div
+        className="rounded-sm bg-bg/40 p-3"
+        data-testid="voice-prefix-bundle-readiness"
       >
-        Continue in background — the model panel in Settings shows progress.
-      </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">
+            {readiness?.status === "engine-ready"
+              ? "Voice engine ready"
+              : readiness?.status === "assets-ready" ||
+                  readiness?.status === "ready"
+                ? "Voice assets added"
+              : "Voice bundle"}
+          </p>
+          <p className="text-xs text-muted">
+            {readiness?.message ??
+              "Check local model availability, then continue while any download finishes."}
+          </p>
+          {percent !== null ? (
+            <div
+              className="h-1.5 overflow-hidden rounded-sm bg-border/50"
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              data-testid="voice-prefix-bundle-progress"
+            >
+              <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {canStart ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void props.onModelDownloadStart?.()}
+                data-testid="voice-prefix-start-download"
+              >
+                Start download
+              </Button>
+            ) : null}
+            {busy ? (
+              <span
+                className="text-xs text-muted"
+                data-testid="voice-prefix-download-background"
+              >
+                You can continue while this finishes.
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
-// ── Step 4 — Agent speaks ────────────────────────────────────────────────
 
 function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
-  const [played, setPlayed] = React.useState(false);
-  const onPlay = React.useCallback(() => {
-    props.onAgentSpeak?.(AGENT_GREETING_SCRIPT);
-    setPlayed(true);
+  const [playState, setPlayState] = React.useState<
+    "idle" | "playing" | "played" | "failed"
+  >("idle");
+  const [error, setError] = React.useState<string | null>(null);
+  const onPlay = React.useCallback(async () => {
+    if (!props.onAgentSpeak) {
+      setPlayState("failed");
+      setError("Voice playback is not available in this build.");
+      return;
+    }
+
+    setPlayState("playing");
+    setError(null);
+    try {
+      await props.onAgentSpeak(AGENT_GREETING_SCRIPT);
+      setPlayState("played");
+    } catch (err) {
+      setPlayState("failed");
+      setError(
+        err instanceof Error ? err.message : "Voice playback failed to start.",
+      );
+    }
   }, [props.onAgentSpeak]);
+  const played = playState === "played";
+  const playing = playState === "playing";
   return (
     <div
       className="flex flex-col gap-3"
       data-testid="voice-prefix-agent-speaks"
     >
-      <p className="text-sm text-[#06133F]">
-        Press play to hear the agent introduce itself in the voice you selected.
+      <p className="text-sm">
+        Press play to hear Eliza before finishing setup.
       </p>
       <Button
-        className={ELIZAOS_PRIMARY_BUTTON}
-        onClick={onPlay}
+        onClick={() => void onPlay()}
+        disabled={playing}
         data-testid="voice-prefix-agent-speaks-play"
       >
         <Volume2 className="mr-2 h-4 w-4" />
-        {played ? "Replay greeting" : "Play greeting"}
+        {playing ? "Playing..." : played ? "Replay greeting" : "Play greeting"}
       </Button>
-      <p className="rounded border border-[#D8E1FF] bg-[#F7F9FF] p-2 text-xs italic text-[#3550B8]">
+      {error ? (
+        <p className="text-xs text-warn" data-testid="voice-prefix-agent-error">
+          {error}
+        </p>
+      ) : null}
+      <p className="rounded-sm bg-bg/40 p-2 text-xs italic text-muted">
         {AGENT_GREETING_SCRIPT}
       </p>
     </div>
   );
 }
 
-// ── Step 5 — User speaks ─────────────────────────────────────────────────
+// ── Step 3 — User speaks ─────────────────────────────────────────────────
 // Real capture: MediaRecorder → base64 → appendOwnerCapture per prompt.
 
 function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
@@ -532,10 +604,10 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
     });
   }, []);
 
-  const prompts = state.session?.prompts ?? [];
-  const currentPrompt = prompts[state.currentPromptIndex];
+  const currentPrompt = state.session?.prompts[state.currentPromptIndex];
   const done =
-    state.session !== null && state.currentPromptIndex >= prompts.length;
+    state.session !== null &&
+    state.currentPromptIndex >= state.session.prompts.length;
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-user-speaks">
@@ -543,41 +615,41 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
         <div
           role="alert"
           aria-live="assertive"
-          className="rounded-md border border-[#C9D6FF] bg-[#F7F9FF] p-2 text-xs"
+          className="rounded-sm bg-warn/10 p-2 text-xs"
           data-testid="voice-prefix-user-speaks-error"
         >
-          <p className="font-medium text-[#0B35F1]">
+          <p className="font-medium text-warn">
             We couldn't reach the voice service. Try again in a moment, or skip
             this step and come back to it from Settings.
           </p>
-          <p className="mt-1 text-[10px] text-[#3550B8]">
+          <p className="mt-1 text-[10px] text-muted">
             <span className="font-mono">{state.error}</span>
           </p>
         </div>
       ) : null}
       {state.session === null ? (
         <p
-          className="text-xs text-[#3550B8]"
+          className="text-xs text-muted"
           data-testid="voice-prefix-user-speaks-loading"
         >
           Preparing capture session…
         </p>
       ) : done ? (
         <p
-          className="text-sm text-[#0B35F1]"
+          className="text-sm text-ok"
           data-testid="voice-prefix-user-speaks-done"
         >
-          Captured {state.capturedPromptIds.length} of {prompts.length} samples.
-          Tap Continue to confirm.
+          Captured {state.capturedPromptIds.length} of{" "}
+          {state.session.prompts.length} samples. Tap Continue to confirm.
         </p>
       ) : currentPrompt ? (
         <>
-          <p className="text-xs text-[#3550B8]">
-            Prompt {state.currentPromptIndex + 1} of {prompts.length} · ~
-            {currentPrompt.targetSeconds}s
+          <p className="text-xs text-muted">
+            Prompt {state.currentPromptIndex + 1} of{" "}
+            {state.session.prompts.length} · ~{currentPrompt.targetSeconds}s
           </p>
           <p
-            className="rounded border border-[#D8E1FF] bg-[#F7F9FF] p-3 text-sm text-[#06133F]"
+            className="rounded-sm bg-bg/40 p-3 text-sm"
             data-testid="voice-prefix-user-speaks-prompt"
           >
             "{currentPrompt.text}"
@@ -590,11 +662,6 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
             ) : (
               <Button
                 variant={state.recording ? "destructive" : "default"}
-                className={
-                  state.recording
-                    ? "border-[#0B35F1] bg-white text-[#0B35F1] hover:bg-[#EAF0FF]"
-                    : ELIZAOS_PRIMARY_BUTTON
-                }
                 onClick={
                   state.recording
                     ? () => void stopRecordingAndAppend()
@@ -608,7 +675,6 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
             )}
             <Button
               variant="ghost"
-              className={ELIZAOS_GHOST_BUTTON}
               onClick={skipPrompt}
               disabled={state.recording || state.uploading}
               data-testid="voice-prefix-user-speaks-skip-prompt"
@@ -622,7 +688,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   );
 }
 
-// ── Step 6 — Owner confirm ───────────────────────────────────────────────
+// ── Step 4 — Owner confirm ───────────────────────────────────────────────
 
 function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [displayName, setDisplayName] = React.useState(
@@ -651,27 +717,26 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
     >
       <div className="flex items-center gap-3">
         <Crown
-          className="h-5 w-5 text-[#0B35F1]"
+          className="h-5 w-5 text-accent"
           data-testid="voice-prefix-owner-confirm-crown"
         />
-        <p className="text-sm text-[#06133F]">
+        <p className="text-sm">
           You're the owner of this device. The agent will only execute
           privileged actions (paying, posting, file edits, system changes) for
           you.
         </p>
       </div>
-      <label className="flex flex-col gap-1 text-xs text-[#3550B8]">
+      <label className="flex flex-col gap-1 text-xs text-muted">
         Display name
         <input
           type="text"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          className="rounded border border-[#C9D6FF] bg-white px-2 py-1 text-sm text-[#06133F] outline-none focus:border-[#0B35F1]"
+          className="rounded-sm bg-bg/40 px-2 py-1 text-sm"
           data-testid="voice-prefix-owner-confirm-name"
         />
       </label>
       <Button
-        className={ELIZAOS_PRIMARY_BUTTON}
         onClick={() => void onConfirm()}
         disabled={finalizing || finalized}
         data-testid="voice-prefix-owner-confirm-save"
@@ -682,7 +747,7 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   );
 }
 
-// ── Step 7 — Family ─────────────────────────────────────────────────────
+// ── Step 5 — Family ─────────────────────────────────────────────────────
 // Real capture flow: MediaRecorder → base64 → POST /api/voice/profiles/capture
 
 type FamilyCapturePhase =
@@ -809,7 +874,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">
-      <p className="text-sm text-[#06133F]">
+      <p className="text-sm">
         Introduce other people the agent might hear. You can add more anytime in
         Settings → Voice → Profiles.
       </p>
@@ -822,20 +887,20 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
           {captured.map((m) => (
             <li
               key={m.profileId ?? m.displayName}
-              className="flex items-center gap-2 rounded border border-[#D8E1FF] p-1.5"
+              className="flex items-center gap-2 rounded-sm bg-bg/25 p-1.5"
             >
               <span className="font-medium">{m.displayName}</span>
-              <span className="text-[#3550B8]">· {m.relationship}</span>
+              <span className="text-muted">· {m.relationship}</span>
               {m.entityId ? (
                 <span
-                  className="ml-auto text-[#0B35F1] text-[10px]"
+                  className="ml-auto text-ok text-[10px]"
                   data-testid="voice-prefix-family-captured"
                 >
                   captured
                 </span>
               ) : (
                 <span
-                  className="ml-auto text-[#3550B8] text-[10px]"
+                  className="ml-auto text-muted text-[10px]"
                   data-testid="voice-prefix-family-stub"
                 >
                   saved locally
@@ -846,7 +911,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         </ul>
       ) : (
         <p
-          className="text-xs text-[#3550B8]"
+          className="text-xs text-muted"
           data-testid="voice-prefix-family-empty"
         >
           No additional people captured yet.
@@ -854,43 +919,42 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
       )}
 
       {phase === "idle" ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-[#D8E1FF] bg-[#F7F9FF] p-3">
-          <label className="flex flex-col gap-1 text-xs text-[#3550B8]">
+        <div className="flex flex-col gap-2 rounded-sm bg-bg/35 p-3">
+          <label className="flex flex-col gap-1 text-xs text-muted">
             Name
             <input
               type="text"
               value={draftName}
               placeholder="e.g. Alex"
               onChange={(e) => setDraftName(e.target.value)}
-              className="rounded border border-[#C9D6FF] bg-white px-2 py-1 text-sm text-[#06133F] outline-none focus:border-[#0B35F1]"
+              className="rounded-sm bg-bg/45 px-2 py-1 text-sm text-txt"
               data-testid="voice-prefix-family-name-input"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-[#3550B8]">
+          <label className="flex flex-col gap-1 text-xs text-muted">
             Relationship
             <input
               type="text"
               value={draftRelationship}
               placeholder="family, colleague, …"
               onChange={(e) => setDraftRelationship(e.target.value)}
-              className="rounded border border-[#C9D6FF] bg-white px-2 py-1 text-sm text-[#06133F] outline-none focus:border-[#0B35F1]"
+              className="rounded-sm bg-bg/45 px-2 py-1 text-sm text-txt"
               data-testid="voice-prefix-family-relationship-input"
             />
           </label>
           {captureError ? (
             <p
-              className="text-xs text-[#3550B8]"
+              className="text-xs text-danger"
               data-testid="voice-prefix-family-error"
             >
               {captureError}
             </p>
           ) : null}
-          <p className="rounded border border-[#D8E1FF] bg-white p-2 text-xs italic text-[#3550B8]">
+          <p className="rounded-sm bg-bg/40 p-2 text-xs italic text-muted">
             "{FAMILY_CAPTURE_PROMPT}"
           </p>
           <Button
             size="sm"
-            className={ELIZAOS_PRIMARY_BUTTON}
             disabled={!draftName.trim()}
             onClick={() => void startCapture()}
             data-testid="voice-prefix-family-record"
@@ -901,15 +965,15 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         </div>
       ) : phase === "recording" ? (
         <div
-          className="flex items-center gap-2 rounded-lg border border-[#C9D6FF] bg-[#EAF0FF] p-3 text-sm text-[#06133F]"
+          className="flex items-center gap-2 rounded-sm bg-accent/8 p-3 text-sm"
           data-testid="voice-prefix-family-recording"
         >
-          <Mic className="h-4 w-4 animate-pulse text-[#0B35F1]" />
+          <Mic className="h-4 w-4 animate-pulse text-accent" />
           Recording… {countdown}s — ask {draftName} to read the prompt aloud.
         </div>
       ) : (
         <div
-          className="flex items-center gap-2 p-3 text-sm text-[#3550B8]"
+          className="flex items-center gap-2 p-3 text-sm text-muted"
           data-testid="voice-prefix-family-uploading"
         >
           Saving profile…

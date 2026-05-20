@@ -12,6 +12,7 @@ import {
   ANDROID_PERMISSIONS,
   applyAndroidCleartextPolicy,
   configureIosAppStoreBuildDefaults,
+  injectAndroidBackgroundRunnerAarFlatDir,
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   injectCopyForkLlamaLibTask,
@@ -385,6 +386,24 @@ test("iOS background runner pod resolves through the official package", () => {
       ([name]) => name === "CapacitorBackgroundRunner",
     )?.[1],
     "@capacitor/background-runner",
+  );
+});
+
+test("Android app Gradle searches staged Background Runner AAR first", () => {
+  const gradle = `repositories {
+    flatDir {
+        dirs '../../node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../node_modules/@capacitor-community/background-runner/android/src/main/libs'
+    }
+}
+`;
+
+  const patched = injectAndroidBackgroundRunnerAarFlatDir(gradle);
+
+  assert.match(patched, /dirs 'libs',\n\s+'\.\.\/\.\.\/node_modules/);
+  assert.equal(
+    injectAndroidBackgroundRunnerAarFlatDir(patched).match(/'libs'/g)?.length,
+    1,
   );
 });
 

@@ -1,0 +1,110 @@
+name: Sandbox Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Sandbox target to smoke test
+        type: choice
+        default: all
+        options:
+          - all
+          - e2b
+          - eliza-cloud
+          - home
+          - codex-app-server
+      strict:
+        description: Fail if the selected provider is not configured
+        type: boolean
+        default: false
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/sandbox-live-smoke.yml"
+      - ".env.example"
+      - "packages/agent/package.json"
+      - "packages/agent/scripts/live-sandbox-smoke.ts"
+      - "packages/agent/src/services/e2b-capability-router.ts"
+      - "packages/agent/src/services/e2b-capability-router.test.ts"
+      - "packages/cloud-services/coding-satellite/**"
+      - "packages/cloud-shared/src/lib/config/containers-env.ts"
+      - "packages/cloud-shared/src/lib/services/coding-containers.ts"
+      - "plugins/plugin-elizacloud/**"
+  push:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/sandbox-live-smoke.yml"
+      - ".env.example"
+      - "packages/agent/package.json"
+      - "packages/agent/scripts/live-sandbox-smoke.ts"
+      - "packages/agent/src/services/e2b-capability-router.ts"
+      - "packages/agent/src/services/e2b-capability-router.test.ts"
+      - "packages/cloud-services/coding-satellite/**"
+      - "packages/cloud-shared/src/lib/config/containers-env.ts"
+      - "packages/cloud-shared/src/lib/services/coding-containers.ts"
+      - "plugins/plugin-elizacloud/**"
+
+concurrency:
+  group: sandbox-live-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "24.15.0"
+  ELIZA_SANDBOX_AGENT_RUNNERS: ${{ vars.ELIZA_SANDBOX_AGENT_RUNNERS || 'codex,claude-code,opencode' }}
+  SANDBOX_AGENT_RUNNERS: ${{ vars.SANDBOX_AGENT_RUNNERS || vars.ELIZA_SANDBOX_AGENT_RUNNERS || 'codex,claude-code,opencode' }}
+  E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+  E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
+  E2B_SANDBOX_ID: ${{ vars.E2B_SANDBOX_ID || secrets.E2B_SANDBOX_ID }}
+  ELIZA_CLOUD_SANDBOX_API_BASE_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_API_BASE_URL || vars.ELIZA_CLOUD_API_BASE_URL || 'https://api.elizacloud.ai/api/v1' }}
+  ELIZA_CLOUD_SANDBOX_BASE_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_BASE_URL || vars.ELIZA_CLOUD_SATELLITE_RUNNER_URL }}
+  ELIZA_CLOUD_SATELLITE_RUNNER_URL: ${{ vars.ELIZA_CLOUD_SATELLITE_RUNNER_URL || vars.ELIZA_CLOUD_SANDBOX_BASE_URL }}
+  ELIZA_CLOUD_SANDBOX_TOKEN: ${{ secrets.ELIZA_CLOUD_SANDBOX_TOKEN || secrets.ELIZACLOUD_API_KEY || secrets.ELIZAOS_CLOUD_API_KEY }}
+  ELIZA_CLOUD_SANDBOX_ACCESS_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_ACCESS_URL }}
+  ELIZA_CLOUD_SANDBOX_IMAGE: ${{ vars.ELIZA_CLOUD_SANDBOX_IMAGE }}
+  ELIZA_CLOUD_SATELLITE_IMAGE: ${{ vars.ELIZA_CLOUD_SATELLITE_IMAGE }}
+  ELIZA_CLOUD_CODING_SATELLITE_IMAGE: ${{ vars.ELIZA_CLOUD_CODING_SATELLITE_IMAGE }}
+  ELIZA_HOME_SATELLITE_URL: ${{ vars.ELIZA_HOME_SATELLITE_URL }}
+  ELIZA_HOME_SATELLITE_TOKEN: ${{ secrets.ELIZA_HOME_SATELLITE_TOKEN }}
+  ELIZA_HOME_SATELLITE_ACCESS_URL: ${{ vars.ELIZA_HOME_SATELLITE_ACCESS_URL }}
+  ELIZA_HOME_SATELLITE_SSH_TARGET: ${{ vars.ELIZA_HOME_SATELLITE_SSH_TARGET }}
+  ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT: ${{ vars.ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT }}
+  OPENCODE_SERVER_USERNAME: ${{ vars.OPENCODE_SERVER_USERNAME || 'opencode' }}
+  OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+  CODEX_BIN: ${{ vars.CODEX_BIN || 'codex' }}
+  CODEX_APP_SERVER_LISTEN: ${{ vars.CODEX_APP_SERVER_LISTEN || 'stdio://' }}
+  CODEX_APP_SERVER_WS_TOKEN_FILE: ${{ vars.CODEX_APP_SERVER_WS_TOKEN_FILE }}
+  CODEX_APP_SERVER_WS_SHARED_SECRET_FILE: ${{ vars.CODEX_APP_SERVER_WS_SHARED_SECRET_FILE }}
+
+jobs:
+  smoke:
+    name: Sandbox live smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
+      STRICT_ARG: ${{ github.event_name == 'workflow_dispatch' && inputs.strict && '--strict' || '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --ignore-scripts
+
+      - name: Generate keyword data
+        run: bun run generate:action-search-keywords
+
+      - name: Run sandbox live smoke
+        run: bun run --cwd packages/agent test:sandbox-live -- --target="$TARGET" $STRICT_ARG

@@ -171,6 +171,11 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let useSystemTts = call.getBool("useSystemTts") ?? false
+        let useLocalInferenceTts = call.getBool("useLocalInferenceTts") ?? false
+        if useLocalInferenceTts {
+            call.reject("Local-inference TTS is not implemented by the native iOS TalkMode plugin")
+            return
+        }
         let directive = call.getObject("directive")
 
         speakTask?.cancel()

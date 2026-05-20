@@ -1,0 +1,19 @@
+{
+  "name": "@elizaos/coding-satellite",
+  "version": "0.1.0",
+  "description": "Bun-based coding Satellite HTTP runner for Eliza Cloud and home machines.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "docker:build": "docker build -t eliza-coding-satellite:local ."
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "bun-types": "1.3.13",
+    "typescript": "^6.0.3"
+  }
+}

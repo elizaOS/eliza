@@ -61,7 +61,7 @@
           return suffix.charAt(0) === '?' ? '/' + suffix : suffix || '/';
         }
         try {
-          var url = new URL(trimmed, window.location && window.location.href ? window.location.href : 'http://localhost');
+          var url = new URL(trimmed, window.location && window.location.href ? window.location.href : 'https://eliza.app');
           if (url.protocol !== ipcProtocol) return null;
           if (url.hostname === ipcHost) return (url.pathname || '/') + url.search;
           if (url.pathname === ipcPathPrefix) return url.search ? '/' + url.search : '/';

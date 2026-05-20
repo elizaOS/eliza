@@ -48,35 +48,30 @@
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
-  background: var(--jet-black);
-  --text: #ededed;
-  --muted: #a1a1aa;
-  --border: rgba(71, 77, 87, 0.26);
-  --card: rgba(10, 10, 12, 0.84);
+  background: transparent;
+  --text: #111827;
+  --muted: #4b5563;
+  --border: rgba(31, 41, 55, 0.2);
+  --card: rgba(255, 255, 255, 0.58);
   --ok: #3fa37c;
   --ok-muted: rgba(63, 163, 124, 0.3);
   --ok-subtle: rgba(63, 163, 124, 0.12);
   --accent: var(--classic-gold);
   --accent-foreground: var(--jet-black);
-  /* Onboarding panels sit over a permanently dark VRM scene. Keep their chrome
-   * in the dark variant even when the surrounding UI theme is light.
-   */
-  --onboarding-text-strong: rgba(240, 238, 250, 0.95);
-  --onboarding-text-primary: rgba(236, 234, 243, 0.94);
-  --onboarding-text-subtle: rgba(220, 218, 228, 0.86);
-  --onboarding-text-muted: rgba(203, 201, 214, 0.82);
-  --onboarding-text-faint: rgba(182, 180, 196, 0.72);
-  --onboarding-text-stroke: rgba(4, 8, 14, 0.78);
-  --onboarding-text-shadow-strong:
-    0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 14px rgba(3, 5, 10, 0.62),
-    0 0 24px rgba(3, 5, 10, 0.24);
-  --onboarding-text-shadow-primary: 0 1px 5px rgba(3, 5, 10, 0.34);
-  --onboarding-text-shadow-muted: 0 1px 4px rgba(3, 5, 10, 0.28);
-  --onboarding-card-bg: rgba(10, 10, 12, 0.56);
-  --onboarding-card-bg-hover: rgba(18, 18, 21, 0.64);
-  --onboarding-card-border: rgba(255, 255, 255, 0.11);
+  --onboarding-text-strong: rgba(5, 8, 14, 0.98);
+  --onboarding-text-primary: rgba(9, 14, 22, 0.96);
+  --onboarding-text-subtle: rgba(29, 38, 52, 0.88);
+  --onboarding-text-muted: rgba(35, 45, 60, 0.84);
+  --onboarding-text-faint: rgba(49, 61, 78, 0.76);
+  --onboarding-text-stroke: rgba(255, 255, 255, 0.42);
+  --onboarding-text-shadow-strong: none;
+  --onboarding-text-shadow-primary: none;
+  --onboarding-text-shadow-muted: none;
+  --onboarding-card-bg: rgba(255, 255, 255, 0.42);
+  --onboarding-card-bg-hover: rgba(255, 255, 255, 0.52);
+  --onboarding-card-border: transparent;
   --onboarding-card-border-strong: rgba(240, 185, 11, 0.32);
-  --onboarding-card-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  --onboarding-card-shadow: none;
   --onboarding-recommended-bg: rgba(240, 185, 11, 0.16);
   --onboarding-recommended-bg-hover: rgba(240, 185, 11, 0.22);
   --onboarding-recommended-border: rgba(240, 185, 11, 0.28);
@@ -85,25 +80,25 @@
   --onboarding-accent-bg-hover: rgba(240, 185, 11, 0.24);
   --onboarding-accent-border: rgba(240, 185, 11, 0.3);
   --onboarding-accent-border-hover: rgba(240, 185, 11, 0.46);
-  --onboarding-accent-foreground: rgba(255, 250, 238, 0.98);
-  --onboarding-panel-bg: rgba(6, 7, 8, 0.6);
-  --onboarding-panel-border: rgba(255, 255, 255, 0.11);
-  --onboarding-panel-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
-  --onboarding-input-bg: rgba(10, 10, 12, 0.68);
-  --onboarding-input-border: rgba(255, 255, 255, 0.13);
-  --onboarding-text-support-bg: rgba(9, 12, 18, 0.22);
-  --onboarding-text-support-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-  --onboarding-divider: rgba(49, 49, 56, 0.22);
-  --onboarding-footer-border: rgba(255, 255, 255, 0.08);
+  --onboarding-accent-foreground: rgba(24, 20, 10, 0.96);
+  --onboarding-panel-bg: rgba(255, 255, 255, 0.42);
+  --onboarding-panel-border: transparent;
+  --onboarding-panel-shadow: none;
+  --onboarding-input-bg: rgba(255, 255, 255, 0.7);
+  --onboarding-input-border: transparent;
+  --onboarding-text-support-bg: rgba(255, 255, 255, 0.46);
+  --onboarding-text-support-shadow: none;
+  --onboarding-divider: rgba(31, 41, 55, 0.16);
+  --onboarding-footer-border: rgba(31, 41, 55, 0.14);
   --onboarding-link: var(--highlight-gold);
   --onboarding-ripple: rgba(240, 185, 11, 0.12);
   --onboarding-secondary-hover-bg: rgba(240, 185, 11, 0.08);
   --onboarding-secondary-pressed-bg: rgba(240, 185, 11, 0.14);
   --onboarding-secondary-focus-ring: rgba(240, 185, 11, 0.42);
-  --onboarding-roster-bg: rgba(7, 10, 14, 0.8);
-  --onboarding-roster-border: rgba(255, 255, 255, 0.1);
+  --onboarding-roster-bg: rgba(255, 255, 255, 0.68);
+  --onboarding-roster-border: rgba(31, 41, 55, 0.16);
   --onboarding-field-focus-border: rgba(240, 185, 11, 0.46);
-  --onboarding-field-focus-shadow: 0 0 0 3px rgba(240, 185, 11, 0.14);
+  --onboarding-field-focus-shadow: none;
 }
 
 /* ── Onboarding theme variables ────────────────────────────────────────
@@ -111,60 +106,52 @@
  * Dark variant by default; light-mode overrides below.
  */
 :root {
-  /* Text hierarchy */
-  --onboarding-text-strong: rgba(255, 255, 255, 0.97);
-  --onboarding-text-primary: rgba(240, 242, 245, 0.94);
-  --onboarding-text-subtle: rgba(209, 214, 221, 0.84);
-  --onboarding-text-muted: rgba(191, 196, 205, 0.82);
-  --onboarding-text-faint: rgba(171, 177, 188, 0.72);
-  --onboarding-text-stroke: rgba(4, 8, 14, 0.78);
-  --onboarding-text-shadow-strong:
-    0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 14px rgba(3, 5, 10, 0.62),
-    0 0 24px rgba(3, 5, 10, 0.24);
-  --onboarding-text-shadow-primary: 0 1px 5px rgba(3, 5, 10, 0.34);
-  --onboarding-text-shadow-muted: 0 1px 4px rgba(3, 5, 10, 0.28);
+  --onboarding-text-strong: rgba(5, 8, 14, 0.98);
+  --onboarding-text-primary: rgba(9, 14, 22, 0.96);
+  --onboarding-text-subtle: rgba(29, 38, 52, 0.88);
+  --onboarding-text-muted: rgba(35, 45, 60, 0.84);
+  --onboarding-text-faint: rgba(49, 61, 78, 0.76);
+  --onboarding-text-stroke: rgba(255, 255, 255, 0.42);
+  --onboarding-text-shadow-strong: none;
+  --onboarding-text-shadow-primary: none;
+  --onboarding-text-shadow-muted: none;
 
-  /* Cards (Remote, Cloud buttons) */
-  --onboarding-card-bg: rgba(10, 10, 12, 0.56);
-  --onboarding-card-bg-hover: rgba(18, 18, 21, 0.64);
-  --onboarding-card-border: rgba(255, 255, 255, 0.11);
+  --onboarding-card-bg: rgba(255, 255, 255, 0.42);
+  --onboarding-card-bg-hover: rgba(255, 255, 255, 0.52);
+  --onboarding-card-border: transparent;
   --onboarding-card-border-strong: rgba(240, 185, 11, 0.32);
-  --onboarding-card-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  --onboarding-card-shadow: none;
 
-  /* Recommended card (Local button) */
   --onboarding-recommended-bg: rgba(240, 185, 11, 0.12);
   --onboarding-recommended-bg-hover: rgba(240, 185, 11, 0.18);
   --onboarding-recommended-border: rgba(240, 185, 11, 0.28);
   --onboarding-recommended-border-strong: rgba(240, 185, 11, 0.44);
 
-  /* Accent (badges, active indicators) */
   --onboarding-accent-bg: rgba(240, 185, 11, 0.16);
   --onboarding-accent-bg-hover: rgba(240, 185, 11, 0.24);
   --onboarding-accent-border: rgba(240, 185, 11, 0.24);
   --onboarding-accent-border-hover: rgba(240, 185, 11, 0.46);
-  --onboarding-accent-foreground: var(--highlight-gold);
+  --onboarding-accent-foreground: rgba(24, 20, 10, 0.96);
 
-  /* Panel (main onboarding container) */
-  --onboarding-panel-bg: rgba(6, 7, 8, 0.6);
-  --onboarding-panel-border: rgba(255, 255, 255, 0.11);
-  --onboarding-panel-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
-  --onboarding-input-bg: rgba(10, 10, 12, 0.68);
-  --onboarding-input-border: rgba(255, 255, 255, 0.13);
-  --onboarding-text-support-bg: rgba(9, 12, 18, 0.22);
-  --onboarding-text-support-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  --onboarding-panel-bg: rgba(255, 255, 255, 0.42);
+  --onboarding-panel-border: transparent;
+  --onboarding-panel-shadow: none;
+  --onboarding-input-bg: rgba(255, 255, 255, 0.7);
+  --onboarding-input-border: transparent;
+  --onboarding-text-support-bg: rgba(255, 255, 255, 0.46);
+  --onboarding-text-support-shadow: none;
 
-  /* Misc */
-  --onboarding-divider: rgba(49, 49, 56, 0.22);
-  --onboarding-footer-border: rgba(49, 49, 56, 0.16);
+  --onboarding-divider: rgba(31, 41, 55, 0.16);
+  --onboarding-footer-border: rgba(31, 41, 55, 0.14);
   --onboarding-link: var(--classic-gold);
   --onboarding-ripple: rgba(240, 185, 11, 0.08);
   --onboarding-secondary-hover-bg: rgba(240, 185, 11, 0.08);
   --onboarding-secondary-pressed-bg: rgba(240, 185, 11, 0.14);
   --onboarding-secondary-focus-ring: rgba(240, 185, 11, 0.42);
-  --onboarding-roster-bg: rgba(8, 10, 13, 0.76);
-  --onboarding-roster-border: rgba(49, 49, 56, 0.18);
+  --onboarding-roster-bg: rgba(255, 255, 255, 0.68);
+  --onboarding-roster-border: rgba(31, 41, 55, 0.16);
   --onboarding-field-focus-border: rgba(240, 185, 11, 0.42);
-  --onboarding-field-focus-shadow: 0 0 0 3px rgba(240, 185, 11, 0.12);
+  --onboarding-field-focus-shadow: none;
 }
 
 .onboarding-step-list::after {
@@ -184,23 +171,17 @@
 .onboarding-step-item--active .onboarding-step-dot {
   background: var(--classic-gold);
   border-color: rgba(245, 247, 250, 0.86);
-  box-shadow:
-    0 0 12px var(--gold-glow),
-    0 0 22px rgba(240, 185, 11, 0.12);
+  box-shadow: none;
 }
 
 @keyframes onboarding-dot-pulse {
   0%,
   100% {
-    box-shadow:
-      0 0 12px var(--gold-glow),
-      0 0 22px rgba(240, 185, 11, 0.12);
+    box-shadow: none;
     transform: rotate(45deg) scale(1);
   }
   50% {
-    box-shadow:
-      0 0 16px rgba(240, 185, 11, 0.24),
-      0 0 28px rgba(240, 185, 11, 0.14);
+    box-shadow: none;
     transform: rotate(45deg) scale(1.15);
   }
 }
@@ -247,9 +228,7 @@
   color: #eaecef;
   background: rgba(10, 10, 12, 0.9);
   border-color: rgba(49, 49, 56, 0.4);
-  box-shadow:
-    0 14px 26px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 
 [data-testid="companion-header-chat-controls"] > button svg {
@@ -265,10 +244,7 @@
     rgba(10, 10, 12, 0.94) 100%
   );
   border-color: rgba(240, 185, 11, 0.36);
-  box-shadow:
-    0 0 0 1px rgba(240, 185, 11, 0.14),
-    0 16px 28px rgba(0, 0, 0, 0.34),
-    0 0 18px rgba(240, 185, 11, 0.08);
+  box-shadow: none;
 }
 
 [data-testid="companion-header-chat-controls"] > button[aria-pressed="true"] {
@@ -281,8 +257,8 @@
     rgba(10, 10, 12, 0.98) 0%,
     rgba(5, 5, 6, 0.96) 100%
   );
-  border-right-color: rgba(49, 49, 56, 0.24);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
+  border-right-color: transparent;
+  box-shadow: none;
 }
 
 .settings-content-area {
@@ -314,9 +290,7 @@
       transparent 26%
     ),
     linear-gradient(180deg, rgba(10, 10, 12, 0.98), rgba(5, 5, 6, 1));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  box-shadow: none;
 }
 
 .settings-content-area::after {
@@ -326,7 +300,7 @@
     rgba(240, 185, 11, 0.16) 48%,
     transparent 92%
   );
-  box-shadow: 0 0 18px rgba(240, 185, 11, 0.08);
+  box-shadow: none;
 }
 
 .settings-content-area::before {
@@ -335,15 +309,13 @@
 }
 
 .settings-content-area > [class*="sticky top-0"][class*="border-b"] {
-  border-color: rgba(49, 49, 56, 0.4);
+  border-color: transparent;
   background: linear-gradient(
     180deg,
     rgba(10, 10, 12, 0.94) 0%,
     rgba(5, 5, 6, 0.88) 100%
   );
-  box-shadow:
-    0 18px 38px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 
 .settings-content-area [class*="bg-black/5"],
@@ -362,10 +334,8 @@
     rgba(18, 18, 21, 0.92) 0%,
     rgba(10, 10, 12, 0.88) 100%
   );
-  border-color: rgba(49, 49, 56, 0.4);
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .settings-content-area input[type="text"],
@@ -384,16 +354,14 @@
 
 .plugins-game-card {
   padding: 0.875rem 1rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(49, 49, 56, 0.42);
+  border-radius: var(--radius-xs, 3px);
+  border: 0;
   background: linear-gradient(
     180deg,
     rgba(18, 18, 21, 0.92) 0%,
     rgba(10, 10, 12, 0.9) 100%
   );
-  box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 
 .plugins-game-card::after {
@@ -411,37 +379,30 @@
     rgba(24, 24, 28, 0.96) 0%,
     rgba(10, 10, 12, 0.92) 100%
   );
-  border-color: rgba(183, 189, 198, 0.22);
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .plugins-game-card.is-selected {
-  border-color: rgba(240, 185, 11, 0.42);
-  border-left-color: var(--highlight-gold);
+  border-color: transparent;
+  border-left-color: transparent;
   background: linear-gradient(
     180deg,
     rgba(240, 185, 11, 0.12) 0%,
     rgba(18, 18, 21, 0.94) 100%
   );
-  box-shadow:
-    0 0 0 1px rgba(240, 185, 11, 0.12),
-    0 18px 38px rgba(0, 0, 0, 0.28),
-    0 0 18px rgba(240, 185, 11, 0.08);
+  box-shadow: none;
 }
 
 .plugins-game-card-icon-shell,
 .plugins-game-detail-icon-shell {
-  border-color: rgba(138, 138, 148, 0.24);
+  border-color: transparent;
   background: linear-gradient(
     145deg,
     rgba(245, 247, 250, 0.06),
     rgba(10, 10, 12, 0.58)
   );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 18px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
 }
 
 .plugins-game-card-name {
@@ -536,42 +497,32 @@
     color-mix(in srgb, var(--card) 90%, transparent),
     color-mix(in srgb, var(--bg) 97%, transparent)
   );
-  --logs-toolbar-button-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 14px 20px -18px rgba(15, 23, 42, 0.14);
-  --logs-toolbar-button-shadow-hover:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 16px 22px -18px rgba(15, 23, 42, 0.16);
-  --logs-toolbar-button-shadow-dark:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 16px 24px -20px rgba(0, 0, 0, 0.24);
+  --logs-toolbar-button-shadow: none;
+  --logs-toolbar-button-shadow-hover: none;
+  --logs-toolbar-button-shadow-dark: none;
 }
 
 .logs-toolbar-button {
   min-height: 2.5rem;
-  border-radius: 1rem;
+  border-radius: var(--radius-xs, 3px);
   padding-left: 0.75rem;
   padding-right: 0.75rem;
   font-size: 0.75rem;
   font-weight: 500;
-  border: 1px solid color-mix(in srgb, var(--border) 32%, transparent);
+  border: 0;
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
   box-shadow: var(--logs-toolbar-button-shadow);
   backdrop-filter: blur(12px);
   transition:
-    border-color 200ms,
     background-color 200ms,
     color 200ms,
-    transform 200ms,
-    box-shadow 200ms;
+    transform 200ms;
 }
 
 .logs-toolbar-button:hover {
-  border-color: color-mix(in srgb, var(--border) 46%, transparent);
   background: var(--logs-toolbar-button-bg-hover);
   color: var(--text);
-  box-shadow: var(--logs-toolbar-button-shadow-hover);
 }
 
 .logs-toolbar-button:active {
@@ -579,7 +530,6 @@
 }
 
 .logs-toolbar-button:disabled:hover {
-  border-color: color-mix(in srgb, var(--border) 32%, transparent);
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
 }

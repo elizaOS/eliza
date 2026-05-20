@@ -2,7 +2,7 @@ import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
-} from "@elizaos/app-core/services/app-updates/update-policy";
+} from "../../services/app-updates/update-policy";
 import {
   AlertTriangle,
   CheckCircle2,

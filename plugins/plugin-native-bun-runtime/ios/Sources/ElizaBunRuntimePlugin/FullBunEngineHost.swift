@@ -37,7 +37,8 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   JSON string, `payload` is extracted as a bounded value field. The
 ///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
-///   `llama_generate`, `llama_free`, and `llama_cancel` are dispatched by
+///   `llama_generate`, `llama_free`, `llama_cancel`, and
+///   `eliza_tts_synthesize` are dispatched by
 ///   `handleHostCall`. All other method names return `{"ok":false,"error":"..."}`.
 /// - `http_fetch` (JSContext compat path): loopback/local-agent URLs are
 ///   rejected at `HTTPBridge.isLocalLoopback` before a URLRequest is created.
@@ -125,6 +126,8 @@ final class FullBunEngineHost {
         env: [String: String],
         appSupportDir: String
     ) throws {
+        let startedAt = Date()
+        NSLog("[FullBunEngineHost] start requested bundle=\(bundlePath) appSupport=\(appSupportDir) argv=\(argv) envKeys=\(env.keys.sorted())")
         try load()
         if running {
             if isRunningFn?() == 1 { return }
@@ -146,12 +149,16 @@ final class FullBunEngineHost {
         }
         guard code == 0 else {
             let detail = lastError()
+            let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            NSLog("[FullBunEngineHost] start failed code=\(code) durationMs=\(durationMs) detail=\(detail)")
             throw makeError(
                 "ElizaBunEngine start failed with code \(code)" +
                     (detail.isEmpty ? "" : ": \(detail)")
             )
         }
         running = true
+        let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        NSLog("[FullBunEngineHost] start succeeded abi=\(abiVersion) durationMs=\(durationMs)")
     }
 
     func stop() {
@@ -172,6 +179,7 @@ final class FullBunEngineHost {
             }
         }
         guard let resultPtr else {
+            NSLog("[FullBunEngineHost] call returned null method=\(method) lastError=\(lastError())")
             throw makeError("ElizaBunEngine call returned null for \(method)")
         }
         defer { freeFn?(UnsafeMutableRawPointer(resultPtr)) }
@@ -184,9 +192,14 @@ final class FullBunEngineHost {
            let ok = dict["ok"] as? Bool,
            ok == false {
             let message = dict["error"] as? String ?? "unknown full Bun engine error"
-            let detail = previousError.isEmpty || previousError == message
+            let currentError = lastError()
+            let diagnostic = !currentError.isEmpty && currentError != message
+                ? currentError
+                : previousError
+            let detail = diagnostic.isEmpty || diagnostic == message
                 ? ""
-                : " (previous engine error: \(previousError))"
+                : " (engine error: \(diagnostic))"
+            NSLog("[FullBunEngineHost] call failed method=\(method) error=\(message) diagnostic=\(diagnostic)")
             throw makeError("\(message)\(detail)")
         }
         if let dict = decoded as? [String: Any],
@@ -199,6 +212,7 @@ final class FullBunEngineHost {
 
     private func load() throws {
         if loaded { return }
+        NSLog("[FullBunEngineHost] loading ElizaBunEngine")
 #if ELIZA_IOS_FULL_BUN_ENGINE
         let loadedAbiVersionFn: AbiVersionFn = {
             eliza_bun_engine_abi_version()
@@ -315,6 +329,7 @@ final class FullBunEngineHost {
         self.callFn = loadedCallFn
         self.freeFn = loadedFreeFn
         self.loaded = true
+        NSLog("[FullBunEngineHost] loaded ElizaBunEngine abi=\(loadedAbiVersion)")
     }
 
 #if !ELIZA_IOS_FULL_BUN_ENGINE && DEBUG
@@ -367,6 +382,7 @@ final class FullBunEngineHost {
         timeoutMs: Int32
     ) -> String {
         _ = timeoutMs
+        NSLog("[FullBunEngineHost] host call method=\(method) payloadBytes=\(payloadJson.lengthOfBytes(using: .utf8)) timeoutMs=\(timeoutMs)")
         do {
             let payload = try decodeHostPayload(payloadJson)
             switch method {
@@ -380,6 +396,8 @@ final class FullBunEngineHost {
                 return handleFree(payload)
             case "llama_cancel":
                 return handleCancel(payload)
+            case "eliza_tts_synthesize":
+                return handleTtsSynthesize(payload)
             default:
                 return encodeHostEnvelope(
                     ok: false,
@@ -495,6 +513,45 @@ final class FullBunEngineHost {
         ])
     }
 
+    private func handleTtsSynthesize(_ payload: [String: Any]) -> String {
+        guard let bundleDir = stringValue(payload, "bundleDir")
+            ?? stringValue(payload, "bundle_dir"),
+            !bundleDir.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "eliza_tts_synthesize requires bundleDir")
+        }
+        guard let text = stringValue(payload, "text"), !text.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "eliza_tts_synthesize requires text")
+        }
+        let speakerPresetId = stringValue(payload, "speakerPresetId")
+            ?? stringValue(payload, "speaker_preset_id")
+            ?? stringValue(payload, "voice")
+            ?? stringValue(payload, "voiceId")
+        let maxSamples = intValue(payload, "maxSamples")
+            ?? intValue(payload, "max_samples")
+            ?? 24_000 * 60
+        let result = LlamaBridgeImpl.shared.synthesizeSpeech(
+            bundleDir: bundleDir,
+            text: text,
+            speakerPresetId: speakerPresetId,
+            maxSamples: maxSamples
+        )
+        if let error = result.error {
+            return encodeHostEnvelope(ok: false, error: error)
+        }
+        var payload: [String: Any] = [
+            "contentType": result.contentType,
+            "sampleRate": NSNumber(value: result.sampleRate),
+            "samples": NSNumber(value: result.samples),
+            "durationMs": NSNumber(value: result.durationMs),
+        ]
+        if let audioFilePath = result.audioFilePath, !audioFilePath.isEmpty {
+            payload["audioFilePath"] = audioFilePath
+        } else {
+            payload["audioBase64"] = result.audioBase64
+        }
+        return encodeHostEnvelope(ok: true, result: payload)
+    }
+
     private func decodeHostPayload(_ json: String) throws -> [String: Any] {
         guard let data = json.data(using: .utf8) else { return [:] }
         let value = try JSONSerialization.jsonObject(with: data)
@@ -542,6 +599,12 @@ final class FullBunEngineHost {
     private func int32Value(_ payload: [String: Any], _ key: String) -> Int32? {
         if let value = payload[key] as? NSNumber { return value.int32Value }
         if let value = payload[key] as? String, let parsed = Int32(value) { return parsed }
+        return nil
+    }
+
+    private func intValue(_ payload: [String: Any], _ key: String) -> Int? {
+        if let value = payload[key] as? NSNumber { return value.intValue }
+        if let value = payload[key] as? String, let parsed = Int(value) { return parsed }
         return nil
     }
 

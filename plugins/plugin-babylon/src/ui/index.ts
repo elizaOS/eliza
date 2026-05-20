@@ -1,7 +1,7 @@
 import {
   registerDetailExtension,
   registerOperatorSurface,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { BabylonDetailExtension } from "./BabylonDetailExtension.js";
 import { BabylonOperatorSurface } from "./BabylonOperatorSurface.js";
 

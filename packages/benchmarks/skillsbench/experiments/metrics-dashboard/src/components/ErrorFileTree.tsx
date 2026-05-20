@@ -2,7 +2,7 @@ import { AlertCircle, ChevronRight, FileText } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 import type { ErrorGroup, ProcessedTrial } from "../types/metrics";
 
 interface ErrorFileTreeProps {

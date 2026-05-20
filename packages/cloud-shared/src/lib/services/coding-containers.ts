@@ -130,7 +130,10 @@ export function buildCodingContainerCreatePayload(
     request.container?.name ?? request.promotionId ?? request.source?.projectId,
     `coding-${request.agent}`,
   );
-  const image = trimOptional(request.container?.image) ?? containersEnv.defaultAgentImage();
+  const image =
+    trimOptional(request.container?.image) ??
+    containersEnv.codingSatelliteImage() ??
+    containersEnv.defaultAgentImage();
   const prompt = trimOptional(request.prompt);
   const promotionId = trimOptional(request.promotionId);
 

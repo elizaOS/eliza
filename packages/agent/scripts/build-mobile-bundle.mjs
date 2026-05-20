@@ -494,6 +494,43 @@ const stubResolverPlugin = {
   },
 };
 
+const exactMobileStubPlugin = {
+  name: "eliza-mobile-exact-stubs",
+  setup(build) {
+    const exactStubs = new Map([
+      [
+        "@elizaos/plugin-local-inference",
+        path.join(stubsDir, "null-plugin.cjs"),
+      ],
+      [
+        "@elizaos/plugin-local-inference/runtime/embedding-presets",
+        path.join(stubsDir, "embedding-presets.cjs"),
+      ],
+      ["e2b", path.join(stubsDir, "null-plugin.cjs")],
+    ]);
+    build.onResolve(
+      {
+        filter:
+          /^(?:@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?|e2b)$/,
+      },
+      (args) => {
+        return { path: exactStubs.get(args.path), namespace: "file" };
+      },
+    );
+  },
+};
+
+const capabilityRouterStubPlugin = {
+  name: "eliza-mobile-capability-router-stubs",
+  setup(build) {
+    const e2bRouterStub = path.join(stubsDir, "e2b-capability-router.cjs");
+    build.onResolve({ filter: /e2b-capability-router\.ts$/ }, () => ({
+      path: e2bRouterStub,
+      namespace: "file",
+    }));
+  },
+};
+
 const iosFsSandboxPlugin = {
   name: "eliza-ios-fs-sandbox-proxy",
   setup(build) {
@@ -1346,9 +1383,11 @@ const buildResult = await Bun.build({
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,
+    exactMobileStubPlugin,
+    capabilityRouterStubPlugin,
+    stubResolverPlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
-    stubResolverPlugin,
     // ios-jsc: actively mark Node built-ins as external via onResolve so
     // Bun.build's browser target stops substituting its incomplete browser
     // polyfills (e.g. node:url without pathToFileURL). The polyfill prefix
@@ -1433,6 +1472,51 @@ if (!existsSync(bundlePath)) {
 //      now-bound original where one exists. No-op when the original
 //      isn't there either.
 const bundleSrc = await Bun.file(bundlePath).text();
+
+function initSourceComment(src, initName, searchOffset) {
+  const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
+  if (initOffset === -1) return "(definition not found)";
+  const commentOffset = src.lastIndexOf("// ", initOffset);
+  if (commentOffset === -1) return "(source not found)";
+  const endOffset = src.indexOf("\n", commentOffset);
+  return src.slice(
+    commentOffset + 3,
+    endOffset === -1 ? initOffset : endOffset,
+  );
+}
+
+function reportInitElizaShape(src) {
+  const source = String(src);
+  const match =
+    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(source);
+  if (!match) {
+    console.warn("[build-mobile] init_eliza initializer not found");
+    return;
+  }
+  const asyncInit = Boolean(match[1]);
+  console.log(
+    `[build-mobile] init_eliza initializer: ${asyncInit ? "async" : "sync"}`,
+  );
+  if (!asyncInit) return;
+  const body = match[2];
+  const seen = new Set();
+  for (const call of body.matchAll(
+    /\b(await\s+)?(init_[A-Za-z0-9_$]+)\(\);/g,
+  )) {
+    const initName = call[2];
+    if (seen.has(initName)) continue;
+    seen.add(initName);
+    const definitionOffset = source.indexOf(`var ${initName} = __esm`);
+    const definition = source.slice(definitionOffset, definitionOffset + 80);
+    const kind = definition.includes("__esm(async") ? "async" : "sync";
+    console.error(
+      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(source, initName, definitionOffset)})`,
+    );
+  }
+}
+
+reportInitElizaShape(bundleSrc);
+
 // `AutonomyService2` is the dedup'd consumer-side alias for the
 // autonomy Service class. The class itself (`class AutonomyService
 // extends Service { static async start(runtime) {...} }`) lives in a

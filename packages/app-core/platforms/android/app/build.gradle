@@ -105,7 +105,8 @@ android {
 
 repositories {
     flatDir {
-        dirs '../../node_modules/@capacitor/background-runner/android/src/main/libs',
+        dirs 'libs',
+             '../../node_modules/@capacitor/background-runner/android/src/main/libs',
              '../../node_modules/@capacitor-community/background-runner/android/src/main/libs',
              '../../../../app/node_modules/@capacitor/background-runner/android/src/main/libs',
              '../../../../app/node_modules/@capacitor-community/background-runner/android/src/main/libs',

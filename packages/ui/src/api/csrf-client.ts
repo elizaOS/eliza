@@ -13,7 +13,7 @@
  * targets the dashboard API.
  */
 
-import { iosInProcessAgentTransportForUrl } from "@elizaos/app-core/api/ios-local-agent-transport";
+import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";

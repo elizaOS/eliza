@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ELECTROBUN_BOOT_CONFIG_STORE_KEY,
   type ElectrobunBootConfigWindow,
   updateElectrobunBootConfig,
 } from "./bridge/electrobun-boot-config";
@@ -19,11 +20,9 @@ describe("Electrobun boot config bridge", () => {
     });
     expect(globalObject.__ELIZAOS_APP_BOOT_CONFIG__).toBe(nextConfig);
     expect(globalObject.__ELIZA_APP_BOOT_CONFIG__).toBe(nextConfig);
-    expect(
-      (globalObject as Record<symbol, { current: unknown } | undefined>)[
-        Symbol.for("elizaos.app.boot-config")
-      ]?.current,
-    ).toBe(nextConfig);
+    expect(globalObject[ELECTROBUN_BOOT_CONFIG_STORE_KEY]?.current).toBe(
+      nextConfig,
+    );
   });
 
   it("prefers the current key while preserving existing fields", () => {

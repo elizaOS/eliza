@@ -3,7 +3,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type ElizaCapabilityRouter,
+  type GitCommandRunParams,
+  type GitCommandRunResult,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
@@ -83,6 +91,82 @@ async function cleanupEnv(env: TestEnv | undefined): Promise<void> {
 
 function makeMessage(conversationId: string): Memory {
   return { roomId: conversationId } as Memory;
+}
+
+function setCapabilityRouter(
+  env: TestEnv,
+  router: ElizaCapabilityRouter,
+): void {
+  const getService = env.runtime.getService.bind(env.runtime);
+  (env.runtime as { getService: (k: string) => unknown }).getService = (
+    key: string,
+  ) => (key === CAPABILITY_ROUTER_SERVICE_TYPE ? router : getService(key));
+}
+
+function makeGitRouter(
+  commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
+): ElizaCapabilityRouter {
+  return {
+    environment: "desktop",
+    availability: async () => ({
+      environment: "desktop",
+      available: true,
+      capabilities: {
+        fs: false,
+        pty: false,
+        git: true,
+        model: false,
+      },
+    }),
+    fs: {
+      list: async () => {
+        throw new Error("fs unavailable");
+      },
+      readText: async () => {
+        throw new Error("fs unavailable");
+      },
+      writeText: async () => {
+        throw new Error("fs unavailable");
+      },
+    },
+    pty: {
+      runCommand: async () => {
+        throw new Error("pty unavailable");
+      },
+    },
+    git: {
+      status: async () => {
+        throw new Error("git status unavailable");
+      },
+      diff: async () => {
+        throw new Error("git diff unavailable");
+      },
+      commandRun,
+    },
+    model: {
+      status: async () => {
+        throw new Error("model unavailable");
+      },
+    },
+  };
+}
+
+function gitCommandResult(params: GitCommandRunParams): GitCommandRunResult {
+  return {
+    operation: {
+      id: "git-op-routed",
+      name: "git.command.run",
+      cwd: params.root,
+      command: params.args,
+      status: "completed",
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      startedAt: "2026-05-17T00:00:00.000Z",
+      completedAt: "2026-05-17T00:00:00.001Z",
+    },
+  };
 }
 
 async function enter(env: TestEnv): Promise<string> {
@@ -181,6 +265,40 @@ describe("EXIT_WORKTREE", () => {
       encoding: "utf8",
     });
     expect(list).not.toContain(worktreePath);
+  });
+
+  it("routes git worktree remove through the capability router when available", async () => {
+    const calls: GitCommandRunParams[] = [];
+    setCapabilityRouter(
+      env,
+      makeGitRouter(async (params) => {
+        calls.push(params);
+        return gitCommandResult(params);
+      }),
+    );
+    const worktreePath = path.join(env.repoDir, "routed-worktree");
+    env.session.pushWorktree(env.conversationId, worktreePath);
+    env.sandbox.addRoot(env.conversationId, worktreePath);
+
+    const result = await exitWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      { parameters: { cleanup: true } },
+    );
+
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([
+      {
+        root: env.repoDir,
+        args: ["worktree", "remove", "--force", worktreePath],
+      },
+    ]);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.cleaned).toBe(true);
+    expect(path.resolve(String(data?.restoredTo))).toBe(
+      path.resolve(env.repoDir),
+    );
   });
 
   it("fails with missing_param when message has no roomId", async () => {

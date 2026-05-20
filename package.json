@@ -218,6 +218,7 @@
     "packages/benchmarks/eliza-1",
     "packages/benchmarks/eliza-1/vision-cua-e2e",
     "packages/benchmarks/evm/skill_runner",
+    "packages/benchmarks/skillsbench/experiments/metrics-dashboard",
     "packages/benchmarks/three-agent-dialogue",
     "packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer",
     "packages/examples/*",

@@ -28,9 +28,9 @@ import {
 } from "../../state/persistence";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
-import { OnboardingRoot } from "../onboarding/states";
 import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
 import { PairingView } from "./PairingView";
+import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
@@ -292,13 +292,13 @@ export function StartupShell() {
     if (!voicePrefixDone) {
       return <VoicePrefixGate onDone={handleVoicePrefixDone} />;
     }
-    return <OnboardingRoot />;
+    return <RuntimeGate />;
   }
 
   // Ready — let the app through
   if (phase === "ready") {
     if (!onboardingComplete) {
-      return <OnboardingRoot />;
+      return <RuntimeGate />;
     }
     return null;
   }

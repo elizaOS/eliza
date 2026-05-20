@@ -80,7 +80,7 @@
 .onboarding-step-dot {
   width: 14px;
   height: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 0;
   transform: rotate(45deg);
   flex-shrink: 0;
   position: relative;
@@ -97,19 +97,19 @@
 .onboarding-step-item--active .onboarding-step-dot {
   background: var(--accent);
   border-color: var(--text);
-  box-shadow: 0 0 12px rgba(240, 185, 11, 0.24);
+  box-shadow: none;
   animation: onboarding-dot-pulse 2s ease-in-out infinite;
 }
 
 @keyframes onboarding-dot-pulse {
   0%,
   100% {
-    box-shadow: 0 0 12px rgba(240, 185, 11, 0.24);
+    box-shadow: none;
     transform: rotate(45deg) scale(1);
   }
 
   50% {
-    box-shadow: 0 0 18px rgba(240, 185, 11, 0.34);
+    box-shadow: none;
     transform: rotate(45deg) scale(1.15);
   }
 }
@@ -119,7 +119,7 @@
   letter-spacing: 0.08em;
   color: rgba(240, 238, 250, 0.7);
   font-weight: 500;
-  text-shadow: 0 1px 6px rgba(3, 5, 10, 0.42);
+  text-shadow: none;
   transition: all 0.5s;
 }
 
@@ -136,7 +136,7 @@
   font-size: 13px;
   color: rgba(240, 238, 250, 0.5);
   letter-spacing: 0.05em;
-  text-shadow: 0 1px 6px rgba(3, 5, 10, 0.3);
+  text-shadow: none;
   transition: all 0.5s;
 }
 
@@ -167,21 +167,18 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 /* === Panel — scrollbar pseudo-elements, child stagger, permission overrides === */
 .onboarding-panel {
   background:
-    linear-gradient(180deg, rgba(12, 15, 22, 0.22), rgba(12, 15, 22, 0.1)),
-    rgba(10, 14, 20, 0.22);
-  backdrop-filter: blur(36px) saturate(1.24);
-  -webkit-backdrop-filter: blur(36px) saturate(1.24);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 10px;
+    linear-gradient(180deg, rgba(12, 15, 22, 0.12), rgba(12, 15, 22, 0.06)),
+    rgba(10, 14, 20, 0.12);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  border: 0;
+  border-radius: var(--radius-xs, 3px);
   padding: 36px 32px;
   display: flex;
   flex-direction: column;
   gap: 0;
-  box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  animation: onboarding-panel-enter 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)
-    both;
+  box-shadow: none;
+  animation: none;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -202,10 +199,10 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
     var(--scrollbar-thumb-mid) 55%,
     var(--scrollbar-thumb-end) 100%
   );
-  border-radius: 9999px;
-  border: 2px solid var(--scrollbar-track);
+  border-radius: var(--radius-xs, 3px);
+  border: 0;
   background-clip: padding-box;
-  box-shadow: inset 0 0 0 1px var(--scrollbar-thumb-edge);
+  box-shadow: none;
 }
 
 @keyframes onboarding-panel-enter {
@@ -222,35 +219,7 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 
 /* Staggered children animation */
 .onboarding-panel > * {
-  animation: onboarding-content-fade-in 0.5s ease both;
-}
-
-.onboarding-panel > *:nth-child(1) {
-  animation-delay: 0.15s;
-}
-
-.onboarding-panel > *:nth-child(2) {
-  animation-delay: 0.25s;
-}
-
-.onboarding-panel > *:nth-child(3) {
-  animation-delay: 0.35s;
-}
-
-.onboarding-panel > *:nth-child(4) {
-  animation-delay: 0.45s;
-}
-
-.onboarding-panel > *:nth-child(5) {
-  animation-delay: 0.55s;
-}
-
-.onboarding-panel > *:nth-child(6) {
-  animation-delay: 0.65s;
-}
-
-.onboarding-panel > *:nth-child(7) {
-  animation-delay: 0.75s;
+  animation: none;
 }
 
 @keyframes onboarding-content-fade-in {
@@ -291,8 +260,8 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   width: 100%;
   padding: 16px 20px;
   background: rgba(10, 14, 20, 0.24);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--radius-xs, 3px);
   color: rgba(240, 238, 250, 0.92);
   font-size: 16px;
   font-family: inherit;
@@ -300,13 +269,12 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   letter-spacing: 0.03em;
   text-align: center;
   transition:
-    border-color 0.3s,
-    box-shadow 0.3s;
+    background-color 0.3s;
 }
 
 .onboarding-input:focus {
-  border-color: rgba(240, 185, 11, 0.4);
-  box-shadow: 0 0 12px rgba(240, 185, 11, 0.08);
+  background: rgba(10, 14, 20, 0.34);
+  box-shadow: none;
 }
 
 .onboarding-input::placeholder {
@@ -326,7 +294,7 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   font-family: inherit;
   transition: color 0.3s;
   padding: 0;
-  text-shadow: 0 1px 8px rgba(3, 5, 10, 0.45);
+  text-shadow: none;
 }
 
 .onboarding-back-link:hover {
@@ -342,11 +310,11 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   padding: 12px 32px;
   min-height: 44px;
   background: rgba(240, 185, 11, 0.18);
-  border: 1px solid rgba(240, 185, 11, 0.35);
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--radius-xs, 3px);
   clip-path: none;
   color: rgba(240, 238, 250, 0.94);
-  text-shadow: 0 1px 6px rgba(3, 5, 10, 0.55);
+  text-shadow: none;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.18em;
@@ -360,7 +328,6 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 
 .onboarding-confirm-btn:hover {
   background: rgba(240, 185, 11, 0.28);
-  border-color: rgba(240, 185, 11, 0.6);
 }
 
 .onboarding-confirm-btn:disabled {
@@ -393,14 +360,14 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   gap: 8px;
   padding: 10px 14px;
   min-height: 52px;
-  background: rgba(10, 14, 20, 0.24);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.18);
+  border: 0;
+  border-radius: var(--radius-xs, 3px);
   cursor: pointer;
   transition: all 0.3s;
   text-align: left;
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
 }
 
 .onboarding-provider-card > div:last-child {
@@ -414,31 +381,25 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 
 .onboarding-provider-card:hover {
   background: rgba(10, 14, 20, 0.34);
-  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .onboarding-provider-card--selected {
   background: rgba(240, 185, 11, 0.12);
-  border-color: rgba(240, 185, 11, 0.3);
 }
 
 .onboarding-provider-card--recommended {
-  border-color: rgba(240, 185, 11, 0.22);
   background: rgba(240, 185, 11, 0.1);
 }
 
 .onboarding-provider-card--recommended:hover {
-  border-color: rgba(240, 185, 11, 0.34);
   background: rgba(240, 185, 11, 0.14);
 }
 
 .onboarding-provider-card--detected {
-  border-color: rgba(34, 197, 94, 0.24);
   background: rgba(34, 197, 94, 0.08);
 }
 
 .onboarding-provider-card--detected:hover {
-  border-color: rgba(34, 197, 94, 0.4);
   background: rgba(34, 197, 94, 0.12);
 }
 
@@ -483,23 +444,23 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 
 /* Override Tailwind utilities on PermissionsSection using doubled selectors for specificity */
 .onboarding-panel.onboarding-panel .flex.items-center.gap-4.p-4.border {
-  background: rgba(10, 14, 20, 0.26);
-  border-color: rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.18);
+  border-color: transparent;
+  border-radius: var(--radius-xs, 3px);
 }
 
 .onboarding-panel.onboarding-panel
   .flex.items-center.gap-4.p-4.border:has(.text-\[var\(--ok\)\]) {
   background: rgba(240, 185, 11, 0.12);
-  border-color: rgba(240, 185, 11, 0.28);
+  border-color: transparent;
 }
 
 /* Style buttons within permissions to match game theme */
 .onboarding-panel.onboarding-panel button[class*="bg-accent"] {
   background: rgba(240, 185, 11, 0.14);
-  border: 1px solid rgba(240, 185, 11, 0.32);
+  border: 0;
   color: rgba(11, 14, 17, 0.96);
-  border-radius: 6px;
+  border-radius: var(--radius-xs, 3px);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-weight: 600;
@@ -512,9 +473,9 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 /* Outline/skip buttons */
 .onboarding-panel.onboarding-panel button[class*="opacity-70"] {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   color: rgba(240, 238, 250, 0.4);
-  border-radius: 6px;
+  border-radius: var(--radius-xs, 3px);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -522,9 +483,9 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
 /* Permission grant/settings buttons */
 .onboarding-panel.onboarding-panel .flex.gap-2 button {
   background: rgba(240, 185, 11, 0.08);
-  border: 1px solid rgba(240, 185, 11, 0.3);
+  border: 0;
   color: rgba(240, 238, 250, 0.94);
-  border-radius: 6px;
+  border-radius: var(--radius-xs, 3px);
   font-weight: 600;
   letter-spacing: 0.05em;
 }

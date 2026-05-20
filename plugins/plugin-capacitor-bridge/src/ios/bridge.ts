@@ -14,11 +14,15 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
+	createWriteStream,
 	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
+	rmSync,
 	statSync,
+	writeFileSync,
 } from "../shared/fs-proxy.ts";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
 
@@ -117,12 +121,11 @@ type AgentModule = {
 };
 
 async function loadAgentModule(): Promise<AgentModule> {
-	const specifier = "@elizaos/" + "agent";
-	return (await import(specifier)) as AgentModule;
+	return (await import("@elizaos/agent")) as AgentModule;
 }
 
 interface IosBridgeHost {
-	backendPromise: Promise<IosBridgeBackend>;
+	backendPromise: Promise<IosBridgeBackend> | null;
 	backend: IosBridgeBackend | null;
 	bootError: unknown;
 }
@@ -156,10 +159,54 @@ interface InstalledModelEntry {
 	installedAt?: string;
 	lastUsedAt?: string | null;
 	source?: string;
+	hfRepo?: string;
 	bundleVerifiedAt?: string;
 	dimensions?: number;
 	embeddingDimension?: number;
 	embeddingDimensions?: number;
+}
+
+interface NativeVoiceReadiness {
+	status: "missing" | "assets-ready" | "engine-ready" | "ready" | "unavailable";
+	installedFiles: number;
+	modelId: string | null;
+	message: string;
+}
+
+interface NativeLocalTtsRequest {
+	text: string;
+	voice?: string;
+	voiceId?: string;
+	model?: string;
+	modelId?: string;
+	sampleRate?: number;
+	format?: string;
+}
+
+interface NativeCatalogModelEntry {
+	id: string;
+	displayName: string;
+	hfRepo: string;
+	hfPath: string;
+	ggufFile: string;
+	sizeGb: number;
+	minRamGb: number;
+	params: string;
+	bucket: "small" | "mid" | "large";
+	contextLength: number;
+}
+
+interface NativeDownloadJob {
+	jobId: string;
+	modelId: string;
+	state: "queued" | "downloading" | "completed" | "failed" | "cancelled";
+	received: number;
+	total: number;
+	bytesPerSec: number;
+	etaMs: number | null;
+	startedAt: string;
+	updatedAt: string;
+	error?: string;
 }
 
 interface NativeLlamaState {
@@ -198,6 +245,39 @@ type RuntimeWithModelRegistration = IAgentRuntime & {
 const IOS_NATIVE_LLAMA_PROVIDER = "capacitor-llama";
 const IOS_NATIVE_LLAMA_DEVICE_ID = "ios-native-llama";
 const IOS_NATIVE_LLAMA_PRIORITY = 0;
+const ELIZA_1_HF_REPO = "elizaos/eliza-1";
+const IOS_NATIVE_CATALOG_MODELS: NativeCatalogModelEntry[] = [
+	{
+		id: "eliza-1-0_8b",
+		displayName: "eliza-1-0.8B",
+		hfRepo: ELIZA_1_HF_REPO,
+		hfPath: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
+		ggufFile: "text/eliza-1-0_8b-128k.gguf",
+		sizeGb: 0.5,
+		minRamGb: 2,
+		params: "0.8B",
+		bucket: "small",
+		contextLength: 131_072,
+	},
+	{
+		id: "eliza-1-2b",
+		displayName: "eliza-1-2B",
+		hfRepo: ELIZA_1_HF_REPO,
+		hfPath: "bundles/2b/text/eliza-1-2b-128k.gguf",
+		ggufFile: "text/eliza-1-2b-128k.gguf",
+		sizeGb: 1.4,
+		minRamGb: 4,
+		params: "2B",
+		bucket: "small",
+		contextLength: 131_072,
+	},
+];
+const IOS_NATIVE_ASSIGNMENT_SLOTS = new Set([
+	"TEXT_SMALL",
+	"TEXT_LARGE",
+	"TEXT_TO_SPEECH",
+	"TRANSCRIPTION",
+]);
 const IOS_NATIVE_NO_THINK_SYSTEM =
 	"Answer with final user-visible content only. Do not include private reasoning, analysis tags, or <think> blocks.";
 const TEXT_GENERATION_MODEL_TYPES = [
@@ -216,6 +296,7 @@ const nativeLlamaState: NativeLlamaState = {
 	loadedAt: null,
 	status: "idle",
 };
+const nativeDownloadState = new Map<string, NativeDownloadJob>();
 const pendingHostCalls = new Map<
 	string,
 	{
@@ -404,8 +485,15 @@ function startIosBridgeHost(): IosBridgeHost {
 	const host: IosBridgeHost = {
 		backend: null,
 		bootError: null,
-		backendPromise: Promise.resolve(null as unknown as IosBridgeBackend),
+		backendPromise: null,
 	};
+	return host;
+}
+
+function ensureIosBridgeBackendStarted(
+	host: IosBridgeHost,
+): Promise<IosBridgeBackend> {
+	if (host.backendPromise) return host.backendPromise;
 	host.backendPromise = startIosBridgeBackend().then(
 		(backend) => {
 			host.backend = backend;
@@ -417,10 +505,9 @@ function startIosBridgeHost(): IosBridgeHost {
 		},
 	);
 	host.backendPromise.catch(() => {
-		// Status requests report `bootError`; keep the bridge process alive so the
-		// native host receives the real startup failure instead of a closed pipe.
+		return undefined;
 	});
-	return host;
+	return host.backendPromise;
 }
 
 async function awaitIosBridgeBackend(
@@ -435,7 +522,7 @@ async function awaitIosBridgeBackend(
 			: new Error(String(host.bootError));
 	}
 	const result = await timeoutAfter(
-		host.backendPromise,
+		ensureIosBridgeBackendStarted(host),
 		timeoutMs,
 		`${label} backend startup`,
 	);
@@ -680,6 +767,72 @@ function parseJsonBody(body: string): unknown {
 	}
 }
 
+function sanitizeLocalInferenceSpeechText(input: string): string {
+	let text = input.normalize("NFKC");
+	text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+	text = text.replace(
+		/<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+		" ",
+	);
+	text = text.replace(/```[\s\S]*?```/g, " ");
+	text = text.replace(/`([^`]+)`/g, "$1");
+	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+	text = text.replace(/<[^>\n]+>/g, " ");
+	text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeAudioBytes(value: unknown): Uint8Array {
+	if (value instanceof Uint8Array) {
+		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+	}
+	if (value instanceof ArrayBuffer) {
+		return new Uint8Array(value);
+	}
+	if (ArrayBuffer.isView(value)) {
+		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+	}
+	throw new Error("TEXT_TO_SPEECH returned a non-binary payload");
+}
+
+function sniffAudioContentType(bytes: Uint8Array): string {
+	if (
+		bytes.length >= 12 &&
+		bytes[0] === 0x52 &&
+		bytes[1] === 0x49 &&
+		bytes[2] === 0x46 &&
+		bytes[3] === 0x46 &&
+		bytes[8] === 0x57 &&
+		bytes[9] === 0x41 &&
+		bytes[10] === 0x56 &&
+		bytes[11] === 0x45
+	) {
+		return "audio/wav";
+	}
+	if (
+		bytes.length >= 3 &&
+		bytes[0] === 0x49 &&
+		bytes[1] === 0x44 &&
+		bytes[2] === 0x33
+	) {
+		return "audio/mpeg";
+	}
+	if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+		return "audio/mpeg";
+	}
+	return "application/octet-stream";
+}
+
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalPositiveNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value > 0
+		? value
+		: undefined;
+}
+
 function jsonResponse(status: number, body: unknown): BufferedHttpResponse {
 	const text = JSON.stringify(body);
 	return {
@@ -688,6 +841,22 @@ function jsonResponse(status: number, body: unknown): BufferedHttpResponse {
 		headers: { "content-type": "application/json; charset=utf-8" },
 		body: text,
 		bodyBase64: Buffer.from(text, "utf8").toString("base64"),
+		bodyEncoding: "utf-8",
+	};
+}
+
+function bytesResponse(
+	status: number,
+	bytes: Uint8Array,
+	headers: Record<string, string>,
+): BufferedHttpResponse {
+	const body = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	return {
+		status,
+		statusText: statusTextForCode(status),
+		headers,
+		body: body.toString("utf8"),
+		bodyBase64: body.toString("base64"),
 		bodyEncoding: "utf-8",
 	};
 }
@@ -957,6 +1126,20 @@ function localInferenceRoutingPath(): string {
 	return path.join(localInferenceRootPath(), "routing.json");
 }
 
+function localInferenceModelsPath(): string {
+	return path.join(localInferenceRootPath(), "models");
+}
+
+function bundledLocalInferenceModelsPath(): string | null {
+	const assetDir = process.env.ELIZA_IOS_AGENT_ASSET_DIR?.trim();
+	if (!assetDir) return null;
+	return path.join(assetDir, "models");
+}
+
+function localInferenceDownloadsPath(): string {
+	return path.join(localInferenceRootPath(), "downloads");
+}
+
 function readJsonObjectFile(filePath: string): Record<string, unknown> {
 	try {
 		const parsed = JSON.parse(readFileSync(filePath, "utf8"));
@@ -966,6 +1149,105 @@ function readJsonObjectFile(filePath: string): Record<string, unknown> {
 	} catch {
 		return {};
 	}
+}
+
+function writeJsonObjectFile(
+	filePath: string,
+	value: Record<string, unknown>,
+): void {
+	mkdirSync(path.dirname(filePath), { recursive: true });
+	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function iosNativeCatalogById(
+	modelId: string,
+): NativeCatalogModelEntry | null {
+	return IOS_NATIVE_CATALOG_MODELS.find((entry) => entry.id === modelId) ?? null;
+}
+
+function iosNativeCatalogByFile(
+	filePath: string,
+): NativeCatalogModelEntry | null {
+	const normalized = filePath.replaceAll("\\", "/").toLowerCase();
+	return (
+		IOS_NATIVE_CATALOG_MODELS.find((entry) => {
+			const target = entry.ggufFile.toLowerCase();
+			return (
+				normalized.endsWith(`/${target}`) ||
+				path.basename(normalized) === path.basename(target)
+			);
+		}) ?? null
+	);
+}
+
+function nativeCatalogModelPayload(
+	model: NativeCatalogModelEntry,
+): Record<string, unknown> {
+	return {
+		id: model.id,
+		displayName: model.displayName,
+		hfRepo: model.hfRepo,
+		ggufFile: model.ggufFile,
+		params: model.params,
+		quant: "Q8_0",
+		sizeGb: model.sizeGb,
+		minRamGb: model.minRamGb,
+		category: "chat",
+		bucket: model.bucket,
+		blurb: "Eliza-1 on-device GGUF bundle for iPhone local inference.",
+		contextLength: model.contextLength,
+		gpuLayers: "auto",
+		publishStatus: "published",
+		sourceModel: {
+			finetuned: false,
+			components: {
+				text: { repo: model.hfRepo, file: model.hfPath },
+			},
+		},
+	};
+}
+
+function modelDownloadUrl(model: NativeCatalogModelEntry): string {
+	const encodedPath = model.hfPath
+		.split("/")
+		.map((part) => encodeURIComponent(part))
+		.join("/");
+	return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodedPath}`;
+}
+
+function nativeModelTargetPath(model: NativeCatalogModelEntry): string {
+	return path.join(localInferenceModelsPath(), model.ggufFile);
+}
+
+function installedModelForCatalogEntry(
+	model: NativeCatalogModelEntry,
+	filePath: string,
+	sizeBytes: number,
+	installedAt: string,
+	source: string,
+): InstalledModelEntry {
+	return {
+		id: model.id,
+		displayName: model.displayName,
+		path: filePath,
+		sizeBytes,
+		installedAt,
+		lastUsedAt: null,
+		source,
+		hfRepo: model.hfRepo,
+		bundleVerifiedAt: installedAt,
+	};
+}
+
+function upsertInstalledModel(model: InstalledModelEntry): void {
+	const existing = readInstalledModels().filter(
+		(entry) => entry.id !== model.id && entry.path !== model.path,
+	);
+	writeJsonObjectFile(localInferenceRegistryPath(), {
+		version: 1,
+		models: [...existing, model],
+		updatedAt: new Date().toISOString(),
+	});
 }
 
 function positiveInteger(value: unknown): number | null {
@@ -992,6 +1274,14 @@ function readAssignments(): Record<string, string> {
 	return out;
 }
 
+function writeAssignments(assignments: Record<string, string>): void {
+	writeJsonObjectFile(localInferenceAssignmentsPath(), {
+		version: 1,
+		assignments,
+		updatedAt: new Date().toISOString(),
+	});
+}
+
 function scanGgufFiles(root: string): InstalledModelEntry[] {
 	const models: InstalledModelEntry[] = [];
 	const visit = (dir: string, depth: number): void => {
@@ -1013,21 +1303,64 @@ function scanGgufFiles(root: string): InstalledModelEntry[] {
 			if (stats.isDirectory()) {
 				visit(fullPath, depth + 1);
 			} else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf")) {
-				const id = path.basename(entry, path.extname(entry));
-				models.push({
-					id,
-					displayName: id,
-					path: fullPath,
-					sizeBytes: stats.size,
-					installedAt: new Date(stats.mtimeMs).toISOString(),
-					lastUsedAt: null,
-					source: "external-scan",
-				});
+				const catalogModel = iosNativeCatalogByFile(fullPath);
+				if (catalogModel) {
+					models.push(
+						installedModelForCatalogEntry(
+							catalogModel,
+							fullPath,
+							stats.size,
+							new Date(stats.mtimeMs).toISOString(),
+							"ios-bundled",
+						),
+					);
+				} else {
+					const id = path.basename(entry, path.extname(entry));
+					models.push({
+						id,
+						displayName: id,
+						path: fullPath,
+						sizeBytes: stats.size,
+						installedAt: new Date(stats.mtimeMs).toISOString(),
+						lastUsedAt: null,
+						source: "external-scan",
+					});
+				}
 			}
 		}
 	};
 	visit(root, 0);
 	return models;
+}
+
+function normalizeInstalledModelPath(rawPath: string): string | null {
+	const trimmed = rawPath.trim();
+	if (!trimmed || trimmed.includes("\0")) return null;
+	const currentRoot = localInferenceRootPath();
+	const candidates = new Set<string>([
+		trimmed,
+		trimmed.replace(/^\/private\/var\//, "/var/"),
+	]);
+	const marker = "/local-inference/";
+	const markerIndex = trimmed.indexOf(marker);
+	if (markerIndex >= 0) {
+		const relativePath = trimmed.slice(markerIndex + marker.length);
+		if (
+			relativePath &&
+			!relativePath.startsWith("/") &&
+			!relativePath.split(/[\\/]+/).includes("..")
+		) {
+			candidates.add(path.join(currentRoot, relativePath));
+		}
+	}
+	for (const candidate of candidates) {
+		try {
+			if (existsSync(candidate)) return candidate;
+		} catch {
+			continue;
+		}
+	}
+	return null;
 }
 
 function readInstalledModels(): InstalledModelEntry[] {
@@ -1042,14 +1375,15 @@ function readInstalledModels(): InstalledModelEntry[] {
 			if (typeof record.id !== "string" || typeof record.path !== "string") {
 				return null;
 			}
-			if (!existsSync(record.path)) return null;
+			const modelPath = normalizeInstalledModelPath(record.path);
+			if (!modelPath) return null;
 			return {
 				id: record.id,
 				displayName:
 					typeof record.displayName === "string"
 						? record.displayName
 						: record.id,
-				path: record.path,
+				path: modelPath,
 				sizeBytes: positiveInteger(record.sizeBytes) ?? 0,
 				installedAt:
 					typeof record.installedAt === "string"
@@ -1058,6 +1392,7 @@ function readInstalledModels(): InstalledModelEntry[] {
 				lastUsedAt:
 					typeof record.lastUsedAt === "string" ? record.lastUsedAt : null,
 				source: typeof record.source === "string" ? record.source : undefined,
+				hfRepo: typeof record.hfRepo === "string" ? record.hfRepo : undefined,
 				bundleVerifiedAt:
 					typeof record.bundleVerifiedAt === "string"
 						? record.bundleVerifiedAt
@@ -1070,8 +1405,16 @@ function readInstalledModels(): InstalledModelEntry[] {
 			};
 		})
 		.filter((entry): entry is InstalledModelEntry => Boolean(entry));
-	if (fromRegistry.length > 0) return fromRegistry;
-	return scanGgufFiles(path.join(localInferenceRootPath(), "models"));
+	const bundledModelsPath = bundledLocalInferenceModelsPath();
+	const scanned = [
+		...(bundledModelsPath ? scanGgufFiles(bundledModelsPath) : []),
+		...scanGgufFiles(localInferenceModelsPath()),
+	];
+	const byId = new Map<string, InstalledModelEntry>();
+	for (const model of [...scanned, ...fromRegistry]) {
+		byId.set(model.id, model);
+	}
+	return [...byId.values()];
 }
 
 function isEmbeddingModel(model: InstalledModelEntry): boolean {
@@ -1297,6 +1640,60 @@ function stripReasoningBlocks(raw: string): string {
 		.trim();
 }
 
+function cleanIosNativeConversationReply(raw: string): string {
+	const withoutTokens = stripReasoningBlocks(raw)
+		.split("<|im_end|>")[0]
+		.split("<|im_start|>")[0]
+		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
+		.trim();
+	const compact = withoutTokens.replace(/\s+/g, " ").trim();
+	if (!compact) return "";
+	const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
+	return (firstSentence ?? compact).trim();
+}
+
+async function maybeGenerateIosNativeConversationReply(
+	runtime: IAgentRuntime,
+	prompt: string,
+): Promise<Record<string, unknown> | null> {
+	const installed = readInstalledModels().filter(
+		(model) => !isEmbeddingModel(model),
+	);
+	if (installed.length === 0) return null;
+	const startedAt = Date.now();
+	const raw = await runtime.useModel(
+		ModelType.TEXT_SMALL,
+		{
+			messages: [
+				{
+					role: "system",
+					content:
+						"Eliza-1 is running locally on this iPhone. Reply with one natural sentence under 10 words.",
+				},
+				{ role: "user", content: prompt },
+			],
+			maxTokens: 32,
+			temperature: 0,
+			stopSequences: ["<|im_end|>", "<|im_start|>"],
+		},
+		IOS_NATIVE_LLAMA_PROVIDER,
+	);
+	const text = cleanIosNativeConversationReply(raw);
+	if (!text) {
+		throw new Error("Native llama returned an empty response");
+	}
+	return {
+		text,
+		reply: text,
+		localInference: {
+			provider: IOS_NATIVE_LLAMA_PROVIDER,
+			modelId: nativeLlamaState.modelId ?? installed[0]?.id ?? null,
+			mode: "ios_native_conversation",
+			latencyMs: Date.now() - startedAt,
+		},
+	};
+}
+
 function isStructuredGenerationSlot(slot: string): boolean {
 	return (
 		slot === ModelType.RESPONSE_HANDLER ||
@@ -1480,6 +1877,421 @@ async function nativeLocalInferenceProviders(): Promise<
 	};
 }
 
+function nativeCatalogModels(): Array<Record<string, unknown>> {
+	const curated = IOS_NATIVE_CATALOG_MODELS.map(nativeCatalogModelPayload);
+	const curatedIds = new Set(IOS_NATIVE_CATALOG_MODELS.map((model) => model.id));
+	const installedCustom = readInstalledModels()
+		.filter((model) => !isEmbeddingModel(model) && !curatedIds.has(model.id))
+		.map((model) => {
+			const sizeGb = Math.max(0.1, (model.sizeBytes ?? 0) / 1024 ** 3);
+			return {
+				id: model.id,
+				displayName: model.displayName ?? model.id,
+				hfRepo: model.hfRepo ?? "elizaos/eliza-1",
+				ggufFile: path.basename(model.path),
+				params: model.id.includes("0_8b") ? "0.8B" : "2B",
+				quant: "Q8_0",
+				sizeGb,
+				minRamGb: model.id.includes("0_8b") ? 2 : 4,
+				category: "chat",
+				bucket: sizeGb <= 1 ? "small" : "mid",
+				blurb: "Installed Eliza-1 on-device GGUF bundle.",
+				contextLength: 128_000,
+				gpuLayers: "auto",
+				publishStatus: "published",
+			};
+		});
+	return [...curated, ...installedCustom];
+}
+
+function nativeDownloadJobs(): NativeDownloadJob[] {
+	const jobs = Array.from(nativeDownloadState.values());
+	const trackedModelIds = new Set(jobs.map((job) => job.modelId));
+	for (const model of readInstalledModels().filter(
+		(entry) => !isEmbeddingModel(entry),
+	)) {
+		if (trackedModelIds.has(model.id)) continue;
+		jobs.push(nativeDownloadJobForInstalledModel(model));
+	}
+	return jobs;
+}
+
+function nativeDownloadStatus(
+	model: InstalledModelEntry | null,
+): Record<string, unknown> {
+	const bytes = model?.sizeBytes ?? 0;
+	return {
+		state: model ? "completed" : "missing",
+		receivedBytes: bytes,
+		totalBytes: bytes,
+		percent: model ? 100 : null,
+		bytesPerSec: 0,
+		etaMs: model ? 0 : null,
+		updatedAt: model?.lastUsedAt ?? model?.installedAt ?? null,
+		errors: [],
+	};
+}
+
+function nativeDownloadJobForInstalledModel(
+	model: InstalledModelEntry,
+): NativeDownloadJob {
+	const installedAt = model.installedAt ?? new Date().toISOString();
+	const updatedAt =
+		model.lastUsedAt ?? model.bundleVerifiedAt ?? installedAt;
+	const bytes = model.sizeBytes ?? 0;
+	return {
+		jobId: `installed:${model.id}`,
+		modelId: model.id,
+		state: "completed",
+		received: bytes,
+		total: bytes,
+		bytesPerSec: 0,
+		etaMs: 0,
+		startedAt: installedAt,
+		updatedAt,
+	};
+}
+
+function updateNativeDownloadJob(
+	modelId: string,
+	patch: Partial<Omit<NativeDownloadJob, "jobId" | "modelId" | "startedAt">>,
+): NativeDownloadJob {
+	const current = nativeDownloadState.get(modelId);
+	if (!current) {
+		throw new Error(`No native download job is registered for ${modelId}`);
+	}
+	const next: NativeDownloadJob = {
+		...current,
+		...patch,
+		updatedAt: new Date().toISOString(),
+	};
+	nativeDownloadState.set(modelId, next);
+	return next;
+}
+
+function writeDownloadChunk(
+	writer: ReturnType<typeof createWriteStream>,
+	chunk: Uint8Array,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		writer.write(Buffer.from(chunk), (error: Error | null | undefined) => {
+			if (error) reject(error);
+			else resolve();
+		});
+	});
+}
+
+function closeDownloadWriter(
+	writer: ReturnType<typeof createWriteStream>,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const onError = (error: Error): void => {
+			writer.off("error", onError);
+			reject(error);
+		};
+		writer.once("error", onError);
+		writer.end(() => {
+			writer.off("error", onError);
+			resolve();
+		});
+	});
+}
+
+async function runNativeModelDownload(
+	model: NativeCatalogModelEntry,
+): Promise<void> {
+	const startedMs = Date.now();
+	const totalEstimate = Math.round(model.sizeGb * 1024 ** 3);
+	updateNativeDownloadJob(model.id, {
+		state: "downloading",
+		total: totalEstimate,
+	});
+	mkdirSync(path.dirname(nativeModelTargetPath(model)), { recursive: true });
+	mkdirSync(localInferenceDownloadsPath(), { recursive: true });
+	const partialPath = path.join(
+		localInferenceDownloadsPath(),
+		`${model.id}.part`,
+	);
+	const response = await fetch(modelDownloadUrl(model), { redirect: "follow" });
+	if (!response.ok) {
+		throw new Error(
+			`Failed to download ${model.id}: HTTP ${response.status} ${response.statusText}`,
+		);
+	}
+	if (!response.body) {
+		throw new Error(`Failed to download ${model.id}: response body is empty`);
+	}
+	const contentLength =
+		positiveInteger(response.headers.get("content-length")) ?? totalEstimate;
+	updateNativeDownloadJob(model.id, { total: contentLength });
+	const writer = createWriteStream(partialPath);
+	let received = 0;
+	try {
+		const reader = response.body.getReader();
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value) continue;
+			received += value.byteLength;
+			await writeDownloadChunk(writer, value);
+			const elapsedSeconds = Math.max(1, (Date.now() - startedMs) / 1000);
+			const bytesPerSec = Math.round(received / elapsedSeconds);
+			const remaining = Math.max(0, contentLength - received);
+			updateNativeDownloadJob(model.id, {
+				received,
+				bytesPerSec,
+				etaMs:
+					bytesPerSec > 0
+						? Math.round((remaining / bytesPerSec) * 1000)
+						: null,
+			});
+		}
+		await closeDownloadWriter(writer);
+		const targetPath = nativeModelTargetPath(model);
+		renameSync(partialPath, targetPath);
+		const stats = statSync(targetPath);
+		const installedAt = new Date().toISOString();
+		upsertInstalledModel(
+			installedModelForCatalogEntry(
+				model,
+				targetPath,
+				stats.size,
+				installedAt,
+				"eliza-download",
+			),
+		);
+		updateNativeDownloadJob(model.id, {
+			state: "completed",
+			received: stats.size,
+			total: stats.size,
+			bytesPerSec: 0,
+			etaMs: 0,
+		});
+	} catch (error) {
+		updateNativeDownloadJob(model.id, {
+			state: "failed",
+			error: error instanceof Error ? error.message : String(error),
+		});
+		writer.destroy();
+		rmSync(partialPath, { force: true });
+		throw error;
+	}
+}
+
+function startNativeModelDownload(modelId: string): NativeDownloadJob {
+	const model = iosNativeCatalogById(modelId);
+	if (!model) throw new Error(`Unsupported iOS local model: ${modelId}`);
+	const installed = readInstalledModels().find((entry) => entry.id === model.id);
+	if (installed) {
+		const job = nativeDownloadJobForInstalledModel(installed);
+		nativeDownloadState.set(model.id, job);
+		return job;
+	}
+	const existing = nativeDownloadState.get(model.id);
+	if (
+		existing &&
+		(existing.state === "queued" || existing.state === "downloading")
+	) {
+		return existing;
+	}
+	const now = new Date().toISOString();
+	const job: NativeDownloadJob = {
+		jobId: `ios-download:${model.id}:${Date.now()}`,
+		modelId: model.id,
+		state: "queued",
+		received: 0,
+		total: Math.round(model.sizeGb * 1024 ** 3),
+		bytesPerSec: 0,
+		etaMs: null,
+		startedAt: now,
+		updatedAt: now,
+	};
+	nativeDownloadState.set(model.id, job);
+	void runNativeModelDownload(model).catch(() => {});
+	return job;
+}
+
+function nativeTextReadiness(): Record<string, unknown> {
+	const installed = readInstalledModels().filter(
+		(model) => !isEmbeddingModel(model),
+	);
+	const assignments = readAssignments();
+	const now = new Date().toISOString();
+	const slots: Record<string, Record<string, unknown>> = {};
+	for (const slot of ["TEXT_SMALL", "TEXT_LARGE"]) {
+		const assignedModelId = assignments[slot] ?? installed[0]?.id ?? null;
+		const model =
+			assignedModelId == null
+				? null
+				: (installed.find((entry) => entry.id === assignedModelId) ?? null);
+		const active =
+			model != null &&
+			nativeLlamaState.modelId === model.id &&
+			nativeLlamaState.status === "ready";
+		const downloaded = model != null;
+		slots[slot] = {
+			slot,
+			assigned: assignedModelId != null,
+			assignedModelId,
+			displayName: model?.displayName ?? model?.id ?? null,
+			primaryDownloaded: downloaded,
+			downloaded,
+			active,
+			ready: active,
+			state: active ? "active" : downloaded ? "downloaded" : "missing",
+			requiredModelIds: assignedModelId ? [assignedModelId] : [],
+			missingModelIds: downloaded || !assignedModelId ? [] : [assignedModelId],
+			installedBytes: model?.sizeBytes ?? 0,
+			expectedBytes: model?.sizeBytes ?? 0,
+			download: nativeDownloadStatus(model),
+			errors: nativeLlamaState.error ? [nativeLlamaState.error] : [],
+		};
+	}
+	return { updatedAt: now, slots };
+}
+
+function hasNativeLocalTtsExecutor(): boolean {
+	return hostProtocolWrite != null;
+}
+
+function hasNativeKokoroBundle(bundleDir: string): boolean {
+	const model = path.join(
+		bundleDir,
+		"tts",
+		"kokoro-coreml",
+		"kokoro_5s.mlmodelc",
+	);
+	const voice = path.join(
+		bundleDir,
+		"tts",
+		"kokoro-coreml",
+		"voices",
+		"af_heart.json",
+	);
+	try {
+		return statSync(model).isDirectory() && statSync(voice).isFile();
+	} catch {
+		return false;
+	}
+}
+
+function nativeVoiceBundleDir(): string | null {
+	const modelsRoots = [
+		path.join(localInferenceRootPath(), "models"),
+		bundledLocalInferenceModelsPath(),
+	].filter((root): root is string => Boolean(root));
+	let bundleDir: string | null = null;
+	const visit = (dir: string, depth: number): void => {
+		if (depth > 6 || bundleDir) return;
+		let entries: string[] = [];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry);
+			let stats: ReturnType<typeof statSync>;
+			try {
+				stats = statSync(fullPath);
+			} catch {
+				continue;
+			}
+			if (stats.isDirectory()) {
+				if (entry.endsWith(".bundle") && hasNativeKokoroBundle(fullPath)) {
+					bundleDir = fullPath;
+					return;
+				}
+				visit(fullPath, depth + 1);
+				if (bundleDir) return;
+			}
+		}
+	};
+	for (const root of modelsRoots) {
+		visit(root, 0);
+		if (bundleDir) return bundleDir;
+	}
+	return null;
+}
+
+function nativeVoiceReadiness(): NativeVoiceReadiness {
+	const modelsRoots = [
+		path.join(localInferenceRootPath(), "models"),
+		bundledLocalInferenceModelsPath(),
+	].filter((root): root is string => Boolean(root));
+	let installedFiles = 0;
+	let modelId: string | null = null;
+	const visit = (dir: string, depth: number): void => {
+		if (depth > 6 || installedFiles > 0) return;
+		let entries: string[] = [];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry);
+			let stats: ReturnType<typeof statSync>;
+			try {
+				stats = statSync(fullPath);
+			} catch {
+				continue;
+			}
+			if (stats.isDirectory()) {
+				visit(fullPath, depth + 1);
+				if (installedFiles > 0) return;
+				continue;
+			}
+			const normalized = fullPath.split(path.sep).join("/");
+			if (
+				stats.isFile() &&
+				/\/(tts|voice|asr|vad)\//i.test(normalized) &&
+				/\.(gguf|onnx|bin|json)$/i.test(entry)
+			) {
+				const markerIndex = normalized.indexOf(".bundle/");
+				if (markerIndex >= 0) {
+					const bundlePath = fullPath.slice(0, markerIndex + ".bundle".length);
+					if (hasNativeKokoroBundle(bundlePath)) {
+						installedFiles += 1;
+						const match = normalized.match(/models\/([^/]+\.bundle)\//);
+						modelId = match?.[1]?.replace(/\.bundle$/, "") ?? null;
+						return;
+					}
+				}
+			}
+		}
+	};
+	for (const root of modelsRoots) {
+		visit(root, 0);
+		if (installedFiles > 0) break;
+	}
+	if (installedFiles > 0) {
+		if (!hasNativeLocalTtsExecutor()) {
+			return {
+				status: "unavailable",
+				installedFiles,
+				modelId,
+				message:
+					"Eliza-1 voice assets are installed. This build is missing the iOS local voice playback engine.",
+			};
+		}
+		return {
+			status: "assets-ready",
+			installedFiles,
+			modelId,
+			message:
+				"Local voice assets are installed. Voice engine will warm on first playback.",
+		};
+	}
+	return {
+		status: "missing",
+		installedFiles: 0,
+		modelId: null,
+		message:
+			"Eliza-1 voice assets are not installed in this iOS build.",
+	};
+}
+
 function routingPreferencesSnapshot(): Record<string, unknown> {
 	const parsed = readJsonObjectFile(localInferenceRoutingPath());
 	const preferences =
@@ -1497,22 +2309,13 @@ function routingPreferencesSnapshot(): Record<string, unknown> {
 	};
 }
 
-async function nativeHubSnapshot(
-	legacy: BufferedHttpResponse | null,
-): Promise<Record<string, unknown>> {
-	const base =
-		legacy && legacy.status >= 200 && legacy.status < 300
-			? parseJsonBody(legacy.body)
-			: {};
-	const object =
-		base && typeof base === "object" && !Array.isArray(base)
-			? (base as Record<string, unknown>)
-			: {};
+async function nativeHubSnapshot(): Promise<Record<string, unknown>> {
 	const hardware = await nativeHardwareInfo();
 	return {
-		...object,
+		catalog: nativeCatalogModels(),
 		installed: readInstalledModels(),
 		active: nativeLlamaActiveSnapshot(),
+		downloads: nativeDownloadJobs(),
 		device: await nativeLlamaDeviceStatus(),
 		providers: (await nativeLocalInferenceProviders()).providers,
 		hardware: {
@@ -1530,35 +2333,135 @@ async function nativeHubSnapshot(
 			source: "ios-native-llama",
 		},
 		assignments: readAssignments(),
+		textReadiness: nativeTextReadiness(),
+		voiceReadiness: nativeVoiceReadiness(),
 	};
 }
 
-async function runBufferedLegacyLocalInferenceRoute(
+async function synthesizeNativeIosLocalTts(
+	request: NativeLocalTtsRequest,
+): Promise<Uint8Array> {
+	const bundleDir = nativeVoiceBundleDir();
+	if (!bundleDir) {
+		throw new Error("No Eliza-1 voice bundle is installed");
+	}
+	const sampleRate = optionalPositiveNumber(request.sampleRate);
+	const result = await callIosHost(
+		"eliza_tts_synthesize",
+		{
+			bundleDir,
+			text: request.text,
+			...(request.voice || request.voiceId
+				? { speakerPresetId: request.voice ?? request.voiceId }
+				: {}),
+			maxSamples: sampleRate ? Math.round(sampleRate * 60) : 24_000 * 60,
+		},
+		180_000,
+	);
+	const record =
+		result && typeof result === "object" && !Array.isArray(result)
+			? (result as Record<string, unknown>)
+			: {};
+	const audioFilePath = record.audioFilePath;
+	if (typeof audioFilePath === "string" && audioFilePath.trim()) {
+		const resolvedAudioFilePath = audioFilePath.trim();
+		const bytes = readFileSync(resolvedAudioFilePath);
+		rmSync(resolvedAudioFilePath, { force: true });
+		return normalizeAudioBytes(bytes);
+	}
+	const audioBase64 = record.audioBase64;
+	if (typeof audioBase64 !== "string" || audioBase64.length === 0) {
+		throw new Error("Native iOS local TTS returned no audio");
+	}
+	return normalizeAudioBytes(Buffer.from(audioBase64, "base64"));
+}
+
+async function handleNativeIosLocalTtsRoute(
 	method: string,
 	rawPath: string,
 	payload: HttpRequestPayload,
 ): Promise<BufferedHttpResponse | null> {
-	const { handleLocalInferenceRoutes } = await import(
-		"@elizaos/plugin-local-inference"
-	);
-	const headers = normalizeHeaderRecord(payload.headers);
-	const { req, res, captured } = buildBufferedRoutePair({
-		method,
-		path: rawPath,
-		headers,
-		bodyText: bodyTextForLegacyRoute(payload),
-	});
+	const { pathname } = splitPathAndQuery(rawPath);
+	if (method !== "POST" || pathname !== "/api/tts/local-inference") {
+		return null;
+	}
 
-	const handled = await handleLocalInferenceRoutes(req, res);
-	if (!handled) return null;
-	return bufferedRouteResponse(captured);
+	const body = parseRequestBody(payload);
+	const text =
+		typeof body.text === "string"
+			? sanitizeLocalInferenceSpeechText(body.text)
+			: "";
+	if (!text) {
+		return jsonResponse(400, { error: "Missing text" });
+	}
+
+	const voiceReadiness = nativeVoiceReadiness();
+	if (
+		voiceReadiness.status !== "ready" &&
+		voiceReadiness.status !== "engine-ready" &&
+		voiceReadiness.status !== "assets-ready"
+	) {
+		return jsonResponse(503, {
+			error: voiceReadiness.message,
+			code:
+				voiceReadiness.status === "unavailable"
+					? "ios_local_tts_executor_missing"
+					: "ios_local_voice_assets_missing",
+			voiceReadiness,
+		});
+	}
+
+	const request: NativeLocalTtsRequest = {
+		text,
+		...(optionalString(body.voice)
+			? { voice: optionalString(body.voice) }
+			: {}),
+		...(optionalString(body.voiceId)
+			? { voice: optionalString(body.voiceId) }
+			: {}),
+		...(optionalString(body.model)
+			? { model: optionalString(body.model) }
+			: {}),
+		...(optionalString(body.modelId)
+			? { modelId: optionalString(body.modelId) }
+			: {}),
+		...(optionalPositiveNumber(body.speed)
+			? { speed: optionalPositiveNumber(body.speed) }
+			: {}),
+		...(optionalPositiveNumber(body.sampleRate)
+			? { sampleRate: optionalPositiveNumber(body.sampleRate) }
+			: {}),
+		...(optionalString(body.format)
+			? { format: optionalString(body.format) }
+			: {}),
+	};
+
+	try {
+		const bytes = await synthesizeNativeIosLocalTts(request);
+		if (bytes.length === 0) {
+			return jsonResponse(502, {
+				error: "Local inference TEXT_TO_SPEECH returned empty audio",
+			});
+		}
+		return bytesResponse(200, bytes, {
+			"content-type": sniffAudioContentType(bytes),
+			"cache-control": "no-store",
+			"content-length": String(bytes.byteLength),
+		});
+	} catch (error) {
+		return jsonResponse(502, {
+			error: `Local inference TTS error: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+			code: "ios_local_tts_failed",
+		});
+	}
 }
 
 async function handleNativeIosLocalInferenceRoute(
 	method: string,
 	rawPath: string,
 	payload: HttpRequestPayload,
-	legacy: () => Promise<BufferedHttpResponse | null>,
 ): Promise<BufferedHttpResponse | null> {
 	const { pathname } = splitPathAndQuery(rawPath);
 	if (method === "GET" && pathname === "/api/local-inference/device") {
@@ -1568,13 +2471,69 @@ async function handleNativeIosLocalInferenceRoute(
 		return jsonResponse(200, await nativeLocalInferenceProviders());
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hardware") {
-		return jsonResponse(200, (await nativeHubSnapshot(null)).hardware);
+		return jsonResponse(200, (await nativeHubSnapshot()).hardware);
+	}
+	if (method === "GET" && pathname === "/api/local-inference/catalog") {
+		return jsonResponse(200, { models: nativeCatalogModels() });
 	}
 	if (method === "GET" && pathname === "/api/local-inference/installed") {
 		return jsonResponse(200, { models: readInstalledModels() });
 	}
+	if (method === "GET" && pathname === "/api/local-inference/downloads") {
+		return jsonResponse(200, { downloads: nativeDownloadJobs() });
+	}
+	if (method === "POST" && pathname === "/api/local-inference/downloads") {
+		const body = parseRequestBody(payload);
+		const modelId =
+			typeof body.modelId === "string"
+				? body.modelId
+				: body.spec &&
+						typeof body.spec === "object" &&
+						!Array.isArray(body.spec) &&
+						typeof (body.spec as Record<string, unknown>).id === "string"
+					? ((body.spec as Record<string, unknown>).id as string)
+					: "";
+		if (!modelId) {
+			return jsonResponse(400, { error: "Missing modelId" });
+		}
+		try {
+			return jsonResponse(200, { job: startNativeModelDownload(modelId) });
+		} catch (error) {
+			return jsonResponse(400, {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {
 		return jsonResponse(200, routingPreferencesSnapshot());
+	}
+	if (method === "GET" && pathname === "/api/local-inference/assignments") {
+		return jsonResponse(200, { assignments: readAssignments() });
+	}
+	if (method === "POST" && pathname === "/api/local-inference/assignments") {
+		const body = parseRequestBody(payload);
+		const slot = typeof body.slot === "string" ? body.slot : "";
+		const modelId = typeof body.modelId === "string" ? body.modelId : null;
+		if (!IOS_NATIVE_ASSIGNMENT_SLOTS.has(slot)) {
+			return jsonResponse(400, {
+				error: `Unsupported assignment slot: ${slot}`,
+			});
+		}
+		if (modelId) {
+			const installed = readInstalledModels();
+			const known =
+				installed.some((model) => model.id === modelId) ||
+				iosNativeCatalogById(modelId) != null ||
+				nativeDownloadState.has(modelId);
+			if (!known) {
+				return jsonResponse(404, { error: `Unknown local model: ${modelId}` });
+			}
+		}
+		const assignments = readAssignments();
+		if (modelId) assignments[slot] = modelId;
+		else delete assignments[slot];
+		writeAssignments(assignments);
+		return jsonResponse(200, { assignments });
 	}
 	if (method === "GET" && pathname === "/api/local-inference/active") {
 		return jsonResponse(200, nativeLlamaActiveSnapshot());
@@ -1598,7 +2557,23 @@ async function handleNativeIosLocalInferenceRoute(
 		return jsonResponse(200, nativeLlamaActiveSnapshot());
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hub") {
-		return jsonResponse(200, await nativeHubSnapshot(await legacy()));
+		return jsonResponse(200, await nativeHubSnapshot());
+	}
+	const verifyMatch = pathname.match(
+		/^\/api\/local-inference\/installed\/([^/]+)\/verify$/,
+	);
+	if (method === "POST" && verifyMatch?.[1]) {
+		const id = decodeURIComponent(verifyMatch[1]);
+		const model = readInstalledModels().find((entry) => entry.id === id);
+		if (!model)
+			return jsonResponse(404, { error: `Model not installed: ${id}` });
+		return jsonResponse(200, {
+			ok: true,
+			modelId: model.id,
+			path: model.path,
+			sizeBytes: model.sizeBytes ?? 0,
+			verifiedAt: new Date().toISOString(),
+		});
 	}
 	return null;
 }
@@ -1623,16 +2598,16 @@ async function handleBufferedLocalInferenceRoute(
 		});
 	}
 
-	const runLegacy = async () =>
-		runBufferedLegacyLocalInferenceRoute(method, rawPath, payload);
 	const native = await handleNativeIosLocalInferenceRoute(
 		method,
 		rawPath,
 		payload,
-		runLegacy,
 	);
 	if (native) return native;
-	return runLegacy();
+	return jsonResponse(501, {
+		error: `iOS full Bun local-inference route is not implemented: ${method} ${pathname}`,
+		code: "ios_full_bun_local_inference_route_unimplemented",
+	});
 }
 
 async function ensureConversationConnection(
@@ -1709,6 +2684,38 @@ async function handleDirectConversationMessage(
 		await runtime.createMemory?.(message, "messages");
 	} catch {
 		// Best effort. Some adapters persist inside messageService.
+	}
+
+	const nativeReply = await maybeGenerateIosNativeConversationReply(
+		backend.runtime,
+		prompt,
+	).catch((error) => ({
+		text:
+			error instanceof Error
+				? `The local Eliza-1 model is installed, but generation failed: ${error.message}`
+				: "The local Eliza-1 model is installed, but generation failed.",
+		reply:
+			error instanceof Error
+				? `The local Eliza-1 model is installed, but generation failed: ${error.message}`
+				: "The local Eliza-1 model is installed, but generation failed.",
+		localInference: {
+			provider: IOS_NATIVE_LLAMA_PROVIDER,
+			mode: "ios_native_conversation",
+			error: error instanceof Error ? error.message : String(error),
+		},
+	}));
+	if (nativeReply) {
+		const agentName = runtimeAgentName(backend.runtime);
+		conversation.updatedAt = new Date().toISOString();
+		conversation.lastUserText = prompt.trim();
+		conversation.lastAssistantText =
+			typeof nativeReply.text === "string" ? nativeReply.text : "";
+		conversation.lastAgentName = agentName;
+		return {
+			...nativeReply,
+			agentName,
+			conversationId: conversation.id,
+		};
 	}
 
 	if (!runtime.messageService?.handleMessage) {
@@ -1823,7 +2830,7 @@ async function handleDirectCoreRoute(
 	method: string,
 	rawPath: string,
 	payload: HttpRequestPayload,
-): Promise<ReturnType<typeof jsonResponse> | null> {
+): Promise<BufferedHttpResponse | null> {
 	const { pathname } = splitPathAndQuery(rawPath);
 
 	if (method === "GET" && pathname === "/api/health") {
@@ -1847,6 +2854,13 @@ async function handleDirectCoreRoute(
 			iosBridge: "bun",
 		});
 	}
+
+	const localTts = await handleNativeIosLocalTtsRoute(
+		method,
+		rawPath,
+		payload,
+	);
+	if (localTts) return localTts;
 
 	const localInference = await handleBufferedLocalInferenceRoute(
 		method,

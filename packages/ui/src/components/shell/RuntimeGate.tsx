@@ -22,11 +22,15 @@
 import { Capacitor } from "@capacitor/core";
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
-import { client } from "../../api";
+import { client, ElizaClient } from "../../api";
 import type {
   CloudCompatAgent,
   CloudCompatJob,
 } from "../../api/client-types-cloud";
+import type {
+  DownloadJob,
+  ModelHubSnapshot,
+} from "../../api/client-local-inference";
 import {
   discoverGatewayEndpoints,
   type GatewayDiscoveryEndpoint,
@@ -232,6 +236,21 @@ type CloudStage =
 
 type LocalStage = "provider" | "config";
 
+type LocalSetupStatus = {
+  state:
+    | "probing"
+    | "checking"
+    | "queued"
+    | "downloading"
+    | "loading"
+    | "ready"
+    | "unavailable"
+    | "error";
+  label: string;
+  detail: string;
+  percent: number | null;
+};
+
 function normalizeRuntimeUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -345,6 +364,168 @@ async function withProvisionStartTimeout<T>(
 
 function displayErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isEliza1BundleId(modelId: string): boolean {
+  return modelId.startsWith("eliza-1-");
+}
+
+function isActiveDownload(job: DownloadJob): boolean {
+  return job.state === "queued" || job.state === "downloading";
+}
+
+function downloadPercent(job: DownloadJob): number | null {
+  if (job.total <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((job.received / job.total) * 100)));
+}
+
+function formatEta(etaMs: number | null): string | null {
+  if (etaMs === null) return null;
+  const totalSeconds = Math.max(1, Math.ceil(etaMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s left`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds === 0 ? `${minutes}m left` : `${minutes}m ${seconds}s left`;
+}
+
+function describeLocalSetupStatus(
+  snapshot: ModelHubSnapshot,
+): LocalSetupStatus {
+  const bundleDownload =
+    snapshot.downloads.find(
+      (job) => isEliza1BundleId(job.modelId) && isActiveDownload(job),
+    ) ?? snapshot.downloads.find(isActiveDownload);
+  if (bundleDownload) {
+    const percent = downloadPercent(bundleDownload);
+    const eta = formatEta(bundleDownload.etaMs);
+    return {
+      state: bundleDownload.state === "queued" ? "queued" : "downloading",
+      label:
+        bundleDownload.state === "queued"
+          ? "Model and voice bundle queued"
+          : "Downloading model and voice bundle",
+      detail:
+        percent === null
+          ? "Preparing the Eliza-1 local bundle."
+          : eta
+            ? `${percent}% complete, ${eta}.`
+            : `${percent}% complete.`,
+      percent,
+    };
+  }
+
+  if (snapshot.active.status === "loading") {
+    return {
+      state: "loading",
+      label: "Warming local model",
+      detail: "The bundle is installed. First voice output starts after warmup.",
+      percent: null,
+    };
+  }
+
+  const installedBundle = snapshot.installed.find((model) =>
+    isEliza1BundleId(model.id),
+  );
+  if (installedBundle && snapshot.active.status === "ready") {
+    return {
+      state: "ready",
+      label: "On-device model ready",
+      detail: "Voice warms on first playback.",
+      percent: 100,
+    };
+  }
+  if (installedBundle) {
+    return {
+      state: "ready",
+      label: "Local bundle installed",
+      detail: "Model and voice assets are present. They load when used.",
+      percent: 100,
+    };
+  }
+
+  return {
+    state: "checking",
+    label: "Local bundle can download on demand",
+    detail: "Choosing on-device starts the Eliza-1 model and voice download.",
+    percent: null,
+  };
+}
+
+function useLocalSetupStatus(args: {
+  enabled: boolean;
+  localAvailable: boolean;
+  localProbePending: boolean;
+}): LocalSetupStatus {
+  const [status, setStatus] = React.useState<LocalSetupStatus>(() => ({
+    state: args.localProbePending ? "probing" : "checking",
+    label: args.localProbePending
+      ? "Looking for on-device runtime"
+      : "Checking local model and voice",
+    detail: args.localProbePending
+      ? "The app is starting the local agent."
+      : "Reading current download and warmup state.",
+    percent: null,
+  }));
+
+  React.useEffect(() => {
+    if (!args.enabled) return;
+    if (args.localProbePending) {
+      setStatus({
+        state: "probing",
+        label: "Looking for on-device runtime",
+        detail: "The app is starting the local agent.",
+        percent: null,
+      });
+      return;
+    }
+    if (!args.localAvailable) {
+      setStatus({
+        state: "unavailable",
+        label: "On-device runtime not ready",
+        detail: "Cloud is available now. Local can retry after the agent starts.",
+        percent: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const localApiBase = isIOS
+      ? IOS_LOCAL_AGENT_IPC_BASE
+      : isAndroid
+        ? ANDROID_LOCAL_AGENT_IPC_BASE
+        : resolveLocalAgentApiBase();
+    const localClient = new ElizaClient(localApiBase);
+    localClient.setToken(readSyncOnDeviceAgentBearer());
+
+    const poll = async (): Promise<void> => {
+      try {
+        const snapshot = await localClient.getLocalInferenceHub();
+        if (!cancelled) setStatus(describeLocalSetupStatus(snapshot));
+      } catch (err) {
+        if (cancelled) return;
+        setStatus({
+          state: "error",
+          label: "Local model status unavailable",
+          detail:
+            err instanceof Error && err.message
+              ? err.message
+              : "The on-device agent did not return model status.",
+          percent: null,
+        });
+      }
+    };
+
+    void poll();
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 2_500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [args.enabled, args.localAvailable, args.localProbePending]);
+
+  return status;
 }
 
 async function probeCloudAgentReachable(
@@ -556,6 +737,11 @@ export function RuntimeGate() {
 
   const showLocalOption = localProbeResult === true;
   const localProbePending = localProbeResult === null;
+  const localSetupStatus = useLocalSetupStatus({
+    enabled: subView === "chooser" || elizaOSAutoLocal,
+    localAvailable: showLocalOption,
+    localProbePending,
+  });
 
   const runtimeChoices = React.useMemo(
     () =>
@@ -1402,6 +1588,7 @@ export function RuntimeGate() {
         message={t("runtimegate.startingLocalAgent", {
           defaultValue: "INITIALIZING AGENT...",
         })}
+        localSetupStatus={localSetupStatus}
       />
     );
   }
@@ -1440,7 +1627,7 @@ export function RuntimeGate() {
         {runtimeChoices.length === 0 ? (
           <>
             <GateHeader t={t} />
-            <div className="mt-8 flex w-full items-center justify-center gap-3 border-2 border-[#f0b90b]/45 bg-black/70 px-5 py-5 text-[#ffe88a]">
+            <div className="mt-8 flex w-full items-center justify-center gap-3 bg-black/54 px-5 py-5 text-[#ffe88a]">
               <Spinner className="h-4 w-4" />
               <span
                 style={{ fontFamily: MONO_FONT }}
@@ -1481,6 +1668,7 @@ export function RuntimeGate() {
             advancedShowsRemote={remoteAvailable && cloudAvailable}
             onUseLocal={finishAsLocal}
             onConnectRemote={() => setSubView("remote")}
+            localSetupStatus={localSetupStatus}
             t={t}
           />
         )}
@@ -1540,11 +1728,9 @@ export function RuntimeGate() {
             <Button
               type="button"
               variant="default"
-              className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
+              className="min-h-12 justify-center bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black transition-colors duration-150 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 borderRadius: "var(--radius-xs, 3px)",
-                clipPath:
-                  "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
                 fontFamily: MONO_FONT,
               }}
               onClick={handleLogin}
@@ -1718,7 +1904,7 @@ export function RuntimeGate() {
             <div className="flex flex-col gap-2">
               {localProviderCatalog.length === 0 ? (
                 <Card
-                  className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                  className="bg-black/46 text-white"
                   style={{ borderRadius: "var(--radius-xs, 3px)" }}
                 >
                   <CardContent className="px-3 py-3">
@@ -1733,7 +1919,7 @@ export function RuntimeGate() {
                 localProviderCatalog.map((provider) => (
                   <Card
                     key={provider.id}
-                    className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                    className="bg-black/46 text-white"
                     style={{ borderRadius: "var(--radius-xs, 3px)" }}
                   >
                     <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
@@ -1749,7 +1935,7 @@ export function RuntimeGate() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                        className="shrink-0 rounded-sm bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
                         onClick={() => handleLocalSelectProvider(provider.id)}
                       >
                         {t("common.choose", { defaultValue: "Choose" })}
@@ -1765,7 +1951,7 @@ export function RuntimeGate() {
           {localStage === "config" && selectedProvider && (
             <div className="flex flex-col gap-3">
               <Card
-                className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                className="bg-black/46 text-white"
                 style={{ borderRadius: "var(--radius-xs, 3px)" }}
               >
                 <CardContent className="flex flex-col gap-1 px-3 py-3">
@@ -1794,7 +1980,7 @@ export function RuntimeGate() {
                 value={localApiKey}
                 onChange={(e) => setLocalApiKey(e.target.value)}
                 disabled={localSaving}
-                className="!h-11 !rounded-none !border-2 !border-black !bg-white !px-3 !text-sm !text-black"
+                  className="!h-11 !rounded-sm !border-transparent !bg-white/92 !px-3 !text-sm !text-black"
               />
 
               {localError ? (
@@ -1805,7 +1991,7 @@ export function RuntimeGate() {
                 <Button
                   type="button"
                   size="sm"
-                  className="rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                  className="rounded-sm bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
                   onClick={() => void handleLocalSave()}
                   disabled={localSaving || !localApiKey.trim()}
                 >
@@ -1867,7 +2053,7 @@ export function RuntimeGate() {
             {discoveredGateways.map((gateway) => (
               <Card
                 key={gateway.stableId}
-                className="border-2 border-[#f0b90b]/45 bg-black/65 text-white shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
+                className="bg-black/48 text-white"
                 style={{ borderRadius: "var(--radius-xs, 3px)" }}
               >
                 <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
@@ -1901,7 +2087,7 @@ export function RuntimeGate() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black shadow-[3px_3px_0_rgba(0,0,0,0.65)] hover:bg-white"
+                    className="shrink-0 rounded-sm bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black hover:bg-white"
                     style={{ fontFamily: MONO_FONT }}
                     onClick={() => finishAsRemoteGateway(gateway)}
                   >
@@ -1921,7 +2107,7 @@ export function RuntimeGate() {
           onChange={(e) => setRemoteUrl(e.target.value)}
           onInput={(e) => setRemoteUrl((e.target as HTMLInputElement).value)}
           onBlur={(e) => setRemoteUrl(e.target.value)}
-          className="h-11 rounded-none border-2 border-[#f0b90b]/45 bg-black/55 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
+          className="h-11 rounded-sm border-transparent bg-black/42 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
           style={{ fontFamily: MONO_FONT }}
         />
 
@@ -1934,7 +2120,7 @@ export function RuntimeGate() {
           onChange={(e) => setRemoteToken(e.target.value)}
           onInput={(e) => setRemoteToken((e.target as HTMLInputElement).value)}
           onBlur={(e) => setRemoteToken(e.target.value)}
-          className="h-11 rounded-none border-2 border-[#f0b90b]/45 bg-black/55 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
+          className="h-11 rounded-sm border-transparent bg-black/42 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
           style={{ fontFamily: MONO_FONT }}
         />
         <p
@@ -1959,11 +2145,9 @@ export function RuntimeGate() {
         <Button
           type="button"
           variant="default"
-          className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-12 justify-center bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black transition-colors duration-150 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           style={{
             borderRadius: "var(--radius-xs, 3px)",
-            clipPath:
-              "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
             fontFamily: MONO_FONT,
           }}
           onClick={finishAsRemote}
@@ -2002,17 +2186,18 @@ function GateShell({
   return (
     <div
       data-testid="onboarding-ui-overlay"
-      className={`relative h-full max-h-[100dvh] min-h-0 w-full overflow-hidden text-white overscroll-none ${
-        lightMode ? "bg-[#1a1108]" : "bg-[#0a0805]"
-      }`}
-      style={{ height: "100dvh" }}
+      className="relative h-full max-h-full min-h-0 w-full overflow-hidden text-[var(--onboarding-text-primary)] overscroll-none"
+      style={{
+        height: "100%",
+        background: "transparent",
+      }}
     >
       <div
         className="flex items-center gap-2"
         style={{
           position: "absolute",
-          top: "calc(var(--safe-area-top, 0px) + 0.75rem)",
-          right: "calc(var(--safe-area-right, 0px) + 1rem)",
+          top: "max(0.75rem, calc(var(--safe-area-top, 0px) + 0.25rem))",
+          right: "1rem",
           zIndex: 50,
         }}
       >
@@ -2021,31 +2206,31 @@ function GateShell({
           setUiLanguage={setUiLanguage}
           t={t}
           variant="companion"
-          triggerClassName="!h-9 !min-h-9 !min-w-0 !rounded-none !border-2 !border-black !bg-[#fff0a3] !px-2.5 !text-xs !text-black !shadow-[3px_3px_0_rgba(0,0,0,0.72)] leading-none"
+          triggerClassName="!h-10 !min-h-10 !min-w-0 !rounded-sm !border-transparent !bg-white/42 !px-3 !text-xs !text-[var(--onboarding-text-strong)] leading-none backdrop-blur-xl"
         />
         <ThemeToggle
           uiTheme={uiTheme}
           setUiTheme={setUiTheme}
           t={t}
           variant="companion"
-          className="!h-9 !w-9 !min-h-9 !min-w-9 !rounded-none !border-2 !border-black !bg-[#fff0a3] !text-black !shadow-[3px_3px_0_rgba(0,0,0,0.72)]"
+          className="!h-10 !w-10 !min-h-10 !min-w-10 !rounded-sm !border-transparent !bg-white/42 !text-[var(--onboarding-text-strong)] backdrop-blur-xl"
         />
       </div>
 
-      <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
+      <div
+        className="relative z-10 flex h-full min-h-0 items-start justify-center px-3 pb-[calc(0.75rem_+_var(--safe-area-bottom,0px)_+_var(--keyboard-height,0px))] pt-[max(4rem,calc(var(--safe-area-top,0px)_+_3.25rem))] sm:px-6 md:px-8"
+        style={{ alignItems: "flex-start" }}
+      >
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)]  sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
+          className="flex max-h-full min-h-0 w-full max-w-[40rem] flex-col items-center gap-4 overflow-y-auto bg-white/36 px-4 py-5 sm:gap-5 sm:px-7 sm:py-6 md:px-9 md:py-7"
           style={{
             borderRadius: "var(--radius-xs, 3px)",
-            clipPath:
-              "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)",
-            // Dark zine panel for both modes — white text reads consistently
-            // against either the gold-on-black or gold-on-cream collage. The
-            // dark theme image is busy (lots of gold accents) so the panel is
-            // slightly more opaque to keep content focus.
+            transform: "perspective(1200px) rotateX(0.4deg)",
             background: lightMode
-              ? "rgba(20,16,10,0.78)"
-              : "rgba(9,10,14,0.84)",
+              ? "linear-gradient(180deg, rgba(255,255,255,0.76), rgba(255,255,255,0.56))"
+              : "linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.5))",
+            WebkitBackdropFilter: "blur(30px) saturate(1.45)",
+            backdropFilter: "blur(30px) saturate(1.45)",
           }}
         >
           {children}
@@ -2064,13 +2249,13 @@ function GateHeader({
     <div className="text-center">
       <h1
         style={{ fontFamily: MONO_FONT }}
-        className="text-xl font-light text-white/95 sm:text-2xl"
+        className="text-xl font-light text-[var(--onboarding-text-strong)] sm:text-2xl"
       >
         {t("runtimegate.title", { defaultValue: "Choose your setup" })}
       </h1>
       <p
         style={{ fontFamily: MONO_FONT }}
-        className="mt-2 text-3xs uppercase tracking-[0.16em] text-white/60 sm:tracking-[0.2em]"
+        className="mt-2 text-3xs uppercase tracking-[0.16em] text-[var(--onboarding-text-faint)] sm:tracking-[0.2em]"
       >
         {t("runtimegate.subtitle", {
           defaultValue: "Where should your agent run?",
@@ -2096,18 +2281,19 @@ function SubviewHeader({ title, subtitle }: SubviewHeaderProps) {
       <h1
         style={{
           fontFamily: MONO_FONT,
-          textShadow: "2px 2px 0 rgba(0,0,0,0.85)",
+          textShadow: "0 1px 0 rgba(255,255,255,0.62), 0 12px 28px rgba(35,46,64,0.16)",
         }}
-        className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl"
+        className="text-2xl font-light uppercase tracking-tight text-[var(--onboarding-text-strong)] sm:text-3xl"
       >
         {title}
       </h1>
       {subtitle && (
         <p
-          className="max-w-md text-sm leading-relaxed text-white/80"
+          className="max-w-md text-sm leading-relaxed text-[var(--onboarding-text-muted)]"
           style={{
             fontFamily: MONO_FONT,
-            textShadow: "1px 1px 0 rgba(0,0,0,0.7)",
+            color: "var(--onboarding-text-muted)",
+            textShadow: "0 1px 0 rgba(255,255,255,0.42)",
           }}
         >
           {subtitle}
@@ -2125,6 +2311,7 @@ interface WelcomeChooserProps {
   advancedShowsRemote: boolean;
   onUseLocal: () => void;
   onConnectRemote: () => void;
+  localSetupStatus: LocalSetupStatus;
   t: (key: string, values?: Record<string, unknown>) => string;
 }
 
@@ -2143,6 +2330,7 @@ function WelcomeChooser({
   advancedShowsRemote,
   onUseLocal,
   onConnectRemote,
+  localSetupStatus,
   t,
 }: WelcomeChooserProps) {
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
@@ -2154,7 +2342,7 @@ function WelcomeChooser({
       <div className="flex w-full max-w-xl flex-col items-center gap-2">
         <p
           style={{ fontFamily: MONO_FONT }}
-          className="text-3xs tracking-[0.22em] text-[#ffe600]/80"
+          className="text-3xs tracking-[0.22em] text-[var(--onboarding-text-faint)]"
         >
           {t("runtimegate.welcomeEyebrow", {
             ...brandVars,
@@ -2164,9 +2352,10 @@ function WelcomeChooser({
         <h1
           style={{
             fontFamily: MONO_FONT,
-            textShadow: "2px 2px 0 rgba(0,0,0,0.85)",
+            textShadow:
+              "0 1px 0 rgba(255,255,255,0.62), 0 12px 28px rgba(35,46,64,0.16)",
           }}
-          className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl md:text-4xl"
+          className="text-2xl font-light uppercase tracking-tight text-[var(--onboarding-text-strong)] sm:text-3xl md:text-4xl"
         >
           {t("runtimegate.welcomeTitle", {
             ...brandVars,
@@ -2174,10 +2363,10 @@ function WelcomeChooser({
           })}
         </h1>
         <p
-          className="max-w-md text-sm leading-relaxed text-white/85"
+          className="max-w-md text-sm leading-relaxed text-[var(--onboarding-text-muted)]"
           style={{
             fontFamily: MONO_FONT,
-            textShadow: "1px 1px 0 rgba(0,0,0,0.75)",
+            textShadow: "0 1px 0 rgba(255,255,255,0.42)",
           }}
         >
           {t("runtimegate.welcomeSubtitle", {
@@ -2190,11 +2379,11 @@ function WelcomeChooser({
       <Button
         type="button"
         variant="default"
-        className="min-h-14 w-full max-w-sm border-2 border-black bg-[#ffe600] px-10 py-4 text-base font-black uppercase tracking-[0.18em] text-black shadow-[6px_6px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
+        className="min-h-14 w-full max-w-sm border-transparent bg-[#ff5800]/92 px-10 py-4 text-base font-black uppercase tracking-[0.16em] text-[#1c1008] transition-colors duration-150 hover:bg-[#ff7a2f]"
         style={{
           borderRadius: "var(--radius-xs, 3px)",
-          clipPath:
-            "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
+          WebkitBackdropFilter: "blur(18px) saturate(1.35)",
+          backdropFilter: "blur(18px) saturate(1.35)",
           fontFamily: MONO_FONT,
         }}
         onClick={onGetStarted}
@@ -2202,13 +2391,15 @@ function WelcomeChooser({
         {getStartedLabel}
       </Button>
 
+      <LocalSetupStatusPanel status={localSetupStatus} />
+
       {showAdvanced && (
         <div className="flex w-full max-w-2xl flex-col items-center gap-3">
           <button
             type="button"
             onClick={() => setAdvancedOpen((open) => !open)}
             aria-expanded={advancedOpen}
-            className="inline-flex items-center gap-1.5 text-xs tracking-wide text-[#ffe600]/75 underline-offset-2 transition-colors hover:text-[#ffe600] hover:underline"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-sm bg-transparent px-3 text-xs tracking-wide text-[var(--onboarding-text-muted)] underline-offset-2 transition-colors hover:text-[var(--onboarding-text-strong)] hover:underline"
             style={{ fontFamily: MONO_FONT }}
           >
             {t("runtimegate.welcomeAdvancedToggle", {
@@ -2269,6 +2460,53 @@ function WelcomeChooser({
   );
 }
 
+function LocalSetupStatusPanel({ status }: { status: LocalSetupStatus }) {
+  const showProgress = status.percent !== null;
+  const progressValue = status.percent ?? 0;
+  const tone =
+    status.state === "error" || status.state === "unavailable"
+      ? "text-[#7c2d12]"
+      : "text-[var(--onboarding-text-strong)]";
+
+  return (
+    <div
+      className="w-full max-w-sm rounded-sm bg-white/28 px-4 py-3 text-left"
+      style={{
+        WebkitBackdropFilter: "blur(22px) saturate(1.35)",
+        backdropFilter: "blur(22px) saturate(1.35)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p
+            className={`text-xs font-semibold ${tone}`}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {status.label}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--onboarding-text-muted)]">
+            {status.detail}
+          </p>
+        </div>
+        <span
+          className="mt-0.5 shrink-0 rounded-sm bg-white/26 px-2 py-1 text-3xs uppercase tracking-[0.14em] text-[var(--onboarding-text-faint)]"
+          style={{ fontFamily: MONO_FONT }}
+        >
+          {status.state}
+        </span>
+      </div>
+      {showProgress && (
+        <div className="mt-3 h-2 overflow-hidden rounded-sm bg-slate-900/18">
+          <div
+            className="h-full rounded-sm bg-gradient-to-r from-[#ff7a1a] via-[#ffd28a] to-white transition-[width] duration-500"
+            style={{ width: `${progressValue}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PowerUserCardProps {
   eyebrow: string;
   title: string;
@@ -2288,33 +2526,32 @@ function PowerUserCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full flex-col items-start gap-2 border-2 border-[#f0b90b]/45 bg-black/65 p-4 text-left shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-[#ffe600] hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+      className="group flex w-full flex-col items-start gap-2 rounded-sm bg-white/28 p-4 text-left transition-colors duration-150 hover:bg-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
       style={{
-        borderRadius: "var(--radius-xs, 3px)",
-        clipPath:
-          "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
+        WebkitBackdropFilter: "blur(18px) saturate(1.35)",
+        backdropFilter: "blur(18px) saturate(1.35)",
       }}
     >
       <span
-        className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/85"
+        className="text-3xs uppercase tracking-[0.2em] text-[var(--onboarding-text-faint)]"
         style={{ fontFamily: MONO_FONT }}
       >
         {eyebrow}
       </span>
       <span
-        className="text-base font-bold uppercase tracking-wide text-white/95"
+        className="text-base font-bold uppercase tracking-wide text-[var(--onboarding-text-strong)]"
         style={{ fontFamily: MONO_FONT }}
       >
         {title}
       </span>
       <span
-        className="text-xs leading-relaxed text-white/70"
+        className="text-xs leading-relaxed text-[var(--onboarding-text-muted)]"
         style={{ fontFamily: MONO_FONT }}
       >
         {description}
       </span>
       <span
-        className="mt-2 inline-flex items-center gap-1 text-3xs uppercase tracking-[0.22em] text-[#ffe600] group-hover:text-white"
+        className="mt-2 inline-flex items-center gap-1 text-3xs uppercase tracking-[0.22em] text-[#7c2d12] group-hover:text-[var(--onboarding-text-strong)]"
         style={{ fontFamily: MONO_FONT }}
       >
         {ctaLabel} →
@@ -2330,32 +2567,50 @@ function PowerUserCard({
  * boot. The auto-pick effect in `RuntimeGate` calls `finishAsLocal()` as
  * soon as the probe succeeds, at which point this component unmounts.
  */
-function ElizaOSLocalSplash({ message }: { message: string }) {
+function ElizaOSLocalSplash({
+  message,
+  localSetupStatus,
+}: {
+  message: string;
+  localSetupStatus: LocalSetupStatus;
+}) {
   return (
     <div
       data-testid="runtime-gate-elizaos-local-splash"
-      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#ffe600] text-black"
+      className="relative flex h-full w-full items-center justify-center overflow-hidden text-black"
+      style={{
+        background: "transparent",
+      }}
     >
       <div
         className="relative z-10 flex w-full flex-col items-center gap-5 px-6 text-center"
         style={{ maxWidth: 360 }}
       >
-        <div className="w-full mt-2">
-          <div className="h-5 w-full overflow-hidden border-2 border-black/70 bg-black/5">
+        <div
+          className="w-full rounded-sm bg-white/28 px-4 py-5"
+          style={{
+            WebkitBackdropFilter: "blur(24px) saturate(1.35)",
+            backdropFilter: "blur(24px) saturate(1.35)",
+          }}
+        >
+          <div className="h-4 w-full overflow-hidden rounded-sm bg-slate-900/16">
             <div
-              className="h-full w-full bg-black/70 transition-all duration-700 ease-out"
+              className="h-full w-full bg-white/75 transition-all duration-700 ease-out"
               style={{
                 backgroundImage:
-                  "repeating-linear-gradient(90deg, transparent, transparent 6px, rgba(255,230,0,0.5) 6px, rgba(255,230,0,0.5) 8px)",
+                  "repeating-linear-gradient(90deg, transparent, transparent 6px, rgba(255,120,24,0.5) 6px, rgba(255,120,24,0.5) 8px)",
               }}
             />
           </div>
           <p
             style={{ fontFamily: MONO_FONT }}
-            className="mt-2 animate-pulse text-3xs uppercase text-black/70"
+            className="mt-3 animate-pulse text-3xs uppercase text-[var(--onboarding-text-muted)]"
           >
             {message}
           </p>
+          <div className="mt-4">
+            <LocalSetupStatusPanel status={localSetupStatus} />
+          </div>
         </div>
       </div>
     </div>
@@ -2376,7 +2631,7 @@ function BackButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="mt-2 inline-flex items-center gap-1 self-center text-sm text-white/70 transition-colors hover:text-[#ffe600] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-white/70"
+      className="mt-2 inline-flex items-center gap-1 self-center text-sm text-[var(--onboarding-text-muted)] transition-colors hover:text-[var(--onboarding-text-strong)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[var(--onboarding-text-muted)]"
     >
       <ChevronLeft className="h-4 w-4" aria-hidden />
       {t("common.back", { defaultValue: "Back" })}
@@ -2400,27 +2655,27 @@ function LocalEmbeddingsCheckbox({
         id="runtime-gate-local-embeddings"
         checked={checked}
         onCheckedChange={(value) => onCheckedChange(value === true)}
-        className="mt-0.5 shrink-0 border-white/30 bg-white/10 data-[state=checked]:border-[#f0b90b]/60 data-[state=checked]:bg-[#f0b90b]/20"
+        className="mt-0.5 shrink-0 border-white/60 bg-white/46 data-[state=checked]:border-[#f0b90b]/60 data-[state=checked]:bg-[#f0b90b]/30"
         aria-label="Use local embeddings"
       />
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex items-center gap-1.5">
           <label
             htmlFor="runtime-gate-local-embeddings"
-            className="cursor-pointer text-xs-tight text-white/80 select-none"
+            className="cursor-pointer text-xs-tight text-[var(--onboarding-text-muted)] select-none"
           >
             Use local embeddings
           </label>
           <TooltipHint content={LOCAL_EMBEDDINGS_TOOLTIP} side="top">
             <span
-              className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-white/20 text-2xs text-white/50 hover:text-white/70"
+              className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-sm bg-white/24 text-2xs text-[var(--onboarding-text-faint)] hover:text-[var(--onboarding-text-muted)]"
               aria-hidden="true"
             >
               ?
             </span>
           </TooltipHint>
         </div>
-        <p className="text-2xs leading-snug text-white/50">
+        <p className="text-2xs leading-snug text-[var(--onboarding-text-faint)]">
           Generate semantic search locally on this device. Slower first run;
           private.
         </p>

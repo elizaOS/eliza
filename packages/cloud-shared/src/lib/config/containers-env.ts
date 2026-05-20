@@ -92,6 +92,16 @@ export const containersEnv = {
     return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";
   },
 
+  /** Image used by coding-container requests that need the Satellite HTTP contract. */
+  codingSatelliteImage(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.ELIZA_CLOUD_CODING_SATELLITE_IMAGE,
+      env.ELIZA_CODING_SATELLITE_IMAGE,
+      env.CONTAINERS_CODING_SATELLITE_IMAGE,
+    );
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();

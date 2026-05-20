@@ -232,8 +232,8 @@ jobs:
           fi
           echo "init_eliza sync emit confirmed; no TLA regression"
 
-      - name: Build Android debug app
-        run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs android
+      - name: Build Android cloud debug app
+        run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
           # This smoke job intentionally installs no native/DFlash deps.

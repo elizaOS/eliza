@@ -156,6 +156,73 @@ export interface AgentBootProgress {
   updatedAt: string;
 }
 
+export type LaunchPhase =
+  | "static-shell"
+  | "agent-process-starting"
+  | "agent-api-waiting"
+  | "agent-api-ready"
+  | "auth-checking"
+  | "pairing-required"
+  | "onboarding-checking"
+  | "runtime-gate-required"
+  | "cloud-bootstrap-required"
+  | "satellite-seeding"
+  | "model-background-queue"
+  | "ready"
+  | "error";
+
+export interface LaunchSnapshot {
+  phase: LaunchPhase;
+  agent: {
+    state: "not_started" | "starting" | "running" | "stopped" | "error";
+    port: number | null;
+    apiBase: string | null;
+    startedAt: number | null;
+    error: string | null;
+  };
+  boot: {
+    runtimePhase: string | null;
+    pluginsLoaded: number | null;
+    pluginsFailed: number | null;
+    database: "ok" | "unknown" | "error" | null;
+  };
+  auth: {
+    checked: boolean;
+    required: boolean | null;
+    pairingEnabled?: boolean;
+    error?: string | null;
+  };
+  onboarding: {
+    checked: boolean;
+    complete: boolean | null;
+    cloudProvisioned?: boolean;
+    requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
+    error?: string | null;
+  };
+  satellites: {
+    seeded: boolean;
+    requiredStarted: boolean;
+    errors: Array<{ id: string; error: string }>;
+  };
+  localModel: {
+    backgroundDownloadQueued: boolean;
+    blocking: false;
+    error?: string | null;
+  };
+  diagnostics: {
+    logPath: string;
+    statusPath: string;
+    logTail?: string;
+  };
+  recovery: {
+    canRetry: boolean;
+    canOpenLogs: boolean;
+    canCreateBugReport: boolean;
+    suggestedAction?: string;
+  };
+  updatedAt: string;
+}
+
 export type ProviderModelCategory =
   | "chat"
   | "embedding"

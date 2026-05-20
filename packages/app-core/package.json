@@ -156,6 +156,11 @@
       "import": "./dist/platform/native-plugin-entrypoints.js",
       "default": "./dist/platform/native-plugin-entrypoints.js"
     },
+    "./platform/ios-runtime-backends": {
+      "types": "./dist/platform/ios-runtime-backends.d.ts",
+      "import": "./dist/platform/ios-runtime-backends.js",
+      "default": "./dist/platform/ios-runtime-backends.js"
+    },
     "./platform/empty-node-module": {
       "types": "./dist/platform/empty-node-module.d.ts",
       "import": "./dist/platform/empty-node-module.js",
@@ -165,6 +170,11 @@
       "types": "./dist/platform/native-library-policy.d.ts",
       "import": "./dist/platform/native-library-policy.js",
       "default": "./dist/platform/native-library-policy.js"
+    },
+    "./ui-compat": {
+      "types": "./dist/ui-compat.d.ts",
+      "import": "./dist/ui-compat.js",
+      "default": "./dist/ui-compat.js"
     }
   },
   "peerDependencies": {

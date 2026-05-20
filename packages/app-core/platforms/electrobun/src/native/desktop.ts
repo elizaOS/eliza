@@ -43,6 +43,7 @@ import Electrobun, {
   Utils,
 } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
+import type { DatabaseSnapshot } from "../database";
 import { logger } from "../logger";
 import type {
   ClipboardReadResult,
@@ -1523,6 +1524,7 @@ X-GNOME-Autostart-enabled=true
     configDir: string;
     logPath: string;
     statusPath: string;
+    database: DatabaseSnapshot;
     logTail: string;
     appVersion?: string;
     appRuntime?: string;

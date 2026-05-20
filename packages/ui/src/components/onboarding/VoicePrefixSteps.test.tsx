@@ -72,21 +72,52 @@ describe("VoicePrefixSteps", () => {
     expect(onSkipPrefix).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the tier banner for the chosen tier", () => {
+  it("does not play the greeting when mic permission is granted", async () => {
+    const onAgentSpeak = vi.fn();
+    render(
+      <VoicePrefixSteps
+        {...baseProps}
+        step="welcome"
+        onAgentSpeak={onAgentSpeak}
+        onRequestMicPermission={async () => true}
+        profilesClient={makeClient()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("voice-prefix-welcome-request-mic"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-prefix-welcome-mic-granted")).toBeTruthy();
+    });
+    expect(onAgentSpeak).not.toHaveBeenCalled();
+  });
+
+  it("renders voice readiness and lets the user start the download", () => {
+    const onModelDownloadStart = vi.fn();
     render(
       <VoicePrefixSteps
         {...baseProps}
         step="tier"
         tier="MAX"
         profilesClient={makeClient()}
+        voiceBundleReadiness={{
+          modelId: "eliza-1-0_8b",
+          status: "available",
+          message: "Eliza-1 starter voice bundle can run on this device.",
+          canStartDownload: true,
+        }}
+        onModelDownloadStart={onModelDownloadStart}
       />,
     );
     expect(
       screen.getByTestId("voice-tier-banner").getAttribute("data-tier"),
     ).toBe("MAX");
+    expect(screen.getByTestId("voice-prefix-bundle-readiness")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("voice-prefix-start-download"));
+    expect(onModelDownloadStart).toHaveBeenCalledTimes(1);
   });
 
-  it("step 4 plays the scripted greeting", () => {
+  it("final step plays the scripted greeting", async () => {
     const onAgentSpeak = vi.fn();
     render(
       <VoicePrefixSteps
@@ -97,11 +128,36 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("voice-prefix-agent-speaks-play"));
-    expect(onAgentSpeak).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(onAgentSpeak).toHaveBeenCalledTimes(1);
+    });
     expect(onAgentSpeak.mock.calls[0]?.[0]).toContain("Eliza");
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-prefix-agent-speaks-play").textContent)
+        .toContain("Replay greeting");
+    });
   });
 
-  it("step 5 walks through the capture prompts", async () => {
+  it("final step reports greeting playback failure", async () => {
+    const onAgentSpeak = vi.fn(async () => {
+      throw new Error("Native voice playback failed.");
+    });
+    render(
+      <VoicePrefixSteps
+        {...baseProps}
+        step="agent-speaks"
+        onAgentSpeak={onAgentSpeak}
+        profilesClient={makeClient()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("voice-prefix-agent-speaks-play"));
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-prefix-agent-error").textContent)
+        .toContain("Native voice playback failed.");
+    });
+  });
+
+  it("walks through the capture prompts", async () => {
     const client = makeClient({
       startOwnerCapture: async () => ({
         sessionId: "s1",
@@ -133,7 +189,7 @@ describe("VoicePrefixSteps", () => {
     });
   });
 
-  it("step 6 confirms OWNER and emits onOwnerSaved", async () => {
+  it("confirms OWNER and emits onOwnerSaved", async () => {
     const finalizeOwnerCapture = vi.fn(
       async (_id: string, payload: { displayName: string }) => ({
         profileId: "p-owner",
@@ -186,8 +242,6 @@ describe("VoicePrefixSteps", () => {
   });
 
   it("Continue button calls onAdvance with the next step in the graph", () => {
-    // Use the "tier" step (not "welcome") because the welcome step gates the
-    // Continue button behind mic-permission state which requires async setup.
     const onAdvance = vi.fn();
     render(
       <VoicePrefixSteps
@@ -198,11 +252,10 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("voice-prefix-continue"));
-    // From "tier" the next step is "greeting" (GOOD or EXCELLENT tier default).
     expect(onAdvance).toHaveBeenCalled();
   });
 
-  it("Continue from tier on POOR jumps directly to agent-speaks", () => {
+  it("Continue from tier on POOR advances to user capture", () => {
     const onAdvance = vi.fn();
     render(
       <VoicePrefixSteps
@@ -214,6 +267,6 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("voice-prefix-continue"));
-    expect(onAdvance).toHaveBeenCalledWith("agent-speaks");
+    expect(onAdvance).toHaveBeenCalledWith("user-speaks");
   });
 });

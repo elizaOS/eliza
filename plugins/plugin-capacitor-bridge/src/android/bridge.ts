@@ -66,7 +66,8 @@ import { installMobileFsShim } from "../shared/fs-shim.ts";
 type StartEliza = (options: { serverOnly: true }) => Promise<unknown>;
 
 async function loadStartEliza(): Promise<StartEliza> {
-	const mod = (await import("@elizaos/agent")) as { startEliza: StartEliza };
+	const agentSpecifier = "@elizaos/" + "agent";
+	const mod = (await import(agentSpecifier)) as { startEliza: StartEliza };
 	return mod.startEliza;
 }
 

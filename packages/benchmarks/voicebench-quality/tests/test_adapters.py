@@ -62,4 +62,3 @@ def test_cascaded_adapter_uses_stt_transcript_not_reference_text() -> None:
     response = asyncio.run(adapter(request))
 
     assert response.text == "agent saw: spoken transcript"
-

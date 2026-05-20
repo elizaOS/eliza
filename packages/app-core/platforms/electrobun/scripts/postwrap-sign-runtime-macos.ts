@@ -311,11 +311,42 @@ function shouldRun(env: NodeJS.ProcessEnv = process.env): boolean {
   return true;
 }
 
+export function ensureMacBuildAppIcon(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	if (process.platform !== "darwin") return false;
+	if (env.ELECTROBUN_OS && env.ELECTROBUN_OS !== "macos") return false;
+
+	const bundlePath = resolveBuildBundlePath(env);
+	if (!bundlePath) return false;
+
+	const sourcePath = path.resolve(
+		fileURLToPath(new URL("..", import.meta.url)),
+		"assets",
+		"appIcon.icns",
+	);
+	if (!fs.existsSync(sourcePath)) return false;
+
+	const destinationPath = joinPortable(
+		bundlePath,
+		"Contents",
+		"Resources",
+		"AppIcon.icns",
+	);
+	fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+	fs.copyFileSync(sourcePath, destinationPath);
+	return true;
+}
+
 function main(): void {
-  if (!shouldRun()) {
-    console.log("[runtime-sign] skipping nested runtime codesign");
-    return;
-  }
+	if (ensureMacBuildAppIcon()) {
+		console.log("[runtime-sign] installed AppIcon.icns");
+	}
+
+	if (!shouldRun()) {
+		console.log("[runtime-sign] skipping nested runtime codesign");
+		return;
+	}
 
   const runtimeNodeModulesPath = resolveRuntimeNodeModulesPath();
   if (!fs.existsSync(runtimeNodeModulesPath)) {

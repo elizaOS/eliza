@@ -1,7 +1,7 @@
 import {
   registerDetailExtension,
   registerOperatorSurface,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { HyperscapeDetailExtension } from "./HyperscapeDetailExtension.js";
 import { HyperscapeOperatorSurface } from "./HyperscapeOperatorSurface.js";
 

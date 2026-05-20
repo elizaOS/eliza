@@ -436,14 +436,28 @@ static bool eliza_pick_voice_files(
     std::vector<std::string> codec = eliza_find_ggufs(bundle_dir / "codec");
     if (tts.empty()) tts = eliza_find_ggufs(bundle_dir / "voice");
     if (tts.empty()) return false;
-    tts_model = tts[0];
-    if (!codec.empty()) {
-        codec_model = codec[0];
-    } else if (tts.size() > 1) {
-        codec_model = tts[1];
-    } else {
-        codec_model = tts_model;
+
+    std::vector<std::string> tts_candidates;
+    std::vector<std::string> codec_candidates = codec;
+    for (const std::string & path : tts) {
+        const std::string lower = eliza_lower_ascii(std::filesystem::path(path).filename().string());
+        const bool is_omnivoice = lower.find("omnivoice") != std::string::npos;
+        const bool is_codec = lower.find("tokenizer") != std::string::npos || lower.find("codec") != std::string::npos;
+        const bool is_other_voice = lower.find("kokoro") != std::string::npos;
+        if (is_omnivoice && !is_codec && !is_other_voice) {
+            tts_candidates.push_back(path);
+        }
+        if (is_omnivoice && is_codec) {
+            codec_candidates.push_back(path);
+        }
     }
+
+    if (tts_candidates.empty() || codec_candidates.empty()) {
+        return false;
+    }
+
+    tts_model = tts_candidates[0];
+    codec_model = codec_candidates[0];
     return true;
 }
 
@@ -742,6 +756,10 @@ static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
     if (!ctx->ov) {
         std::string msg = "[libelizainference] ov_init failed: ";
         msg += ov_last_error();
+        msg += " tts_model=";
+        msg += ctx->tts_model_path;
+        msg += " codec_model=";
+        msg += ctx->codec_model_path;
         eliza_set_error(out_error, msg);
         return ELIZA_ERR_FFI_FAULT;
     }

@@ -10,7 +10,11 @@
 import { spawn } from "node:child_process";
 import * as importPath from "node:path";
 import process from "node:process";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  CapabilityError,
+  getCapabilityRouter,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
   detectTerminalSupport,
@@ -21,6 +25,7 @@ import {
 
 export type ShellSandboxBackend =
   | "host"
+  | "capability-router"
   | "docker"
   | "apple-container"
   | "wsl2"
@@ -211,6 +216,39 @@ function runOnHost(opts: {
   });
 }
 
+async function runThroughCapabilityRouter(
+  runtime: IAgentRuntime,
+  opts: RunShellOptions,
+): Promise<ShellResult | null> {
+  const router = getCapabilityRouter(runtime);
+  if (!router) return null;
+  const start = Date.now();
+  try {
+    const result = await router.pty.runCommand({
+      command: opts.command,
+      cwd: opts.cwd,
+      timeoutMs: opts.timeoutMs,
+    });
+    return {
+      exitCode: result.exitCode ?? -1,
+      signal: null,
+      stdout: result.output,
+      stderr: "",
+      durationMs: Date.now() - start,
+      timedOut: result.timedOut,
+      sandbox: "capability-router",
+    };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export interface RunShellOptions {
   command: string;
   cwd: string;
@@ -229,6 +267,9 @@ export async function runShell(
   opts: RunShellOptions,
 ): Promise<ShellResult> {
   const mode = resolveRuntimeExecutionMode(runtime);
+
+  const routed = await runThroughCapabilityRouter(runtime, opts);
+  if (routed) return routed;
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");

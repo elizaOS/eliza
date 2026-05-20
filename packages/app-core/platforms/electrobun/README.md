@@ -35,6 +35,18 @@ Produces `src/libMacWindowEffects.dylib` (consumed via Bun FFI at runtime).
 | `bun run test` | Vitest (`src/__tests__`, etc.) |
 | `bun run build:native-effects` | Compile macOS `window-effects.mm` → dylib |
 
+## First-party Satellites
+
+Prototype ElizaLaunch Satellites are folded into this shell under `satellites/` and seeded on desktop startup by `src/first-party-satellites.ts`. They use the existing `@elizaos/electrobun-carrots` install/start/log runtime instead of a parallel module system.
+
+- `eliza.runtime` is required and runs as a Runtime Satellite adapter over the existing Electrobun `AgentManager`; production mode must not start a second elizaOS runtime process.
+- `eliza.fs`, `eliza.local-model`, `eliza.pty`, and `eliza.git` are first-party capability Satellites.
+- `eliza.surface` is a dev/admin surface and is only included when `ELIZA_ENABLE_DEV_SATELLITES=1`.
+
+The current worker-to-worker bridge supports the upstream `invoke-carrot` host request, and renderer/dev views can call workers through the typed `carrot:invokeWorker` RPC. Broad automatic event broadcast is still a host-level follow-up, so dev surfaces should use explicit invokes plus polling where needed.
+
+`eliza.surface` is not the product dashboard. Keep it as an inspector harness while product work moves toward dynamic agent-created canvas/A2UI views, Eliza-1 routing, voice loop latency tracing, and OmniVoice/Kokoro validation.
+
 ## WebGPU status log and macOS version (Darwin)
 
 Startup logs **`[WebGPU Browser] …`** use **`os.release()`**, which reports the **Darwin** kernel major (e.g. **25.x** on **macOS 26** Tahoe)—not the macOS marketing major in About This Mac. **Why it matters:** a single **`Darwin − 9`** rule matched macOS 11–15 but labeled Tahoe as “macOS 16” and wrong-feature-gated WKWebView WebGPU. **`getMacOSMajorVersion()`** in **`src/native/webgpu-browser-support.ts`** implements the two-part mapping; full **WHYs** and the reference table: **[Darwin vs macOS version (Electrobun WebGPU)](../../docs/apps/electrobun-darwin-macos-webgpu-version.md)**.

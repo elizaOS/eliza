@@ -79,13 +79,66 @@ function isExpectedWsProxySocketError(
   );
 }
 
+function stringifyBuildLogMessage(message: unknown): string {
+  if (!message || typeof message !== "object") {
+    return typeof message === "string" ? message : String(message ?? "");
+  }
+  const record = message as {
+    code?: unknown;
+    id?: unknown;
+    message?: unknown;
+    plugin?: unknown;
+  };
+  return [record.code, record.message, record.id, record.plugin]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+}
+
+function isKnownToleratedBuildWarning(message: unknown): boolean {
+  const text = stringifyBuildLogMessage(message);
+  if (
+    text.includes("Use of direct eval") &&
+    text.includes("@electric-sql/pglite")
+  ) {
+    return true;
+  }
+  if (!text.includes("INEFFECTIVE_DYNAMIC_IMPORT")) {
+    if (!text.includes("dynamically imported")) {
+      return false;
+    }
+    return (
+      text.includes("@capacitor/core") ||
+      text.includes("@capacitor/preferences") ||
+      text.includes("components/views/view-interact-registry.ts")
+    );
+  }
+  return (
+    text.includes("../app-core/src/browser.ts") ||
+    text.includes("native-stub:node:fs/promises")
+  );
+}
+
 const viteLogger = createLogger();
 const viteLoggerError = viteLogger.error;
+const viteLoggerWarn = viteLogger.warn;
+const viteLoggerWarnOnce = viteLogger.warnOnce;
 viteLogger.error = (message, options) => {
   if (isExpectedWsProxySocketError(message, options?.error)) {
     return;
   }
   viteLoggerError(message, options);
+};
+viteLogger.warn = (message, options) => {
+  if (isKnownToleratedBuildWarning(message)) {
+    return;
+  }
+  viteLoggerWarn(message, options);
+};
+viteLogger.warnOnce = (message, options) => {
+  if (isKnownToleratedBuildWarning(message)) {
+    return;
+  }
+  viteLoggerWarnOnce(message, options);
 };
 
 function ensureTrailingSlash(value: string): string {
@@ -1489,6 +1542,22 @@ export default defineConfig({
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,
     rolldownOptions: {
+      checks: {
+        eval: false,
+        pluginTimings: false,
+      },
+      onLog(level, log, defaultHandler) {
+        if (level === "warn" && isKnownToleratedBuildWarning(log)) {
+          return;
+        }
+        defaultHandler(level, log);
+      },
+      onwarn(warning, warn) {
+        if (isKnownToleratedBuildWarning(warning)) {
+          return;
+        }
+        warn(warning);
+      },
       // Native-only deps that must not be resolved during the browser build.
       // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
       // they are intercepted by nativeModuleStubPlugin which replaces them

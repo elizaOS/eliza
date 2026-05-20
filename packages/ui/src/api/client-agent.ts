@@ -60,6 +60,7 @@ import type {
   ExtensionStatus,
   LogsFilter,
   LogsResponse,
+  LaunchSnapshot,
   PluginInfo,
   PluginMutationResult,
   ProviderModelRecord,
@@ -412,6 +413,7 @@ declare module "./client-base" {
   interface ElizaClient {
     getStatus(): Promise<AgentStatus>;
     getBootProgress(): Promise<AgentBootProgress | null>;
+    getLaunchProgress(): Promise<LaunchSnapshot | null>;
     getAgentSelfStatus(): Promise<AgentSelfStatusSnapshot>;
     getRuntimeSnapshot(opts?: {
       depth?: number;
@@ -1016,6 +1018,14 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
   try {
     return await getDesktopStatusRpc<AgentBootProgress>("bootProgress");
+  } catch {
+    return null;
+  }
+};
+
+ElizaClient.prototype.getLaunchProgress = async function (this: ElizaClient) {
+  try {
+    return await getDesktopStatusRpc<LaunchSnapshot>("launchProgress");
   } catch {
     return null;
   }

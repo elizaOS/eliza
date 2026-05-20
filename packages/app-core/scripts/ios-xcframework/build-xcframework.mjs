@@ -197,7 +197,22 @@ function defaultSliceDir(target) {
   return path.join(elizaStateDir(), "local-inference", "bin", "dflash", target);
 }
 
-function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
+function sliceUsesRealElizaInference(sliceDir) {
+  const capabilities = path.join(sliceDir, "CAPABILITIES.json");
+  if (!fs.existsSync(capabilities)) return false;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(capabilities, "utf8"));
+    return parsed?.omnivoice != null;
+  } catch {
+    return false;
+  }
+}
+
+function refreshIosRuntimeSymbolShim({
+  sliceDir,
+  isSimulator,
+  realElizaInference,
+}) {
   if (!fs.existsSync(sliceDir)) return;
   const source = path.join(__dirname, "runtime-symbol-shim.c");
   if (!fs.existsSync(source)) {
@@ -227,6 +242,7 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
     minVersionFlag,
     "-I",
     path.join(sliceDir, "include"),
+    ...(realElizaInference ? ["-DELIZA_IOS_REAL_ELIZAINFERENCE=1"] : []),
     "-fvisibility=default",
     "-c",
     source,
@@ -237,7 +253,7 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
   run("xcrun", ["--sdk", sdk, "ranlib", archive]);
   fs.rmSync(obj, { force: true });
   console.log(
-    `[ios-xcframework] refreshed runtime symbol shim: ${path.relative(process.cwd(), archive)}`,
+    `[ios-xcframework] refreshed runtime symbol shim: ${path.relative(process.cwd(), archive)}${realElizaInference ? " (real libelizainference)" : ""}`,
   );
 }
 
@@ -572,8 +588,16 @@ async function main() {
     }
   }
 
-  refreshIosRuntimeSymbolShim({ sliceDir: deviceDir, isSimulator: false });
-  refreshIosRuntimeSymbolShim({ sliceDir: simDir, isSimulator: true });
+  refreshIosRuntimeSymbolShim({
+    sliceDir: deviceDir,
+    isSimulator: false,
+    realElizaInference: sliceUsesRealElizaInference(deviceDir),
+  });
+  refreshIosRuntimeSymbolShim({
+    sliceDir: simDir,
+    isSimulator: true,
+    realElizaInference: sliceUsesRealElizaInference(simDir),
+  });
 
   const deviceSlice = loadSlice(deviceDir, "device");
   const simSlice = loadSlice(simDir, "simulator");

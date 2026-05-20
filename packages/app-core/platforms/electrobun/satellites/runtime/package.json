@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/elizalaunch-runtime-satellite",
+  "version": "0.1.0",
+  "private": true,
+	"type": "module",
+	"scripts": {
+		"build": "bun build src/bun/worker.ts src/dev/phase1-smoke.ts src/dev/phase2-smoke.ts src/dev/phase3-smoke.ts --outdir dist --target bun",
+		"smoke": "bun src/dev/phase1-smoke.ts",
+		"smoke:phase1": "bun src/dev/phase1-smoke.ts",
+		"smoke:phase2": "bun src/dev/phase2-smoke.ts",
+		"smoke:phase3": "bun src/dev/phase3-smoke.ts"
+	}
+}

@@ -3,7 +3,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type ElizaCapabilityRouter,
+  type GitCommandRunParams,
+  type GitCommandRunResult,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
@@ -84,6 +92,82 @@ function makeMessage(conversationId: string): Memory {
   return { roomId: conversationId } as Memory;
 }
 
+function setCapabilityRouter(
+  env: TestEnv,
+  router: ElizaCapabilityRouter,
+): void {
+  const getService = env.runtime.getService.bind(env.runtime);
+  (env.runtime as { getService: (k: string) => unknown }).getService = (
+    key: string,
+  ) => (key === CAPABILITY_ROUTER_SERVICE_TYPE ? router : getService(key));
+}
+
+function makeGitRouter(
+  commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
+): ElizaCapabilityRouter {
+  return {
+    environment: "desktop",
+    availability: async () => ({
+      environment: "desktop",
+      available: true,
+      capabilities: {
+        fs: false,
+        pty: false,
+        git: true,
+        model: false,
+      },
+    }),
+    fs: {
+      list: async () => {
+        throw new Error("fs unavailable");
+      },
+      readText: async () => {
+        throw new Error("fs unavailable");
+      },
+      writeText: async () => {
+        throw new Error("fs unavailable");
+      },
+    },
+    pty: {
+      runCommand: async () => {
+        throw new Error("pty unavailable");
+      },
+    },
+    git: {
+      status: async () => {
+        throw new Error("git status unavailable");
+      },
+      diff: async () => {
+        throw new Error("git diff unavailable");
+      },
+      commandRun,
+    },
+    model: {
+      status: async () => {
+        throw new Error("model unavailable");
+      },
+    },
+  };
+}
+
+function gitCommandResult(params: GitCommandRunParams): GitCommandRunResult {
+  return {
+    operation: {
+      id: "git-op-routed",
+      name: "git.command.run",
+      cwd: params.root,
+      command: params.args,
+      status: "completed",
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      startedAt: "2026-05-17T00:00:00.000Z",
+      completedAt: "2026-05-17T00:00:00.001Z",
+    },
+  };
+}
+
 const state: State | undefined = undefined;
 
 describe("ENTER_WORKTREE", () => {
@@ -105,7 +189,7 @@ describe("ENTER_WORKTREE", () => {
       { parameters: {} },
     );
 
-    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.text);
     const data = result.data as Record<string, unknown> | undefined;
     const worktreePath = data?.worktreePath as string | undefined;
     expect(typeof worktreePath).toBe("string");
@@ -123,6 +207,51 @@ describe("ENTER_WORKTREE", () => {
 
     expect(typeof data?.branch).toBe("string");
     expect(result.text).toContain("Entered worktree");
+  });
+
+  it("routes git worktree add through the capability router when available", async () => {
+    const calls: GitCommandRunParams[] = [];
+    setCapabilityRouter(
+      env,
+      makeGitRouter(async (params) => {
+        calls.push(params);
+        return gitCommandResult(params);
+      }),
+    );
+    const worktreePath = path.join(
+      await fs.realpath(env.repoDir),
+      "routed-worktree",
+    );
+    const result = await enterWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      {
+        parameters: {
+          name: "routed-feature",
+          path: worktreePath,
+          base: "main",
+        },
+      },
+    );
+
+    if (!result.success) throw new Error(result.text);
+    expect(calls).toEqual([
+      {
+        root: env.repoDir,
+        args: [
+          "worktree",
+          "add",
+          "-b",
+          "routed-feature",
+          worktreePath,
+          "main",
+        ],
+      },
+    ]);
+    expect(env.session.getCwd(env.conversationId)).toBe(
+      path.resolve(worktreePath),
+    );
   });
 
   it("uses the provided name when supplied", async () => {

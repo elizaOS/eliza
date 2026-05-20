@@ -42,6 +42,7 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "@elizaos/cloud-sdk#build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-pdf#build"

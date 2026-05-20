@@ -68,6 +68,7 @@ const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
 
 const IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON =
   "iOS local mode uses the WebView ITTP route kernel. Capacitor BackgroundRunner wakes in a separate JSContext and cannot call that WebView kernel while the app is suspended.";
+const IOS_LOCAL_TTS_EXECUTOR_AVAILABLE = false;
 
 type Role = "user" | "assistant";
 
@@ -124,6 +125,13 @@ interface IosBundleRecord {
   bundleSizeBytes?: number;
   files: Record<string, string>;
   installedAt: string;
+}
+
+interface LocalVoiceReadinessSnapshot {
+  status: "missing" | "assets-ready" | "engine-ready" | "ready" | "unavailable";
+  installedFiles: number;
+  modelId: string | null;
+  message: string;
 }
 
 interface LocalBrowserWorkspaceTab {
@@ -332,6 +340,84 @@ function writeJson(key: string, value: unknown): void {
 
 function readBundleIndex(): Record<string, IosBundleRecord> {
   return readJson<Record<string, IosBundleRecord>>(BUNDLE_INDEX_KEY, {});
+}
+
+function isIosVoiceAssetPath(rawPath: string): boolean {
+  const path = rawPath.toLowerCase().replace(/\\/g, "/");
+  if (!/\.(bin|codec|gguf|json|onnx)$/i.test(path)) return false;
+  if (/(^|\/)(asr|tts|vad|voice|voices|wakeword)\//.test(path)) return true;
+  return /(^|\/)cache\/[^/]*voice[^/]*\.(bin|codec|gguf|json|onnx)$/i.test(
+    path,
+  );
+}
+
+function inferVoiceReadiness(
+  installed: InstalledModel[],
+  bundles: Record<string, IosBundleRecord>,
+): LocalVoiceReadinessSnapshot {
+  const installedVoicePaths = new Set<string>();
+  for (const model of installed) {
+    if (isIosVoiceAssetPath(model.path)) installedVoicePaths.add(model.path);
+  }
+  const bundleIdsWithVoice = new Set<string>();
+  for (const record of Object.values(bundles)) {
+    const paths = [
+      ...Object.keys(record.files),
+      ...Object.values(record.files),
+    ].filter(isIosVoiceAssetPath);
+    if (paths.length > 0) {
+      bundleIdsWithVoice.add(record.modelId);
+      for (const path of paths) installedVoicePaths.add(path);
+    }
+  }
+
+  const modelId =
+    [...bundleIdsWithVoice][0] ??
+    installed.find((model) => model.id.startsWith("eliza-1"))?.id ??
+    null;
+  const installedFiles = installedVoicePaths.size;
+
+  if (installedFiles === 0) {
+    return {
+      status: "missing",
+      installedFiles: 0,
+      modelId,
+      message: "Eliza-1 voice assets are not visible to the iOS local agent.",
+    };
+  }
+
+  if (!IOS_LOCAL_TTS_EXECUTOR_AVAILABLE) {
+    return {
+      status: "unavailable",
+      installedFiles,
+      modelId,
+      message:
+        "Eliza-1 voice assets are installed. This build is missing the iOS local voice playback engine.",
+    };
+  }
+
+  return {
+    status: "assets-ready",
+    installedFiles,
+    modelId,
+    message:
+      "Eliza-1 voice assets are installed. Voice engine will warm on first playback.",
+  };
+}
+
+function sanitizeLocalSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function writeBundleRecord(record: IosBundleRecord): void {
@@ -2137,6 +2223,7 @@ async function hubSnapshot() {
     listInstalledModels(),
     hardwareProbe(),
   ]);
+  const bundles = readBundleIndex();
   return {
     catalog: MODEL_CATALOG,
     installed,
@@ -2144,6 +2231,7 @@ async function hubSnapshot() {
     downloads: [...downloads.values()],
     hardware,
     assignments: readAssignments(),
+    voiceReadiness: inferVoiceReadiness(installed, bundles),
   };
 }
 
@@ -3163,6 +3251,28 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "GET" && pathname === "/api/local-inference/hub") {
     return json(await hubSnapshot());
+  }
+
+  if (method === "POST" && pathname === "/api/tts/local-inference") {
+    const body = await requestJson(request);
+    const text =
+      typeof body.text === "string" ? sanitizeLocalSpeechText(body.text) : "";
+    if (!text) return json({ error: "Missing text" }, 400);
+    const voiceReadiness = inferVoiceReadiness(
+      await listInstalledModels(),
+      readBundleIndex(),
+    );
+    return json(
+      {
+        error: voiceReadiness.message,
+        code:
+          voiceReadiness.status === "unavailable"
+            ? "ios_local_tts_executor_missing"
+            : "ios_local_voice_assets_missing",
+        voiceReadiness,
+      },
+      503,
+    );
   }
 
   if (method === "GET" && pathname === "/api/local-inference/hardware") {

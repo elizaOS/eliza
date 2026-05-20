@@ -6,6 +6,7 @@
     "assets",
     "entitlements",
     "scripts",
+    "satellites",
     "src",
     "electrobun.config.ts",
     "README.md",
@@ -17,6 +18,9 @@
     "typecheck": "tsc --noEmit",
     "test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
     "lint": "bunx @biomejs/biome check $(find src -type f \\( -name '*.ts' -o -name '*.tsx' \\) ! -name '*.d.ts' -print)",
+    "voice:validate": "bun src/voice/voice-live-validation.ts",
+    "voice:validate:dry": "bun src/voice/voice-live-validation.ts",
+    "voice:validate:live": "bun src/voice/voice-live-validation.ts",
     "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
     "build:native-effects": "bash scripts/build-macos-effects.sh"
   },

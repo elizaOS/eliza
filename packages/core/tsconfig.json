@@ -4,19 +4,16 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
+		"ignoreDeprecations": "5.0",
 		"sourceMap": false,
 		"inlineSourceMap": false,
 		"typeRoots": [
 			"../../node_modules/@types",
-			"../../node_modules/.bun/node_modules/@types",
 			"../../node_modules",
-			"../../node_modules/.bun/node_modules",
 			"../../../node_modules/@types",
-			"../../../node_modules/.bun/node_modules/@types",
-			"../../../node_modules",
-			"../../../node_modules/.bun/node_modules"
+			"../../../node_modules"
 		],
-		"types": ["node", "bun"],
+		"types": ["node"],
 		"noEmit": true,
 		"composite": false,
 		"declaration": false,

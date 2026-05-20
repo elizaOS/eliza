@@ -145,7 +145,7 @@ import { CURSOR_MARKER, type Component, type Focusable } from "@elizaos/tui";
 
 class MyInput implements Component, Focusable {
   focused: boolean = false;  // Set by TUI when focus changes
-  
+
   render(width: number): string[] {
     const marker = this.focused ? CURSOR_MARKER : "";
     // Emit marker right before the fake cursor
@@ -626,7 +626,7 @@ import type { Component } from "@elizaos/tui";
 class MyInteractiveComponent implements Component {
   private selectedIndex = 0;
   private items = ["Option 1", "Option 2", "Option 3"];
-  
+
   public onSelect?: (index: number) => void;
   public onCancel?: () => void;
 

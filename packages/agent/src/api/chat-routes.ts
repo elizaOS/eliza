@@ -171,10 +171,15 @@ function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
   const platform =
     readRuntimeStringSetting(runtime, "ELIZA_MOBILE_PLATFORM") ??
     readRuntimeStringSetting(runtime, "ELIZA_PLATFORM");
+  const normalizedPlatform = platform?.toLowerCase();
   const localLlama =
     readRuntimeStringSetting(runtime, "ELIZA_LOCAL_LLAMA") === "1" ||
-    readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1";
-  return platform?.toLowerCase() === "android" && localLlama;
+    readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1" ||
+    readRuntimeStringSetting(runtime, "ELIZA_IOS_LOCAL_BACKEND") === "1";
+  return (
+    (normalizedPlatform === "android" || normalizedPlatform === "ios") &&
+    localLlama
+  );
 }
 
 function hasAndroidLocalDirectChatBlockingContent(
@@ -269,9 +274,9 @@ function buildAndroidLocalDirectChatPrompt(args: {
   userText: string;
 }): string {
   const systemText = [
-    "Eliza-1 on Android.",
+    "Eliza-1 on device.",
     "One natural sentence under 10 words. Stop after it.",
-    "If asked local/on-device: yes, local Eliza-1 with DFlash.",
+    "If asked local/on-device: yes, local Eliza-1.",
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
   return [

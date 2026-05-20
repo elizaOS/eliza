@@ -73,6 +73,31 @@ interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
 
+const IOS_FULL_BUN_ARGV = [
+  "bun",
+  "--no-install",
+  "public/agent/agent-bundle.js",
+  "ios-bridge",
+  "--stdio",
+];
+
+const IOS_FULL_BUN_ENV: Record<string, string> = {
+  ELIZA_PLATFORM: "ios",
+  ELIZA_MOBILE_PLATFORM: "ios",
+  ELIZA_RUNTIME_MODE: "local-safe",
+  RUNTIME_MODE: "local-safe",
+  LOCAL_RUNTIME_MODE: "local-safe",
+  ELIZA_IOS_LOCAL_BACKEND: "1",
+  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
+  ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
+  ELIZA_VAULT_BACKEND: "file",
+  ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
+  ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
+  ELIZA_HEADLESS: "1",
+  ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
+  LOG_LEVEL: "error",
+};
+
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
@@ -86,11 +111,23 @@ declare global {
 }
 
 function viteEnv(): ImportMetaEnvRecord {
-  return (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {};
+  const metaEnv =
+    (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {};
+  const processEnv = typeof process === "undefined" ? {} : process.env;
+  return { ...processEnv, ...metaEnv };
 }
 
 function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
   return value === true || /^(1|true|yes|on)$/i.test(String(value ?? ""));
+}
+
+function isFullBunRuntimeBuiltIn(): boolean {
+  const env = viteEnv();
+  return (
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE) ||
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE)
+  );
 }
 
 function isDevBuild(): boolean {
@@ -121,13 +158,16 @@ function readRuntimeMode(): string | null {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const runtimeMode = readRuntimeMode();
+  if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") return false;
+  const fullBunBuiltIn = isFullBunRuntimeBuiltIn();
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
     hasIosFullBunSmokeRequest() ||
-    (isNativeIosStoreBuild() && runtimeMode === "local") ||
-    (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
-    (isNativeIos() && !isDevBuild() && runtimeMode === "local")
+    (fullBunBuiltIn &&
+      ((isNativeIosStoreBuild() && runtimeMode === "local") ||
+        (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
+        (isNativeIos() && !isDevBuild() && runtimeMode === "local")))
   );
 }
 
@@ -265,6 +305,28 @@ function canUseIosLocalAgentIpc(): boolean {
   return !usesStrictIosNetworkPolicy();
 }
 
+function localAgentPathnameFromUrl(url: URL): string {
+  const path = mobileLocalAgentPathFromUrl(url);
+  if (!path) return url.pathname || "/";
+  const queryIndex = path.indexOf("?");
+  return queryIndex >= 0 ? path.slice(0, queryIndex) || "/" : path || "/";
+}
+
+function isCloudRuntimeAllowedLocalAgentPath(path: string): boolean {
+  const queryIndex = path.indexOf("?");
+  const pathname = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
+  return (
+    pathname === "/api/local-inference" ||
+    pathname.startsWith("/api/local-inference/") ||
+    pathname === "/api/tts/local-inference"
+  );
+}
+
+function isCloudRuntimeAllowedIpcPath(url: URL): boolean {
+  if (!isNativeIosCloudRuntime()) return false;
+  return isCloudRuntimeAllowedLocalAgentPath(localAgentPathnameFromUrl(url));
+}
+
 function canUseJsContextCompatibilityFallback(): boolean {
   return isNativeIos() && isDevBuild() && !isNativeIosStoreBuild();
 }
@@ -294,7 +356,9 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
   if (isNativeIosStoreBuild() && isLoopbackLocalAgentUrl(url)) return false;
   try {
     const parsed = new URL(url);
-    if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
+    if (isIosLocalAgentIpcUrl(parsed)) {
+      return canUseIosLocalAgentIpc() || isCloudRuntimeAllowedIpcPath(parsed);
+    }
     if (
       usesStrictIosNetworkPolicy() &&
       isCleartextNetworkUrl(parsed) &&
@@ -370,6 +434,7 @@ function normalizeNativeResult(
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
   if (!isNativeIos() && !strict) return null;
+  if (!strict && !isFullBunRuntimeBuiltIn()) return null;
   if (!isFullBunRuntimePluginAvailable()) {
     if (strict) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
@@ -381,12 +446,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      // Resolve via a variable so the typechecker doesn't require the (often
-      // un-built) `@elizaos/capacitor-bun-runtime` package to be present —
-      // it only ships in the iOS app bundle. Mirrors `android-native-agent-transport.ts`.
-      const fullBunRuntimePluginId = "@elizaos/capacitor-bun-runtime";
       const mod = (await import(
-        /* @vite-ignore */ fullBunRuntimePluginId
+        "@elizaos/capacitor-bun-runtime"
       )) as FullBunRuntimeModule;
       const runtime = wrapFullBunRuntime(mod.ElizaBunRuntime);
       const currentStatus = await runtime.getStatus().catch(() => null);
@@ -395,14 +456,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       }
       const started = await runtime.start({
         engine: "bun",
-        argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
-        env: {
-          ELIZA_PLATFORM: "ios",
-          ELIZA_MOBILE_PLATFORM: "ios",
-          ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_HEADLESS: "1",
-          LOG_LEVEL: "error",
-        },
+        argv: IOS_FULL_BUN_ARGV,
+        env: IOS_FULL_BUN_ENV,
       });
       if (!started.ok) {
         throw new Error(started.error ?? "runtime start returned ok=false");
@@ -517,6 +572,14 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
+  if (
+    isNativeIosCloudRuntime() &&
+    !isCloudRuntimeAllowedLocalAgentPath(path)
+  ) {
+    throw new TypeError(
+      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
+    );
+  }
 
   const fullBunResult = await tryFullBunNativeRequest({
     ...options,
@@ -575,6 +638,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
     );
   }
   if (isIosLocalAgentIpcUrl(url) && !canUseIosLocalAgentIpc()) {
+    if (isCloudRuntimeAllowedIpcPath(url)) return true;
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );

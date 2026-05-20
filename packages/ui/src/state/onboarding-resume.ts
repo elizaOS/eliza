@@ -1,4 +1,4 @@
-import type { BuildOnboardingConnectionArgs } from "@elizaos/app-core";
+import type { BuildOnboardingConnectionArgs } from "../onboarding/onboarding-config";
 import {
   getOnboardingProviderOption,
   isElizaCloudLinkedInConfig,

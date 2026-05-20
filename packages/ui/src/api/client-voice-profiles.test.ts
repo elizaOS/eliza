@@ -5,9 +5,12 @@ import {
   VoiceProfilesUnavailableError,
 } from "./client-voice-profiles";
 
-function makeClient(fetchImpl: (path: string) => Promise<unknown>) {
+function makeClient(
+  fetchImpl: (path: string, init?: RequestInit) => Promise<unknown>,
+) {
   return new VoiceProfilesClient({
-    fetch: (path: string) => fetchImpl(path) as Promise<never>,
+    fetch: (path: string, init?: RequestInit) =>
+      fetchImpl(path, init) as Promise<never>,
   });
 }
 
@@ -117,31 +120,82 @@ describe("VoiceProfilesClient.startOwnerCapture", () => {
     expect(session.expectedSeconds).toBeGreaterThan(0);
   });
 
-  it("falls back to local prompts when the endpoint returns a partial session", async () => {
-    const client = makeClient(async () => ({
-      sessionId: "partial-session",
-    }));
+  it("falls back to local prompts when a mobile shell returns a non-JSON route response", async () => {
+    const client = makeClient(async () => {
+      throw Object.assign(new Error("Invalid JSON response: <html>"), {
+        kind: "parse",
+      });
+    });
     const session = await client.startOwnerCapture();
-    expect(session.sessionId).toBe("partial-session");
+    expect(session.sessionId.startsWith("local-")).toBe(true);
     expect(session.prompts.length).toBeGreaterThanOrEqual(2);
-    expect(session.expectedSeconds).toBeGreaterThan(0);
   });
 
-  it("normalises malformed prompts instead of returning an unsafe session", async () => {
+  it("normalises the local-inference route script response", async () => {
     const client = makeClient(async () => ({
-      sessionId: "mixed-session",
-      prompts: [
-        { id: "valid", text: "Say a short phrase" },
-        { id: "bad" },
-        null,
+      sessionId: "voice-session",
+      script: [
+        {
+          id: "calibration",
+          prompt: "Please say your name.",
+          expectedDurationMs: 5000,
+        },
       ],
+      embeddingModel: "wespeaker",
     }));
+
     const session = await client.startOwnerCapture();
-    expect(session.sessionId).toBe("mixed-session");
+    expect(session.sessionId).toBe("voice-session");
     expect(session.prompts).toEqual([
-      { id: "valid", text: "Say a short phrase", targetSeconds: 5 },
+      { id: "calibration", text: "Please say your name.", targetSeconds: 5 },
     ]);
     expect(session.expectedSeconds).toBe(5);
+  });
+
+  it("falls back to local prompts when the route returns an incompatible shape", async () => {
+    const client = makeClient(async () => ({
+      sessionId: "voice-session",
+      script: [],
+    }));
+
+    const session = await client.startOwnerCapture();
+    expect(session.sessionId.startsWith("local-")).toBe(true);
+    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("VoiceProfilesClient.appendOwnerCapture", () => {
+  it("uses the local-inference id query parameter", async () => {
+    const calls: string[] = [];
+    const client = makeClient(async (path) => {
+      calls.push(path);
+      return {};
+    });
+
+    await client.appendOwnerCapture("session-x", {
+      promptId: "p1",
+      audioBase64: "AAAA",
+      durationMs: 1000,
+    });
+
+    expect(calls).toEqual(["/api/voice/onboarding/profile/append?id=session-x"]);
+  });
+
+  it("does not block onboarding when the route rejects the temporary JSON capture body", async () => {
+    const client = makeClient(async () => {
+      throw Object.assign(new Error("invalid PCM body"), {
+        kind: "http",
+        status: 400,
+      });
+    });
+
+    await expect(
+      client.appendOwnerCapture("session-x", {
+        promptId: "p1",
+        audioBase64: "AAAA",
+        durationMs: 1000,
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -156,6 +210,40 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
     expect(r.isOwner).toBe(true);
     expect(r.profileId).toContain("session-x");
     expect(r.entityId).toContain("session-x");
+  });
+
+  it("uses the local-inference id query parameter when finalizing", async () => {
+    const calls: string[] = [];
+    const client = makeClient(async (path) => {
+      calls.push(path);
+      return {
+        profileId: "profile-x",
+        entityId: "entity-x",
+        isOwner: true,
+      };
+    });
+
+    await client.finalizeOwnerCapture("session-x", { displayName: "Shaw" });
+
+    expect(calls).toEqual([
+      "/api/voice/onboarding/profile/finalize?id=session-x",
+    ]);
+  });
+
+  it("returns the deterministic OWNER fallback when no embeddings are captured yet", async () => {
+    const client = makeClient(async () => {
+      throw Object.assign(new Error("no embeddings captured yet"), {
+        kind: "http",
+        status: 400,
+      });
+    });
+
+    const r = await client.finalizeOwnerCapture("session-x", {
+      displayName: "Shaw",
+    });
+
+    expect(r.isOwner).toBe(true);
+    expect(r.profileId).toContain("session-x");
   });
 });
 

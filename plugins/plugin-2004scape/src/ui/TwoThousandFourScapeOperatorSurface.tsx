@@ -12,7 +12,7 @@ import {
   toneForStatusText,
   toneForViewerAttachment,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import {
   type ButtonHTMLAttributes,
   type CSSProperties,

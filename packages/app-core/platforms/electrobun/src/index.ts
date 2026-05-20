@@ -34,6 +34,7 @@ import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
+import { seedFirstPartySatellitesForStartup } from "./first-party-satellites";
 import { getFloatingChatManager } from "./floating-chat-window";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
@@ -1629,15 +1630,14 @@ async function setupUpdater(): Promise<void> {
       void runUpdateCheck(true);
     };
 
-    const handleApplicationMenuAction = async (
+    const handleUpdateAndConfigMenuAction = async (
       action: string | undefined,
-    ): Promise<void> => {
-      if (!currentWindow && shouldRestoreWindowBeforeMenuAction(action)) {
-        await restoreWindow();
-      }
+    ): Promise<boolean> => {
       if (action === "check-for-updates") {
         triggerManualUpdateCheck();
-      } else if (action === "open-about") {
+        return true;
+      }
+      if (action === "open-about") {
         const updaterState = await getDesktopManager().getUpdaterState();
         const version = updaterState.currentVersion || "unknown";
         Utils.showNotification({
@@ -1645,115 +1645,153 @@ async function setupUpdater(): Promise<void> {
           body: `Version ${version} (${process.platform}/${process.arch})`,
         });
         void createSettingsWindow("updates");
-      } else if (action === "export-config") {
+        return true;
+      }
+      if (action === "export-config") {
         void exportConfigFromMenu();
-      } else if (action === "import-config") {
+        return true;
+      }
+      if (action === "import-config") {
         void importConfigFromMenu();
-      } else if (action === "toggle-devtools") {
+        return true;
+      }
+      return false;
+    };
+
+    const handleMainWindowMenuAction = (
+      action: string | undefined,
+    ): boolean => {
+      if (action === "toggle-devtools") {
         toggleFocusedWindowDevTools();
-      } else if (action === "relaunch") {
-        void getDesktopManager().relaunch();
-      } else if (action === "reset-app") {
-        void resetTheAppFromApplicationMenu();
-      } else if (action === "open-secrets-manager") {
-        // The Secrets Storage modal lives in the renderer. Make sure
-        // the main window is visible, then notify the renderer to
-        // show the modal. The keyboard accelerator
-        // (⌘⌥⌃V on Mac / Ctrl+Alt+Shift+V on Win/Linux) flows
-        // through this same path; the renderer's `keydown` listener
-        // also dispatches the same toggle directly when a Eliza
-        // window is already focused.
+        return true;
+      }
+      if (action === "focus-main-window") {
+        void getDesktopManager().focusWindow();
+        return true;
+      }
+      if (action === "hide-main-window") {
+        void getDesktopManager().hideWindow();
+        return true;
+      }
+      if (action === "maximize-main-window") {
+        void getDesktopManager().maximizeWindow();
+        return true;
+      }
+      if (action === "restore-main-window") {
+        void getDesktopManager().unmaximizeWindow();
+        return true;
+      }
+      if (action === "show") {
+        void getDesktopManager().showWindow();
+        return true;
+      }
+      return false;
+    };
+
+    const handleSettingsMenuAction = (action: string | undefined): boolean => {
+      if (action === "open-secrets-manager") {
         void restoreWindow();
         sendToActiveRenderer("openSecretsManager", {});
-      } else if (
-        action === "open-settings" ||
-        action?.startsWith("open-settings-")
-      ) {
+        return true;
+      }
+      if (action === "open-settings" || action?.startsWith("open-settings-")) {
         void createSettingsWindow(parseSettingsWindowAction(action));
-      } else if (action?.startsWith("new-window:")) {
+        return true;
+      }
+      return false;
+    };
+
+    const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      if (action?.startsWith("new-window:")) {
         const surface = action.slice("new-window:".length);
         if (surfaceWindowManager && isDetachedSurface(surface)) {
           void surfaceWindowManager.openSurfaceWindow(surface);
         }
-      } else if (action?.startsWith("focus-window:")) {
+        return true;
+      }
+      if (action?.startsWith("focus-window:")) {
         const windowId = action.slice("focus-window:".length);
         surfaceWindowManager?.focusWindow(windowId);
-      } else if (action?.startsWith("show-main:")) {
-        const surface = action.slice("show-main:".length);
-        showMainSurface(surface);
-      } else if (action === "focus-main-window") {
-        void getDesktopManager().focusWindow();
-      } else if (action === "hide-main-window") {
-        void getDesktopManager().hideWindow();
-      } else if (action === "maximize-main-window") {
-        void getDesktopManager().maximizeWindow();
-      } else if (action === "restore-main-window") {
-        void getDesktopManager().unmaximizeWindow();
-      } else if (action === "desktop-notify") {
+        return true;
+      }
+      if (action?.startsWith("show-main:")) {
+        showMainSurface(action.slice("show-main:".length));
+        return true;
+      }
+      return false;
+    };
+
+    const handleStewardMenuAction = (action: string | undefined): boolean => {
+      if (action === "restart-steward" && isStewardLocalEnabled()) {
+        restartSteward().catch((err: unknown) => {
+          logger.error(
+            `[Main] Steward restart failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          Utils.showNotification({
+            title: "Steward Restart Failed",
+            body: err instanceof Error ? err.message : "Unknown error",
+          });
+        });
+        return true;
+      }
+      if (action === "reset-steward" && isStewardLocalEnabled()) {
+        resetSteward().catch((err: unknown) => {
+          logger.error(
+            `[Main] Steward reset failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          Utils.showNotification({
+            title: "Steward Reset Failed",
+            body: err instanceof Error ? err.message : "Unknown error",
+          });
+        });
+        return true;
+      }
+      return false;
+    };
+
+    const handleAppEntryMenuAction = (action: string | undefined): boolean => {
+      if (!action?.startsWith("apps:") && !action?.startsWith("tray-app-")) {
+        return false;
+      }
+      const slug = action.startsWith("apps:")
+        ? action.slice("apps:".length)
+        : action.slice("tray-app-".length);
+      const entry = findAppMenuEntryBySlug(slug);
+      if (!entry) return true;
+      if (entry.hasDetailsPage) {
+        void restoreWindow();
+        sendToActiveRenderer("desktopAppDetailsRequested", {
+          slug: entry.slug,
+        });
+        return true;
+      }
+      void getDesktopManager().openAppWindow({
+        slug: entry.slug,
+        title: entry.displayName,
+        path: entry.windowPath,
+        alwaysOnTop: false,
+      });
+      return true;
+    };
+
+    const handleRuntimeMenuAction = (action: string | undefined): boolean => {
+      if (action === "relaunch") {
+        void getDesktopManager().relaunch();
+        return true;
+      }
+      if (action === "reset-app") {
+        void resetTheAppFromApplicationMenu();
+        return true;
+      }
+      if (action === "desktop-notify") {
         void getDesktopManager().showNotification({
           title: `${BRAND.appName} Desktop`,
           body: `${BRAND.appName} native application menu actions are wired and responding.`,
           urgency: "normal",
         });
-      } else if (action === "restart-steward") {
-        if (isStewardLocalEnabled()) {
-          restartSteward().catch((err: unknown) => {
-            logger.error(
-              `[Main] Steward restart failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            Utils.showNotification({
-              title: "Steward Restart Failed",
-              body: err instanceof Error ? err.message : "Unknown error",
-            });
-          });
-        }
-      } else if (action === "reset-steward") {
-        if (isStewardLocalEnabled()) {
-          resetSteward().catch((err: unknown) => {
-            logger.error(
-              `[Main] Steward reset failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            Utils.showNotification({
-              title: "Steward Reset Failed",
-              body: err instanceof Error ? err.message : "Unknown error",
-            });
-          });
-        }
-      } else if (
-        action?.startsWith("apps:") ||
-        action?.startsWith("tray-app-")
-      ) {
-        // Both shapes resolve to the same flow:
-        //   1. Look up the app entry by slug.
-        //   2. If the app declares hasDetailsPage, focus the main window
-        //      and tell the renderer to navigate to /apps/<slug>/details
-        //      (where the user can review config + click Launch).
-        //   3. Otherwise, open or focus its dedicated native window
-        //      directly (zero-config viewers / overlays).
-        // WHY two prefixes: `apps:<slug>` is what `buildAppsMenu` emits
-        // for the OS menu bar; `tray-app-<slug>` is what the tray icons
-        // emit. Both arrive here.
-        const slug = action.startsWith("apps:")
-          ? action.slice("apps:".length)
-          : action.slice("tray-app-".length);
-        const entry = findAppMenuEntryBySlug(slug);
-        if (entry) {
-          if (entry.hasDetailsPage) {
-            // Restore main window first so the renderer route is visible.
-            void restoreWindow();
-            sendToActiveRenderer("desktopAppDetailsRequested", {
-              slug: entry.slug,
-            });
-          } else {
-            void getDesktopManager().openAppWindow({
-              slug: entry.slug,
-              title: entry.displayName,
-              path: entry.windowPath,
-              alwaysOnTop: false,
-            });
-          }
-        }
-      } else if (action === "restart-agent") {
+        return true;
+      }
+      if (action === "restart-agent") {
         getAgentManager()
           .restart()
           .catch((err: unknown) => {
@@ -1761,14 +1799,33 @@ async function setupUpdater(): Promise<void> {
               `[Main] Agent restart failed: ${err instanceof Error ? err.message : String(err)}`,
             );
           });
-      } else if (action === "quit") {
+        return true;
+      }
+      if (action === "quit") {
         void getDesktopManager().quit();
-      } else if (action === "show") {
-        void getDesktopManager().showWindow();
-      } else if (action?.startsWith("navigate-")) {
+        return true;
+      }
+      if (action?.startsWith("navigate-")) {
         void getDesktopManager().showWindow();
         sendToActiveRenderer("desktopTrayMenuClick", { itemId: action });
+        return true;
       }
+      return false;
+    };
+
+    const handleApplicationMenuAction = async (
+      action: string | undefined,
+    ): Promise<void> => {
+      if (!currentWindow && shouldRestoreWindowBeforeMenuAction(action)) {
+        await restoreWindow();
+      }
+      if (await handleUpdateAndConfigMenuAction(action)) return;
+      if (handleMainWindowMenuAction(action)) return;
+      if (handleSettingsMenuAction(action)) return;
+      if (handleSurfaceMenuAction(action)) return;
+      if (handleStewardMenuAction(action)) return;
+      if (handleAppEntryMenuAction(action)) return;
+      handleRuntimeMenuAction(action);
     };
 
     setApplicationMenuActionHandler(handleApplicationMenuAction);
@@ -2139,6 +2196,7 @@ async function main(): Promise<void> {
   recordStartupPhase("window_ready", {
     pid: process.pid,
   });
+  seedFirstPartySatellitesForStartup();
 
   // Configure the floating chat manager now that the renderer URL is resolved.
   // This must run after createMainWindow() so rendererUrlPromise is already set.

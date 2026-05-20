@@ -65,6 +65,11 @@ const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR =
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
+const DESKTOP_BUILD_TMP_DIR = path.join(ELECTROBUN_DIR, "tmp");
+const DESKTOP_BUILD_BUN_CACHE_DIR = path.join(
+  DESKTOP_BUILD_TMP_DIR,
+  "bun-cache",
+);
 
 const argv = process.argv.slice(2);
 const command = argv[0] && !argv[0].startsWith("--") ? argv[0] : "build";
@@ -254,6 +259,47 @@ function runBunCapture(commandArgs, options = {}) {
     fail('Could not find "bun" in PATH.');
   }
   return runCapture(bun, commandArgs, options);
+}
+
+function desktopBuildTempEnv(extraEnv = {}) {
+  fs.mkdirSync(DESKTOP_BUILD_TMP_DIR, { recursive: true });
+  return {
+    ...process.env,
+    ...extraEnv,
+    TMPDIR: DESKTOP_BUILD_TMP_DIR,
+    TMP: DESKTOP_BUILD_TMP_DIR,
+    TEMP: DESKTOP_BUILD_TMP_DIR,
+    BUN_TMPDIR: DESKTOP_BUILD_TMP_DIR,
+    BUN_INSTALL_CACHE_DIR: DESKTOP_BUILD_BUN_CACHE_DIR,
+  };
+}
+
+function dependencyTreePresent(cwd) {
+  return (
+    fs.existsSync(path.join(cwd, "node_modules")) ||
+    fs.existsSync(path.join(ROOT, "node_modules"))
+  );
+}
+
+function runOptionalWorkspaceInstall(cwd, label) {
+  if (dependencyTreePresent(cwd)) {
+    console.log(`[desktop-build] ${label} (skipped; dependencies present)`);
+    return;
+  }
+  runBun(
+    [
+      "install",
+      "--ignore-scripts",
+      "--cache-dir",
+      DESKTOP_BUILD_BUN_CACHE_DIR,
+    ],
+    {
+      cwd,
+      env: desktopBuildTempEnv(),
+      label,
+      allowFailure: true,
+    },
+  );
 }
 
 function resolveBunBinary() {
@@ -647,17 +693,15 @@ function stageDesktopBuild() {
   // file: deps overlap with manually-linked @elizaos/* symlinks. The links
   // get created successfully; bun exits non-zero only because of the dup
   // attempt. Tolerate so the build can proceed.
-  runBun(["install", "--ignore-scripts"], {
-    cwd: APP_DIR,
-    label: "Ensuring app workspace dependencies are installed",
-    allowFailure: true,
-  });
+  runOptionalWorkspaceInstall(
+    APP_DIR,
+    "Ensuring app workspace dependencies are installed",
+  );
 
-  runBun(["install", "--ignore-scripts"], {
-    cwd: ELECTROBUN_DIR,
-    label: "Ensuring Electrobun workspace dependencies are installed",
-    allowFailure: true,
-  });
+  runOptionalWorkspaceInstall(
+    ELECTROBUN_DIR,
+    "Ensuring Electrobun workspace dependencies are installed",
+  );
 
   ensureUiGeneratedAssets();
 

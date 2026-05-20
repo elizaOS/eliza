@@ -1,6 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import {
   type ActionResult,
   logger as coreLogger,
@@ -15,6 +12,7 @@ import {
   readBoolParam,
   successActionResult,
 } from "../lib/format.js";
+import { runGitCommand } from "../lib/run-git-command.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -22,8 +20,6 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
-
-const execFileAsync = promisify(execFile);
 
 export async function exitWorktreeHandler(
   runtime: IAgentRuntime,
@@ -72,14 +68,11 @@ export async function exitWorktreeHandler(
   if (cleanup) {
     try {
       const timeoutMs = 30_000;
-      await execFileAsync(
-        "git",
-        ["worktree", "remove", "--force", popped.entered],
-        {
-          cwd: popped.previousCwd,
-          timeout: timeoutMs,
-        },
-      );
+      await runGitCommand(runtime, {
+        cwd: popped.previousCwd,
+        args: ["worktree", "remove", "--force", popped.entered],
+        timeoutMs,
+      });
       cleaned = true;
     } catch (err) {
       const stderr =

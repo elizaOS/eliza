@@ -4,8 +4,13 @@ import type {
   CallResult,
   ElizaBunRuntimePlugin,
   GetStatusResult,
+  LocalTtsDiagnosticsOptions,
+  LocalTtsDiagnosticsResult,
+  LocalTtsStatusResult,
   SendMessageOptions,
   SendMessageResult,
+  SynthesizeLocalTtsOptions,
+  SynthesizeLocalTtsResult,
   StartOptions,
   StartResult,
 } from "./definitions";
@@ -40,6 +45,33 @@ export class ElizaBunRuntimeWeb
 
   async stop(): Promise<void> {
     return;
+  }
+
+  async getLocalTtsStatus(): Promise<LocalTtsStatusResult> {
+    return {
+      ready: false,
+      status: "unavailable",
+      message:
+        "ElizaBunRuntime local TTS is not available on web. Run on an iOS device or simulator.",
+    };
+  }
+
+  async getLocalTtsDiagnostics(
+    _options?: LocalTtsDiagnosticsOptions,
+  ): Promise<LocalTtsDiagnosticsResult> {
+    return {
+      available: false,
+      message:
+        "ElizaBunRuntime local TTS diagnostics are not available on web. Run on an iOS device or simulator.",
+    };
+  }
+
+  async synthesizeLocalTts(
+    _options: SynthesizeLocalTtsOptions,
+  ): Promise<SynthesizeLocalTtsResult> {
+    throw this.unavailable(
+      "ElizaBunRuntime.synthesizeLocalTts is unavailable on web.",
+    );
   }
 
   async call(_options: CallOptions): Promise<CallResult> {

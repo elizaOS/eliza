@@ -71,7 +71,10 @@ function walkMarkdownFiles(dir) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...walkMarkdownFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".md") || entry.name.endsWith(".mdx"))
+    ) {
       files.push(fullPath);
     }
   }
@@ -125,6 +128,7 @@ function collectDocs(repoRoot, scope = "all") {
       ? [
           "packages/docs/docs/launchdocs",
           "packages/docs/launchdocs",
+          "packages/docs/launch-resources",
           "launchdocs",
         ]
       : scope === "docs"

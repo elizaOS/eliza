@@ -214,7 +214,9 @@ void * llama_get_context_ptr(int64_t context_id) {
     return NULL;
 }
 
-/* ---- libelizainference ABI v1 exports ----------------------------- */
+/* ---- fail-closed libelizainference exports ------------------------- */
+
+#if !defined(ELIZA_IOS_REAL_ELIZAINFERENCE)
 
 const char * eliza_inference_abi_version(void) {
     return ELIZA_INFERENCE_ABI_VERSION_STRING;
@@ -323,6 +325,8 @@ int eliza_inference_asr_transcribe(
 void eliza_inference_free_string(char * str) {
     free(str);
 }
+
+#endif
 
 /* ---- Swift direct llama.cpp bridge helpers ------------------------ */
 

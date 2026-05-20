@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { RipgrepService } from "../services/ripgrep-service.js";
@@ -128,6 +133,31 @@ describe("GREP", () => {
     expect((data?.matches_count as number) >= 2).toBe(true);
     expect(result.text).toContain("a.ts");
     expect(result.text).toContain("notes.md");
+  });
+
+  it("keeps search plugin-owned until fs.search parity exists", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) {
+      console.warn("no ripgrep available, skipping");
+      return;
+    }
+    const { runtime, message } = bundle;
+    const guardedRuntime = {
+      ...runtime,
+      getService: <T>(serviceType: string): T | null => {
+        if (serviceType === CAPABILITY_ROUTER_SERVICE_TYPE) {
+          throw new Error("grep must not use the capability router yet");
+        }
+        return runtime.getService<T>(serviceType);
+      },
+    } as IAgentRuntime;
+
+    const result = await grepHandler(guardedRuntime, message, state, {
+      parameters: { pattern: "NEEDLE" },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("a.ts");
   });
 
   it("matches case-insensitively when case_insensitive is true", async () => {

@@ -1,0 +1,3062 @@
+{
+  "generatedAt": "2026-05-17T17:53:44.862Z",
+  "branch": "codex/phase-11-event-bridge-wip",
+  "aheadBehind": "22\t0",
+  "dirtyStatus": [
+    "M packages/app-core/platforms/electrobun/scripts/generate-convergence-audit.ts"
+  ],
+  "entries": [
+    {
+      "id": "app-model-tester",
+      "path": "plugins/app-model-tester",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package app-model-tester.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "eliza.fs",
+      "path": "packages/app-core/platforms/electrobun/satellites/fs",
+      "category": "desktop-capability",
+      "currentPurpose": "eliza.fs first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.fs"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
+    },
+    {
+      "id": "eliza.git",
+      "path": "packages/app-core/platforms/electrobun/satellites/git",
+      "category": "desktop-capability",
+      "currentPurpose": "eliza.git first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
+    },
+    {
+      "id": "eliza.local-model",
+      "path": "packages/app-core/platforms/electrobun/satellites/local-model",
+      "category": "desktop-capability",
+      "currentPurpose": "eliza.local-model first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
+    },
+    {
+      "id": "eliza.pty",
+      "path": "packages/app-core/platforms/electrobun/satellites/pty",
+      "category": "desktop-capability",
+      "currentPurpose": "eliza.pty first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.pty"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
+    },
+    {
+      "id": "eliza.runtime",
+      "path": "packages/app-core/platforms/electrobun/satellites/runtime",
+      "category": "desktop-capability",
+      "currentPurpose": "eliza.runtime first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
+    },
+    {
+      "id": "eliza.surface",
+      "path": "packages/app-core/platforms/electrobun/satellites/surface",
+      "category": "dev-tooling",
+      "currentPurpose": "eliza.surface first-party Electrobun Satellite.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Dev/admin only. Do not turn into production UI."
+    },
+    {
+      "id": "future.eliza.computer",
+      "path": "packages/app-core/platforms/electrobun/satellites/computer",
+      "category": "desktop-capability",
+      "currentPurpose": "Potential future broker for screen/browser/camera/computer context if existing host APIs need a Satellite boundary.",
+      "keepAs": "needs-review",
+      "shouldBecomeSatellite": true,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "electrobun-shell",
+        "trace",
+        "dynamic-views"
+      ],
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Only future Satellite candidate. Do not create until a concrete host capability boundary is required."
+    },
+    {
+      "id": "packages/agent",
+      "path": "packages/agent",
+      "category": "core-runtime",
+      "currentPurpose": "Standalone elizaOS-based agent and backend server package.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "AgentManager/Electrobun may own lifecycle, but agent runtime code stays in runtime packages."
+    },
+    {
+      "id": "packages/app",
+      "path": "packages/app",
+      "category": "production-ui",
+      "currentPurpose": "Cross-platform production app UI.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "production-app"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Hard no-migration item. Do not replace with eliza.surface or fixed dynamic-view panels."
+    },
+    {
+      "id": "packages/app-core",
+      "path": "packages/app-core",
+      "category": "core-runtime",
+      "currentPurpose": "Shared application core for elizaOS white-label agent apps.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "production-app",
+        "electrobun-shell"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Hard no-migration item. Electrobun platform code can add host docs, not absorb app-core ownership."
+    },
+    {
+      "id": "packages/app-core/platforms/electrobun",
+      "path": "packages/app-core/platforms/electrobun",
+      "category": "desktop-shell",
+      "currentPurpose": "Electrobun native desktop shell.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "electrobun-shell",
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Electrobun is the shell, not the agent runtime. Keep AgentManager as runtime lifecycle owner."
+    },
+    {
+      "id": "packages/app-core/platforms/electrobun/src/dynamic-views",
+      "path": "packages/app-core/platforms/electrobun/src/dynamic-views",
+      "category": "desktop-shell",
+      "currentPurpose": "Dynamic view registry/session infrastructure.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "dynamic-views",
+        "electrobun-shell"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Contextual view substrate only. Do not convert into dashboard navigation."
+    },
+    {
+      "id": "packages/app-core/platforms/electrobun/src/trace",
+      "path": "packages/app-core/platforms/electrobun/src/trace",
+      "category": "desktop-shell",
+      "currentPurpose": "Trace service and dynamic trace view infrastructure.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace",
+        "dynamic-views"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Observability spine. Plugins should emit trace events; trace should not become a static dashboard."
+    },
+    {
+      "id": "packages/app-core/platforms/electrobun/src/voice",
+      "path": "packages/app-core/platforms/electrobun/src/voice",
+      "category": "desktop-shell",
+      "currentPurpose": "Voice pipeline instrumentation, adapter, and validation layer.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "voice",
+        "trace",
+        "dynamic-views",
+        "local-inference"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Voice is a pipeline. Keep live behavior gated and report through trace."
+    },
+    {
+      "id": "packages/core",
+      "path": "packages/core",
+      "category": "core-runtime",
+      "currentPurpose": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Hard no-migration item. Runtime semantics stay here."
+    },
+    {
+      "id": "packages/electrobun-carrots",
+      "path": "packages/electrobun-carrots",
+      "category": "desktop-shell",
+      "currentPurpose": "Eliza-flavored carrot runtime primitives for Electrobun desktop shells.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "electrobun-shell"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as module runtime substrate. Do not turn into a second plugin system."
+    },
+    {
+      "id": "packages/shared/src/local-inference",
+      "path": "packages/shared/src/local-inference",
+      "category": "model-plugin",
+      "currentPurpose": "Shared local-inference model catalog, routing, paths, and voice metadata.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference",
+        "voice"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Source of truth for Eliza-1 and voice metadata. Do not duplicate in Electrobun."
+    },
+    {
+      "id": "plugin-2004scape",
+      "path": "plugins/plugin-2004scape",
+      "category": "app-plugin",
+      "currentPurpose": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-action-bench",
+      "path": "plugins/plugin-action-bench",
+      "category": "dev-tooling",
+      "currentPurpose": "Plugin package plugin-action-bench.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-agent-orchestrator",
+      "path": "plugins/plugin-agent-orchestrator",
+      "category": "dev-tooling",
+      "currentPurpose": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-agent-skills",
+      "path": "plugins/plugin-agent-skills",
+      "category": "dev-tooling",
+      "currentPurpose": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-anthropic",
+      "path": "plugins/plugin-anthropic",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-anthropic.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-anthropic-proxy",
+      "path": "plugins/plugin-anthropic-proxy",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-anthropic-proxy.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-aosp-local-inference",
+      "path": "plugins/plugin-aosp-local-inference",
+      "category": "model-plugin",
+      "currentPurpose": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-app-control",
+      "path": "plugins/plugin-app-control",
+      "category": "app-plugin",
+      "currentPurpose": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-app-manager",
+      "path": "plugins/plugin-app-manager",
+      "category": "app-plugin",
+      "currentPurpose": "App lifecycle plugin for elizaOS: hosted-app launch / list / close, run-state store, and the /api/apps/* route surface. Extracted from @elizaos/agent (Phase 4G).",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-babylon",
+      "path": "plugins/plugin-babylon",
+      "category": "app-plugin",
+      "currentPurpose": "Eliza app integration for Babylon prediction market game.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-background-runner",
+      "path": "plugins/plugin-background-runner",
+      "category": "dev-tooling",
+      "currentPurpose": "Background task runner for elizaOS — drives core TaskService.runDueTasks() from OS-level wake-ups (BGTaskScheduler on iOS, WorkManager on Android via @capacitor/background-runner). Falls back to a setInterval poll when no native scheduler is available.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-benchmarks",
+      "path": "plugins/plugin-benchmarks",
+      "category": "dev-tooling",
+      "currentPurpose": "Canonical eliza Action wrappers for benchmark tool vocabularies (vending-bench, webshop, OSWorld, tau-bench, visualwebbench).",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-bluebubbles",
+      "path": "plugins/plugin-bluebubbles",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-bluebubbles.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-bluesky",
+      "path": "plugins/plugin-bluesky",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-bluesky.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-browser",
+      "path": "plugins/plugin-browser",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-calendly",
+      "path": "plugins/plugin-calendly",
+      "category": "connector-plugin",
+      "currentPurpose": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-capacitor-bridge",
+      "path": "plugins/plugin-capacitor-bridge",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-clawville",
+      "path": "plugins/plugin-clawville",
+      "category": "app-plugin",
+      "currentPurpose": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-cli",
+      "path": "plugins/plugin-cli",
+      "category": "dev-tooling",
+      "currentPurpose": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-codex-cli",
+      "path": "plugins/plugin-codex-cli",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Plugin package plugin-codex-cli.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime",
+        "eliza.fs",
+        "eliza.pty",
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-coding-tools",
+      "path": "plugins/plugin-coding-tools",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime",
+        "eliza.fs",
+        "eliza.pty",
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-commands",
+      "path": "plugins/plugin-commands",
+      "category": "dev-tooling",
+      "currentPurpose": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-companion",
+      "path": "plugins/plugin-companion",
+      "category": "app-plugin",
+      "currentPurpose": "Companion app package with the VRM scene runtime and avatar utilities.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-computeruse",
+      "path": "plugins/plugin-computeruse",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-contacts",
+      "path": "plugins/plugin-contacts",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-defense-of-the-agents",
+      "path": "plugins/plugin-defense-of-the-agents",
+      "category": "app-plugin",
+      "currentPurpose": "Eliza app integration for Defense of the Agents.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-device-filesystem",
+      "path": "plugins/plugin-device-filesystem",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Mobile-safe filesystem bridge for canonical FILE target=device operations on iOS/Android and desktop/AOSP.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.fs"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-device-settings",
+      "path": "plugins/plugin-device-settings",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-discord",
+      "path": "plugins/plugin-discord",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-discord.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-discord-local",
+      "path": "plugins/plugin-discord-local",
+      "category": "connector-plugin",
+      "currentPurpose": "Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-documents",
+      "path": "plugins/plugin-documents",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-documents.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-edge-tts",
+      "path": "plugins/plugin-edge-tts",
+      "category": "voice-plugin",
+      "currentPurpose": "Free text-to-speech using Microsoft Edge TTS - no API key required",
+      "keepAs": "voice-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "voice"
+      ],
+      "recommendedNextAction": "connect-to-voice-pipeline",
+      "risk": "medium",
+      "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
+    },
+    {
+      "id": "plugin-elevenlabs",
+      "path": "plugins/plugin-elevenlabs",
+      "category": "voice-plugin",
+      "currentPurpose": "Plugin package plugin-elevenlabs.",
+      "keepAs": "voice-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "voice"
+      ],
+      "recommendedNextAction": "connect-to-voice-pipeline",
+      "risk": "medium",
+      "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
+    },
+    {
+      "id": "plugin-eliza-classic",
+      "path": "plugins/plugin-eliza-classic",
+      "category": "app-plugin",
+      "currentPurpose": "Deterministic ELIZA-style pattern matching (browser + Node); ships compiled ESM in dist/.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-elizacloud",
+      "path": "plugins/plugin-elizacloud",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-elizacloud.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-elizamaker",
+      "path": "plugins/plugin-elizamaker",
+      "category": "app-plugin",
+      "currentPurpose": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-farcaster",
+      "path": "plugins/plugin-farcaster",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-farcaster.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-feishu",
+      "path": "plugins/plugin-feishu",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-feishu.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-form",
+      "path": "plugins/plugin-form",
+      "category": "app-plugin",
+      "currentPurpose": "Eliza plugin-form: conversational forms as guardrails for guided user journeys.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-github",
+      "path": "plugins/plugin-github",
+      "category": "connector-plugin",
+      "currentPurpose": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-google",
+      "path": "plugins/plugin-google",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-google.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-google-chat",
+      "path": "plugins/plugin-google-chat",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-google-chat.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-google-genai",
+      "path": "plugins/plugin-google-genai",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-google-genai.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-google-meet-cute",
+      "path": "plugins/plugin-google-meet-cute",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-google-meet-cute.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-groq",
+      "path": "plugins/plugin-groq",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-groq.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-health",
+      "path": "plugins/plugin-health",
+      "category": "app-plugin",
+      "currentPurpose": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-hyperliquid-app",
+      "path": "plugins/plugin-hyperliquid-app",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-hyperliquid-app.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-hyperscape",
+      "path": "plugins/plugin-hyperscape",
+      "category": "app-plugin",
+      "currentPurpose": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-imessage",
+      "path": "plugins/plugin-imessage",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-imessage.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-inmemorydb",
+      "path": "plugins/plugin-inmemorydb",
+      "category": "data-memory-plugin",
+      "currentPurpose": "Pure in-memory, ephemeral database storage for elizaOS - no persistence, completely forgets on reset",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun."
+    },
+    {
+      "id": "plugin-instagram",
+      "path": "plugins/plugin-instagram",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-instagram.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-lifeops",
+      "path": "plugins/plugin-lifeops",
+      "category": "app-plugin",
+      "currentPurpose": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-line",
+      "path": "plugins/plugin-line",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-line.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-linear",
+      "path": "plugins/plugin-linear",
+      "category": "connector-plugin",
+      "currentPurpose": "Linear integration plugin for ElizaOS (TypeScript)",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-lmstudio",
+      "path": "plugins/plugin-lmstudio",
+      "category": "model-plugin",
+      "currentPurpose": "Plugin package plugin-lmstudio.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-local-inference",
+      "path": "plugins/plugin-local-inference",
+      "category": "model-plugin",
+      "currentPurpose": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "trace",
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-local-storage",
+      "path": "plugins/plugin-local-storage",
+      "category": "data-memory-plugin",
+      "currentPurpose": "Local filesystem attachment storage backed by @brighter/storage-adapter-local. Default fallback when Eliza Cloud storage is not connected.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun."
+    },
+    {
+      "id": "plugin-localdb",
+      "path": "plugins/plugin-localdb",
+      "category": "data-memory-plugin",
+      "currentPurpose": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun."
+    },
+    {
+      "id": "plugin-matrix",
+      "path": "plugins/plugin-matrix",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-matrix.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-mcp",
+      "path": "plugins/plugin-mcp",
+      "category": "connector-plugin",
+      "currentPurpose": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-messages",
+      "path": "plugins/plugin-messages",
+      "category": "connector-plugin",
+      "currentPurpose": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/capacitor-messages.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-minecraft",
+      "path": "plugins/plugin-minecraft",
+      "category": "app-plugin",
+      "currentPurpose": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-mlx",
+      "path": "plugins/plugin-mlx",
+      "category": "model-plugin",
+      "currentPurpose": "Plugin package plugin-mlx.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-music",
+      "path": "plugins/plugin-music",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-music.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-mysticism",
+      "path": "plugins/plugin-mysticism",
+      "category": "app-plugin",
+      "currentPurpose": "Mystical divination engines for ElizaOS — Tarot, I Ching, and Astrology readings",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-native-activity-tracker",
+      "path": "plugins/plugin-native-activity-tracker",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-agent",
+      "path": "plugins/plugin-native-agent",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Starts, stops, and monitors the embedded Eliza agent runtime.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-appblocker",
+      "path": "plugins/plugin-native-appblocker",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Blocks selected apps on Android with Usage Access and an overlay shield, and on iPhone with Family Controls.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-bun-runtime",
+      "path": "plugins/plugin-native-bun-runtime",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Embedded Bun-shape JS runtime bridge for iOS and Android",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-calendar",
+      "path": "plugins/plugin-native-calendar",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Reads and writes Apple Calendar events through EventKit.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-camera",
+      "path": "plugins/plugin-native-camera",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Captures photos, records video, and streams camera preview with manual controls.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-canvas",
+      "path": "plugins/plugin-native-canvas",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Creates interactive canvases with layers, drawing primitives, and A2UI integration.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-native-contacts",
+      "path": "plugins/plugin-native-contacts",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android ContactsContract bridge for ElizaOS.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-desktop",
+      "path": "plugins/plugin-native-desktop",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Adds tray icons, global shortcuts, notifications, and other desktop-only controls.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-eliza-tasks",
+      "path": "plugins/plugin-native-eliza-tasks",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Bridges iOS BGTaskScheduler (BGAppRefreshTask + BGProcessingTask) wake events into the Eliza Capacitor runtime.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-gateway",
+      "path": "plugins/plugin-native-gateway",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Connects the app to an Eliza Gateway with discovery, RPC, and realtime events.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-llama",
+      "path": "plugins/plugin-native-llama",
+      "category": "model-plugin",
+      "currentPurpose": "Eliza mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-native-location",
+      "path": "plugins/plugin-native-location",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Reads current location, watches movement, and manages geolocation permissions.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-macosalarm",
+      "path": "plugins/plugin-native-macosalarm",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "macOS native alarm helper plugin. Schedules UNUserNotificationCenter calendar-trigger alarms via a self-contained Swift CLI invoked from the Eliza runtime.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-messages",
+      "path": "plugins/plugin-native-messages",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android SMS/MMS bridge for ElizaOS.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-mobile-agent-bridge",
+      "path": "plugins/plugin-native-mobile-agent-bridge",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Outbound tunnel from a phone-hosted Eliza agent so a remote Mac client can reach it. See docs/reverse-direction-tunneling.md.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-mobile-signals",
+      "path": "plugins/plugin-native-mobile-signals",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Bridges mobile wake, lock, battery, and protected-data state into LifeOps.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-network-policy",
+      "path": "plugins/plugin-native-network-policy",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning §4).",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-phone",
+      "path": "plugins/plugin-native-phone",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android phone and Telecom bridge for ElizaOS.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-screencapture",
+      "path": "plugins/plugin-native-screencapture",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Captures screenshots and records the screen across web, mobile, and desktop.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-native-shared-types",
+      "path": "plugins/plugin-native-shared-types",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Shared type contracts for elizaOS native plugin bridges.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-swabble",
+      "path": "plugins/plugin-native-swabble",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Detects wake words and transcribes live speech with microphone state events.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-system",
+      "path": "plugins/plugin-native-system",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android system-role status bridge for ElizaOS.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-talkmode",
+      "path": "plugins/plugin-native-talkmode",
+      "category": "voice-plugin",
+      "currentPurpose": "Runs voice conversations with live transcription, chat orchestration, and spoken replies.",
+      "keepAs": "voice-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace",
+        "voice"
+      ],
+      "recommendedNextAction": "connect-to-voice-pipeline",
+      "risk": "medium",
+      "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
+    },
+    {
+      "id": "plugin-native-websiteblocker",
+      "path": "plugins/plugin-native-websiteblocker",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Blocks websites through the Eliza runtime on desktop/web, uses native Android VPN DNS enforcement, and manages a native Safari content blocker on iPhone and iPad.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-native-wifi",
+      "path": "plugins/plugin-native-wifi",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Android Wi-Fi (WifiManager) bridge for ElizaOS.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-ngrok",
+      "path": "plugins/plugin-ngrok",
+      "category": "connector-plugin",
+      "currentPurpose": "Ngrok tunnel plugin for elizaOS — third-party backend implementing the @elizaos/plugin-tunnel ITunnelService contract.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-nostr",
+      "path": "plugins/plugin-nostr",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-nostr.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-ollama",
+      "path": "plugins/plugin-ollama",
+      "category": "model-plugin",
+      "currentPurpose": "Plugin package plugin-ollama.",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-omnivoice",
+      "path": "plugins/plugin-omnivoice",
+      "category": "voice-plugin",
+      "currentPurpose": "Local TTS via omnivoice.cpp (k2-fsa OmniVoice) — voice cloning, voice design, and emotion-aware synthesis on CPU/Metal/CUDA/Vulkan.",
+      "keepAs": "voice-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "voice",
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-voice-pipeline",
+      "risk": "medium",
+      "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
+    },
+    {
+      "id": "plugin-openai",
+      "path": "plugins/plugin-openai",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-openai.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-openrouter",
+      "path": "plugins/plugin-openrouter",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-openrouter.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-pdf",
+      "path": "plugins/plugin-pdf",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-pdf.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-phone",
+      "path": "plugins/plugin-phone",
+      "category": "app-plugin",
+      "currentPurpose": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-polymarket-app",
+      "path": "plugins/plugin-polymarket-app",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-polymarket-app.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-registry",
+      "path": "plugins/plugin-registry",
+      "category": "dev-tooling",
+      "currentPurpose": "Plugin registry plugin: consolidates plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP routes for plugin management. Owns the cross-package plugin-routes (agent-tier) and plugins-routes (app-core compat-tier) surfaces and the install-orchestration helpers that forward into the agent runtime.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-rlm",
+      "path": "plugins/plugin-rlm",
+      "category": "model-plugin",
+      "currentPurpose": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
+      "keepAs": "model-pipeline-participant",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "local-inference"
+      ],
+      "recommendedNextAction": "connect-to-local-model",
+      "risk": "medium",
+      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
+    },
+    {
+      "id": "plugin-roblox",
+      "path": "plugins/plugin-roblox",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-roblox.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-scape",
+      "path": "plugins/plugin-scape",
+      "category": "app-plugin",
+      "currentPurpose": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-screenshare",
+      "path": "plugins/plugin-screenshare",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-shell",
+      "path": "plugins/plugin-shell",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Shell history and observability plugin for ElizaOS",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedSatellites": [
+        "eliza.pty"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-shopify",
+      "path": "plugins/plugin-shopify",
+      "category": "connector-plugin",
+      "currentPurpose": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-shopify-ui",
+      "path": "plugins/plugin-shopify-ui",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-shopify-ui.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-signal",
+      "path": "plugins/plugin-signal",
+      "category": "connector-plugin",
+      "currentPurpose": "Signal messaging integration plugin for ElizaOS agents",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-slack",
+      "path": "plugins/plugin-slack",
+      "category": "connector-plugin",
+      "currentPurpose": "Slack integration plugin for elizaOS agents with Socket Mode support",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-social-alpha",
+      "path": "plugins/plugin-social-alpha",
+      "category": "connector-plugin",
+      "currentPurpose": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-sql",
+      "path": "plugins/plugin-sql",
+      "category": "data-memory-plugin",
+      "currentPurpose": "Plugin package plugin-sql.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun."
+    },
+    {
+      "id": "plugin-steward-app",
+      "path": "plugins/plugin-steward-app",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-steward-app.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-streaming",
+      "path": "plugins/plugin-streaming",
+      "category": "dev-tooling",
+      "currentPurpose": "RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-suno",
+      "path": "plugins/plugin-suno",
+      "category": "app-plugin",
+      "currentPurpose": "Suno AI Music Generation Plugin for Eliza",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-tailscale",
+      "path": "plugins/plugin-tailscale",
+      "category": "connector-plugin",
+      "currentPurpose": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-task-coordinator",
+      "path": "plugins/plugin-task-coordinator",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-task-coordinator.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-tee",
+      "path": "plugins/plugin-tee",
+      "category": "dev-tooling",
+      "currentPurpose": "Trusted Execution Environment (TEE) integration plugin for elizaOS - Multi-language support (TypeScript, Python, Rust)",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-telegram",
+      "path": "plugins/plugin-telegram",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-telegram.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-todos",
+      "path": "plugins/plugin-todos",
+      "category": "app-plugin",
+      "currentPurpose": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-training",
+      "path": "plugins/plugin-training",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-training.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-trajectory-logger",
+      "path": "plugins/plugin-trajectory-logger",
+      "category": "dev-tooling",
+      "currentPurpose": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "leave-alone",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-tunnel",
+      "path": "plugins/plugin-tunnel",
+      "category": "connector-plugin",
+      "currentPurpose": "Tunnel plugin for elizaOS — local Tailscale CLI backend (serve/funnel). Pair with @elizaos/plugin-elizacloud for the hosted headscale backend.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-twitch",
+      "path": "plugins/plugin-twitch",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-twitch.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-video",
+      "path": "plugins/plugin-video",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-video.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-vincent",
+      "path": "plugins/plugin-vincent",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-vincent.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-vision",
+      "path": "plugins/plugin-vision",
+      "category": "app-plugin",
+      "currentPurpose": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-wallet",
+      "path": "plugins/plugin-wallet",
+      "category": "app-plugin",
+      "currentPurpose": "Non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-wallet-ui",
+      "path": "plugins/plugin-wallet-ui",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-wallet-ui.",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-web-search",
+      "path": "plugins/plugin-web-search",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-web-search.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-wechat",
+      "path": "plugins/plugin-wechat",
+      "category": "connector-plugin",
+      "currentPurpose": "WeChat connector plugin for elizaOS via proxy API",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-whatsapp",
+      "path": "plugins/plugin-whatsapp",
+      "category": "connector-plugin",
+      "currentPurpose": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-wifi",
+      "path": "plugins/plugin-wifi",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": true,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed."
+    },
+    {
+      "id": "plugin-workflow",
+      "path": "plugins/plugin-workflow",
+      "category": "app-plugin",
+      "currentPurpose": "ElizaOS plugin for generating and running workflows in-process",
+      "keepAs": "app-plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": true,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
+      "recommendedNextAction": "add-dynamic-view-manifest",
+      "risk": "medium",
+      "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-x",
+      "path": "plugins/plugin-x",
+      "category": "connector-plugin",
+      "currentPurpose": "elizaOS X (formerly Twitter) connector: posting, mentions, replies, DMs, and timeline interactions.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-x402",
+      "path": "plugins/plugin-x402",
+      "category": "connector-plugin",
+      "currentPurpose": "x402 micropayment middleware for elizaOS plugin HTTP routes",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-xai",
+      "path": "plugins/plugin-xai",
+      "category": "provider-plugin",
+      "currentPurpose": "elizaOS xAI plugin: Grok models for text generation and embeddings.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "plugin-xmtp",
+      "path": "plugins/plugin-xmtp",
+      "category": "connector-plugin",
+      "currentPurpose": "Plugin package plugin-xmtp.",
+      "keepAs": "connector",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-zai",
+      "path": "plugins/plugin-zai",
+      "category": "provider-plugin",
+      "currentPurpose": "Plugin package plugin-zai.",
+      "keepAs": "plugin",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite."
+    },
+    {
+      "id": "repo-root",
+      "path": ".",
+      "category": "core-runtime",
+      "currentPurpose": "Workspace root and monorepo coordination.",
+      "keepAs": "core",
+      "shouldBecomeSatellite": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "agent-runtime"
+      ],
+      "recommendedNextAction": "leave-alone",
+      "risk": "low",
+      "notes": "Keep as workspace root. Do not use Electrobun convergence to change global repo ownership."
+    }
+  ],
+  "deletionCandidates": [
+    {
+      "path": "packages/app-core/platforms/electrobun/build",
+      "reason": "Generated local build output. It should not be part of architecture or PR review scope.",
+      "confidence": "medium",
+      "safeToDeleteNow": false,
+      "requiresOwnerDecision": false,
+      "validationNeeded": [
+        "confirm ignored/untracked status",
+        "rerun build if removed"
+      ]
+    },
+    {
+      "path": "dist",
+      "reason": "Generated local build output. It should not be part of architecture or PR review scope.",
+      "confidence": "medium",
+      "safeToDeleteNow": false,
+      "requiresOwnerDecision": false,
+      "validationNeeded": [
+        "confirm ignored/untracked status",
+        "rerun build if removed"
+      ]
+    },
+    {
+      "path": "plugins/plugin-action-bench",
+      "reason": "Plugin-shaped directory without package.json. Needs owner review before deletion or restoration.",
+      "confidence": "low",
+      "safeToDeleteNow": false,
+      "requiresOwnerDecision": true,
+      "validationNeeded": [
+        "search imports",
+        "check package registry references"
+      ]
+    },
+    {
+      "path": "plugins/plugin-google-meet-cute",
+      "reason": "Plugin-shaped directory without package.json. Needs owner review before deletion or restoration.",
+      "confidence": "low",
+      "safeToDeleteNow": false,
+      "requiresOwnerDecision": true,
+      "validationNeeded": [
+        "search imports",
+        "check package registry references"
+      ]
+    },
+    {
+      "path": "plugins/plugin-xmtp",
+      "reason": "Plugin-shaped directory without package.json. Needs owner review before deletion or restoration.",
+      "confidence": "low",
+      "safeToDeleteNow": false,
+      "requiresOwnerDecision": true,
+      "validationNeeded": [
+        "search imports",
+        "check package registry references"
+      ]
+    }
+  ],
+  "summaries": {
+    "byCategory": {
+      "core-runtime": 4,
+      "desktop-shell": 5,
+      "production-ui": 1,
+      "app-plugin": 36,
+      "connector-plugin": 35,
+      "model-plugin": 8,
+      "voice-plugin": 4,
+      "native-semantic-plugin": 35,
+      "desktop-capability": 6,
+      "data-memory-plugin": 4,
+      "dev-tooling": 12,
+      "provider-plugin": 8,
+      "obsolete-or-duplicate": 0,
+      "unknown": 0
+    },
+    "byRecommendedNextAction": {
+      "leave-alone": 37,
+      "add-trace-hooks": 74,
+      "add-dynamic-view-manifest": 13,
+      "route-through-runtime-broker": 21,
+      "connect-to-voice-pipeline": 4,
+      "connect-to-local-model": 8,
+      "dedupe-with-existing-plugin": 0,
+      "deprecate": 0,
+      "delete-after-confirmation": 0,
+      "needs-owner-decision": 1
+    },
+    "hardNoMigration": [
+      "packages/app",
+      "packages/core",
+      "packages/agent",
+      "packages/app-core",
+      "packages/app-core/platforms/electrobun core shell",
+      "packages/electrobun-carrots",
+      "connector plugins",
+      "provider plugins",
+      "app plugins",
+      "core runtime plugins"
+    ],
+    "currentSatellites": [
+      "eliza.fs",
+      "eliza.git",
+      "eliza.local-model",
+      "eliza.pty",
+      "eliza.runtime",
+      "eliza.surface"
+    ],
+    "futureSatelliteCandidates": [
+      "future.eliza.computer"
+    ],
+    "traceFirstCandidates": [
+      "future.eliza.computer",
+      "packages/app-core/platforms/electrobun/src/trace",
+      "packages/app-core/platforms/electrobun/src/voice",
+      "packages/shared/src/local-inference",
+      "plugin-agent-orchestrator",
+      "plugin-agent-skills",
+      "plugin-bluebubbles",
+      "plugin-bluesky",
+      "plugin-browser",
+      "plugin-calendly",
+      "plugin-capacitor-bridge",
+      "plugin-codex-cli",
+      "plugin-coding-tools",
+      "plugin-computeruse",
+      "plugin-contacts",
+      "plugin-device-filesystem",
+      "plugin-device-settings",
+      "plugin-discord",
+      "plugin-discord-local",
+      "plugin-documents",
+      "plugin-farcaster",
+      "plugin-feishu",
+      "plugin-github",
+      "plugin-google",
+      "plugin-google-chat",
+      "plugin-google-meet-cute",
+      "plugin-imessage",
+      "plugin-instagram",
+      "plugin-line",
+      "plugin-linear",
+      "plugin-local-inference",
+      "plugin-matrix",
+      "plugin-mcp",
+      "plugin-messages",
+      "plugin-native-activity-tracker",
+      "plugin-native-agent",
+      "plugin-native-appblocker",
+      "plugin-native-bun-runtime",
+      "plugin-native-calendar",
+      "plugin-native-camera",
+      "plugin-native-canvas",
+      "plugin-native-contacts",
+      "plugin-native-desktop",
+      "plugin-native-eliza-tasks",
+      "plugin-native-gateway",
+      "plugin-native-location",
+      "plugin-native-macosalarm",
+      "plugin-native-messages",
+      "plugin-native-mobile-agent-bridge",
+      "plugin-native-mobile-signals",
+      "plugin-native-network-policy",
+      "plugin-native-phone",
+      "plugin-native-screencapture",
+      "plugin-native-shared-types",
+      "plugin-native-swabble",
+      "plugin-native-system",
+      "plugin-native-talkmode",
+      "plugin-native-websiteblocker",
+      "plugin-native-wifi",
+      "plugin-ngrok",
+      "plugin-nostr",
+      "plugin-screenshare",
+      "plugin-shell",
+      "plugin-shopify",
+      "plugin-signal",
+      "plugin-slack",
+      "plugin-social-alpha",
+      "plugin-tailscale",
+      "plugin-task-coordinator",
+      "plugin-telegram",
+      "plugin-training",
+      "plugin-tunnel",
+      "plugin-twitch",
+      "plugin-vincent",
+      "plugin-web-search",
+      "plugin-wechat",
+      "plugin-whatsapp",
+      "plugin-wifi",
+      "plugin-workflow",
+      "plugin-x",
+      "plugin-x402",
+      "plugin-xmtp"
+    ],
+    "dynamicViewCandidates": [
+      "app-model-tester",
+      "eliza.surface",
+      "packages/app-core/platforms/electrobun/src/dynamic-views",
+      "packages/app-core/platforms/electrobun/src/trace",
+      "packages/app-core/platforms/electrobun/src/voice",
+      "plugin-agent-orchestrator",
+      "plugin-agent-skills",
+      "plugin-browser",
+      "plugin-coding-tools",
+      "plugin-computeruse",
+      "plugin-documents",
+      "plugin-github",
+      "plugin-native-canvas",
+      "plugin-native-screencapture",
+      "plugin-task-coordinator",
+      "plugin-training",
+      "plugin-workflow"
+    ],
+    "voiceLocalModelCandidates": [
+      "packages/app-core/platforms/electrobun/src/voice",
+      "packages/shared/src/local-inference",
+      "plugin-aosp-local-inference",
+      "plugin-edge-tts",
+      "plugin-elevenlabs",
+      "plugin-lmstudio",
+      "plugin-local-inference",
+      "plugin-mlx",
+      "plugin-native-llama",
+      "plugin-native-talkmode",
+      "plugin-ollama",
+      "plugin-omnivoice",
+      "plugin-rlm"
+    ],
+    "runtimeBrokerCandidates": [
+      "eliza.fs",
+      "eliza.git",
+      "eliza.local-model",
+      "eliza.pty",
+      "eliza.runtime",
+      "future.eliza.computer",
+      "plugin-browser",
+      "plugin-capacitor-bridge",
+      "plugin-codex-cli",
+      "plugin-coding-tools",
+      "plugin-computeruse",
+      "plugin-contacts",
+      "plugin-device-filesystem",
+      "plugin-device-settings",
+      "plugin-native-activity-tracker",
+      "plugin-native-appblocker",
+      "plugin-native-bun-runtime",
+      "plugin-native-calendar",
+      "plugin-native-camera",
+      "plugin-native-canvas",
+      "plugin-native-contacts",
+      "plugin-native-desktop",
+      "plugin-native-location",
+      "plugin-native-macosalarm",
+      "plugin-native-messages",
+      "plugin-native-phone",
+      "plugin-native-screencapture",
+      "plugin-native-system",
+      "plugin-native-wifi",
+      "plugin-screenshare",
+      "plugin-shell",
+      "plugin-wifi"
+    ],
+    "ownerDecisionItems": [
+      "future.eliza.computer"
+    ]
+  }
+}

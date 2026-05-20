@@ -1,11 +1,22 @@
 import Foundation
+#if !ELIZA_IOS_FULL_BUN_ENGINE
 import JavaScriptCore
+#endif
 import Capacitor
 
+#if !ELIZA_IOS_FULL_BUN_ENGINE
 // Disambiguate `JSValue` — both JavaScriptCore (class) and Capacitor (marker
 // protocol) export a type called `JSValue`. Inside this file we always mean
 // the JSC class.
 private typealias JSValue = JavaScriptCore.JSValue
+#endif
+
+#if ELIZA_IOS_FULL_BUN_ENGINE
+private enum RuntimeQueue {
+    static let label = "ai.eliza.bun.runtime"
+    static var current: DispatchQueue?
+}
+#endif
 
 /// Core runtime that hosts a JavaScriptCore JSContext on a dedicated serial
 /// queue. The plugin shell (`ElizaBunRuntimePlugin`) talks to this class to
@@ -23,11 +34,21 @@ public final class ElizaBunRuntime {
     // MARK: - Private state
 
     private let queue = DispatchQueue(label: RuntimeQueue.label, qos: .userInitiated)
+#if !ELIZA_IOS_FULL_BUN_ENGINE
     private let virtualMachine = JSVirtualMachine()!
     private var context: JSContext?
     private var bridges: BridgeKit?
+#endif
     private var fullBunEngine: FullBunEngineHost?
     private weak var plugin: CAPPlugin?
+
+    private static var defaultBridgeVersion: String {
+#if ELIZA_IOS_FULL_BUN_ENGINE
+        return "v1"
+#else
+        return BridgeInstaller.version
+#endif
+    }
 
     public typealias RuntimeStatus = (
         ready: Bool,
@@ -58,15 +79,19 @@ public final class ElizaBunRuntime {
         queue.async { [weak self] in
             guard let self = self else { return }
             RuntimeQueue.current = self.queue
+            NSLog("[ElizaBunRuntime] start queued engine=\(engine) argv=\(argv) envKeys=\(env.keys.sorted())")
             if self.isRunning {
                 if let fullBunEngine = self.fullBunEngine, !fullBunEngine.isRunning {
+                    NSLog("[ElizaBunRuntime] start found stale full Bun host")
                     self.isRunning = false
                     self.fullBunEngine = nil
                 } else {
-                    completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? BridgeInstaller.version)))
+                    NSLog("[ElizaBunRuntime] start reused running runtime engineMode=\(self.engineMode)")
+                    completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)))
                     return
                 }
             }
+            let startedAt = Date()
             do {
                 try self.bootstrap(
                     bundlePath: bundlePath,
@@ -75,9 +100,13 @@ public final class ElizaBunRuntime {
                     argv: argv,
                     env: env
                 )
-                let outcome = StartOutcome(bridgeVersion: self.bridgeVersion ?? BridgeInstaller.version)
+                let outcome = StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)
+                let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                NSLog("[ElizaBunRuntime] start completed engineMode=\(self.engineMode) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
                 completion(.success(outcome))
             } catch {
+                let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                NSLog("[ElizaBunRuntime] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
                 completion(.failure(error))
             }
         }
@@ -117,7 +146,9 @@ public final class ElizaBunRuntime {
     public func handleAgentExit(code: Int) {
         queue.async { [weak self] in
             guard let self = self else { return }
+#if !ELIZA_IOS_FULL_BUN_ENGINE
             self.bridges?.ui.handler(for: "__internal_on_exit__")?.callSync(args: [code])
+#endif
             self.teardown()
             DispatchQueue.main.async {
                 self.plugin?.notifyListeners("eliza:runtime-exit", data: ["code": code])
@@ -150,6 +181,7 @@ public final class ElizaBunRuntime {
                 }
                 return
             }
+#if !ELIZA_IOS_FULL_BUN_ENGINE
             guard let ctx = self.context else {
                 completion(.failure(self.makeError("Runtime is not started")))
                 return
@@ -171,6 +203,9 @@ public final class ElizaBunRuntime {
                 return
             }
             self.unwrapReply(result: result, ctx: ctx, completion: completion)
+#else
+            completion(.failure(self.makeError("Full Bun runtime is not started")))
+#endif
         }
     }
 
@@ -192,6 +227,7 @@ public final class ElizaBunRuntime {
                 }
                 return
             }
+#if !ELIZA_IOS_FULL_BUN_ENGINE
             guard let ctx = self.context else {
                 completion(.failure(self.makeError("Runtime is not started")))
                 return
@@ -210,6 +246,9 @@ public final class ElizaBunRuntime {
                 return
             }
             self.unwrapAny(result: result, ctx: ctx, completion: completion)
+#else
+            completion(.failure(self.makeError("Full Bun runtime is not started")))
+#endif
         }
     }
 
@@ -224,6 +263,12 @@ public final class ElizaBunRuntime {
     ) throws {
         let requestedEngine = IosRuntimePolicy.normalizeEngine(engine)
         let runtimeEnv = IosRuntimePolicy.sanitizeEnvironment(env)
+#if ELIZA_IOS_FULL_BUN_ENGINE
+        let compiledEngine = "full-bun"
+#else
+        let compiledEngine = "compat"
+#endif
+        NSLog("[ElizaBunRuntime] bootstrap requestedEngine=\(requestedEngine) compiledEngine=\(compiledEngine)")
         if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
@@ -234,12 +279,19 @@ public final class ElizaBunRuntime {
                 let resolvedBundlePath = try resolveFullBunAgentBundlePath(override: bundlePath)
                 let assetDir = URL(fileURLWithPath: resolvedBundlePath).deletingLastPathComponent().path
                 let publicDir = URL(fileURLWithPath: assetDir).deletingLastPathComponent().path
+                let stateLocalInferenceModelsDir = paths.appSupport
+                    .appendingPathComponent("local-inference", isDirectory: true)
+                    .appendingPathComponent("models", isDirectory: true)
                 try? FileManager.default.createDirectory(
                     atPath: workspaceDir,
                     withIntermediateDirectories: true
                 )
                 try? FileManager.default.createDirectory(
                     atPath: pgliteDir,
+                    withIntermediateDirectories: true
+                )
+                try? FileManager.default.createDirectory(
+                    at: stateLocalInferenceModelsDir,
                     withIntermediateDirectories: true
                 )
                 var fullBunEnv = runtimeEnv
@@ -254,6 +306,7 @@ public final class ElizaBunRuntime {
                 fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
+                NSLog("[ElizaBunRuntime] full Bun bootstrap bundle=\(resolvedBundlePath) appSupport=\(appSupportDir) pglite=\(pgliteDir) assetDir=\(assetDir)")
                 try host.start(
                     bundlePath: resolvedBundlePath,
                     argv: argv,
@@ -261,20 +314,28 @@ public final class ElizaBunRuntime {
                     appSupportDir: appSupportDir
                 )
                 self.fullBunEngine = host
+#if !ELIZA_IOS_FULL_BUN_ENGINE
                 self.context = nil
                 self.bridges = nil
+#endif
                 self.engineMode = "bun"
                 self.bridgeVersion = "bun-ios:\(host.abiVersion)"
                 self.isRunning = true
+                NSLog("[ElizaBunRuntime] full Bun bootstrap ready bridgeVersion=\(self.bridgeVersion ?? "unknown")")
                 return
             } catch {
+#if ELIZA_IOS_FULL_BUN_ENGINE
+                throw error
+#else
                 if requestedEngine == "bun" {
                     throw error
                 }
                 NSLog("[ElizaBunRuntime] Full Bun engine unavailable; falling back to JSContext: \(error)")
+#endif
             }
         }
 
+#if !ELIZA_IOS_FULL_BUN_ENGINE
         guard IosRuntimePolicy.allowsJSContextCompatibilityFallback else {
             throw makeError(
                 "JSContext compatibility fallback is disabled outside iOS DEBUG/development builds; request engine=bun"
@@ -331,15 +392,20 @@ public final class ElizaBunRuntime {
         }
 
         self.isRunning = true
+#else
+        throw makeError("JSContext compatibility fallback is not compiled into full Bun builds; request engine=bun")
+#endif
     }
 
     private func teardown() {
         fullBunEngine?.stop()
         fullBunEngine = nil
+#if !ELIZA_IOS_FULL_BUN_ENGINE
         bridges?.httpServer.shutdown()
         bridges?.ui.clear()
         bridges = nil
         context = nil
+#endif
         isRunning = false
         loadedModelPath = nil
         tokensPerSecond = nil
@@ -348,10 +414,6 @@ public final class ElizaBunRuntime {
     }
 
     // MARK: - Source loading
-
-    private func loadAgentSource(override: String?) throws -> String {
-        return try String(contentsOfFile: resolveAgentBundlePath(override: override), encoding: .utf8)
-    }
 
     private func resolveFullBunAgentBundlePath(override: String?) throws -> String {
         if let url = Bundle.main.url(
@@ -379,6 +441,11 @@ public final class ElizaBunRuntime {
         throw makeError(
             "public/agent/agent-bundle.js not found in app bundle resources for full Bun engine"
         )
+    }
+
+#if !ELIZA_IOS_FULL_BUN_ENGINE
+    private func loadAgentSource(override: String?) throws -> String {
+        return try String(contentsOfFile: resolveAgentBundlePath(override: override), encoding: .utf8)
     }
 
     private func resolveAgentBundlePath(override: String?) throws -> String {
@@ -533,6 +600,19 @@ public final class ElizaBunRuntime {
         }
         completion(.success(result.toObject()))
     }
+#endif
+
+#if ELIZA_IOS_FULL_BUN_ENGINE
+    private func extractReply(from value: Any?) -> String {
+        if let s = value as? String { return s }
+        if let dict = value as? [String: Any] {
+            if let s = dict["reply"] as? String { return s }
+            if let s = dict["text"] as? String { return s }
+            if let result = dict["result"] { return extractReply(from: result) }
+        }
+        return String(describing: value ?? "")
+    }
+#endif
 
     // MARK: - Errors
 
@@ -556,7 +636,9 @@ public final class ElizaBunRuntime {
 enum IosRuntimePolicy {
     static let defaultEngine = "auto"
     static let safeLocalExecutionMode = "local-safe"
-#if DEBUG
+#if ELIZA_IOS_FULL_BUN_ENGINE
+    static let allowsJSContextCompatibilityFallback = false
+#elseif DEBUG
     static let allowsJSContextCompatibilityFallback = true
 #else
     static let allowsJSContextCompatibilityFallback = false
@@ -598,7 +680,11 @@ enum IosRuntimePolicy {
         }
 
         sanitized["ELIZA_IOS_RUNTIME_POLICY"] = safeLocalExecutionMode
+#if ELIZA_IOS_FULL_BUN_ENGINE
+        sanitized["ELIZA_IOS_JAVASCRIPT_ENGINE"] = "bun"
+#else
         sanitized["ELIZA_IOS_JAVASCRIPT_ENGINE"] = "javascriptcore"
+#endif
         sanitized["ELIZA_IOS_JIT"] = "0"
         sanitized["ELIZA_IOS_DYNAMIC_CODE_SIGNING"] = "0"
         return sanitized

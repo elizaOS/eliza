@@ -154,10 +154,10 @@ export class VoiceProfilesClient {
         "/api/voice/onboarding/profile/start",
         { method: "POST" },
       );
-      return normaliseCaptureSession(raw);
+      return normaliseCaptureSession(raw) ?? fallbackOwnerCaptureSession();
     } catch (err) {
       if (isMissingEndpointError(err)) {
-        return fallbackCaptureSession();
+        return fallbackOwnerCaptureSession();
       }
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/start",
@@ -173,11 +173,12 @@ export class VoiceProfilesClient {
   ): Promise<void> {
     try {
       await this.client.fetch(
-        `/api/voice/onboarding/profile/append?sessionId=${encodeURIComponent(sessionId)}`,
+        `/api/voice/onboarding/profile/append?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
       if (isMissingEndpointError(err)) return;
+      if (isUnsupportedCaptureRouteError(err)) return;
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/append",
         err,
@@ -192,20 +193,12 @@ export class VoiceProfilesClient {
   ): Promise<VoiceCaptureSubmitResult> {
     try {
       return await this.client.fetch<VoiceCaptureSubmitResult>(
-        `/api/voice/onboarding/profile/finalize?sessionId=${encodeURIComponent(sessionId)}`,
+        `/api/voice/onboarding/profile/finalize?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) {
-        // Fallback so onboarding step 6 still renders an OWNER badge even
-        // when I2 hasn't landed. Marks the profile id deterministic so we
-        // can locate it from settings later.
-        return {
-          profileId: `owner-${sessionId}`,
-          entityId: `owner-entity-${sessionId}`,
-          isOwner: true,
-        };
-      }
+      if (isMissingEndpointError(err) || isUnsupportedCaptureRouteError(err))
+        return fallbackOwnerSubmitResult(sessionId);
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/finalize",
         err,
@@ -359,57 +352,69 @@ const OWNER_CAPTURE_FALLBACK_PROMPTS: VoiceCapturePrompt[] = [
   },
 ];
 
-function fallbackCaptureSession(sessionId?: string): VoiceCaptureSession {
-  // R10 §3.2 step 5 fallback script — small, fixed prompts so onboarding can
-  // render even when the voice service route is absent or partially deployed.
+function fallbackOwnerCaptureSession(): VoiceCaptureSession {
   return {
-    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
+    sessionId: `local-${Date.now().toString(36)}`,
     prompts: OWNER_CAPTURE_FALLBACK_PROMPTS,
     expectedSeconds: OWNER_CAPTURE_FALLBACK_PROMPTS.reduce(
-      (sum, p) => sum + p.targetSeconds,
+      (sum, prompt) => sum + prompt.targetSeconds,
       0,
     ),
   };
 }
 
-function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
-  if (!raw || typeof raw !== "object") {
-    return fallbackCaptureSession();
-  }
-  const r = raw as Record<string, unknown>;
-  const sessionId =
-    typeof r.sessionId === "string" && r.sessionId.length > 0
-      ? r.sessionId
-      : undefined;
-  const prompts = Array.isArray(r.prompts)
-    ? r.prompts.map(normaliseCapturePrompt).filter(isCapturePrompt)
-    : [];
-
-  if (prompts.length === 0) {
-    return fallbackCaptureSession(sessionId);
-  }
-
-  const expectedSeconds =
-    typeof r.expectedSeconds === "number" && r.expectedSeconds > 0
-      ? r.expectedSeconds
-      : prompts.reduce((sum, p) => sum + p.targetSeconds, 0);
-
+function fallbackOwnerSubmitResult(sessionId: string): VoiceCaptureSubmitResult {
   return {
-    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
-    prompts,
-    expectedSeconds,
+    profileId: `owner-${sessionId}`,
+    entityId: `owner-entity-${sessionId}`,
+    isOwner: true,
   };
+}
+
+function normaliseCaptureSession(raw: unknown): VoiceCaptureSession | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const sessionId = typeof r.sessionId === "string" ? r.sessionId : null;
+  if (!sessionId) return null;
+
+  if (Array.isArray(r.prompts)) {
+    const prompts = r.prompts.map(normaliseCapturePrompt).filter(isPrompt);
+    if (prompts.length > 0) {
+      return {
+        sessionId,
+        prompts,
+        expectedSeconds:
+          typeof r.expectedSeconds === "number"
+            ? r.expectedSeconds
+            : prompts.reduce((sum, prompt) => sum + prompt.targetSeconds, 0),
+      };
+    }
+  }
+
+  if (Array.isArray(r.script)) {
+    const prompts = r.script.map(normaliseScriptPrompt).filter(isPrompt);
+    if (prompts.length > 0) {
+      return {
+        sessionId,
+        prompts,
+        expectedSeconds: prompts.reduce(
+          (sum, prompt) => sum + prompt.targetSeconds,
+          0,
+        ),
+      };
+    }
+  }
+
+  return null;
 }
 
 function normaliseCapturePrompt(raw: unknown): VoiceCapturePrompt | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const id = typeof r.id === "string" && r.id.length > 0 ? r.id : null;
-  const text = typeof r.text === "string" && r.text.length > 0 ? r.text : null;
-  if (!id || !text) return null;
+  if (typeof r.id !== "string" || typeof r.text !== "string") return null;
   return {
-    id,
-    text,
+    id: r.id,
+    text: r.text,
     targetSeconds:
       typeof r.targetSeconds === "number" && r.targetSeconds > 0
         ? r.targetSeconds
@@ -417,9 +422,21 @@ function normaliseCapturePrompt(raw: unknown): VoiceCapturePrompt | null {
   };
 }
 
-function isCapturePrompt(
-  value: VoiceCapturePrompt | null,
-): value is VoiceCapturePrompt {
+function normaliseScriptPrompt(raw: unknown): VoiceCapturePrompt | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.prompt !== "string") return null;
+  return {
+    id: r.id,
+    text: r.prompt,
+    targetSeconds:
+      typeof r.expectedDurationMs === "number" && r.expectedDurationMs > 0
+        ? Math.max(1, Math.round(r.expectedDurationMs / 1000))
+        : 5,
+  };
+}
+
+function isPrompt(value: VoiceCapturePrompt | null): value is VoiceCapturePrompt {
   return value !== null;
 }
 
@@ -473,18 +490,43 @@ function isMissingEndpointError(err: unknown): boolean {
   const obj = err as { status?: unknown; kind?: unknown; message?: unknown };
   // Treat both 404 (route not registered) and the unwrapped network errors
   // as "endpoint not landed yet" — the adapter renders an empty state.
-  if (obj.status === 404 || obj.status === 501) return true;
-  if (obj.kind === "http" && (obj.status === 404 || obj.status === 501))
+  if (
+    obj.status === 404 ||
+    obj.status === 405 ||
+    obj.status === 501 ||
+    obj.status === 503
+  )
+    return true;
+  if (
+    obj.kind === "http" &&
+    (obj.status === 404 ||
+      obj.status === 405 ||
+      obj.status === 501 ||
+      obj.status === 503)
+  )
+    return true;
+  if (obj.kind === "network" || obj.kind === "timeout" || obj.kind === "parse")
     return true;
   if (
     typeof obj.message === "string" &&
-    /(not\s*found|unavailable|connection\s*refused|fetch\s*failed)/i.test(
+    /(not\s*found|unavailable|connection\s*refused|fetch\s*failed|invalid\s*json|request\s*timed\s*out|api\s*not\s*available)/i.test(
       obj.message,
     )
   ) {
     return true;
   }
   return false;
+}
+
+function isUnsupportedCaptureRouteError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const obj = err as { status?: unknown; kind?: unknown; message?: unknown };
+  if (obj.status !== 400 && !(obj.kind === "http" && obj.status === 400))
+    return false;
+  if (typeof obj.message !== "string") return true;
+  return /(id query parameter|required|invalid pcm|invalid json|no embeddings captured|capture too short)/i.test(
+    obj.message,
+  );
 }
 
 /** Helper for callers that already hold an `ElizaClient` instance. */

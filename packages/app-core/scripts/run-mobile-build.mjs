@@ -181,6 +181,22 @@ export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
 ];
+const IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS = [
+  "WBCB00010000000000000201",
+  "WBCB00010000000000000702",
+  "DAMON000100000000000702",
+  "DAREP000100000000000702",
+  "WBCB00010000000000000401",
+  "DAMON000100000000000401",
+  "DAREP000100000000000401",
+];
+const IOS_PERSONAL_TEAM_ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+`;
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -189,7 +205,8 @@ function readAppIdentity() {
     throw new Error(`app.config.ts not found at ${cfgPath}`);
   }
   const src = fs.readFileSync(cfgPath, "utf8");
-  const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const configAppId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const appId = process.env.ELIZA_IOS_APP_ID?.trim() || configAppId;
   const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
   const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
   if (!appId || !appName) {
@@ -542,6 +559,74 @@ function replaceInFile(filePath, replacements) {
   return true;
 }
 
+function replaceIosAppGroupPlaceholders(content, appGroup) {
+  return content.replace(
+    /(^|[^A-Za-z0-9_.-])group\.(ai\.elizaos\.app|app\.eliza|com\.elizaai\.eliza)(?![A-Za-z0-9_.-])/g,
+    `$1${appGroup}`,
+  );
+}
+
+function replaceIosAppGroupPlaceholdersInFile(filePath, appGroup) {
+  if (!fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, "utf8");
+  const next = replaceIosAppGroupPlaceholders(content, appGroup);
+  if (next === content) return false;
+  fs.writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+function shouldDisableIosPrivilegedCapabilities(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_DISABLE_PRIVILEGED_CAPABILITIES) ||
+    isTruthyEnv(env.ELIZA_IOS_PERSONAL_TEAM_PROFILE)
+  );
+}
+
+function writeIosPersonalTeamEntitlements(filePath) {
+  if (
+    fs.existsSync(filePath) &&
+    fs.readFileSync(filePath, "utf8") === IOS_PERSONAL_TEAM_ENTITLEMENTS
+  ) {
+    return false;
+  }
+  fs.writeFileSync(filePath, IOS_PERSONAL_TEAM_ENTITLEMENTS, "utf8");
+  return true;
+}
+
+function removePbxListEntries(content, ids) {
+  let next = content;
+  for (const id of ids) {
+    next = next.replace(
+      new RegExp(`\\n\\t+${escapeRegExp(id)} /\\* [^\\n]+ \\*/,`, "g"),
+      "",
+    );
+  }
+  return next;
+}
+
+function stripIosPrivilegedExtensionTargets({
+  appDirValue = appDir,
+  log = console.log,
+} = {}) {
+  const projectPath = path.join(
+    appDirValue,
+    "ios",
+    "App",
+    "App.xcodeproj",
+    "project.pbxproj",
+  );
+  if (!fs.existsSync(projectPath)) return false;
+  const project = fs.readFileSync(projectPath, "utf8");
+  const next = removePbxListEntries(
+    project,
+    IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS,
+  );
+  if (next === project) return false;
+  fs.writeFileSync(projectPath, next, "utf8");
+  log("[mobile-build] Disabled privileged iOS extension targets.");
+  return true;
+}
+
 function packageNameToPath(packageName) {
   return path.join(...packageName.split("."));
 }
@@ -551,13 +636,13 @@ export function applyIosAppIdentity({
   appId = APP.appId,
   appName = APP.appName,
   appGroup = `group.${appId}`,
-  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
-    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
-    null,
+  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ?? null,
   log = console.log,
 } = {}) {
   const iosAppRoot = path.join(appDirValue, "ios", "App");
   const changed = [];
+  const privilegedCapabilitiesDisabled =
+    shouldDisableIosPrivilegedCapabilities();
   const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
   if (fs.existsSync(projectPath)) {
     let project = fs.readFileSync(projectPath, "utf8");
@@ -613,17 +698,19 @@ export function applyIosAppIdentity({
     }
   }
 
-  const replacements = [
-    ["group.ai.elizaos.app", appGroup],
-    ["group.app.eliza", appGroup],
-    ["group.com.elizaai.eliza", appGroup],
-    ['"group.ai.elizaos.app"', `"${appGroup}"`],
-    ['"group.app.eliza"', `"${appGroup}"`],
-    ['"group.com.elizaai.eliza"', `"${appGroup}"`],
-  ];
+  if (privilegedCapabilitiesDisabled) {
+    const entitlementPath = path.join(iosAppRoot, "App", "App.entitlements");
+    if (writeIosPersonalTeamEntitlements(entitlementPath)) {
+      changed.push(path.join("App", "App.entitlements"));
+    }
+    if (stripIosPrivilegedExtensionTargets({ appDirValue, log })) {
+      changed.push(path.relative(iosAppRoot, projectPath));
+    }
+  }
   for (const relPath of [
     path.join("App", "App.entitlements"),
     path.join("App", "ScreenTimeSupport.swift"),
+    path.join("App", "ComputerUseBridge.swift"),
     path.join(
       "App",
       "WebsiteBlockerContentExtension",
@@ -636,7 +723,10 @@ export function applyIosAppIdentity({
     ),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
-    if (replaceInFile(filePath, replacements)) {
+    if (
+      !privilegedCapabilitiesDisabled &&
+      replaceIosAppGroupPlaceholdersInFile(filePath, appGroup)
+    ) {
       changed.push(relPath);
     }
   }
@@ -841,6 +931,56 @@ export function resolveIosAgentRuntimeAssetPlan({
   };
 }
 
+function countGgufFiles(dir) {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(dir)) {
+    const fullPath = path.join(dir, entry);
+    const stats = fs.statSync(fullPath);
+    if (stats.isDirectory()) count += countGgufFiles(fullPath);
+    else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf")) count += 1;
+  }
+  return count;
+}
+
+function stageIosBundledLocalModels(targetDir) {
+  const sourceDir = process.env.ELIZA_IOS_BUNDLED_MODELS_DIR?.trim();
+  const requireModels = isTruthyEnv(process.env.ELIZA_IOS_REQUIRE_LOCAL_MODELS);
+  if (!sourceDir) {
+    if (requireModels) {
+      throw new Error(
+        "ELIZA_IOS_REQUIRE_LOCAL_MODELS is set but ELIZA_IOS_BUNDLED_MODELS_DIR is empty.",
+      );
+    }
+    return 0;
+  }
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    throw new Error(
+      `ELIZA_IOS_BUNDLED_MODELS_DIR does not exist or is not a directory: ${sourceDir}`,
+    );
+  }
+  const sourceCount = countGgufFiles(sourceDir);
+  if (sourceCount === 0) {
+    throw new Error(
+      `ELIZA_IOS_BUNDLED_MODELS_DIR contains no GGUF model files: ${sourceDir}`,
+    );
+  }
+  const sourceName = path.basename(sourceDir.replace(/[\\/]+$/, ""));
+  const targetModelsDir =
+    sourceName && sourceName.endsWith(".bundle")
+      ? path.join(targetDir, "models", sourceName)
+      : path.join(targetDir, "models");
+  fs.mkdirSync(targetModelsDir, { recursive: true });
+  fs.cpSync(sourceDir, targetModelsDir, { recursive: true });
+  const stagedCount = countGgufFiles(targetModelsDir);
+  if (stagedCount === 0) {
+    throw new Error(
+      `No GGUF model files were staged into ${path.relative(repoRoot, targetModelsDir)}`,
+    );
+  }
+  return stagedCount;
+}
+
 function stageIosAgentRuntime({
   appStoreBuild = false,
   includeFullBunEngine = false,
@@ -879,8 +1019,9 @@ function stageIosAgentRuntime({
   for (const file of assetPlan.rootAssets) {
     fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
   }
+  const stagedModelCount = stageIosBundledLocalModels(targetDir);
   console.log(
-    `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}`,
+    `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}${stagedModelCount > 0 ? ` with ${stagedModelCount} local model file(s)` : ""}`,
   );
 }
 
@@ -1478,6 +1619,55 @@ function patchLlamaCppCapacitorGradle() {
   patchGradleFileForAgp9(
     path.resolve(androidDir, pkgRel, "android", "build.gradle"),
     "llama-cpp-capacitor",
+  );
+}
+
+export function injectAndroidBackgroundRunnerAarFlatDir(content) {
+  if (/flatDir\s*\{[\s\S]*?dirs[\s\S]*?['"]libs['"][\s\S]*?\}/.test(content)) {
+    return content;
+  }
+  if (/flatDir\s*\{\s*\n\s*dirs\s+/.test(content)) {
+    return content.replace(
+      /(flatDir\s*\{\s*\n\s*dirs\s+)/,
+      "$1'libs',\n             ",
+    );
+  }
+  return content.replace(
+    /\nrepositories\s*\{\s*\n/,
+    "\nrepositories {\n    flatDir { dirs 'libs' }\n",
+  );
+}
+
+function stageBackgroundRunnerAndroidJsEngineAar() {
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  if (!fs.existsSync(settingsPath)) return;
+  const settings = fs.readFileSync(settingsPath, "utf8");
+  if (!settings.includes(":capacitor-background-runner")) return;
+
+  const aarName = "android-js-engine-release.aar";
+  const source = [
+    "@capacitor/background-runner",
+    "@capacitor-community/background-runner",
+  ]
+    .map((pkgName) => resolvePackageAbsolutePath(pkgName))
+    .filter(Boolean)
+    .map((pkgRoot) =>
+      path.join(pkgRoot, "android", "src", "main", "libs", aarName),
+    )
+    .find((candidate) => fs.existsSync(candidate));
+
+  if (!source) {
+    throw new Error(
+      `[mobile-build] ${aarName} not found in @capacitor/background-runner; reinstall dependencies or check the package tarball.`,
+    );
+  }
+
+  const targetDir = path.join(androidDir, "app", "libs");
+  const target = path.join(targetDir, aarName);
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.copyFileSync(source, target);
+  console.log(
+    `[mobile-build] Staged Background Runner JS engine AAR: ${path.relative(repoRoot, target)}`,
   );
 }
 
@@ -2747,7 +2937,10 @@ export function resolveIosCustomPods({
         ]
       : []),
     ...(includeLlama && !appStoreBuild
-      ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]]
+      ? [
+          ["LlamaCpp", "llama-cpp-capacitor"],
+          ["LlamaCppCapacitor", "llama-cpp-capacitor"],
+        ]
       : []),
     ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
@@ -2759,7 +2952,10 @@ const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set(
   IOS_OFFICIAL_PODS.map(([name]) => name),
 );
 
-const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set(["LlamaCppCapacitor"]);
+const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set([
+  "LlamaCpp",
+  "LlamaCppCapacitor",
+]);
 
 const IOS_BONJOUR_SERVICES = [
   "_eliza-gw._tcp",
@@ -2831,12 +3027,19 @@ function overlayIos() {
   );
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
-    ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
-    ent = ent.replace("group.app.eliza", `group.${APP.appId}`);
+    if (shouldDisableIosPrivilegedCapabilities()) {
+      ent = IOS_PERSONAL_TEAM_ENTITLEMENTS;
+    } else {
+      ent = replaceIosAppGroupPlaceholders(ent, `group.${APP.appId}`);
+    }
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
-    console.log(
-      `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
-    );
+    if (shouldDisableIosPrivilegedCapabilities()) {
+      console.log("[mobile-build] Copied minimal iOS entitlements.");
+    } else {
+      console.log(
+        `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
+      );
+    }
   }
 
   // Patch xcconfigs to include CocoaPods settings
@@ -2860,6 +3063,14 @@ function isTruthyEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
 }
 
+function resolveIosBuildConfiguration(env = process.env) {
+  const value = String(env.ELIZA_IOS_BUILD_CONFIGURATION ?? "Debug").trim();
+  if (value === "Debug" || value === "Release") return value;
+  throw new Error(
+    `ELIZA_IOS_BUILD_CONFIGURATION must be Debug or Release, got ${value}`,
+  );
+}
+
 function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
@@ -2879,6 +3090,29 @@ function isIosLlamaRequested(env = process.env) {
 
 function shouldIncludeIosLlama(env = process.env) {
   return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
+}
+
+function shouldUseIosFusedLocalInference(env = process.env) {
+  return (
+    shouldIncludeIosLlama(env) &&
+    (isTruthyEnv(env.ELIZA_IOS_FUSED_LOCAL_INFERENCE) ||
+      isTruthyEnv(env.ELIZA_IOS_REQUIRE_LOCAL_MODELS))
+  );
+}
+
+function shouldCleanIosBuildProducts(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_CLEAN_BUILD_PRODUCTS) ||
+    shouldDisableIosPrivilegedCapabilities(env)
+  );
+}
+
+function shouldSkipIosCapacitorSync(env = process.env) {
+  return isTruthyEnv(env.ELIZA_IOS_SKIP_CAPACITOR_SYNC);
+}
+
+function shouldSkipIosPodInstall(env = process.env) {
+  return isTruthyEnv(env.ELIZA_IOS_SKIP_POD_INSTALL);
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
@@ -3020,6 +3254,9 @@ function generatePodfile() {
       `[mobile-build] iOS full Bun deployment target: ${deploymentTarget}`,
     );
   }
+  const useFrameworksLine = includeLlama
+    ? "use_frameworks! :linkage => :static"
+    : "use_frameworks!";
 
   const lines = [
     `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
@@ -3054,7 +3291,7 @@ capacitor_ios_path = node_package_path('@capacitor/ios')
 require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
 platform :ios, '${deploymentTarget}'
-use_frameworks!
+${useFrameworksLine}
 
 install! 'cocoapods', :disable_input_output_paths => true
 
@@ -3292,6 +3529,7 @@ function patchAndroidGradle() {
     patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
+    patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -3303,6 +3541,7 @@ function patchAndroidGradle() {
   patchOfficialCapacitorGradleForAgp9();
   patchLlamaCppCapacitorGradle();
   patchNativePluginGradleForAgp9();
+  stageBackgroundRunnerAndroidJsEngineAar();
 
   const stringsPath = path.join(
     androidDir,
@@ -3692,47 +3931,79 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
   } = {},
 ) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
-  if (!fs.existsSync(podspecPath)) return;
-  const current = fs.readFileSync(podspecPath, "utf8");
-  let patched = current.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
-    "\n",
-  );
-  // The published podspec also injects `ios/Frameworks` into
-  // FRAMEWORK_SEARCH_PATHS, which contains the device-only
-  // `llama-cpp.framework` next to the xcframework. The linker scans
-  // -F paths in order and resolves `-framework llama-cpp` against the
-  // device-only slice first, producing
-  //   ld: building for 'iOS-simulator', but linking in dylib (...
-  //   /llama-cpp.framework/llama-cpp) built for 'iOS'
-  // on iphonesimulator builds. Drop the explicit search path so the
-  // xcframework's per-platform slice is picked up via the standard
-  // XCFrameworkIntermediates path the Xcode build system maintains.
-  patched = patched.replace(
-    /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
-    "\n",
-  );
-  if (patched !== current) {
-    fs.writeFileSync(podspecPath, patched, "utf8");
-    console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
+  if (fs.existsSync(podspecPath)) {
+    const current = fs.readFileSync(podspecPath, "utf8");
+    let patched = current.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
     );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
+      "\n",
+    );
+    // The published podspec also injects `ios/Frameworks` into
+    // FRAMEWORK_SEARCH_PATHS, which contains the device-only
+    // `llama-cpp.framework` next to the xcframework. The linker scans
+    // -F paths in order and resolves `-framework llama-cpp` against the
+    // device-only slice first, producing
+    //   ld: building for 'iOS-simulator', but linking in dylib (...
+    //   /llama-cpp.framework/llama-cpp) built for 'iOS'
+    // on iphonesimulator builds. Drop the explicit search path so the
+    // xcframework's per-platform slice is picked up via the standard
+    // XCFrameworkIntermediates path the Xcode build system maintains.
+    patched = patched.replace(
+      /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
+      "\n",
+    );
+    if (patched !== current) {
+      fs.writeFileSync(podspecPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
+      );
+    }
+  }
+
+  const llamaPodspecPath = path.join(packageDir, "LlamaCpp.podspec");
+  if (fs.existsSync(llamaPodspecPath)) {
+    const current = fs.readFileSync(llamaPodspecPath, "utf8");
+    let patched = current.replace(
+      /^\s*s\.source_files\s*=.*$/m,
+      "  s.source_files = []",
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    if (patched !== current) {
+      fs.writeFileSync(llamaPodspecPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Patched LlamaCpp podspec for eliza-built xcframework.",
+      );
+    }
   }
 }
 
@@ -3804,9 +4075,7 @@ async function ensureIosLlamaCppVendoredFramework({
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
   // xcframework that nothing consumes.
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = shouldIncludeIosLlama();
   if (!includeLlama) return;
 
   if (process.platform !== "darwin") {
@@ -3838,8 +4107,20 @@ async function ensureIosLlamaCppVendoredFramework({
   // other supported backend. Per AGENTS.md §3, missing kernels here are
   // a hard error: build-llama-cpp-dflash.mjs already enforces that and
   // throws via writeCapabilities() before producing CAPABILITIES.json.
-  await ensureDflashIosTarget("ios-arm64-metal");
-  await ensureDflashIosTarget("ios-arm64-simulator-metal");
+  const useFusedLocalInference = shouldUseIosFusedLocalInference();
+  const deviceTarget = useFusedLocalInference
+    ? "ios-arm64-metal-fused"
+    : "ios-arm64-metal";
+  const simulatorTarget = useFusedLocalInference
+    ? "ios-arm64-simulator-metal-fused"
+    : "ios-arm64-simulator-metal";
+  if (useFusedLocalInference) {
+    console.log(
+      "[mobile-build] Using fused iOS local-inference slices for bundled local models",
+    );
+  }
+  await ensureDflashIosTarget(deviceTarget);
+  await ensureDflashIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
@@ -3848,9 +4129,9 @@ async function ensureIosLlamaCppVendoredFramework({
     "--output",
     xcframeworkDir,
     "--device-archive-dir",
-    dflashTargetOutDir("ios-arm64-metal"),
+    dflashTargetOutDir(deviceTarget),
     "--sim-archive-dir",
-    dflashTargetOutDir("ios-arm64-simulator-metal"),
+    dflashTargetOutDir(simulatorTarget),
     "--verify",
   ]);
 
@@ -5974,7 +6255,12 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  if (isIosAppStoreBuild()) {
+    process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
+    process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
+  } else {
+    setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  }
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -5991,6 +6277,8 @@ export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
+  process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
+  process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
 }
 
 async function buildIos({ local = false } = {}) {
@@ -6003,9 +6291,26 @@ async function buildIos({ local = false } = {}) {
     configureIosAppStoreBuildDefaults();
   }
 
+  const iosBuildPolicy = resolveMobileBuildPolicy(local ? "ios-local" : "ios");
+  setDefaultProcessEnv(
+    "ELIZA_CAPACITOR_BUILD_TARGET",
+    iosBuildPolicy.capacitorTarget,
+  );
+  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", iosBuildPolicy.buildVariant);
+  setDefaultProcessEnv(
+    "ELIZA_RELEASE_AUTHORITY",
+    iosBuildPolicy.releaseAuthority,
+  );
+
   const buildTarget = resolveIosBuildTarget();
   const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
   const includesLocalAgentPayload = local || includesFullBunRuntime;
+  if (includesFullBunRuntime) {
+    setDefaultProcessEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+  }
+  if (local && isFullIosBunEngineRequested(process.env)) {
+    setDefaultProcessEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+  }
   if (includesFullBunRuntime) {
     ensureIosFullBunEngineArtifact({ buildTarget });
   }
@@ -6036,7 +6341,11 @@ async function buildIos({ local = false } = {}) {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  await runCapacitor(["sync", "ios"]);
+  if (shouldSkipIosCapacitorSync()) {
+    console.log("[mobile-build] Skipping Capacitor iOS sync.");
+  } else {
+    await runCapacitor(["sync", "ios"]);
+  }
   if (includesLocalAgentPayload) {
     stageIosAgentRuntime({
       appStoreBuild: isIosAppStoreBuild() && !local,
@@ -6059,7 +6368,9 @@ async function buildIos({ local = false } = {}) {
   // to be using UTF-8 encoding"). Force the spawned `pod` process to a UTF-8
   // locale regardless of the host shell so builds don't fail under tmux,
   // CI runners, or background launchers that ship without LANG set.
-  if (
+  if (shouldSkipIosPodInstall()) {
+    console.log("[mobile-build] Skipping CocoaPods install.");
+  } else if (
     fs.existsSync(path.join(iosDir, "Podfile")) ||
     shouldRunIosPodInstall(syncedFiles)
   ) {
@@ -6081,23 +6392,34 @@ async function buildIos({ local = false } = {}) {
   const projectArgs = fs.existsSync(wsPath)
     ? ["-workspace", "App.xcworkspace"]
     : ["-project", "App.xcodeproj"];
+  const developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM?.trim();
+  const derivedDataPath = process.env.ELIZA_IOS_DERIVED_DATA_PATH?.trim();
+  const provisioningArgs = isTruthyEnv(
+    process.env.ELIZA_IOS_ALLOW_PROVISIONING_UPDATES,
+  )
+    ? ["-allowProvisioningUpdates", "-allowProvisioningDeviceRegistration"]
+    : [];
   await run(
     "xcodebuild",
     [
       ...projectArgs,
       "-scheme",
       "App",
+      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
       "-configuration",
-      "Debug",
+      resolveIosBuildConfiguration(),
       "-destination",
       buildTarget.destination,
       "-sdk",
       buildTarget.sdk,
+      ...provisioningArgs,
       `IPHONEOS_DEPLOYMENT_TARGET=${resolveIosDeploymentTarget()}`,
       `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
+      ...(developmentTeam ? [`DEVELOPMENT_TEAM=${developmentTeam}`] : []),
       ...(isIosSimulatorBuildTarget(buildTarget)
         ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]
         : []),
+      ...(shouldCleanIosBuildProducts() ? ["clean"] : []),
       "build",
     ],
     { cwd: iosDir },

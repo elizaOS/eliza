@@ -18,7 +18,7 @@ import {
   toneForStatusText,
   toneForViewerAttachment,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { Button, Input, TerminalPluginView } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

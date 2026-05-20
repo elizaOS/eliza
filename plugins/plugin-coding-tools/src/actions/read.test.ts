@@ -1,5 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { readFileHandler } from "./read.js";
@@ -78,6 +84,116 @@ describe("READ", () => {
     const meta = env.fileState.get("test-room", resolved);
     expect(meta).toBeDefined();
     expect(meta?.path).toBe(resolved);
+  });
+
+  it("prefers capability router for file content when available", async () => {
+    const file = path.join(env.tmpDir, "routed.txt");
+    await fs.writeFile(file, "local file content", "utf8");
+    const calls: string[] = [];
+    const router: ElizaCapabilityRouter = {
+      environment: "desktop",
+      availability: async () => ({
+        environment: "desktop",
+        available: true,
+        capabilities: {
+          fs: true,
+          pty: false,
+          git: false,
+          model: false,
+        },
+      }),
+      fs: {
+        list: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "fs unavailable",
+            capability: "fs",
+            method: "fs.list",
+          });
+        },
+        readText: async (params) => {
+          calls.push(params.path);
+          return {
+            path: params.path,
+            text: "routed line one\nrouted line two",
+            size: 29,
+            truncated: false,
+          };
+        },
+        writeText: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "fs unavailable",
+            capability: "fs",
+            method: "fs.writeText",
+          });
+        },
+      },
+      pty: {
+        runCommand: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "terminal unavailable",
+            capability: "pty",
+            method: "pty.command.run",
+          });
+        },
+      },
+      git: {
+        status: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "git unavailable",
+            capability: "git",
+            method: "git.status",
+          });
+        },
+        diff: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "git unavailable",
+            capability: "git",
+            method: "git.diff",
+          });
+        },
+        commandRun: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "git unavailable",
+            capability: "git",
+            method: "git.command.run",
+          });
+        },
+      },
+      model: {
+        status: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "model unavailable",
+            capability: "model",
+            method: "model.status",
+          });
+        },
+      },
+    };
+    const runtime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === CAPABILITY_ROUTER_SERVICE_TYPE
+          ? (router as T)
+          : env.runtime.getService<T>(serviceType),
+    } as IAgentRuntime;
+
+    const result = await readFileHandler(runtime, env.message, undefined, {
+      parameters: { file_path: file },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("routed line one");
+    expect(result.text).not.toContain("local file content");
+    expect(calls).toEqual([file]);
+    const meta = env.fileState.get("test-room", file);
+    expect(meta).toBeDefined();
   });
 
   it("rejects relative paths", async () => {

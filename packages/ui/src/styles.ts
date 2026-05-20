@@ -7,4 +7,3 @@
 import "./styles/styles.css";
 import "./styles/brand-gold.css";
 import "./cloud-ui/index.css";
-import "./components/onboarding/states/onboarding.css";

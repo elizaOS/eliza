@@ -138,6 +138,8 @@ function isCapacitorAssetBase(baseUrl: string): boolean {
 }
 
 function hasCloudLoginBackend(): boolean {
+  if (isCapacitorNativeRuntime()) return false;
+
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
   if (explicitBase) {
@@ -146,7 +148,6 @@ function hasCloudLoginBackend(): boolean {
       !isCapacitorAssetBase(explicitBase)
     );
   }
-  if (isCapacitorNativeRuntime()) return false;
   return isSameOriginLocalHttpBackend();
 }
 

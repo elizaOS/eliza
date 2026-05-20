@@ -17,10 +17,10 @@ export const onboardingReadableTextFaintClassName =
 export const onboardingHelperTextClassName = `text-xs leading-relaxed ${onboardingReadableTextMutedClassName}`;
 const onboardingFieldLabelClassName = `text-xs font-semibold uppercase tracking-[0.14em] ${onboardingReadableTextMutedClassName}`;
 export const onboardingTextSupportClassName =
-  "rounded-sm bg-[var(--onboarding-text-support-bg)] px-3 py-2 my-2 shadow-sm";
+  "rounded-sm bg-[var(--onboarding-text-support-bg)] px-3 py-2 my-2";
 const onboardingInputSurfaceClassName =
-  "border border-[var(--onboarding-input-border)] bg-[var(--onboarding-input-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
-export const onboardingInputClassName = `h-12 w-full rounded-sm px-4 text-left ${onboardingReadableTextPrimaryClassName} transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-[var(--onboarding-text-subtle)] focus-visible:border-[var(--onboarding-field-focus-border)] focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-[var(--onboarding-field-focus-shadow)] ${onboardingInputSurfaceClassName}`;
+  "bg-[var(--onboarding-input-bg)]";
+export const onboardingInputClassName = `h-12 w-full rounded-sm px-4 text-left ${onboardingReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--onboarding-text-subtle)] focus-visible:border-[var(--onboarding-field-focus-border)] focus-visible:ring-0 focus-visible:ring-offset-0 ${onboardingInputSurfaceClassName}`;
 
 interface OnboardingFieldProps {
   align?: "left" | "center";

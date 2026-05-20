@@ -553,6 +553,9 @@ test_output/
 trajectories-eliza-cerebras/
 action-benchmark-report/
 artifacts/
+!packages/native/bun-runtime/artifacts/
+!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/
+!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/**
 research/native-tool-calling
 research/even-realities/
 # Build artifacts from old ios-native-deps location (moved to packages/native/ios-deps/)

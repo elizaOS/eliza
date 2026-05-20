@@ -1,4 +1,4 @@
-import type { AppDetailExtensionProps } from "@elizaos/app-core";
+import type { AppDetailExtensionProps } from "@elizaos/app-core/ui-compat";
 import { BabylonOperatorSurface } from "./BabylonOperatorSurface";
 
 export function BabylonDetailExtension({ app }: AppDetailExtensionProps) {

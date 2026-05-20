@@ -364,14 +364,8 @@ function runCollect(
 				}
 				resolve({
 					code,
-					stdout:
-						typeof stdout === "string"
-							? stdout
-							: (stdout as Buffer).toString("utf8"),
-					stderr:
-						typeof stderr === "string"
-							? stderr
-							: (stderr as Buffer).toString("utf8"),
+					stdout: String(stdout),
+					stderr: String(stderr),
 				});
 			});
 		});

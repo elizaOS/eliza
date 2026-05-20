@@ -8,43 +8,76 @@ The Eliza mobile app brings the full dashboard experience to iOS and Android dev
 
 ## Runtime Policy
 
-iOS App Store and Google Play builds are Cloud-backed mobile clients. They do
-not run a local Bun backend, local shell, PTY-spawned Claude/Codex/OpenCode, or
-the privileged AOSP agent service in-app. Local generated applets run through
-the mobile-safe runtime and virtual file system only. JSCore, QuickJS,
-Android isolated-process, and AVF providers are advertised only when an actual
-native boundary is attached; otherwise the app falls back to VFS/WASM-safe
-surfaces and Cloud containers.
+The iOS platform under `packages/app-core/platforms/ios` is a native Capacitor
+app designed to run an Eliza agent on-device. Its Podfile wires the Bun runtime
+bridge, native agent bridge, mobile-agent bridge, llama.cpp inference, camera,
+calendar, canvas, gateway, location, mobile signals, screen capture, talk mode,
+and website-blocking plugins. The iOS target also includes App Intents, Screen
+Time extensions, a Safari content-blocker extension, ReplayKit broadcast
+support, BGTaskScheduler wakes, APNs silent-push wake plumbing, and a
+background-runner JS task that pokes the in-process agent over loopback within
+the OS time budget.
 
-iOS local development and sideload builds are a separate target, not an
-enterprise distribution path. Use `bun run build:ios:local` from
-`packages/app` to bake `runtimeMode=local`, build
-`packages/agent/dist-mobile-ios/agent-bundle.js`, stage it under
-`App/public/agent/`, and include the native llama bridge. The default local
-target is the iOS simulator; use `bun run build:ios:local:device` or set
+Use `bun run build:ios:local` from `packages/app` to bake
+`runtimeMode=local`, build `packages/agent/dist-mobile-ios/agent-bundle.js`,
+stage it under `App/public/agent/`, and include the native llama bridge. The
+default local target is the iOS simulator; use
+`bun run build:ios:local:device` or set
 `ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
 when you want a sideload/device build.
 That target still does not imply a host shell or downloaded native code. The
 full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
-`packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework` (or
-`ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`; external override paths are validated and
-staged into `packages/native/bun-runtime/artifacts/` before CocoaPods runs. If that
-artifact is missing, the build fails instead of falling back to the JSContext
-compatibility host. When the framework is present, the React app routes
-local-agent requests through
+`packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework` or
+`ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`. External override paths are validated and
+staged into `packages/native/bun-runtime/artifacts/` before CocoaPods runs. If
+that artifact is missing, a full-engine build fails instead of falling back to
+the JSContext compatibility host. When the framework is present, the React app
+routes local-agent requests through
 Capacitor `ElizaBunRuntime.call("http_request")`, the native C ABI, and the
 agent bundle's `ios-bridge --stdio` command. The WebView does not open a TCP
-connection to the backend. Full-Bun iOS builds route foreground local-agent
-requests through `bun-host-ipc`; compatibility builds can still route the
-foreground local-agent URL through the in-process ITTP kernel. The kernel exposes
-`GET /api/local-agent/capabilities` so the app can show the truth about what is
-local today. Background runner JSContexts do not own the foreground native
-runtime bridge, so local iOS wakes are recorded as explicit
+connection to the full-Bun backend. Full-Bun iOS builds route foreground
+local-agent requests through `bun-host-ipc`; compatibility builds can still
+route the foreground local-agent URL through the in-process ITTP kernel. The
+kernel exposes `GET /api/local-agent/capabilities` so the app can show the truth
+about what is local today.
+
+This on-device agent runtime is separate from mobile coding sandboxes. The iOS
+app can run the agent, local inference where assets and hardware allow it,
+voice/talk-mode paths, and native device capability bridges inside Apple's
+rules. It still must not run local shells, PTY-spawned Claude/Codex/OpenCode,
+`xcodebuild`, arbitrary native downloads, or privileged AOSP services in the App
+Store client. Those coding routes go to Eliza Cloud, a remote sandbox, or a
+trusted home-machine worker. Local generated applets run through the mobile-safe
+runtime and virtual file system unless a real native boundary is attached.
+
+Focused proof gates for this boundary:
+
+```bash
+bun run --cwd packages/app-core test src/platform/ios-runtime-backends.test.ts --reporter verbose
+bun run --cwd plugins/plugin-coding-tools test src/lib/run-shell.test.ts src/lib/terminal-capabilities.test.ts --reporter verbose
+bun run --cwd packages/agent test src/services/e2b-capability-router.test.ts src/services/e2b-capability-router.coding-satellite.test.ts --reporter verbose
+bun run --cwd packages/cloud-services/coding-satellite test
+```
+
+Those tests prove the iOS local runtime policy is TypeScript-owned and
+bridge-only, prove coding tools reject in-app iOS shell execution without a
+capability router, and prove coding commands can execute through the real
+Coding Satellite HTTP runner using the `/workspace` sandbox contract.
+
+Background runner JSContexts do not own the foreground native runtime bridge, so
+local iOS wakes are recorded as explicit
 `ios_bun_host_ipc_unavailable_in_background_jscontext` or
 `ios_ittp_route_kernel_unavailable_in_background_jscontext` skips instead of
 probing a fake TCP endpoint.
 
-The AOSP / elizaOS Android build is a separate privileged system target. It can
+SwiftBun is an optional compatibility candidate only. If it is spiked, it must
+plug into the existing `ElizaBunRuntime` Capacitor bridge and keep agent
+semantics in the TypeScript bundle. It is not a Swift-owned runtime and is not
+approved as the production local iOS backend unless it passes the same route,
+capability, and App Store execution checks documented by
+`packages/native/bun-runtime/SWIFT_BUN_COMPATIBILITY.md`.
+
+The AOSP / ElizaOS Android build is a separate privileged system target. It can
 stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools
 plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
 device image exposes those APIs. The Android template includes a reflection-only
@@ -73,7 +106,7 @@ is assembled.
 
 | Platform | Minimum Version | Scheme | Notes |
 |----------|----------------|--------|-------|
-| **iOS** | iOS 16+ (arm64) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
+| **iOS** | iOS 14+ (armv7) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
 | **Android** | API 26 (Android 8.0+) | HTTPS | Input capture enabled, mixed content disabled, WebContents debugging off in production |
 
 **App ID:** `com.elizaai.eliza`
@@ -560,7 +593,7 @@ The Android manifest declares these permissions:
 | Property | Value |
 |----------|-------|
 | `minSdkVersion` | 26 (Android 8.0) |
-| `compileSdkVersion` | 36 |
+| `compileSdkVersion` | 35 |
 | `targetSdkVersion` | 35 |
 | `applicationId` | `com.elizaai.eliza` |
 | `namespace` | `ai.eliza.app` |

@@ -1,8 +1,75 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type FileWriteTextParams,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { writeFileHandler } from "./write.js";
+
+function unavailableCapability(
+  capability: "fs" | "pty" | "git" | "model",
+  method: string,
+): never {
+  throw new CapabilityError({
+    code: "CAPABILITY_UNAVAILABLE",
+    message: `${capability} unavailable`,
+    capability,
+    method,
+  });
+}
+
+function makeWriteRouter(
+  writeText: ElizaCapabilityRouter["fs"]["writeText"],
+): ElizaCapabilityRouter {
+  return {
+    environment: "desktop",
+    availability: async () => ({
+      environment: "desktop",
+      available: true,
+      capabilities: {
+        fs: true,
+        pty: false,
+        git: false,
+        model: false,
+      },
+    }),
+    fs: {
+      list: async () => unavailableCapability("fs", "fs.list"),
+      readText: async () => unavailableCapability("fs", "fs.readText"),
+      writeText,
+    },
+    pty: {
+      runCommand: async () => unavailableCapability("pty", "pty.command.run"),
+    },
+    git: {
+      status: async () => unavailableCapability("git", "git.status"),
+      diff: async () => unavailableCapability("git", "git.diff"),
+      commandRun: async () =>
+        unavailableCapability("git", "git.command.run"),
+    },
+    model: {
+      status: async () => unavailableCapability("model", "model.status"),
+    },
+  };
+}
+
+function runtimeWithRouter(
+  runtime: IAgentRuntime,
+  router: ElizaCapabilityRouter,
+): IAgentRuntime {
+  return {
+    ...runtime,
+    getService: <T>(serviceType: string): T | null =>
+      serviceType === CAPABILITY_ROUTER_SERVICE_TYPE
+        ? (router as T)
+        : runtime.getService<T>(serviceType),
+  } as IAgentRuntime;
+}
 
 describe("WRITE", () => {
   let env: TestEnv;
@@ -26,6 +93,39 @@ describe("WRITE", () => {
     expect(onDisk).toBe("hello world");
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.bytes).toBe(11);
+  });
+
+  it("prefers capability router for file writes when available", async () => {
+    const file = path.join(env.tmpDir, "nested", "routed.txt");
+    const calls: FileWriteTextParams[] = [];
+    const router = makeWriteRouter(async (params) => {
+      calls.push(params);
+      await fs.mkdir(path.dirname(params.path), { recursive: true });
+      await fs.writeFile(params.path, params.text, "utf8");
+      return {
+        path: params.path,
+        bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      };
+    });
+    const result = await writeFileHandler(
+      runtimeWithRouter(env.runtime, router),
+      env.message,
+      undefined,
+      { parameters: { file_path: file, content: "routed write" } },
+    );
+
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe("routed write");
+    expect(calls).toEqual([
+      {
+        path: file,
+        text: "routed write",
+        createDirectories: true,
+        overwrite: true,
+      },
+    ]);
+    const meta = env.fileState.get("test-room", file);
+    expect(meta).toBeDefined();
   });
 
   it("rejects writes to existing files that were not READ first (must_read_first)", async () => {

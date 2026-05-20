@@ -14,20 +14,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import {
   afterAll,
   afterEach,
-  beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
   vi,
 } from "vitest";
-
-afterEach(() => {
-  cleanup();
-});
 
 // React 19's scheduler can post a `setImmediate` callback that runs AFTER
 // the test file completes but while Vitest is tearing down the per-file
@@ -39,23 +35,47 @@ afterAll(async () => {
   await new Promise<void>((resolve) => setImmediate(resolve));
 });
 
-beforeAll(() => {
-  if (typeof window.matchMedia !== "function") {
-    Object.defineProperty(window, "matchMedia", {
-      writable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
-  }
+beforeEach(() => {
+  Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLMediaElement.prototype, "play", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockResolvedValue(undefined),
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: vi.fn((callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0));
+      return 1;
+    }),
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
 });
+
+afterEach(() => cleanup());
 
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
@@ -73,7 +93,7 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(
       /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
     );
-    // Brand rules: 8x speed, /clouds basePath, light scrim, black text.
+    // Brand rules: 8x speed, /clouds basePath, light scrim, themed text.
     expect(APP_TSX).toMatch(/speed="8x"/);
     expect(APP_TSX).toMatch(/basePath="\/clouds"/);
     expect(APP_TSX).toMatch(/animated=\{false\}/);
@@ -82,7 +102,7 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(/text-txt/);
   });
 
-  it("CloudVideoBackground renders a <video> with cloud sources", () => {
+  it("CloudVideoBackground renders a <video> with cloud sources", async () => {
     const { container } = render(
       <CloudVideoBackground
         speed="8x"
@@ -97,6 +117,11 @@ describe("App pre-agent cloud wiring", () => {
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
     expect(video?.getAttribute("poster")).toBe("/clouds/poster-960.jpg");
+    await waitFor(() => {
+      expect(container.querySelector("video")?.getAttribute("preload")).toBe(
+        "metadata",
+      );
+    });
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "/clouds/poster-960.jpg",
     );

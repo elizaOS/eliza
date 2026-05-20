@@ -1,7 +1,15 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type FileListParams,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
@@ -17,13 +25,61 @@ interface RuntimeBundle {
   message: Memory;
 }
 
-async function buildRuntime(): Promise<RuntimeBundle> {
+function unavailableCapability(
+  capability: "fs" | "pty" | "git" | "model",
+  method: string,
+): never {
+  throw new CapabilityError({
+    code: "CAPABILITY_UNAVAILABLE",
+    message: `${capability} unavailable`,
+    capability,
+    method,
+  });
+}
+
+function makeListRouter(
+  list: ElizaCapabilityRouter["fs"]["list"],
+): ElizaCapabilityRouter {
+  return {
+    environment: "desktop",
+    availability: async () => ({
+      environment: "desktop",
+      available: true,
+      capabilities: {
+        fs: true,
+        pty: false,
+        git: false,
+        model: false,
+      },
+    }),
+    fs: {
+      list,
+      readText: async () => unavailableCapability("fs", "fs.readText"),
+      writeText: async () => unavailableCapability("fs", "fs.writeText"),
+    },
+    pty: {
+      runCommand: async () => unavailableCapability("pty", "pty.command.run"),
+    },
+    git: {
+      status: async () => unavailableCapability("git", "git.status"),
+      diff: async () => unavailableCapability("git", "git.diff"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
+    },
+    model: {
+      status: async () => unavailableCapability("model", "model.status"),
+    },
+  };
+}
+
+async function buildRuntime(
+  capabilityRouter?: ElizaCapabilityRouter,
+): Promise<RuntimeBundle> {
   const settings: Record<string, unknown> = {
     CODING_TOOLS_BLOCKED_PATHS: blockedPath,
   };
   const stub = {
     getSetting: (key: string) => settings[key],
-    getService: <T>(_type: string): T | null => null,
+    getService: <T>(): T | null => null,
   } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(stub);
@@ -33,6 +89,9 @@ async function buildRuntime(): Promise<RuntimeBundle> {
   const runtime = {
     getSetting: (key: string) => settings[key],
     getService: <T>(serviceType: string): T | null => {
+      if (serviceType === CAPABILITY_ROUTER_SERVICE_TYPE && capabilityRouter) {
+        return capabilityRouter as T;
+      }
       if (serviceType === SANDBOX_SERVICE) return sandbox as T;
       if (serviceType === SESSION_CWD_SERVICE) return session as T;
       return null;
@@ -44,7 +103,9 @@ async function buildRuntime(): Promise<RuntimeBundle> {
 }
 
 beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-ls-"));
+  tmpRoot = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "ct-ls-")),
+  );
   blockedPath = path.join(tmpRoot, "_blocked");
   await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
@@ -96,6 +157,59 @@ describe("LS", () => {
     expect(result.text).toContain("bar/");
     expect(result.text).toContain("foo/");
     expect(result.text).toContain("alpha.ts");
+  });
+
+  it("prefers capability router for directory listings when available", async () => {
+    const calls: FileListParams[] = [];
+    const router = makeListRouter(async (params) => {
+      calls.push(params);
+      return {
+        root: { id: "workspace", path: tmpRoot },
+        path: params.path ?? tmpRoot,
+        entries: [
+          {
+            path: path.join(tmpRoot, "foo"),
+            name: "foo",
+            kind: "directory",
+            size: 96,
+          },
+          {
+            path: path.join(tmpRoot, "routed.ts"),
+            name: "routed.ts",
+            kind: "file",
+            size: 12,
+            isText: true,
+          },
+        ],
+        truncated: false,
+        totalAfterIgnore: 2,
+      };
+    });
+    const { runtime, message } = await buildRuntime(router);
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { ignore: ["*.log"] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([
+      {
+        path: tmpRoot,
+        limit: 1000,
+        includeHidden: true,
+        ignore: ["*.log"],
+      },
+    ]);
+    const data = result.data as Record<string, unknown> | undefined;
+    const entries = data?.entries as
+      | { name: string; type: string }[]
+      | undefined;
+    expect(entries).toEqual([
+      { name: "foo", type: "dir" },
+      { name: "routed.ts", type: "file", size: 12 },
+    ]);
+    expect(result.text).toContain("foo/");
+    expect(result.text).toContain("routed.ts");
+    expect(result.text).not.toContain("beta.md");
   });
 
   it("respects the ignore glob list", async () => {

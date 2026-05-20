@@ -438,6 +438,66 @@ describe("iOS local-agent local inference flow", () => {
     expect(load.mock.calls[0]?.[0]).not.toHaveProperty("draftModelPath");
   });
 
+  it("reports bundled voice assets separately from TTS engine readiness", async () => {
+    const kernel = await loadKernel({
+      availableModels: [
+        {
+          name: "eliza-1-0_8b-128k.gguf",
+          path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+          size: 600_000_000,
+        },
+        {
+          name: "kokoro-82m-v1_0-Q4_K_M.gguf",
+          path: "/models/eliza-1-0_8b.bundle/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+          size: 200_000_000,
+        },
+        {
+          name: "af_bella.bin",
+          path: "/models/eliza-1-0_8b.bundle/tts/kokoro/voices/af_bella.bin",
+          size: 500_000,
+        },
+      ],
+    });
+
+    const hub = (await jsonRequest(
+      kernel,
+      "GET",
+      "/api/local-inference/hub",
+    )) as {
+      voiceReadiness?: {
+        status?: string;
+        installedFiles?: number;
+        modelId?: string | null;
+        message?: string;
+      };
+    };
+
+    expect(hub.voiceReadiness).toMatchObject({
+      status: "unavailable",
+      installedFiles: 2,
+      modelId: "eliza-1-0_8b",
+    });
+    expect(hub.voiceReadiness?.message).toContain(
+      "missing the iOS local voice playback engine",
+    );
+
+    const response = await kernel.handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/tts/local-inference", {
+        method: "POST",
+        body: JSON.stringify({ text: "Hello from Eliza." }),
+      }),
+    );
+    const body = (await response.json()) as {
+      code?: string;
+      voiceReadiness?: { status?: string };
+    };
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({
+      code: "ios_local_tts_executor_missing",
+      voiceReadiness: { status: "unavailable" },
+    });
+  });
+
   it("does not pass a drafter to native iOS load for the current Eliza-1 mobile catalog", async () => {
     const load = vi.fn(async (_options: Record<string, unknown>) => undefined);
     const kernel = await loadKernel({

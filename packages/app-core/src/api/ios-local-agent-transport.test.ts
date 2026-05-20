@@ -124,6 +124,7 @@ describe("iOS local agent transport bridge", () => {
 
   afterEach(() => {
     vi.doUnmock("@elizaos/capacitor-bun-runtime");
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
@@ -191,6 +192,7 @@ describe("iOS local agent transport bridge", () => {
 
   it("extracts IPC paths correctly under Chromium WebView custom-scheme URL parsing", async () => {
     capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
     const start = vi.fn(async () => ({ ok: true }));
     const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
     const call = vi.fn(async () => ({
@@ -300,6 +302,120 @@ describe("iOS local agent transport bridge", () => {
     expect(originalFetch).not.toHaveBeenCalled();
   });
 
+  it("allows local-inference IPC in iOS cloud mode", async () => {
+    const originalFetch = vi.fn(async () => {
+      throw new Error("direct fetch should not run");
+    });
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "cloud" : null,
+    });
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+
+    const {
+      installIosLocalAgentFetchBridge,
+      iosInProcessAgentTransportForUrl,
+    } = await import("./ios-local-agent-transport");
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch(
+      "eliza-local-agent://ipc/api/local-inference/hub",
+    );
+    expect(response.status).toBe(200);
+    expect(kernelMock.handleIosLocalAgentRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "eliza-local-agent://ipc/api/local-inference/hub",
+      }),
+      { timeoutMs: undefined },
+    );
+    await expect(
+      iosInProcessAgentTransportForUrl(
+        "eliza-local-agent://ipc/api/local-inference/hub",
+      ),
+    ).resolves.toBeTruthy();
+    expect(originalFetch).not.toHaveBeenCalled();
+  });
+
+  it("allows local TTS IPC in iOS cloud mode", async () => {
+    const originalFetch = vi.fn(async () => {
+      throw new Error("direct fetch should not run");
+    });
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "cloud" : null,
+    });
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch(
+      "eliza-local-agent://ipc/api/tts/local-inference",
+      { method: "POST", body: JSON.stringify({ text: "Hello" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(kernelMock.handleIosLocalAgentRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "eliza-local-agent://ipc/api/tts/local-inference",
+      }),
+      { timeoutMs: undefined },
+    );
+    expect(originalFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps non-local-inference IPC blocked in iOS cloud mode", async () => {
+    const originalFetch = vi.fn(async () => {
+      throw new Error("direct fetch should not run");
+    });
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "cloud" : null,
+    });
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentFetchBridge();
+
+    await expect(
+      fetch("eliza-local-agent://ipc/api/auth/status"),
+    ).rejects.toThrow("cloud builds cannot use local-agent IPC");
+    expect(originalFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks direct non-local-inference native requests in iOS cloud mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "cloud" : null,
+    });
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    await expect(
+      handleIosLocalAgentNativeRequest({
+        method: "GET",
+        path: "/api/auth/status",
+      }),
+    ).rejects.toThrow("cloud builds cannot use local-agent IPC");
+    expect(kernelMock.handleIosLocalAgentRequest).not.toHaveBeenCalled();
+  });
+
   it("disables the ITTP compatibility fallback in iOS store builds", async () => {
     buildVariantState.isStore = true;
 
@@ -316,6 +432,7 @@ describe("iOS local agent transport bridge", () => {
   it("keeps iOS store local mode on IPC when the full Bun bridge is available", async () => {
     buildVariantState.isStore = true;
     capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "eliza:mobile-runtime-mode" ? "local" : null,
@@ -352,6 +469,43 @@ describe("iOS local agent transport bridge", () => {
       args: expect.objectContaining({ path: "/api/health" }),
     });
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
+  });
+
+  it("uses the ITTP compatibility transport in local iOS builds without a full Bun engine", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+    const start = vi.fn(async () => {
+      throw new Error("full Bun should not start");
+    });
+    const getStatus = vi.fn(async () => ({ ready: false }));
+    const call = vi.fn();
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+    const response = await handleIosLocalAgentNativeRequest({
+      method: "GET",
+      path: "/api/health",
+    });
+
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      localAgent: { transport: "ittp" },
+    });
   });
 
   it("bridges direct relative fetch calls when iOS local mode owns the API base", async () => {
@@ -404,6 +558,7 @@ describe("iOS local agent transport bridge", () => {
 
   it("uses an already-running full Bun native bridge when the runtime plugin is available", async () => {
     capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
     const start = vi.fn(async () => ({ ok: true }));
     const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
     const call = vi.fn(async () => ({
@@ -447,6 +602,7 @@ describe("iOS local agent transport bridge", () => {
 
   it("starts the full Bun native bridge when the runtime plugin is available but not running", async () => {
     capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
     const start = vi.fn(async () => ({ ok: true }));
     const getStatus = vi
       .fn()
@@ -521,6 +677,7 @@ describe("iOS local agent transport bridge", () => {
 
   it("does not await Capacitor plugin proxies that expose a then member", async () => {
     capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
     const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
     const call = vi.fn(async () => ({
       result: {

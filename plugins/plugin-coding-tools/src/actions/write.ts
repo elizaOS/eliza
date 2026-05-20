@@ -2,6 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import {
+  CapabilityError,
+  getCapabilityRouter,
   type ActionResult,
   logger as coreLogger,
   type HandlerCallback,
@@ -23,6 +25,36 @@ import {
   FILE_STATE_SERVICE,
   SANDBOX_SERVICE,
 } from "../types.js";
+
+async function writeWithCapabilityRouter(params: {
+  runtime: IAgentRuntime;
+  resolved: string;
+  content: string;
+}): Promise<
+  | { ok: true; bytesWritten: number }
+  | { ok: false; reason: "unavailable" | "failed"; message: string }
+> {
+  const router = getCapabilityRouter(params.runtime);
+  if (!router) return { ok: false, reason: "unavailable", message: "" };
+  try {
+    const result = await router.fs.writeText({
+      path: params.resolved,
+      text: params.content,
+      createDirectories: true,
+      overwrite: true,
+    });
+    return { ok: true, bytesWritten: result.bytesWritten };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return { ok: false, reason: "unavailable", message: error.message };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "failed", message };
+  }
+}
 
 export async function writeFileHandler(
   runtime: IAgentRuntime,
@@ -95,19 +127,34 @@ export async function writeFileHandler(
     });
   }
 
-  try {
-    await fs.mkdir(path.dirname(resolved), { recursive: true });
-    await fs.writeFile(resolved, content, "utf8");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const routed = await writeWithCapabilityRouter({
+    runtime,
+    resolved,
+    content,
+  });
+  if (routed.ok === false && routed.reason === "failed") {
     return failureToActionResult({
       reason: "io_error",
-      message: `write failed: ${msg}`,
+      message: `write failed: ${routed.message}`,
     });
   }
 
+  if (routed.ok === false) {
+    try {
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, content, "utf8");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return failureToActionResult({
+        reason: "io_error",
+        message: `write failed: ${msg}`,
+      });
+    }
+  }
+
   await fileState.recordWrite(conversationId, resolved);
-  const bytes = Buffer.byteLength(content, "utf8");
+  const bytes =
+    routed.ok === true ? routed.bytesWritten : Buffer.byteLength(content, "utf8");
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`,
   );

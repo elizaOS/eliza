@@ -1,5 +1,7 @@
 import Foundation
+#if !ELIZA_IOS_FULL_BUN_ENGINE
 import JavaScriptCore
+#endif
 import Darwin.Mach
 
 #if ELIZA_IOS_INCLUDE_LLAMA
@@ -272,6 +274,41 @@ private func shim_sampler_init_token_tree(
 @_silgen_name("llama_vocab_n_tokens")
 private func c_llama_vocab_n_tokens(_ vocab: LlamaVocabPtr) -> Int32
 
+typealias ElizaInferenceContextPtr = OpaquePointer
+
+@_silgen_name("eliza_inference_abi_version")
+private func c_eliza_inference_abi_version() -> UnsafePointer<CChar>?
+
+@_silgen_name("eliza_inference_create")
+private func c_eliza_inference_create(
+    _ bundleDir: UnsafePointer<CChar>,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> ElizaInferenceContextPtr?
+
+@_silgen_name("eliza_inference_destroy")
+private func c_eliza_inference_destroy(_ ctx: ElizaInferenceContextPtr?)
+
+@_silgen_name("eliza_inference_mmap_acquire")
+private func c_eliza_inference_mmap_acquire(
+    _ ctx: ElizaInferenceContextPtr?,
+    _ regionName: UnsafePointer<CChar>,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+
+@_silgen_name("eliza_inference_tts_synthesize")
+private func c_eliza_inference_tts_synthesize(
+    _ ctx: ElizaInferenceContextPtr?,
+    _ text: UnsafePointer<CChar>,
+    _ textLen: Int,
+    _ speakerPresetId: UnsafePointer<CChar>?,
+    _ outPcm: UnsafeMutablePointer<Float>,
+    _ maxSamples: Int,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+
+@_silgen_name("eliza_inference_free_string")
+private func c_eliza_inference_free_string(_ value: UnsafeMutablePointer<CChar>?)
+
 // MARK: - Result types
 
 /// Per-generation speculative-decode toggle. `auto` follows the session
@@ -302,6 +339,40 @@ public struct LlamaGenerateResult {
     }
     public static func failure(_ msg: String) -> LlamaGenerateResult {
         .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, error: msg)
+    }
+}
+
+public struct LlamaTtsSynthesizeResult {
+    public let audioBase64: String
+    public let audioFilePath: String?
+    public let contentType: String
+    public let sampleRate: Int
+    public let samples: Int
+    public let durationMs: Double
+    public let error: String?
+
+    public static func success(audioFilePath: String, sampleRate: Int, samples: Int, durationMs: Double) -> LlamaTtsSynthesizeResult {
+        .init(
+            audioBase64: "",
+            audioFilePath: audioFilePath,
+            contentType: "audio/wav",
+            sampleRate: sampleRate,
+            samples: samples,
+            durationMs: durationMs,
+            error: nil
+        )
+    }
+
+    public static func failure(_ msg: String) -> LlamaTtsSynthesizeResult {
+        .init(
+            audioBase64: "",
+            audioFilePath: nil,
+            contentType: "audio/wav",
+            sampleRate: 24_000,
+            samples: 0,
+            durationMs: 0,
+            error: msg
+        )
     }
 }
 
@@ -393,6 +464,18 @@ private final class LlamaSession {
     }
 }
 
+private final class CachedTtsContext {
+    let bundleDir: String
+    let backend: String
+    let context: ElizaInferenceContextPtr
+
+    init(bundleDir: String, backend: String, context: ElizaInferenceContextPtr) {
+        self.bundleDir = bundleDir
+        self.backend = backend
+        self.context = context
+    }
+}
+
 /// Maps a string KV cache type ("f16", "q8_0", "q4_0", "tbq3", ...) to the
 /// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
 /// types so the caller can leave the params struct at default. Fork-specific
@@ -472,6 +555,8 @@ private final class SessionRegistry {
 
 public final class LlamaBridgeImpl {
     public static let shared = LlamaBridgeImpl()
+    private let ttsQueue = DispatchQueue(label: "ai.eliza.bun.llama.tts")
+    private var cachedTtsContext: CachedTtsContext?
 
     private init() {}
 
@@ -952,6 +1037,300 @@ public final class LlamaBridgeImpl {
         SessionRegistry.shared.get(contextId)?.cancelled = true
     }
 
+    public func synthesizeSpeech(
+        bundleDir: String,
+        text: String,
+        speakerPresetId: String? = nil,
+        maxSamples: Int = 24_000 * 60
+    ) -> LlamaTtsSynthesizeResult {
+        ttsQueue.sync {
+            if let coreMlResult = synthesizeKokoroCoreMl(
+                bundleDir: bundleDir,
+                text: text,
+                speakerPresetId: speakerPresetId,
+                maxSamples: maxSamples
+            ) {
+                return coreMlResult
+            }
+            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "kokoro") {
+                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "384") {
+                    return Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
+                        return synthesizeSpeechAttempt(
+                            bundleDir: bundleDir,
+                            text: text,
+                            speakerPresetId: speakerPresetId,
+                            maxSamples: maxSamples
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    public func ttsEngineDiagnostics(bundleDir: String?) -> [String: Any] {
+        let hardware = hardwareInfo()
+        var payload: [String: Any] = [
+            "available": true,
+            "abiVersion": Self.elizaInferenceAbiVersion() ?? "missing",
+            "ggmlBackendEnv": Self.currentBackendEnv(),
+            "ttsBackendEnv": Self.currentTtsBackendEnv(),
+            "kokoroGgufTtsEnabled": Self.experimentalKokoroGgufTtsEnabled(),
+            "cachedTtsContext": cachedTtsContext != nil,
+            "hardware": hardware.asDict(),
+        ]
+        if let bundleDir {
+            payload["bundleDir"] = bundleDir
+            payload["kokoroCoreMl"] = Self.kokoroCoreMlDiagnostics(bundleDir: bundleDir)
+        }
+        return payload
+    }
+
+    private func synthesizeKokoroCoreMl(
+        bundleDir: String,
+        text: String,
+        speakerPresetId: String?,
+        maxSamples: Int
+    ) -> LlamaTtsSynthesizeResult? {
+        guard let coreMlDir = Self.kokoroCoreMlDirectory(bundleDir: bundleDir) else {
+            return nil
+        }
+        guard #available(iOS 18.0, *) else {
+            return .failure("iOS Kokoro CoreML TTS requires iOS 18 or newer")
+        }
+        do {
+            NSLog("[LlamaBridgeImpl] TTS attempt start backend=kokoro-coreml bundle=\(bundleDir) modelDir=\(coreMlDir.path) textBytes=\(text.lengthOfBytes(using: .utf8)) maxSamples=\(maxSamples)")
+            let result = try KokoroCoreMlEngine.shared.synthesize(
+                modelDirectory: coreMlDir,
+                text: text,
+                voice: speakerPresetId,
+                maxSamples: max(maxSamples, 24_000)
+            )
+            let wav = Self.wavData(from: result.samples, sampleRate: result.sampleRate)
+            let audioFileUrl = FileManager.default.temporaryDirectory
+                .appendingPathComponent("eliza-kokoro-coreml-\(UUID().uuidString)")
+                .appendingPathExtension("wav")
+            try wav.write(to: audioFileUrl, options: [.atomic])
+            NSLog("[LlamaBridgeImpl] TTS attempt ok backend=kokoro-coreml voice=\(result.voice) samples=\(result.samples.count) durationMs=\(result.durationMs)")
+            return .success(
+                audioFilePath: audioFileUrl.path,
+                sampleRate: result.sampleRate,
+                samples: result.samples.count,
+                durationMs: result.durationMs
+            )
+        } catch {
+            NSLog("[LlamaBridgeImpl] TTS attempt failed backend=kokoro-coreml error=\(error.localizedDescription)")
+            return .failure("Kokoro CoreML TTS failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func synthesizeSpeechAttempt(
+        bundleDir: String,
+        text: String,
+        speakerPresetId: String?,
+        maxSamples: Int
+    ) -> LlamaTtsSynthesizeResult {
+        let attemptBackend = Self.currentBackendEnv()
+        NSLog("[LlamaBridgeImpl] TTS attempt start backend=\(attemptBackend) bundle=\(bundleDir) textBytes=\(text.lengthOfBytes(using: .utf8)) maxSamples=\(maxSamples)")
+        guard FileManager.default.fileExists(atPath: bundleDir) else {
+            NSLog("[LlamaBridgeImpl] TTS attempt failed stage=bundle-check backend=\(attemptBackend) bundle=\(bundleDir)")
+            return .failure("eliza_tts_synthesize: bundle not found at \(bundleDir)")
+        }
+        guard let abiPtr = c_eliza_inference_abi_version() else {
+            NSLog("[LlamaBridgeImpl] TTS attempt failed stage=abi backend=\(attemptBackend) reason=missing")
+            return .failure("eliza_tts_synthesize: missing eliza inference ABI")
+        }
+        let abi = String(cString: abiPtr)
+        guard let abiVersion = Int(abi), abiVersion >= 4 else {
+            NSLog("[LlamaBridgeImpl] TTS attempt failed stage=abi backend=\(attemptBackend) abi=\(abi)")
+            return .failure("eliza_tts_synthesize: linked iOS inference slice is the stub ABI \(abi); rebuild with fused iOS local inference")
+        }
+        if Self.currentTtsBackendEnv() == "kokoro" && !Self.experimentalKokoroGgufTtsEnabled() {
+            NSLog("[LlamaBridgeImpl] TTS attempt blocked stage=backend-gate backend=\(attemptBackend) ttsBackend=kokoro")
+            return .failure("iOS Kokoro GGUF TTS is not enabled because this fork path does not produce production speech. Use the CoreML/ONNX Kokoro backend for real local voice.")
+        }
+
+        let start = DispatchTime.now()
+        let prepared = prepareTtsContext(bundleDir: bundleDir, backend: attemptBackend)
+        guard let ctx = prepared.context else {
+            let error = prepared.error ?? "eliza_inference_mmap_acquire(tts) failed"
+            return .failure(error)
+        }
+
+        let boundedMaxSamples = min(max(maxSamples, 24_000), 24_000 * 120)
+        var pcm = [Float](repeating: 0, count: boundedMaxSamples)
+        var ttsError: UnsafeMutablePointer<CChar>? = nil
+        let textLength = text.lengthOfBytes(using: .utf8)
+        NSLog("[LlamaBridgeImpl] TTS stage=synthesize begin backend=\(attemptBackend) maxSamples=\(boundedMaxSamples)")
+        let sampleCount = pcm.withUnsafeMutableBufferPointer { pcmBuffer -> Int32 in
+            guard let pcmPtr = pcmBuffer.baseAddress else { return -2 }
+            return text.withCString { textPtr in
+                if let speakerPresetId, !speakerPresetId.isEmpty {
+                    return speakerPresetId.withCString { speakerPtr in
+                        c_eliza_inference_tts_synthesize(
+                            ctx,
+                            textPtr,
+                            textLength,
+                            speakerPtr,
+                            pcmPtr,
+                            boundedMaxSamples,
+                            &ttsError
+                        )
+                    }
+                }
+                return c_eliza_inference_tts_synthesize(
+                    ctx,
+                    textPtr,
+                    textLength,
+                    nil,
+                    pcmPtr,
+                    boundedMaxSamples,
+                    &ttsError
+                )
+            }
+        }
+        guard sampleCount >= 0 else {
+            let error = Self.takeInferenceError(&ttsError, fallback: "eliza_inference_tts_synthesize failed with code \(sampleCount)")
+            NSLog("[LlamaBridgeImpl] TTS stage=synthesize failed backend=\(attemptBackend) code=\(sampleCount) error=\(error)")
+            clearCachedTtsContext()
+            return .failure(error)
+        }
+        NSLog("[LlamaBridgeImpl] TTS stage=synthesize ok backend=\(attemptBackend) samples=\(sampleCount)")
+        let samples = Array(pcm.prefix(Int(sampleCount)))
+        let wav = Self.wavData(from: samples, sampleRate: 24_000)
+        let audioFileUrl = FileManager.default.temporaryDirectory
+            .appendingPathComponent("eliza-tts-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+        do {
+            try wav.write(to: audioFileUrl, options: [.atomic])
+        } catch {
+            NSLog("[LlamaBridgeImpl] TTS stage=write-wav failed backend=\(attemptBackend) error=\(error.localizedDescription)")
+            return .failure("eliza_tts_synthesize: failed to write synthesized audio: \(error.localizedDescription)")
+        }
+        let elapsedNs = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+        NSLog("[LlamaBridgeImpl] TTS attempt ok backend=\(attemptBackend) samples=\(samples.count) durationMs=\(Double(elapsedNs) / 1_000_000.0)")
+        return .success(
+            audioFilePath: audioFileUrl.path,
+            sampleRate: 24_000,
+            samples: samples.count,
+            durationMs: Double(elapsedNs) / 1_000_000.0
+        )
+    }
+
+    private func prepareTtsContext(
+        bundleDir: String,
+        backend: String
+    ) -> (context: ElizaInferenceContextPtr?, error: String?) {
+        if let cachedTtsContext,
+           cachedTtsContext.bundleDir == bundleDir,
+           cachedTtsContext.backend == backend {
+            NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire cached backend=\(backend)")
+            return (cachedTtsContext.context, nil)
+        }
+        clearCachedTtsContext()
+
+        var createError: UnsafeMutablePointer<CChar>? = nil
+        NSLog("[LlamaBridgeImpl] TTS stage=create begin backend=\(backend)")
+        guard let ctx = bundleDir.withCString({ bundlePtr in
+            c_eliza_inference_create(bundlePtr, &createError)
+        }) else {
+            let error = Self.takeInferenceError(&createError, fallback: "eliza_inference_create failed")
+            NSLog("[LlamaBridgeImpl] TTS stage=create failed backend=\(backend) error=\(error)")
+            return (nil, error)
+        }
+        NSLog("[LlamaBridgeImpl] TTS stage=create ok backend=\(backend)")
+
+        var acquireError: UnsafeMutablePointer<CChar>? = nil
+        NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire begin backend=\(backend) region=tts")
+        let acquireCode = "tts".withCString { regionPtr in
+            c_eliza_inference_mmap_acquire(ctx, regionPtr, &acquireError)
+        }
+        guard acquireCode >= 0 else {
+            let error = Self.takeInferenceError(&acquireError, fallback: "eliza_inference_mmap_acquire(tts) failed with code \(acquireCode)")
+            NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire failed backend=\(backend) code=\(acquireCode) error=\(error)")
+            c_eliza_inference_destroy(ctx)
+            return (nil, error)
+        }
+        NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire ok backend=\(backend)")
+        cachedTtsContext = CachedTtsContext(bundleDir: bundleDir, backend: backend, context: ctx)
+        return (ctx, nil)
+    }
+
+    private func clearCachedTtsContext() {
+        if let cachedTtsContext {
+            c_eliza_inference_destroy(cachedTtsContext.context)
+            self.cachedTtsContext = nil
+        }
+    }
+
+    private static func shouldRetryTtsOnCpu(_ error: String) -> Bool {
+        let lower = error.lowercased()
+        return lower.contains("ov_init failed")
+            || lower.contains("pipeline_tts_load failed")
+            || lower.contains("failed to allocate backend buffer")
+            || lower.contains("metal")
+    }
+
+    private static func shouldPreferCpuTtsBackend() -> Bool {
+        if currentBackendEnv() != "default" {
+            return false
+        }
+        let override = getenv("ELIZA_IOS_TTS_BACKEND").map { String(cString: $0).lowercased() }
+        return override != "gpu" && override != "metal"
+    }
+
+    private static func elizaInferenceAbiVersion() -> String? {
+        guard let abiPtr = c_eliza_inference_abi_version() else {
+            return nil
+        }
+        return String(cString: abiPtr)
+    }
+
+    private static func currentBackendEnv() -> String {
+        getenv("GGML_BACKEND").map { String(cString: $0) } ?? "default"
+    }
+
+    private static func currentTtsBackendEnv() -> String {
+        getenv("ELIZA_TTS_BACKEND").map { String(cString: $0) } ?? "default"
+    }
+
+    private static func kokoroCoreMlDirectory(bundleDir: String) -> URL? {
+        guard #available(iOS 18.0, *) else { return nil }
+        return KokoroCoreMlEngine.modelDirectory(in: bundleDir)
+    }
+
+    private static func kokoroCoreMlDiagnostics(bundleDir: String) -> [String: Any] {
+        if #available(iOS 18.0, *) {
+            return KokoroCoreMlEngine.shared.diagnostics(
+                modelDirectory: kokoroCoreMlDirectory(bundleDir: bundleDir)
+            )
+        }
+        return [
+            "available": false,
+            "requiresIos": "18.0",
+            "error": "iOS Kokoro CoreML TTS requires iOS 18 or newer",
+        ]
+    }
+
+    private static func experimentalKokoroGgufTtsEnabled() -> Bool {
+        guard let value = getenv("ELIZA_IOS_ALLOW_EXPERIMENTAL_KOKORO_GGUF_TTS").map({ String(cString: $0).lowercased() }) else {
+            return false
+        }
+        return value == "1" || value == "true" || value == "yes" || value == "on"
+    }
+
+    private static func withTemporaryEnvironment<T>(_ name: String, value: String, body: () -> T) -> T {
+        let previous = getenv(name).map { String(cString: $0) }
+        setenv(name, value, 1)
+        defer {
+            if let previous {
+                setenv(name, previous, 1)
+            } else {
+                unsetenv(name)
+            }
+        }
+        return body()
+    }
+
     /// Releases the model + context backing `contextId`. The session's work
     /// queue serializes the free against any in-flight generate.
     public func free(contextId: Int64) {
@@ -1075,6 +1454,56 @@ public final class LlamaBridgeImpl {
         let bytes = buf.prefix(writtenCount).map { UInt8(bitPattern: $0) }
         return String(decoding: bytes, as: UTF8.self)
     }
+
+    private static func takeInferenceError(
+        _ errorPtr: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
+        fallback: String
+    ) -> String {
+        guard let pointer = errorPtr.pointee else { return fallback }
+        let message = String(cString: pointer)
+        c_eliza_inference_free_string(pointer)
+        errorPtr.pointee = nil
+        return message.isEmpty ? fallback : message
+    }
+
+    private static func wavData(from pcm: [Float], sampleRate: Int) -> Data {
+        var data = Data()
+        let bytesPerSample = 2
+        let channelCount = 1
+        let byteRate = sampleRate * channelCount * bytesPerSample
+        let blockAlign = channelCount * bytesPerSample
+        let dataSize = pcm.count * bytesPerSample
+
+        data.append(contentsOf: "RIFF".utf8)
+        appendLittleEndian(UInt32(36 + dataSize), to: &data)
+        data.append(contentsOf: "WAVE".utf8)
+        data.append(contentsOf: "fmt ".utf8)
+        appendLittleEndian(UInt32(16), to: &data)
+        appendLittleEndian(UInt16(1), to: &data)
+        appendLittleEndian(UInt16(channelCount), to: &data)
+        appendLittleEndian(UInt32(sampleRate), to: &data)
+        appendLittleEndian(UInt32(byteRate), to: &data)
+        appendLittleEndian(UInt16(blockAlign), to: &data)
+        appendLittleEndian(UInt16(16), to: &data)
+        data.append(contentsOf: "data".utf8)
+        appendLittleEndian(UInt32(dataSize), to: &data)
+
+        for sample in pcm {
+            let clamped = max(-1.0, min(1.0, sample))
+            let scaled = clamped < 0
+                ? Int16((clamped * 32768.0).rounded())
+                : Int16((clamped * 32767.0).rounded())
+            appendLittleEndian(scaled, to: &data)
+        }
+        return data
+    }
+
+    private static func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { bytes in
+            data.append(contentsOf: bytes)
+        }
+    }
 }
 
 #else
@@ -1097,6 +1526,28 @@ public struct LlamaGenerateResult {
     }
     public static func failure(_ msg: String) -> LlamaGenerateResult {
         .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, error: msg)
+    }
+}
+
+public struct LlamaTtsSynthesizeResult {
+    public let audioBase64: String
+    public let audioFilePath: String?
+    public let contentType: String
+    public let sampleRate: Int
+    public let samples: Int
+    public let durationMs: Double
+    public let error: String?
+
+    public static func failure(_ msg: String) -> LlamaTtsSynthesizeResult {
+        .init(
+            audioBase64: "",
+            audioFilePath: nil,
+            contentType: "audio/wav",
+            sampleRate: 24_000,
+            samples: 0,
+            durationMs: 0,
+            error: msg
+        )
     }
 }
 
@@ -1181,6 +1632,27 @@ public final class LlamaBridgeImpl {
     }
 
     public func cancel(contextId: Int64) {}
+
+    public func synthesizeSpeech(
+        bundleDir: String,
+        text: String,
+        speakerPresetId: String? = nil,
+        maxSamples: Int = 24_000 * 60
+    ) -> LlamaTtsSynthesizeResult {
+        return .failure("llama.cpp is not bundled in this iOS build")
+    }
+
+    public func ttsEngineDiagnostics(bundleDir: String?) -> [String: Any] {
+        var payload: [String: Any] = [
+            "available": false,
+            "message": "llama.cpp is not bundled in this iOS build",
+            "hardware": hardwareInfo().asDict(),
+        ]
+        if let bundleDir {
+            payload["bundleDir"] = bundleDir
+        }
+        return payload
+    }
 
     public func free(contextId: Int64) {}
 

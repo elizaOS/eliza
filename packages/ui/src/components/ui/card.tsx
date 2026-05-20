@@ -4,16 +4,15 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 const cardVariants = cva(
-  "rounded-xl border border-border bg-card text-card-fg",
+  "rounded-sm bg-card/70 text-card-fg",
   {
     variants: {
       variant: {
-        default:
-          "shadow-[0_10px_28px_rgba(15,23,42,0.08)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.28)]",
+        default: "",
         interactive:
-          "shadow-[0_10px_28px_rgba(15,23,42,0.08)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.28)] transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md cursor-pointer",
-        status: "shadow-sm",
-        setting: "shadow-sm p-0",
+          "transition-colors hover:bg-card cursor-pointer",
+        status: "",
+        setting: "p-0",
         flat: "",
       },
     },

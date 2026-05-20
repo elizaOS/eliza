@@ -6,7 +6,7 @@ import {
   type GameOperatorEvent,
   GameOperatorShell,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;

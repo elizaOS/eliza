@@ -985,19 +985,6 @@ export const shellAction: Action = {
 
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
-    if (mode === "cloud") {
-      coreLogger.error(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL cloud-mode denied: local exec disabled`,
-      );
-      return failureToActionResult(
-        {
-          reason: "internal",
-          message: "Local shell execution disabled in cloud mode.",
-        },
-        { cwd },
-      );
-    }
-
     coreLogger.info(`${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`);
 
     let result: ShellResult;
