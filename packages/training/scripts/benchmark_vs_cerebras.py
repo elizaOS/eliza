@@ -317,7 +317,7 @@ def benchmark_tier(
             cerebras_results = _call_cerebras_on_prompts(
                 prompts,
                 cerebras_model,
-                max_tokens=512,
+                max_tokens=1024,
             )
             elapsed = time.perf_counter() - t0
             quality = _compute_response_quality_proxy(cerebras_results)
