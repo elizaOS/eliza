@@ -1,6 +1,6 @@
-"""Import scenarios from babylonSocial/scambench into the scambench corpus.
+"""Import scenarios from feedSocial/scambench into the scambench corpus.
 
-Source: https://github.com/BabylonSocial/scambench (no LICENSE file present
+Source: https://github.com/FeedSocial/scambench (no LICENSE file present
 at time of import; attributed per-record under research/benchmark fair use,
 pending upstream license confirmation).
 
@@ -20,8 +20,8 @@ Anything beyond the limit is documented as a follow-up.
 
 Usage
 -----
-    python -m benchmarks.scambench.scripts.import_babylon \
-        --output packages/training/data/normalized/scambench-babylon.jsonl \
+    python -m benchmarks.scambench.scripts.import_feed \
+        --output packages/training/data/normalized/scambench-feed.jsonl \
         --limit 200
 """
 
@@ -36,11 +36,11 @@ import urllib.request
 from pathlib import Path
 
 UPSTREAM_URL = (
-    "https://raw.githubusercontent.com/BabylonSocial/scambench/main/"
+    "https://raw.githubusercontent.com/FeedSocial/scambench/main/"
     "generated/scenario-catalog.json"
 )
 ATTRIBUTION = (
-    "babylonSocial/scambench — https://github.com/BabylonSocial/scambench"
+    "feedSocial/scambench — https://github.com/FeedSocial/scambench"
 )
 
 
@@ -91,7 +91,7 @@ def _record_from_scenario(scn: dict) -> dict | None:
     decision = _decision_for(intent)
 
     return {
-        "roomName": f"babylon-{scenario_id}",
+        "roomName": f"feed-{scenario_id}",
         "agentId": "scam-defense-agent",
         "memoryEntries": memory,
         "currentMessage": {
@@ -114,7 +114,7 @@ def _record_from_scenario(scn: dict) -> dict | None:
         "availableActions": ["IGNORE", "REPLY", "BLOCK-USER", "WARN-USER", "SHARE-INFO"],
         "metadata": {
             "task_type": "scam_defense",
-            "source_dataset": "babylonSocial-scambench",
+            "source_dataset": "feedSocial-scambench",
             "source_attribution": ATTRIBUTION,
             "source_scenario_id": scn.get("id"),
             "source_suite": scn.get("suite"),
