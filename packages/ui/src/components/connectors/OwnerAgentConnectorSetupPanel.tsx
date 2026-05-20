@@ -48,14 +48,12 @@ export function OwnerAgentConnectorSetupPanel({
 }: OwnerAgentConnectorSetupPanelProps) {
   return (
     <div className={cn("flex flex-col gap-3", className)}>
-      {description ? (
-        <p className="text-xs text-muted">{description}</p>
-      ) : null}
+      {description ? <p className="text-xs text-muted">{description}</p> : null}
       {enableOwner ? (
         <ConnectorAccountList
           provider={provider}
           connectorId={connectorId}
-          role="OWNER"
+          accountRole="OWNER"
           title={ownerTitle}
           pollMs={pollMs}
         />
@@ -64,7 +62,7 @@ export function OwnerAgentConnectorSetupPanel({
         <ConnectorAccountList
           provider={provider}
           connectorId={connectorId}
-          role="AGENT"
+          accountRole="AGENT"
           title={agentTitle}
           pollMs={pollMs}
         />

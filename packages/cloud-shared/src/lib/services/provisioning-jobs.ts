@@ -13,7 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -794,9 +794,7 @@ export class ProvisioningJobService {
       estimatedDurationMs: 45_000,
       logName: "agent_snapshot",
       logExtras: { snapshotType },
-      idempotencyPredicates: [
-        sql`${jobs.data}->>'snapshotType' = ${snapshotType}`,
-      ],
+      idempotencyPredicates: [sql`${jobs.data}->>'snapshotType' = ${snapshotType}`],
     });
   }
 

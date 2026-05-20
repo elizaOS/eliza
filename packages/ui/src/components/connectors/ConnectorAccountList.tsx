@@ -31,7 +31,7 @@ export interface ConnectorAccountListProps {
    * resulting connection under the correct role. When omitted, the legacy
    * "single flat list of accounts" behavior is preserved.
    */
-  role?: ConnectorAccountRole;
+  accountRole?: ConnectorAccountRole;
 }
 
 function sortConnectorAccounts(
@@ -83,14 +83,14 @@ export function ConnectorAccountList({
   selectedAccountId,
   onSelectedAccountIdChange,
   onAddAccount,
-  role,
+  accountRole,
 }: ConnectorAccountListProps) {
   const connectorAccounts = useConnectorAccounts(provider, connectorId, {
     pollMs,
     initialSelectedAccountId: selectedAccountId,
   });
   const setConnectorSelectedAccountId = connectorAccounts.setSelectedAccountId;
-  const effectiveTitle = title ?? defaultTitleForRole(role);
+  const effectiveTitle = title ?? defaultTitleForRole(accountRole);
 
   useEffect(() => {
     if (selectedAccountId !== undefined) {
@@ -99,14 +99,17 @@ export function ConnectorAccountList({
   }, [selectedAccountId, setConnectorSelectedAccountId]);
 
   const sortedAccounts = useMemo(() => {
-    const filtered = role
-      ? connectorAccounts.accounts.filter((account) => account.role === role)
+    const filtered = accountRole
+      ? connectorAccounts.accounts.filter(
+          (account) => account.role === accountRole,
+        )
       : connectorAccounts.accounts;
-    return sortConnectorAccounts(
-      filtered,
-      connectorAccounts.defaultAccountId,
-    );
-  }, [connectorAccounts.accounts, connectorAccounts.defaultAccountId, role]);
+    return sortConnectorAccounts(filtered, connectorAccounts.defaultAccountId);
+  }, [
+    connectorAccounts.accounts,
+    connectorAccounts.defaultAccountId,
+    accountRole,
+  ]);
 
   const handleSelect = (accountId: string) => {
     setConnectorSelectedAccountId(accountId);
@@ -120,7 +123,7 @@ export function ConnectorAccountList({
       await connectorAccounts.add(body);
       return;
     }
-    const requestedRole: ConnectorAccountRole = role ?? "OWNER";
+    const requestedRole: ConnectorAccountRole = accountRole ?? "OWNER";
     const result = await connectorAccounts.startOAuth({
       metadata: {
         requestedRole,

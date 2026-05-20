@@ -77,8 +77,7 @@ const ANDROID_SMS_GATEWAY_WEBHOOK_URL = String(
     "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
 );
 const ANDROID_SMS_GATEWAY_PHONE_NUMBER = String(
-  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ??
-    "+14159611510",
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
 );
 const ANDROID_SMS_GATEWAY_PHONE_LABEL = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
