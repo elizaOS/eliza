@@ -107,6 +107,26 @@ rl = [
   # without serving don't have to install the full `serve` extra (which has
   # an incompatible torch ABI). vllm>=0.6 is what verl 0.5+ requires.
   "vllm>=0.6.0",
+  # Atropos — continuous RL environment server. Drives the GRPO loop in
+  # scripts/rl/atropos_trainer.py against eliza-native trajectory JSONL
+  # exports under $ELIZA_STATE_DIR/trajectories. Config:
+  # packages/training/config/atropos.yaml.
+  "atroposlib>=0.1.0",
+  # LiteLLM — OpenAI-compatible client used by the RLAIF judge path to talk
+  # to cerebras/gpt-oss-120b and the Nebius testing harness from a single
+  # surface.
+  "litellm>=1.0.0",
+  # Kondo-gate selective backprop kernel — referenced by atropos.yaml
+  # (use_kondo: true). Pinned independent of the train/serve torch line.
+  "kondo-gate>=0.1.0",
+]
+rl-tinker = [
+  # Thinking Machines Tinker SDK — managed RL training as a service.
+  # Optional alternative to the local verl path; entry point lives in
+  # scripts/rl/tinker/tinker_trainer.py and is driven by
+  # packages/training/config/tinker.yaml. Kept under its own extra so the
+  # local-only RL path doesn't pull a network-dependent SDK.
+  "tinker>=0.1.0",
 ]
 reward = [
   # AI-judge path inside scripts/eliza_reward_fn.py (gated on
@@ -164,5 +184,12 @@ conflicts = [
   [
     { extra = "serve" },
     { extra = "rl" },
+  ],
+  # rl-tinker (cloud SDK) and the local verl/vllm RL path target the same
+  # config surface but should not coexist in a single venv — Tinker brings
+  # its own torch ABI assumptions and its rollouts are remote.
+  [
+    { extra = "rl" },
+    { extra = "rl-tinker" },
   ],
 ]

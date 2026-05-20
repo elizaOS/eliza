@@ -123,6 +123,12 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           401,
         );
       }
+      if (
+        c.req.path.startsWith("/api/v1/cron/") ||
+        c.req.path.startsWith("/cron/")
+      ) {
+        return next();
+      }
     }
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
     if (!auth?.startsWith("Bearer ") || auth.slice(7).trim() !== token) {
