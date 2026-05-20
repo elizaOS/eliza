@@ -349,7 +349,7 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
                 group = groups[group_name]
                 if not isinstance(group, dict):
                     continue
-                artifacts_out: list[dict[str, object]] = []
+                artifacts_out = []
                 artifacts = group.get("artifacts", [])
                 if isinstance(artifacts, list):
                     for artifact in artifacts:

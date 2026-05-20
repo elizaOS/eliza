@@ -1270,7 +1270,7 @@ def write_solid_cad_handoff_artifacts(
             if safe_radius > 0.05:
                 with suppress(Exception):
                     solid = solid.edges("|Z").fillet(safe_radius)
-        return solid.translate(tuple(float(value) for value in center))
+        return solid.translate((float(center[0]), float(center[1]), float(center[2])))
 
     def cq_composite_box(segments: list[tuple[list[float], list[float], str]]) -> Any:
         solid = None
@@ -1980,7 +1980,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
         if path.is_file() and expected:
             try:
                 imported = cq.importers.importStep(str(path))
-                bbox = imported.val().BoundingBox()
+                bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
                 actual = [bbox.xlen, bbox.ylen, bbox.zlen]
                 errors = [abs(float(a) - float(e)) for a, e in zip(actual, expected, strict=True)]
                 case.update(
@@ -2008,7 +2008,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
     if assembly_path.is_file():
         try:
             imported = cq.importers.importStep(str(assembly_path))
-            bbox = imported.val().BoundingBox()
+            bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
             assembly_case.update(
                 {
                     "imported": True,
