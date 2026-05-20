@@ -942,10 +942,10 @@ export class AgentRuntime implements IAgentRuntime {
 		this.promptBatcher = new PromptBatcher(
 			this,
 			new PromptDispatcher({
-				packingDensity: getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
+				packingDensity:
+					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
 				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ??
-					24_000,
+					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
 				maxParallelCalls:
 					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
 				modelSeparation:
@@ -960,10 +960,10 @@ export class AgentRuntime implements IAgentRuntime {
 					30_000,
 				maxSectionsPerCall:
 					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
-				packingDensity: getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
+				packingDensity:
+					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
 				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ??
-					24_000,
+					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
 				maxParallelCalls:
 					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
 				modelSeparation:

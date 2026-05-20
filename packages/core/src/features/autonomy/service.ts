@@ -208,7 +208,9 @@ export class AutonomyService extends Service {
 			return "Autonomous thoughts: (none)";
 		}
 
-		const recent = autonomyThoughtMemories.slice(-AUTONOMY_RECENT_THOUGHT_LIMIT);
+		const recent = autonomyThoughtMemories.slice(
+			-AUTONOMY_RECENT_THOUGHT_LIMIT,
+		);
 		const older = autonomyThoughtMemories.slice(
 			0,
 			Math.max(0, autonomyThoughtMemories.length - recent.length),
@@ -240,8 +242,7 @@ export class AutonomyService extends Service {
 		}
 		const metadata = this.readMetadata(memory);
 		return (
-			metadata.isAutonomous === true &&
-			metadata.type === "autonomous-response"
+			metadata.isAutonomous === true && metadata.type === "autonomous-response"
 		);
 	}
 
@@ -325,7 +326,10 @@ export class AutonomyService extends Service {
 		const header = `Compacted ${memories.length} prior autonomous thoughts. Preserve standing goals, unresolved blockers, commitments, and recently discovered facts:`;
 		let summary = [header, ...importantLines].join("\n");
 		if (summary.length > AUTONOMY_COMPACTED_MAX_CHARS) {
-			const tailBudget = Math.max(0, AUTONOMY_COMPACTED_MAX_CHARS - header.length - 16);
+			const tailBudget = Math.max(
+				0,
+				AUTONOMY_COMPACTED_MAX_CHARS - header.length - 16,
+			);
 			const tail = importantLines
 				.join("\n")
 				.slice(-tailBudget)
