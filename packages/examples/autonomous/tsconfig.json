@@ -10,7 +10,7 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/plugin-capacitor-bridge": [
         "../../../plugins/plugin-capacitor-bridge/src/index.ts"

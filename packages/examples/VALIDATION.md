@@ -46,21 +46,21 @@ The local examples sweep has been run in this worktree with these outcomes:
 | --- | --- | --- |
 | `_plugin` | `typecheck`, `test`, `build` | Optional manual Cypress flow via `test:e2e:manual`. |
 | `a2a` | `typecheck`, `test`, `build` | `OPENAI_API_KEY` for model-backed mode. |
-| `agent-console` | `typecheck` | Browser session plus one provider key to inspect live SSE telemetry. |
+| `agent-console` | `test`, `typecheck` | Action scanner fixture test; browser session plus one provider key to inspect live SSE telemetry. |
 | `app/capacitor` | Parent skip scripts plus backend/frontend package checks | Native Capacitor device/simulator testing and provider keys. |
 | `app/capacitor/backend` | `typecheck`, `test`, `build` | Provider key and device/simulator flow through the Capacitor shell. |
 | `app/capacitor/frontend` | `typecheck`, `build` | Browser and native WebView smoke test against a configured backend. |
 | `app/electron` | Parent skip scripts plus backend/frontend package checks | Desktop Electron launch and provider-key chat flow. |
 | `app/electron/backend` | `typecheck`, `test`, `build` | Provider-key chat flow from the packaged Electron shell. |
 | `app/electron/frontend` | `typecheck`, `build` | Renderer smoke test in Electron and browser dev-server mode. |
-| `autonomous` | `typecheck`, `build` | Optional local model and shell sandbox configuration. |
+| `autonomous` | `test`, `typecheck`, `build` | Decision parser, shell allowlist, and prompt tests; optional local model and shell sandbox configuration. |
 | `avatar` | `typecheck`, `build` | Browser microphone/audio flow, selected model key, optional ElevenLabs key. |
 | `aws` | `typecheck`, `test`, `build` | AWS account, SAM deployment, and Lambda invocation with `OPENAI_API_KEY`. |
 | `bluesky` | `typecheck`, `test`, `build` | `LIVE_TEST=true` with Bluesky credentials and dry-run/posting flags. |
 | `browser-extension` | Parent typecheck skip and documented Chrome/Safari package checks | Load unpacked Chrome extension; Safari requires Xcode signing/install. |
 | `browser-extension/chrome` | `typecheck`, explicit build skip | `build:tsup` only after resolving browser bundling of Node-only workspace deps; load unpacked for runtime validation. |
 | `browser-extension/safari` | Typecheck skip, scripted Safari build path | Xcode and Safari extension signing. |
-| `chat` | `typecheck`, `build` | One configured provider key for live chat. |
+| `chat` | `test`, `typecheck`, `build` | Provider-selection tests; one configured provider key for live chat. |
 | `cloud/clone-ur-crush` | `typecheck`, `test`, `build` | Live Next.js flow with required model/image provider keys. |
 | `cloud/edad` | `typecheck`, `test`, `build` | Manual server launch with Eliza Cloud app ID, affiliate code, and signed-in user token. |
 | `cloudflare` | `typecheck`, `test`, `build` | Wrangler login, Worker secret, deployed or local Worker endpoint. |
@@ -86,11 +86,11 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `roblox` | `typecheck`, `test`, `build` | Roblox Studio place, Open Cloud key, tunnel/shared-secret bridge test. |
 | `smartglasses` | `typecheck`, `test` | Even Realities simulator or BLE hardware evidence report. |
 | `supabase` | Static review; no package scripts | Supabase CLI/Deno function serve or deployment with anon key and `OPENAI_API_KEY`. |
-| `telegram` | `typecheck`, `build` | Telegram bot token and provider key. |
-| `text-adventure` | `typecheck`, `build` | Optional manual CLI playthrough. |
+| `telegram` | `test`, `typecheck`, `build` | Env and character wiring tests; Telegram bot token and provider key for live run. |
+| `text-adventure` | `test`, `typecheck`, `build` | Deterministic no-LLM dungeon-engine playthrough; optional manual CLI playthrough requires `OPENAI_API_KEY`. |
 | `tic-tac-toe` | `typecheck`, `test`, `build` | Test runs the non-interactive bench mode. |
 | `trader` | `typecheck`, `build` | Paper-trading UI flow, then isolated-wallet live testing only when intended. |
-| `twitter-xai` | `typecheck`, `build` | X/xAI credentials; start with `TWITTER_DRY_RUN=true`. |
+| `twitter-xai` | `test`, `typecheck`, `build` | Credential-mode validation tests; X/xAI credentials for live run, starting with `TWITTER_DRY_RUN=true`. |
 | `vercel` | `typecheck`, `test`, `build` | Vercel project/env plus deployed or `vercel dev` API endpoint. |
 
 ## Not Yet Proven By Local Automation

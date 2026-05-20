@@ -17,14 +17,6 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-const { default: inmemorydbPlugin } = await import(
-  "@elizaos/plugin-inmemorydb"
-);
-const { default: localInferencePlugin } = await import(
-  "@elizaos/plugin-local-inference"
-);
-const { shellPlugin } = await import("@elizaos/plugin-shell");
-
 type ShellService = {
   executeCommand(
     command: string,
@@ -109,7 +101,7 @@ function readStringField(
   return null;
 }
 
-function parseDecision(raw: string): AgentDecision | null {
+export function parseDecision(raw: string): AgentDecision | null {
   const parsed = parseJSONObjectFromText(raw);
   if (!parsed) return null;
 
@@ -147,7 +139,7 @@ function baseCommand(command: string): string {
   return space === -1 ? trimmed : trimmed.slice(0, space);
 }
 
-function isCommandAllowed(
+export function isCommandAllowed(
   command: string,
   allowedBaseCommands: readonly string[],
 ): boolean {
@@ -163,7 +155,7 @@ function isCommandAllowed(
   return allowedBaseCommands.includes(cmd);
 }
 
-function decisionPrompt(params: {
+export function decisionPrompt(params: {
   goal: string;
   allowedDirectory: string;
   allowedCommands: readonly string[];
@@ -202,6 +194,14 @@ Rules:
 }
 
 async function main(): Promise<void> {
+  const { default: inmemorydbPlugin } = await import(
+    "@elizaos/plugin-inmemorydb"
+  );
+  const { default: localInferencePlugin } = await import(
+    "@elizaos/plugin-local-inference"
+  );
+  const { shellPlugin } = await import("@elizaos/plugin-shell");
+
   const here = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(here, "..", "..", "..");
 
@@ -477,4 +477,6 @@ async function main(): Promise<void> {
   await runtime.stop();
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

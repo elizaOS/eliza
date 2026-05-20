@@ -7,26 +7,19 @@
 
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 
-async function main() {
-  const [
-    { openaiPlugin },
-    { default: sqlPlugin },
-    { default: telegramPlugin },
-  ] = await Promise.all([
-    import("@elizaos/plugin-openai"),
-    import("@elizaos/plugin-sql"),
-    import("@elizaos/plugin-telegram"),
-  ]);
-
-  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-
-  if (!telegramBotToken || !openaiApiKey) {
-    console.error("Missing TELEGRAM_BOT_TOKEN or OPENAI_API_KEY");
-    process.exit(1);
+export function readRequiredEnv(key: string): string {
+  const value = process.env[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Missing required environment variable: ${key}`);
   }
+  return value;
+}
 
-  const character = createCharacter({
+export function createTelegramCharacter(params: {
+  telegramBotToken: string;
+  openaiApiKey: string;
+}) {
+  return createCharacter({
     name: "TelegramEliza",
     bio: "A helpful AI assistant on Telegram.",
     system: `You are TelegramEliza, a helpful AI assistant on Telegram.
@@ -40,9 +33,36 @@ Keep responses short - suitable for mobile chat.`,
     },
     // Optional: pass through secrets so plugins can read via runtime.getSetting()
     secrets: {
-      TELEGRAM_BOT_TOKEN: telegramBotToken,
-      OPENAI_API_KEY: openaiApiKey,
+      TELEGRAM_BOT_TOKEN: params.telegramBotToken,
+      OPENAI_API_KEY: params.openaiApiKey,
     },
+  });
+}
+
+async function main() {
+  const [
+    { openaiPlugin },
+    { default: sqlPlugin },
+    { default: telegramPlugin },
+  ] = await Promise.all([
+    import("@elizaos/plugin-openai"),
+    import("@elizaos/plugin-sql"),
+    import("@elizaos/plugin-telegram"),
+  ]);
+
+  let telegramBotToken: string;
+  let openaiApiKey: string;
+  try {
+    telegramBotToken = readRequiredEnv("TELEGRAM_BOT_TOKEN");
+    openaiApiKey = readRequiredEnv("OPENAI_API_KEY");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  const character = createTelegramCharacter({
+    telegramBotToken,
+    openaiApiKey,
   });
 
   console.log("Starting TelegramEliza...");
@@ -64,4 +84,6 @@ Keep responses short - suitable for mobile chat.`,
   await new Promise(() => {});
 }
 
-main().catch(console.error);
+if (import.meta.main) {
+  main().catch(console.error);
+}
