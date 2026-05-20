@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 _COMMAND_RE = re.compile(r"<command>(.*?)</command>", re.DOTALL | re.IGNORECASE)
 _BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 _MAX_COMMAND_BLOCKS_PER_TURN = 3
+_INSPECT_APP_AND_TESTS_COMMAND = (
+    "find /app /tests -maxdepth 2 -type f -print "
+    "-exec sh -c 'echo \"--- $1\"; sed -n \"1,220p\" \"$1\"' sh {} \\;"
+)
 
 
 def _extract_command(text: str) -> Optional[str]:
@@ -136,6 +140,31 @@ def _command_from_params(params: dict) -> Optional[str]:
             if isinstance(raw, str) and raw.strip():
                 return raw.strip()
     return None
+
+
+def _looks_like_uninspected_answer_guess(command: str, *, iteration: int) -> bool:
+    if iteration != 0:
+        return False
+    lowered = command.lower()
+    return "answer.txt" in lowered and not any(
+        token in lowered
+        for token in (
+            "cat ",
+            "sed ",
+            "grep ",
+            "rg ",
+            "find ",
+            "ls ",
+            "pytest",
+            "python",
+        )
+    )
+
+
+def _needs_tests_inspection(command: str, *, iteration: int) -> bool:
+    if iteration != 0:
+        return False
+    return "/tests" not in command
 
 
 class ElizaBridgeTerminalAgent:
@@ -241,7 +270,15 @@ class ElizaBridgeTerminalAgent:
                 response_text = response.text or ""
                 session.model_responses.append(response_text)
 
-                if _signals_complete(response_text, response.params):
+                command = _extract_command(response_text)
+                if not command:
+                    command = _command_from_params(response.params)
+                if command and _looks_like_uninspected_answer_guess(command, iteration=iteration):
+                    command = _INSPECT_APP_AND_TESTS_COMMAND
+                elif command and _needs_tests_inspection(command, iteration=iteration):
+                    command = f"{_INSPECT_APP_AND_TESTS_COMMAND}\n{command}"
+
+                if _signals_complete(response_text, response.params) and not command:
                     test_success, test_output, test_exit_code = await self._environment.run_test(
                         task.test_script
                     )
@@ -254,10 +291,6 @@ class ElizaBridgeTerminalAgent:
                         f"Please fix the issue and try again."
                     )
                     continue
-
-                command = _extract_command(response_text)
-                if not command:
-                    command = _command_from_params(response.params)
 
                 if not command:
                     last_feedback = (
@@ -282,6 +315,18 @@ class ElizaBridgeTerminalAgent:
                     f"stdout={cmd_result.stdout[:2000]}\n"
                     f"stderr={cmd_result.stderr[:1000]}"
                 )
+                if _signals_complete(response_text, response.params):
+                    test_success, test_output, test_exit_code = await self._environment.run_test(
+                        task.test_script
+                    )
+                    if test_success:
+                        task_complete = True
+                        break
+                    last_feedback = (
+                        f"Task verification FAILED (exit code {test_exit_code}).\n"
+                        f"Test output:\n{test_output}\n\n"
+                        f"Please fix the issue and try again."
+                    )
 
             if not task_complete:
                 test_success, test_output, test_exit_code = await self._environment.run_test(
