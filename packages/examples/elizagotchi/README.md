@@ -39,6 +39,16 @@ Open http://localhost:5174 in your browser!
 | 💊 **Medicine** | Cure sickness                           |
 | 💡 **Light**    | Toggle lights on/off for bedtime        |
 
+## ✅ Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke test checks the Vite mount point and verifies that feed/play/reset/export flows remain wired through the local elizagotchi agent command API. Browser gameplay still needs a manual smoke test for animations and interaction feel.
+
 ### Tips for a Happy Pet
 
 1. **Check regularly** - Stats decay over time
@@ -155,6 +165,5 @@ MIT License - Part of the elizaOS project.
 ---
 
 Made with 💕 using elizaOS
-
 
 

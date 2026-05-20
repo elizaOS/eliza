@@ -42,5 +42,8 @@ Then open the Vite URL (default `http://localhost:3000`).
 ```bash
 cd packages/examples/farcaster-miniapp
 bun run test
+bun run typecheck
+bun run build
 ```
 
+The local smoke test checks Farcaster SDK readiness, loading/error retry states, chat rendering, and the in-memory chat-only API routes. A hosted Farcaster mini app flow still requires manual validation.

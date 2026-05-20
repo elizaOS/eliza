@@ -36,7 +36,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, and `moltbook` passed targeted reruns after the last fixes. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, `moltbook`, `react`, `elizagotchi`, `farcaster-miniapp`, and `next` passed targeted reruns after the last fixes. |
 | Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
 | Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with 34 links, Roblox/Minecraft sections visible, and every external setup link returning HTTP < 400 after redirects. |
 
@@ -67,9 +67,9 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `code` | `typecheck`, `test`, `build` | Provider-key E2E flows for subagents/game generation. |
 | `convex` | `typecheck`, `test`, `build` | `convex dev` or deployed Convex URL plus provider key in Convex env. |
 | `discord` | `typecheck`, `test`, `build` | Discord app credentials, bot install, provider key. |
-| `elizagotchi` | `typecheck`, `build` | Browser gameplay smoke test. |
+| `elizagotchi` | `test`, `typecheck`, `build` | Static mount and agent-command wiring test; browser gameplay smoke test. |
 | `farcaster` | `typecheck`, `build` | Neynar/Farcaster credentials; start with dry-run. |
-| `farcaster-miniapp` | `typecheck`, `build` | Farcaster mini app host plus wallet/provider integrations. |
+| `farcaster-miniapp` | `test`, `typecheck`, `build` | Static SDK/API wiring test; Farcaster mini app host plus wallet/provider integrations. |
 | `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
 | `game-of-life` | `typecheck`, `test`, `build` | Test runs a short non-interactive simulation. |
 | `gcp` | `test`, `typecheck`, `build` | Non-interactive worker availability check; GCP project, Cloud Run deployment, deployed test client URL. |
@@ -78,8 +78,8 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `mcp` | `typecheck`, `test`, `build` | OpenAI key or compatible endpoint for live MCP chat. |
 | `moltbook` | `test`, `typecheck`, `build` | Config and fee-format tests; `LLM_API_KEY` plus token only for write actions. |
 | `moltbook/bags-claimer` | `test`, typecheck/build skip scripts | Fee-format test; wallet/RPC setup for claim flow. |
-| `next` | `typecheck`, explicit build skip | `build:next` for opt-in Next.js bundle verification; provider key for live chat. |
-| `react` | `typecheck`, `build` | Browser smoke test. |
+| `next` | `test`, `typecheck`, explicit build skip | Static client streaming test; `build:next` for opt-in Next.js bundle verification; provider key for live chat. |
+| `react` | `test`, `typecheck`, `build` | Static mount/runtime wiring test; browser smoke test. |
 | `rest-api/elysia` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
 | `rest-api/express` | `test`, `typecheck`, `build` | Ephemeral-port CORS/request validation tests; start server for full HTTP chat flow. |
 | `rest-api/hono` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
@@ -89,7 +89,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `telegram` | `test`, `typecheck`, `build` | Env and character wiring tests; Telegram bot token and provider key for live run. |
 | `text-adventure` | `test`, `typecheck`, `build` | Deterministic no-LLM dungeon-engine playthrough; optional manual CLI playthrough requires `OPENAI_API_KEY`. |
 | `tic-tac-toe` | `typecheck`, `test`, `build` | Test runs the non-interactive bench mode. |
-| `trader` | `typecheck`, `build` | Paper-trading UI flow, then isolated-wallet live testing only when intended. |
+| `trader` | `test`, `typecheck`, `build` | Static panel and paper-trading default test; paper-trading UI flow, then isolated-wallet live testing only when intended. |
 | `twitter-xai` | `test`, `typecheck`, `build` | Credential-mode validation tests; X/xAI credentials for live run, starting with `TWITTER_DRY_RUN=true`. |
 | `vercel` | `typecheck`, `test`, `build` | Vercel project/env plus deployed or `vercel dev` API endpoint. |
 

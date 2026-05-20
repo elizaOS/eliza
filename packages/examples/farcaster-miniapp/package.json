@@ -8,6 +8,7 @@
     "build": "tsc && bun --bun vite build",
     "preview": "bun --bun vite preview",
     "start": "node server.js",
+    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit"
   },
