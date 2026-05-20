@@ -1,7 +1,7 @@
 {
-  "name": "@elizaos/electrobun-carrots",
+  "name": "@elizaos/plugin-remote-manifest",
   "version": "0.0.1",
-  "description": "Eliza-flavored carrot runtime primitives for Electrobun desktop shells.",
+  "description": "Manifest schema, permissions, store, and wire envelope types for remote-mode elizaOS plugins.",
   "type": "module",
   "main": "./dist/index.js",
   "license": "MIT",

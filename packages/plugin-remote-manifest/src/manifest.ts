@@ -5,35 +5,35 @@ import {
 import {
   BUN_PERMISSIONS,
   type BunPermission,
-  type CarrotInstallSource,
-  type CarrotManifest,
-  type CarrotPermissionConsentRequest,
-  type CarrotPermissionGrant,
-  type CarrotPermissionTag,
+  type RemotePluginInstallSource,
+  type RemotePluginManifest,
+  type RemotePluginPermissionConsentRequest,
+  type RemotePluginPermissionGrant,
+  type RemotePluginPermissionTag,
   HOST_PERMISSIONS,
   type HostPermission,
 } from "./types.js";
 
-export interface CarrotPermissionDiff {
-  requestedPermissions: CarrotPermissionTag[];
-  changedPermissions: CarrotPermissionTag[];
+export interface RemotePluginPermissionDiff {
+  requestedPermissions: RemotePluginPermissionTag[];
+  changedPermissions: RemotePluginPermissionTag[];
   hostPermissions: HostPermission[];
   bunPermissions: BunPermission[];
-  isolation: NonNullable<CarrotPermissionGrant["isolation"]>;
+  isolation: NonNullable<RemotePluginPermissionGrant["isolation"]>;
 }
 
-export interface CarrotConsentRequestInput {
+export interface RemotePluginConsentRequestInput {
   requestId: string;
-  manifest: CarrotManifest;
-  source: CarrotInstallSource;
+  manifest: RemotePluginManifest;
+  source: RemotePluginInstallSource;
   sourceLabel: string;
   message: string;
   confirmLabel: string;
-  previousGrant?: CarrotPermissionGrant | null;
+  previousGrant?: RemotePluginPermissionGrant | null;
 }
 
 function enabledHostPermissions(
-  permissions: CarrotPermissionGrant,
+  permissions: RemotePluginPermissionGrant,
 ): HostPermission[] {
   return HOST_PERMISSIONS.filter(
     (permission) => permissions.host?.[permission] === true,
@@ -41,7 +41,7 @@ function enabledHostPermissions(
 }
 
 function enabledBunPermissions(
-  permissions: CarrotPermissionGrant,
+  permissions: RemotePluginPermissionGrant,
 ): BunPermission[] {
   return BUN_PERMISSIONS.filter(
     (permission) => permissions.bun?.[permission] === true,
@@ -49,9 +49,9 @@ function enabledBunPermissions(
 }
 
 export function diffCarrotPermissions(
-  requested: CarrotPermissionGrant,
-  previous?: CarrotPermissionGrant | null,
-): CarrotPermissionDiff {
+  requested: RemotePluginPermissionGrant,
+  previous?: RemotePluginPermissionGrant | null,
+): RemotePluginPermissionDiff {
   const normalized = normalizeCarrotPermissions(requested);
   const requestedPermissions = flattenCarrotPermissions(normalized);
   const previousPermissions = new Set(flattenCarrotPermissions(previous));
@@ -69,22 +69,22 @@ export function diffCarrotPermissions(
 }
 
 export function getCarrotManifestPermissionTags(
-  manifest: CarrotManifest,
-): CarrotPermissionTag[] {
+  manifest: RemotePluginManifest,
+): RemotePluginPermissionTag[] {
   return flattenCarrotPermissions(manifest.permissions);
 }
 
 export function buildCarrotPermissionConsentRequest(
-  input: CarrotConsentRequestInput,
-): CarrotPermissionConsentRequest {
+  input: RemotePluginConsentRequestInput,
+): RemotePluginPermissionConsentRequest {
   const diff = diffCarrotPermissions(
     input.manifest.permissions,
     input.previousGrant,
   );
   return {
     requestId: input.requestId,
-    carrotId: input.manifest.id,
-    carrotName: input.manifest.name,
+    remotePluginId: input.manifest.id,
+    remotePluginName: input.manifest.name,
     version: input.manifest.version,
     sourceKind: input.source.kind,
     sourceLabel: input.sourceLabel,

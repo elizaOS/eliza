@@ -9,7 +9,7 @@ import {
   parseCarrotPermissionTag,
   toBunWorkerPermissions,
 } from "./permissions.js";
-import type { CarrotPermissionGrant, CarrotPermissionTag } from "./types.js";
+import type { RemotePluginPermissionGrant, RemotePluginPermissionTag } from "./types.js";
 
 describe("carrot permissions", () => {
   it("normalizes legacy permissions into host and bun grants", () => {
@@ -41,7 +41,7 @@ describe("carrot permissions", () => {
       "bun:read",
       "bun:worker",
       "isolation:isolated-process",
-    ] satisfies CarrotPermissionTag[]);
+    ] satisfies RemotePluginPermissionTag[]);
   });
 
   it("merges overrides over defaults", () => {
@@ -66,7 +66,7 @@ describe("carrot permissions", () => {
   });
 
   it("checks individual host and bun permissions", () => {
-    const grant: CarrotPermissionGrant = {
+    const grant: RemotePluginPermissionGrant = {
       host: { tray: true },
       bun: { run: true },
     };

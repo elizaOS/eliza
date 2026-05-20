@@ -9,9 +9,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  assertCarrotPayload,
+  assertRemotePluginPayload,
   buildCarrotRuntimeContext,
-  CarrotStoreError,
+  RemotePluginStoreError,
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,
   installPrebuiltCarrot,
@@ -23,7 +23,7 @@ import {
   resolveCarrotPathInside,
   uninstallInstalledCarrot,
 } from "./store.js";
-import type { CarrotManifest } from "./types.js";
+import type { RemotePluginManifest } from "./types.js";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), "electrobun-carrots-"));
@@ -34,7 +34,7 @@ function withTempDir<T>(fn: (dir: string) => T): T {
   }
 }
 
-const manifest: CarrotManifest = {
+const manifest: RemotePluginManifest = {
   id: "bunny.search",
   name: "Search",
   version: "1.0.0",
@@ -64,7 +64,7 @@ const manifest: CarrotManifest = {
 
 function writePayload(
   dir: string,
-  nextManifest: CarrotManifest = manifest,
+  nextManifest: RemotePluginManifest = manifest,
 ): string {
   const payloadDir = join(dir, "payload");
   mkdirSync(join(payloadDir, "views"), { recursive: true });
@@ -248,15 +248,15 @@ describe("carrot store", () => {
 
   it("rejects payload paths that escape the carrot root", () =>
     withTempDir((dir) => {
-      const escapedManifest: CarrotManifest = {
+      const escapedManifest: RemotePluginManifest = {
         ...manifest,
         worker: { relativePath: "../worker.js" },
       };
       const payloadDir = writePayload(dir, escapedManifest);
 
-      expect(() => assertCarrotPayload(payloadDir)).toThrow(CarrotStoreError);
+      expect(() => assertRemotePluginPayload(payloadDir)).toThrow(RemotePluginStoreError);
       expect(() => resolveCarrotPathInside(payloadDir, "../worker.js")).toThrow(
-        CarrotStoreError,
+        RemotePluginStoreError,
       );
     }));
 
@@ -264,7 +264,7 @@ describe("carrot store", () => {
     withTempDir((dir) => {
       expect(() =>
         getCarrotStorePaths(join(dir, "store"), "../../evil"),
-      ).toThrow(CarrotStoreError);
+      ).toThrow(RemotePluginStoreError);
     }));
 
   it("uninstalls a carrot and refreshes the registry", () =>

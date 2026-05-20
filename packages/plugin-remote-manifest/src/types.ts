@@ -3,7 +3,7 @@ export const HOST_PERMISSIONS = [
   "tray",
   "notifications",
   "storage",
-  "manage-carrots",
+  "manage-remote-plugins",
 ] as const;
 
 export const BUN_PERMISSIONS = [
@@ -16,18 +16,18 @@ export const BUN_PERMISSIONS = [
   "worker",
 ] as const;
 
-export const CARROT_ISOLATIONS = ["shared-worker", "isolated-process"] as const;
+export const REMOTE_PLUGIN_ISOLATIONS = ["shared-worker", "isolated-process"] as const;
 
 export type HostPermission = (typeof HOST_PERMISSIONS)[number];
 export type BunPermission = (typeof BUN_PERMISSIONS)[number];
-export type CarrotIsolation = (typeof CARROT_ISOLATIONS)[number];
+export type RemotePluginIsolation = (typeof REMOTE_PLUGIN_ISOLATIONS)[number];
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonObject = { readonly [key: string]: JsonValue };
 export type JsonArray = readonly JsonValue[];
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
-export type LegacyCarrotPermission =
+export type LegacyRemotePluginPermission =
   | "bun"
   | "bun:fs"
   | "bun:env"
@@ -36,42 +36,42 @@ export type LegacyCarrotPermission =
   | "bun:addons"
   | HostPermission;
 
-export interface CarrotPermissionGrant {
+export interface RemotePluginPermissionGrant {
   host?: Partial<Record<HostPermission, boolean>>;
   bun?: Partial<Record<BunPermission, boolean>>;
-  isolation?: CarrotIsolation;
+  isolation?: RemotePluginIsolation;
 }
 
-export type CarrotPermissionTag =
+export type RemotePluginPermissionTag =
   | `host:${HostPermission}`
   | `bun:${BunPermission}`
-  | `isolation:${CarrotIsolation}`;
+  | `isolation:${RemotePluginIsolation}`;
 
-export interface CarrotPermissionConsentRequest {
+export interface RemotePluginPermissionConsentRequest {
   requestId: string;
-  carrotId: string;
-  carrotName: string;
+  remotePluginId: string;
+  remotePluginName: string;
   version: string;
   sourceKind: "prototype" | "local" | "artifact";
   sourceLabel: string;
   message: string;
   confirmLabel: string;
-  requestedPermissions: CarrotPermissionTag[];
-  changedPermissions: CarrotPermissionTag[];
+  requestedPermissions: RemotePluginPermissionTag[];
+  changedPermissions: RemotePluginPermissionTag[];
   hostPermissions: HostPermission[];
   bunPermissions: BunPermission[];
-  isolation: CarrotIsolation;
+  isolation: RemotePluginIsolation;
 }
 
-export type CarrotMode = "window" | "background";
-export type CarrotDependencyMap = Record<string, string>;
+export type RemotePluginViewMode = "window" | "background";
+export type RemotePluginDependencyMap = Record<string, string>;
 
-export interface CarrotRemoteUI {
+export interface RemotePluginRemoteUI {
   name: string;
   path: string;
 }
 
-export interface CarrotViewManifest {
+export interface RemotePluginViewManifest {
   relativePath: string;
   hidden?: boolean;
   title: string;
@@ -81,24 +81,24 @@ export interface CarrotViewManifest {
   transparent?: boolean;
 }
 
-export interface CarrotWorkerManifest {
+export interface RemotePluginWorkerManifest {
   relativePath: string;
 }
 
-export interface CarrotManifest {
+export interface RemotePluginManifest {
   id: string;
   name: string;
   version: string;
   description: string;
-  mode: CarrotMode;
-  dependencies?: CarrotDependencyMap;
-  permissions: CarrotPermissionGrant;
-  view: CarrotViewManifest;
-  worker: CarrotWorkerManifest;
-  remoteUIs?: Record<string, CarrotRemoteUI>;
+  mode: RemotePluginViewMode;
+  dependencies?: RemotePluginDependencyMap;
+  permissions: RemotePluginPermissionGrant;
+  view: RemotePluginViewManifest;
+  worker: RemotePluginWorkerManifest;
+  remoteUIs?: Record<string, RemotePluginRemoteUI>;
 }
 
-export type CarrotInstallSource =
+export type RemotePluginInstallSource =
   | {
       kind: "prototype";
       prototypeId: string;
@@ -117,26 +117,26 @@ export type CarrotInstallSource =
       baseUrl?: string | null;
     };
 
-export type CarrotInstallStatus = "installed" | "broken";
+export type RemotePluginInstallStatus = "installed" | "broken";
 
-export interface CarrotInstallRecord {
+export interface RemotePluginInstallRecord {
   id: string;
   name: string;
   version: string;
   currentHash: string | null;
   installedAt: number;
   updatedAt: number;
-  permissionsGranted: CarrotPermissionGrant;
+  permissionsGranted: RemotePluginPermissionGrant;
   devMode?: boolean;
   lastBuildAt?: number | null;
   lastBuildError?: string | null;
-  status: CarrotInstallStatus;
-  source: CarrotInstallSource;
+  status: RemotePluginInstallStatus;
+  source: RemotePluginInstallSource;
 }
 
-export interface CarrotRegistry {
+export interface RemotePluginRegistry {
   version: 1;
-  carrots: Record<string, CarrotInstallRecord>;
+  carrots: Record<string, RemotePluginInstallRecord>;
 }
 
 export interface WorkerRequestMessage {
@@ -155,12 +155,12 @@ export interface WorkerEventMessage {
 
 export interface WorkerInitMessage {
   type: "init";
-  manifest: CarrotManifest;
+  manifest: RemotePluginManifest;
   context: {
     statePath: string;
     logsPath: string;
-    permissions: CarrotPermissionTag[];
-    grantedPermissions: CarrotPermissionGrant;
+    permissions: RemotePluginPermissionTag[];
+    grantedPermissions: RemotePluginPermissionGrant;
     config?: JsonObject;
   };
 }
@@ -181,9 +181,9 @@ export type HostAction =
   | "close-window"
   | "open-bunny-window"
   | "open-manager"
-  | "stop-carrot"
+  | "stop-remote-plugin"
   | "emit-view"
-  | "emit-carrot-event"
+  | "emit-remote-plugin-event"
   | "log";
 
 export interface HostActionMessage {
@@ -198,10 +198,10 @@ export type HostRequestMethod =
   | "show-item-in-folder"
   | "clipboard-write-text"
   | "window-get-frame"
-  | "invoke-carrot"
-  | "list-carrots"
-  | "start-carrot"
-  | "stop-carrot"
+  | "invoke-remote-plugin"
+  | "list-remote-plugins"
+  | "start-remote-plugin"
+  | "stop-remote-plugin"
   | "get-auth-token"
   | "set-auth-token"
   | "screen-get-primary-display"
@@ -234,7 +234,7 @@ export interface WorkerReadyMessage {
   type: "ready";
 }
 
-export type CarrotWorkerMessage =
+export type RemotePluginWorkerMessage =
   | WorkerRequestMessage
   | WorkerEventMessage
   | WorkerInitMessage
@@ -244,7 +244,7 @@ export type CarrotWorkerMessage =
   | WorkerResponseMessage
   | WorkerReadyMessage;
 
-export interface CarrotViewRPC {
+export interface RemotePluginViewRPC {
   bun: {
     requests: {
       invoke: {
@@ -258,34 +258,34 @@ export interface CarrotViewRPC {
     requests: Record<string, never>;
     messages: {
       runtimeEvent: { name: string; payload?: JsonValue };
-      carrotBoot: {
+      remotePluginBoot: {
         id: string;
         name: string;
-        permissions: CarrotPermissionTag[];
-        grantedPermissions: CarrotPermissionGrant;
-        mode: CarrotMode;
+        permissions: RemotePluginPermissionTag[];
+        grantedPermissions: RemotePluginPermissionGrant;
+        mode: RemotePluginViewMode;
       };
     };
   };
 }
 
-export interface CarrotRuntimeContext {
+export interface RemotePluginRuntimeContext {
   currentDir: string;
   statePath: string;
   logsPath: string;
-  permissions: CarrotPermissionTag[];
-  grantedPermissions: CarrotPermissionGrant;
+  permissions: RemotePluginPermissionTag[];
+  grantedPermissions: RemotePluginPermissionGrant;
   authToken: string | null;
   channel: string;
 }
 
-export interface CarrotListEntry {
+export interface RemotePluginListEntry {
   id: string;
   name: string;
   description: string;
   version: string;
-  mode: CarrotMode;
-  permissions: CarrotPermissionTag[];
-  status: CarrotInstallStatus;
+  mode: RemotePluginViewMode;
+  permissions: RemotePluginPermissionTag[];
+  status: RemotePluginInstallStatus;
   devMode: boolean;
 }

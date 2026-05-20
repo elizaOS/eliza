@@ -7,9 +7,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CarrotWorkerMessage } from "@elizaos/electrobun-carrots";
+import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
-import { CarrotManager, type CarrotWorkerHandle } from "./carrots";
+import { CarrotManager, type RemotePluginWorkerHandle } from "./carrots";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), "electrobun-carrot-host-"));
@@ -27,7 +27,7 @@ function writePayload(
   const payloadDir = join(root, "payload");
   mkdirSync(join(payloadDir, "views"), { recursive: true });
   const grant: Record<string, boolean> = { notifications: true };
-  if (options.manageCarrots !== false) grant["manage-carrots"] = true;
+  if (options.manageCarrots !== false) grant["manage-remote-plugins"] = true;
   writeFileSync(
     join(payloadDir, "carrot.json"),
     JSON.stringify({
@@ -55,14 +55,14 @@ function writePayload(
   return payloadDir;
 }
 
-class FakeWorkerHandle implements CarrotWorkerHandle {
-  readonly messages: CarrotWorkerMessage[] = [];
+class FakeWorkerHandle implements RemotePluginWorkerHandle {
+  readonly messages: RemotePluginWorkerMessage[] = [];
   terminated = false;
-  private messageListener: ((message: CarrotWorkerMessage) => void) | null =
+  private messageListener: ((message: RemotePluginWorkerMessage) => void) | null =
     null;
   private errorListener: ((error: Error) => void) | null = null;
 
-  postMessage(message: CarrotWorkerMessage): void {
+  postMessage(message: RemotePluginWorkerMessage): void {
     this.messages.push(message);
   }
 
@@ -70,7 +70,7 @@ class FakeWorkerHandle implements CarrotWorkerHandle {
     this.terminated = true;
   }
 
-  onMessage(listener: (message: CarrotWorkerMessage) => void): void {
+  onMessage(listener: (message: RemotePluginWorkerMessage) => void): void {
     this.messageListener = listener;
   }
 
@@ -78,7 +78,7 @@ class FakeWorkerHandle implements CarrotWorkerHandle {
     this.errorListener = listener;
   }
 
-  emit(message: CarrotWorkerMessage): void {
+  emit(message: RemotePluginWorkerMessage): void {
     this.messageListener?.(message);
   }
 
@@ -234,7 +234,7 @@ describe("CarrotManager", () => {
       worker.emit({
         type: "host-request",
         requestId: 1,
-        method: "list-carrots",
+        method: "list-remote-plugins",
       });
 
       return new Promise<void>((resolve, reject) => {
@@ -347,7 +347,7 @@ describe("CarrotManager", () => {
         // Force an unknown method through the dispatcher to assert the
         // error-response path. Casting through unknown is necessary
         // because the type union only allows known methods.
-        method: "totally-made-up" as unknown as "list-carrots",
+        method: "totally-made-up" as unknown as "list-remote-plugins",
       });
 
       return new Promise<void>((resolve, reject) => {
@@ -388,7 +388,7 @@ describe("CarrotManager", () => {
       worker.emit({
         type: "host-request",
         requestId: 50,
-        method: "start-carrot",
+        method: "start-remote-plugin",
         params: { id: "bunny.search" },
       });
 
@@ -404,7 +404,7 @@ describe("CarrotManager", () => {
               success: false,
             });
             expect((response as { error?: string }).error).toContain(
-              "manage-carrots",
+              "manage-remote-plugins",
             );
             resolve();
           } catch (error) {
@@ -461,9 +461,9 @@ describe("CarrotManager", () => {
       workerA.emit({
         type: "host-request",
         requestId: 99,
-        method: "invoke-carrot",
+        method: "invoke-remote-plugin",
         params: {
-          carrotId: "bunny.calc",
+          remotePluginId: "bunny.calc",
           method: "add",
           params: { a: 2, b: 3 },
         },
@@ -509,8 +509,8 @@ describe("CarrotManager", () => {
       workerA.emit({
         type: "host-request",
         requestId: 7,
-        method: "invoke-carrot",
-        params: { carrotId: "does-not-exist", method: "noop" },
+        method: "invoke-remote-plugin",
+        params: { remotePluginId: "does-not-exist", method: "noop" },
       });
 
       const response = workerA.messages.find(
@@ -572,8 +572,8 @@ describe("CarrotManager", () => {
       workerA.emit({
         type: "host-request",
         requestId: 11,
-        method: "invoke-carrot",
-        params: { carrotId: "bunny.calc", method: "slow" },
+        method: "invoke-remote-plugin",
+        params: { remotePluginId: "bunny.calc", method: "slow" },
       });
 
       manager.stopWorker("bunny.calc");
@@ -638,9 +638,9 @@ describe("CarrotManager", () => {
       // A emits to B
       workerA.emit({
         type: "action",
-        action: "emit-carrot-event",
+        action: "emit-remote-plugin-event",
         payload: {
-          carrotId: "bunny.timer",
+          remotePluginId: "bunny.timer",
           name: "ping",
           payload: { count: 1 },
         },
@@ -656,9 +656,9 @@ describe("CarrotManager", () => {
       // Emit to a non-running carrot — should be dropped silently (warning only)
       workerA.emit({
         type: "action",
-        action: "emit-carrot-event",
+        action: "emit-remote-plugin-event",
         payload: {
-          carrotId: "does-not-exist",
+          remotePluginId: "does-not-exist",
           name: "ghost",
         },
       });

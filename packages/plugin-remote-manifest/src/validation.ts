@@ -3,34 +3,34 @@ import { isCarrotIsolation } from "./permissions.js";
 import {
   BUN_PERMISSIONS,
   type BunPermission,
-  type CarrotManifest,
-  type CarrotMode,
-  type CarrotPermissionGrant,
+  type RemotePluginManifest,
+  type RemotePluginViewMode,
+  type RemotePluginPermissionGrant,
   HOST_PERMISSIONS,
   type HostPermission,
   type JsonObject,
   type JsonValue,
 } from "./types.js";
 
-export interface CarrotManifestValidationIssue {
+export interface RemotePluginManifestValidationIssue {
   path: string;
   message: string;
 }
 
-export type CarrotManifestValidationResult =
-  | { ok: true; manifest: CarrotManifest }
-  | { ok: false; issues: CarrotManifestValidationIssue[] };
+export type RemotePluginManifestValidationResult =
+  | { ok: true; manifest: RemotePluginManifest }
+  | { ok: false; issues: RemotePluginManifestValidationIssue[] };
 
-const CARROT_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
+const REMOTE_PLUGIN_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
 
 export function isValidCarrotId(value: string): boolean {
-  return CARROT_ID_PATTERN.test(value);
+  return REMOTE_PLUGIN_ID_PATTERN.test(value);
 }
 
 function objectAt(
   value: JsonValue | undefined,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): JsonObject | null {
   if (isJsonObject(value)) {
     return value;
@@ -43,7 +43,7 @@ function stringAt(
   object: JsonObject,
   key: string,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): string | null {
   const value = object[key];
   if (typeof value === "string" && value.trim().length > 0) {
@@ -59,7 +59,7 @@ function stringAt(
 function optionalBooleanAt(
   value: JsonValue | undefined,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): boolean | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "boolean") return value;
@@ -71,7 +71,7 @@ function numberAt(
   object: JsonObject,
   key: string,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): number | null {
   const value = object[key];
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -85,7 +85,7 @@ function optionalStringAt(
   object: JsonObject,
   key: string,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): string | undefined {
   const value = object[key];
   if (value === undefined) return undefined;
@@ -96,8 +96,8 @@ function optionalStringAt(
 
 function validateMode(
   value: JsonValue | undefined,
-  issues: CarrotManifestValidationIssue[],
-): CarrotMode | null {
+  issues: RemotePluginManifestValidationIssue[],
+): RemotePluginViewMode | null {
   if (value === "window" || value === "background") return value;
   issues.push({ path: "mode", message: "Expected window or background." });
   return null;
@@ -107,7 +107,7 @@ function validateBooleanRecord<K extends string>(
   value: JsonValue | undefined,
   path: string,
   allowed: readonly K[],
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): Partial<Record<K, boolean>> | undefined {
   if (value === undefined) return undefined;
   const object = objectAt(value, path, issues);
@@ -130,8 +130,8 @@ function validateBooleanRecord<K extends string>(
 
 function validatePermissions(
   value: JsonValue | undefined,
-  issues: CarrotManifestValidationIssue[],
-): CarrotPermissionGrant | null {
+  issues: RemotePluginManifestValidationIssue[],
+): RemotePluginPermissionGrant | null {
   const object = objectAt(value, "permissions", issues);
   if (!object) return null;
   const host = validateBooleanRecord<HostPermission>(
@@ -146,7 +146,7 @@ function validatePermissions(
     BUN_PERMISSIONS,
     issues,
   );
-  const grant: CarrotPermissionGrant = {};
+  const grant: RemotePluginPermissionGrant = {};
   if (host) grant.host = host;
   if (bun) grant.bun = bun;
   const isolation = object.isolation;
@@ -166,7 +166,7 @@ function validatePermissions(
 function validateStringMap(
   value: JsonValue | undefined,
   path: string,
-  issues: CarrotManifestValidationIssue[],
+  issues: RemotePluginManifestValidationIssue[],
 ): Record<string, string> | undefined {
   if (value === undefined) return undefined;
   const object = objectAt(value, path, issues);
@@ -184,12 +184,12 @@ function validateStringMap(
 
 function validateRemoteUIs(
   value: JsonValue | undefined,
-  issues: CarrotManifestValidationIssue[],
-): CarrotManifest["remoteUIs"] {
+  issues: RemotePluginManifestValidationIssue[],
+): RemotePluginManifest["remoteUIs"] {
   if (value === undefined) return undefined;
   const object = objectAt(value, "remoteUIs", issues);
   if (!object) return undefined;
-  const output: NonNullable<CarrotManifest["remoteUIs"]> = {};
+  const output: NonNullable<RemotePluginManifest["remoteUIs"]> = {};
   for (const [key, entry] of Object.entries(object)) {
     const remote = objectAt(entry, `remoteUIs.${key}`, issues);
     if (!remote) continue;
@@ -204,8 +204,8 @@ function validateRemoteUIs(
 
 function validateView(
   value: JsonValue | undefined,
-  issues: CarrotManifestValidationIssue[],
-): CarrotManifest["view"] | null {
+  issues: RemotePluginManifestValidationIssue[],
+): RemotePluginManifest["view"] | null {
   const object = objectAt(value, "view", issues);
   if (!object) return null;
   const relativePath = stringAt(object, "relativePath", "view", issues);
@@ -254,8 +254,8 @@ function validateView(
 
 function validateWorker(
   value: JsonValue | undefined,
-  issues: CarrotManifestValidationIssue[],
-): CarrotManifest["worker"] | null {
+  issues: RemotePluginManifestValidationIssue[],
+): RemotePluginManifest["worker"] | null {
   const object = objectAt(value, "worker", issues);
   if (!object) return null;
   const relativePath = stringAt(object, "relativePath", "worker", issues);
@@ -264,8 +264,8 @@ function validateWorker(
 
 export function validateCarrotManifest(
   value: JsonValue,
-): CarrotManifestValidationResult {
-  const issues: CarrotManifestValidationIssue[] = [];
+): RemotePluginManifestValidationResult {
+  const issues: RemotePluginManifestValidationIssue[] = [];
   const object = objectAt(value, "$", issues);
   if (!object) return { ok: false, issues };
 
