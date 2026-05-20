@@ -76,6 +76,17 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] reg_rx_head_q;
     logic [PMC_MBOX_DW-1:0] reg_rx_data_q;
 
+    // OpenSBI RPMI shared-memory region. The mailbox aperture's upper half
+    // (offsets 0x800..0xFFF) maps directly into `aon_sram_q` at the same
+    // byte offset so the host-side MMIO (OpenSBI's `fdt_mailbox_rpmi_shmem`
+    // driver) and the Ibex data port observe one consistent copy of the
+    // four RPMI queues + a2p-doorbell defined by
+    // `fw/pmc/include/rpmi_shmem_layout.h`.  Decoded with
+    // `mbox_addr_i[11] == 1'b1` (range 0x800..0xFFF).
+    localparam logic [PMC_MBOX_AW-1:0] PMC_REG_SHMEM_BASE = 12'h800;
+    logic shmem_sel;
+    assign shmem_sel = (mbox_addr_i[PMC_MBOX_AW-1] == 1'b1);
+
     // Aggregate droop telemetry. `droop_total_q` is the present-cycle sum
     // across all rails (combinational behavior across sample periods).
     // `droop_sticky_q` accumulates the *increase* in droop_total_q since the

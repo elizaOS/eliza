@@ -1,0 +1,138 @@
+{
+  "full_front_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      248.007,
+      243.587,
+      241.631
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "full_back_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      247.194,
+      242.755,
+      240.793
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "full_left_side.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      254.416,
+      249.71,
+      247.614
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "full_bottom_port.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      253.786,
+      250.604,
+      249.189
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "full_top_down.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      229.425,
+      228.121,
+      227.464
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "exploded_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      245.14,
+      239.066,
+      236.344
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "component_stack.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      236.789,
+      239.155,
+      238.059
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "mold_tooling.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      250.785,
+      245.598,
+      243.35
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  }
+}

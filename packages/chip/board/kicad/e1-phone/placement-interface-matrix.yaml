@@ -1,0 +1,122 @@
+schema: eliza.e1_phone_placement_interface_matrix.v1
+status: concept_constraints_not_routed_pcb
+date: 2026-05-20
+claim_boundary: >
+  This matrix maps purchasable modules and mechanical functions to board
+  regions, interfaces, and required schematic blocks. It is not a routed PCB,
+  netlist, BOM release, or enclosure signoff.
+
+board:
+  bbox_mm: {width: 64.0, height: 132.0}
+  coordinate_origin: top_left_front_view
+  stackup_target: 10_layer_0p8_mm_hdi
+
+placements:
+  - refdes_group: J_USB_C
+    function: charging_data_debug_single_usb_c_port
+    package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+    region_mm: {x: 26.0, y: 124.0, width: 16.0, height: 6.0}
+    side: bottom_edge
+    required_nets: [VBUS, USB_DP, USB_DN, USB_CC1, USB_CC2, SHIELD_GND]
+    constraints: [mechanical_capture, esd_near_connector, 90ohm_usb2_diff]
+
+  - refdes_group: SW_POWER_VOL
+    function: power_volume_side_buttons
+    package_binding: package/human-interface/side-buttons.yaml
+    region_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+    side: left_edge_or_side_key_flex
+    required_nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, GND]
+    constraints: [wake_capable_power_key, recovery_key_combo, enclosure_actuator_rib]
+
+  - refdes_group: J_DISPLAY_TOUCH
+    function: 5p5_in_fhd_mipi_display_touch
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    region_mm: {x: 47.0, y: 8.0, width: 15.0, height: 24.0}
+    side: top_right
+    required_nets:
+      - DSI_CLK_P
+      - DSI_CLK_N
+      - DSI_D0_P
+      - DSI_D0_N
+      - DSI_D1_P
+      - DSI_D1_N
+      - DSI_D2_P
+      - DSI_D2_N
+      - DSI_D3_P
+      - DSI_D3_N
+      - DISP_RESET_N
+      - DISP_TE
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    constraints: [100ohm_mipi_dphy, fpc_bend_radius, panel_bias_rails]
+
+  - refdes_group: J_CAM0_CAM1
+    function: rear_and_front_mipi_csi_cameras
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    region_mm: {x: 47.0, y: 8.0, width: 15.0, height: 34.0}
+    side: top_right_camera_bump
+    required_nets: [CAM0_CSI, CAM1_CSI, CAM0_MCLK, CAM1_MCLK, CAM0_RESET_N, CAM1_RESET_N, CAM_AVDD_2V8, CAM_IOVDD_1V8]
+    constraints: [100ohm_mipi_dphy, camera_z_height, lens_axis_datum, af_vcm_supply]
+
+  - refdes_group: U_CELL
+    function: cellular_5g_redcap_module
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    region_mm: {x: 4.0, y: 8.0, width: 13.0, height: 19.0}
+    side: top_left_rf
+    required_nets: [CELL_VBAT, CELL_VDDIO_1V8, CELL_USB2, CELL_PCIE, USIM, CELL_RESET_N, CELL_WAKE_AP, AP_WAKE_CELL, CELL_W_DISABLE_N]
+    constraints: [rf_keepout, cellular_main_div_feeds, sim_or_esim, conducted_rf_test_points]
+
+  - refdes_group: U_WIFI_BT
+    function: wifi_6e_bluetooth_module
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    region_mm: {x: 33.0, y: 33.0, width: 17.0, height: 9.0}
+    side: upper_mid_rf
+    required_nets: [WIFI_PCIE_OR_SDIO, BT_UART, WIFI_EN, BT_EN, WIFI_IRQ, WIFI_HOST_WAKE, VDDIO_1V8]
+    constraints: [rf_keepout, pi_matching_network, coexistence_with_cellular]
+
+  - refdes_group: U_PMIC_CHARGER
+    function: pmic_charger_power_path
+    package_binding: [package/pmic/da9063.yaml, package/charger/max77860.yaml, package/usb-pd/tps65987.yaml]
+    region_mm: {x: 20.0, y: 25.0, width: 25.0, height: 17.0}
+    side: top_mid
+    required_nets: [VBUS, SYS, VBAT, AON_1V8, AP_RAILS, RF_RAILS, CAM_RAILS, DISP_RAILS]
+    constraints: [short_high_current_paths, thermal_spreading, per_rail_test_points]
+
+  - refdes_group: U_SOC_LPDDR_UFS
+    function: compute_memory_storage
+    package_binding: [package/e1-demo-pinout.yaml]
+    region_mm: {x: 20.0, y: 8.0, width: 25.0, height: 14.0}
+    side: top_mid_thermal_path
+    required_nets: [LPDDR, UFS, AP_RAILS, JTAG_OR_SWD, BOOT_STRAPS]
+    constraints: [thermal_spreader, memory_length_match, decap_escape, debug_access]
+
+  - refdes_group: U_AUDIO_SPK_MIC
+    function: speakers_microphones_audio_codec_haptics
+    package_binding: [package/audio/v0-codec.yaml]
+    region_mm: {x: 5.0, y: 104.0, width: 57.0, height: 10.0}
+    side: bottom_audio_io
+    required_nets: [I2S_OR_PCM, I2C_AUDIO, MIC_BIAS, SPK_OUT, HAPTIC_DRV, AON_1V8]
+    constraints: [acoustic_gasket, mic_port_keepout, speaker_chamber, emi_from_usb]
+
+closure_requirements_before_pcb_release:
+  schematic:
+    - all_required_nets_above_exist_in_kicad_schematic
+    - every_external_connector_has_exact_supplier_pinout
+    - every_module_has_power_sequence_and_reset_control
+  layout:
+    - computed_component_courtyards_fit_inside_regions
+    - no_route_and_keepout_zones_defined_for_battery_antennas_usb_camera
+    - differential_pair_constraints_assigned_for_usb_mipi_pcie
+    - rf_feeds_have_matching_networks_and_test_points
+  mechanical:
+    - board_display_battery_camera_usb_buttons_step_assembly
+    - connector_and_button_loads_captured_by_enclosure
+    - thickness_stack_with_worst_case_tolerances
+  manufacturing:
+    - bom_with_orderable_part_numbers
+    - pick_and_place
+    - gerbers_or_ipc2581
+    - assembly_drawing
+    - dfa_dfm_review

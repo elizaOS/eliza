@@ -1,0 +1,374 @@
+{
+  "claim_boundary": "EVT0 mechanical concept; not released tooling CAD or fabricated hardware.",
+  "params": {
+    "device": {
+      "name": "E1 phone EVT0 mechanical concept",
+      "revision": "evt0-mechanical-cad",
+      "envelope_mm": [
+        78.0,
+        153.6,
+        9.6
+      ],
+      "corner_radius_mm": 7.5,
+      "plastic_color": "hard safety orange",
+      "wall_thickness_mm": 1.15,
+      "target_mass_g": 185,
+      "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence"
+    },
+    "display": {
+      "candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
+      "ctp_outline_mm": [
+        77.1,
+        151.77,
+        3.39
+      ],
+      "tft_outline_mm": [
+        70.78,
+        129.17,
+        1.7
+      ],
+      "active_area_mm": [
+        68.04,
+        120.96
+      ],
+      "cover_glass_mm": [
+        77.1,
+        151.77,
+        0.7
+      ],
+      "adhesive_width_mm": 1.0,
+      "adhesive_thickness_mm": 0.18,
+      "compression_target_pct": 25,
+      "fpc_connector_mm": [
+        19.0,
+        3.2,
+        1.15
+      ],
+      "fpc_bend_radius_mm": 1.0,
+      "z_from_front_mm": 0.35,
+      "source_url": "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf"
+    },
+    "pcb": {
+      "source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+      "outline_mm": [
+        64.0,
+        132.0,
+        0.8
+      ],
+      "z_center_mm": -2.1,
+      "edge_clearance_mm": 2.5
+    },
+    "battery": {
+      "candidate": "commodity 3900-4500 mAh flat LiPo pouch",
+      "envelope_mm": [
+        55.0,
+        92.0,
+        4.1
+      ],
+      "z_center_mm": -3.45
+    },
+    "components": {
+      "usb_c": {
+        "candidate": "GCT USB4105 USB2 Type-C receptacle, reinforced shell",
+        "envelope_mm": [
+          8.94,
+          7.8,
+          3.25
+        ],
+        "insertion_keepout_mm": [
+          12.5,
+          10.5,
+          5.0
+        ],
+        "cycles": 20000,
+        "source_url": "https://gct.co/files/specs/usb4105-spec.pdf",
+        "distributor_url": "https://www.digikey.com/en/products/detail/gct/USB4105-GF-A/11198510"
+      },
+      "speaker_bottom": {
+        "candidate": "1115 micro speaker module with rear acoustic chamber",
+        "envelope_mm": [
+          15.0,
+          11.0,
+          3.5
+        ]
+      },
+      "earpiece": {
+        "candidate": "1206 earpiece receiver behind glass slot/gasket",
+        "envelope_mm": [
+          12.0,
+          6.0,
+          2.5
+        ]
+      },
+      "microphone_bottom": {
+        "candidate": "bottom MEMS microphone with molded sound tunnel",
+        "envelope_mm": [
+          3.5,
+          2.65,
+          1.0
+        ]
+      },
+      "microphone_top": {
+        "candidate": "noise-cancel MEMS microphone",
+        "envelope_mm": [
+          3.5,
+          2.65,
+          1.0
+        ]
+      },
+      "rear_camera": {
+        "candidate": "OV13855/OV13850 13 MP autofocus MIPI module",
+        "module_mm": [
+          10.0,
+          10.0,
+          5.1
+        ],
+        "lens_diameter_mm": 6.8
+      },
+      "front_camera": {
+        "candidate": "5-8 MP fixed-focus MIPI module behind cover glass",
+        "module_mm": [
+          6.5,
+          6.5,
+          3.2
+        ],
+        "lens_diameter_mm": 3.4
+      },
+      "power_button": {
+        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "travel_mm": 0.35,
+        "force_n": 1.6,
+        "cap_mm": [
+          2.0,
+          12.0,
+          1.1
+        ],
+        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+      },
+      "volume_button": {
+        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "travel_mm": 0.35,
+        "force_n": 1.5,
+        "cap_mm": [
+          2.0,
+          21.0,
+          1.1
+        ],
+        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+      }
+    },
+    "radio": {
+      "cellular": {
+        "candidate": "Quectel RG255C RedCap LGA module",
+        "envelope_mm": [
+          29.0,
+          32.0,
+          2.4
+        ],
+        "mass_g": 5.2,
+        "source_url": "https://www.quectel.com/product/5g-redcap-rg255c-series/"
+      },
+      "wifi_bt": {
+        "candidate": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+        "source_url": "https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea"
+      }
+    },
+    "manufacturing": {
+      "process": "low-volume CNC or soft-tool injection molding first, hard-tool injection molding later",
+      "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+      "nominal_draft_deg": 2.0,
+      "min_internal_radius_mm": 0.6,
+      "min_boss_wall_ratio": 0.6,
+      "screw_boss_outer_diameter_mm": 4.2,
+      "screw_boss_core_diameter_mm": 1.8,
+      "rib_thickness_mm": 0.75,
+      "snap_hook_count": 8,
+      "screw_boss_count": 6,
+      "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
+      "sprue_diameter_mm": 4.0,
+      "runner_diameter_mm": 2.2,
+      "gate_thickness_mm": 0.85,
+      "parting_line": "mid-plane around orange back shell perimeter"
+    }
+  },
+  "checks": {
+    "status": "pass",
+    "checks": {
+      "component_presence": {
+        "pass": true,
+        "details": {
+          "orange_back_shell": true,
+          "orange_side_frame": true,
+          "screen_cover_glass": true,
+          "display_lcm": true,
+          "main_pcb": true,
+          "battery_pouch": true,
+          "usb_c_receptacle": true,
+          "bottom_speaker_module": true,
+          "earpiece_receiver": true,
+          "bottom_mic": true,
+          "top_mic": true,
+          "rear_camera_module": true,
+          "front_camera_module": true,
+          "power_button_cap": true,
+          "volume_button_cap": true,
+          "handset_acoustic_slot": true,
+          "screen_adhesive_top": true,
+          "display_fpc_connector": true,
+          "orange_usb_reinforcement_saddle": true,
+          "bottom_speaker_acoustic_chamber": true,
+          "earpiece_gasket": true,
+          "usb_c_external_aperture": true,
+          "bottom_speaker_grille_slot_1": true,
+          "bottom_microphone_port_1": true
+        }
+      },
+      "pcb_edge_clearance": {
+        "pass": true,
+        "actual_mm": 7.0,
+        "required_mm": 2.5
+      },
+      "screen_mount_margin": {
+        "pass": true,
+        "actual_mm": 0.45,
+        "required_mm": 0.3
+      },
+      "rounded_enclosure_geometry": {
+        "pass": true,
+        "corner_radius_mm": 7.5,
+        "wall_thickness_mm": 1.15,
+        "back_shell_vertices": 98,
+        "side_frame_vertices": 192
+      },
+      "mesh_integrity": {
+        "pass": true,
+        "checked_parts": 51,
+        "failures": []
+      },
+      "usb_c_insertion_envelope": {
+        "pass": true,
+        "actual_mm": 8.0,
+        "required_mm": 7.8
+      },
+      "bottom_io_acoustic_apertures": {
+        "pass": true,
+        "speaker_grille_slots": 5,
+        "microphone_ports": 2
+      },
+      "button_force_and_travel": {
+        "pass": true,
+        "power": {
+          "force_n": 1.6,
+          "travel_mm": 0.35
+        },
+        "volume": {
+          "force_n": 1.5,
+          "travel_mm": 0.35
+        }
+      },
+      "button_pressure_support": {
+        "pass": true,
+        "power_pressure_n_per_mm2": 0.1212,
+        "volume_pressure_n_per_mm2": 0.0649
+      },
+      "screen_mount_and_connection": {
+        "pass": true,
+        "adhesive_width_mm": 1.0,
+        "adhesive_thickness_mm": 0.18,
+        "compression_target_pct": 25,
+        "fpc_bend_radius_mm": 1.0
+      },
+      "camera_speaker_behind_glass": {
+        "pass": true,
+        "front_camera": "behind cover glass at upper-left display border",
+        "earpiece": "behind cover-glass acoustic slot with gasketed receiver"
+      },
+      "pcb_battery_non_overlap": {
+        "pass": true,
+        "minimum_segment_gap_mm": 0.5,
+        "segment_gaps_mm": [
+          3.5,
+          4.5,
+          0.5
+        ],
+        "note": "Checks each rigid PCB island against the battery window."
+      },
+      "injection_molding_basics": {
+        "pass": true,
+        "draft_deg": 2.0,
+        "min_internal_radius_mm": 0.6,
+        "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency"
+      },
+      "molded_retention_features": {
+        "pass": true,
+        "screw_boss_count": 6,
+        "snap_hook_count": 8,
+        "rib_to_wall_ratio": 0.652
+      },
+      "mold_runner_gate_model": {
+        "pass": true,
+        "sprue_diameter_mm": 4.0,
+        "runner_diameter_mm": 2.2,
+        "gate_thickness_mm": 0.85
+      },
+      "final_assembly_excludes_tooling_markers": {
+        "pass": true,
+        "tooling_marker_count": 0
+      },
+      "kicad_outline_integration": {
+        "pass": true,
+        "kicad_edge_cuts_mm": [
+          64.0,
+          132.0
+        ],
+        "cad_pcb_outline_mm": [
+          64.0,
+          132.0
+        ],
+        "source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+      },
+      "device_compactness": {
+        "pass": true,
+        "envelope_mm": [
+          78.0,
+          153.6,
+          9.6
+        ],
+        "note": "Envelope is driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail."
+      },
+      "mass_budget": {
+        "pass": true,
+        "estimated_mass_g": 127.51,
+        "target_mass_g": 185,
+        "note": "Rough CAD estimate; placeholder void markers excluded."
+      }
+    }
+  },
+  "artifacts": {
+    "assembly_glb": "mechanical/e1-phone/out/e1-phone-assembly.glb",
+    "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+    "manifest": "mechanical/e1-phone/out/assembly-manifest.json",
+    "tooling_manifest": "mechanical/e1-phone/out/tooling-manifest.json",
+    "manufacturing_drawing_png": "mechanical/e1-phone/review/manufacturing_drawing.png",
+    "manufacturing_drawing_svg": "mechanical/e1-phone/review/manufacturing_drawing.svg",
+    "manufacturing_drawing_json": "mechanical/e1-phone/review/manufacturing_drawing.json",
+    "manufacturing_readiness_json": "mechanical/e1-phone/review/manufacturing-readiness.json",
+    "manufacturing_readiness_md": "mechanical/e1-phone/review/manufacturing-readiness.md",
+    "mass_budget_json": "mechanical/e1-phone/review/mass-budget.json",
+    "mass_budget_md": "mechanical/e1-phone/review/mass-budget.md",
+    "supplier_lock_json": "mechanical/e1-phone/review/supplier-lock.json",
+    "supplier_lock_md": "mechanical/e1-phone/review/supplier-lock.md",
+    "kicad_mechanical_handoff_json": "mechanical/e1-phone/review/kicad-mechanical-handoff.json",
+    "kicad_mechanical_handoff_md": "mechanical/e1-phone/review/kicad-mechanical-handoff.md",
+    "renders": [
+      "mechanical/e1-phone/review/full_front_iso.png",
+      "mechanical/e1-phone/review/full_back_iso.png",
+      "mechanical/e1-phone/review/full_left_side.png",
+      "mechanical/e1-phone/review/full_bottom_port.png",
+      "mechanical/e1-phone/review/full_top_down.png",
+      "mechanical/e1-phone/review/exploded_iso.png",
+      "mechanical/e1-phone/review/component_stack.png",
+      "mechanical/e1-phone/review/mold_tooling.png"
+    ]
+  }
+}

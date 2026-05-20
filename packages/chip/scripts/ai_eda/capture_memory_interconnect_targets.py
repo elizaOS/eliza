@@ -36,6 +36,8 @@ INPUT_ARTIFACTS = (
 OPTIONAL_COMMANDS = (
     "gem5.opt",
     "gem5",
+    "run-sniper",
+    "sniper",
     "booksim",
     "ramulator2",
     "dramsim3",
@@ -117,6 +119,8 @@ def main() -> int:
             "ramulator2",
             "dramsim3",
             "dramsys",
+            "gem5-simulator",
+            "sniper-simulator",
             "gem5-aladdin",
             "gem5-accesys",
             "memexplorer",
@@ -228,17 +232,27 @@ def main() -> int:
             {
                 "id": "accelerator-system-simulator-watch",
                 "status": "CAPTURED_NOT_MODELED",
-                "target": "future gem5-Aladdin or Gem5-AcceSys style CPU/NPU/memory co-simulation",
+                "target": "future gem5, Sniper, gem5-Aladdin, or Gem5-AcceSys style CPU/NPU/memory co-simulation",
                 "acceptance_gates": [
                     "make chipyard-generated-linux-contract-check",
                     "make npu-runtime-contract-check",
+                ],
+            },
+            {
+                "id": "cpu-memory-architecture-simulator-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future gem5 or Sniper memory-hierarchy experiments require pinned simulator revisions, architecture configs, workload/trace hashes, stats outputs, local memory-contract checks, and comparison against E1 runtime evidence",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make benchmark-sim-metrics",
+                    "make no-hardware-action-check",
                 ],
             },
         ],
         "blocked_by": [
             "current RTL is an AXI-Lite SRAM-backed scaffold",
             "no cache hierarchy, coherent fabric, IOMMU/SMMU, LPDDR PHY, or QoS implementation",
-            "no executable BookSim/Ramulator/gem5 backend selected or pinned",
+            "no executable BookSim/Ramulator/gem5/Sniper backend selected or pinned",
             "no approved NoC inverse-ML dataset generation manifest, topology constraints, traffic trace corpus, or BookSim replay evidence",
             "no license-reviewed FlooNoC/AutoNoC generator revision, config hash, generated RTL quarantine, or E1 fabric replay",
             "no MICSim/CIM workload, array, quantization, calibration, power, or thermal evidence",

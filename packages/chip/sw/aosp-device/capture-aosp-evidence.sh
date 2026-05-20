@@ -17,6 +17,7 @@ repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_shell=${AOSP_SHELL:-bash}
 aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}
+aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}
 aosp_target_product=${AOSP_TARGET_PRODUCT:-eliza_ai_soc}
 aosp_make_args=${AOSP_MAKE_ARGS:-}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}
@@ -281,11 +282,11 @@ case "$mode" in
 		run_capture \
 			cuttlefish_riscv64_smoke \
 			"$evidence_dir/cuttlefish_riscv64_smoke.log" \
-			"source build/envsetup.sh && lunch $aosp_product && launch_cvd $aosp_cuttlefish_args -daemon" \
-			smoke \
-			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" AOSP_ADB_SERIAL="$aosp_adb_serial" "$aosp_shell" -lc '
-				source build/envsetup.sh &&
-				lunch "$AOSP_PRODUCT" >/dev/null &&
+				"source build/envsetup.sh && lunch $aosp_cuttlefish_product && launch_cvd $aosp_cuttlefish_args -daemon" \
+				smoke \
+				env AOSP_PRODUCT="$aosp_cuttlefish_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" AOSP_ADB_SERIAL="$aosp_adb_serial" "$aosp_shell" -lc '
+					source build/envsetup.sh &&
+					lunch "$AOSP_PRODUCT" >/dev/null &&
 				cleanup() { stop_cvd >/dev/null 2>&1 || cvd stop >/dev/null 2>&1 || true; } &&
 				adb_cvd() {
 					if [ -n "$AOSP_ADB_SERIAL" ]; then
@@ -507,7 +508,13 @@ case "$mode" in
 		# asserts vendor.eliza.e1_npu@1.0::IE1Npu/default is registered
 		# and INTERFACE_AVAILABLE. The driver script owns the evidence
 		# transcript layout and provenance markers.
-		exec "$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp"
+		exec env AOSP_PRODUCT="$aosp_cuttlefish_product" \
+			AOSP_SHELL="$aosp_shell" \
+			AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
+			AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
+			AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
+			AOSP_ADB_SERIAL="$aosp_adb_serial" \
+			"$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp"
 		;;
 	cts-subset)
 		run_capture \

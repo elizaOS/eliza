@@ -23,7 +23,7 @@
         "isa": "RV64GCB + V + H",
         "decode_width": 6,
         "rob_entries": 256,
-        "has_real_pin": false
+        "has_real_pin": true
       }
     ],
     "mid_fallback": [

@@ -75,6 +75,7 @@ describe("TASKS:spawn_agent", () => {
     expect(result?.success).toBe(true);
     expect(result?.text).toBe("");
     expect(cb).not.toHaveBeenCalled();
+    expect(result?.continueChain).toBe(false);
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       agentType: "codex",

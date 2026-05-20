@@ -48,6 +48,7 @@ INPUT_ARTIFACTS = (
 OPTIONAL_COMMANDS = (
     "yosys",
     "openroad",
+    "abc",
     "verilator",
     "iverilog",
     "sby",
@@ -118,8 +119,10 @@ def main() -> int:
         "source_ids": [
             "ieee-1801-upf",
             "ieee-upf-open-source",
+            "openroad-upf",
             "yosys-clockgate",
             "lighter-clock-gating",
+            "openroad-clock-gating",
             "codmas-rtlopt",
             "rtl-opt-benchmark",
             "prompting-for-power",
@@ -169,7 +172,7 @@ def main() -> int:
             {
                 "id": "clock-gating-candidate-watch",
                 "status": "CAPTURED_NOT_TRANSFORMED",
-                "target": "future Yosys, Lighter, or LLM-assisted clock-gating candidates must preserve RTL behavior and pass scan, CDC/RDC, timing, synthesis, and power evidence gates",
+                "target": "future Yosys, Lighter, OpenROAD, or LLM-assisted clock-gating candidates must preserve RTL behavior and pass scan, CDC/RDC, timing, synthesis, and power evidence gates",
                 "acceptance_gates": [
                     "make rtl-check",
                     "make formal",
@@ -217,6 +220,26 @@ def main() -> int:
                 ],
             },
             {
+                "id": "openroad-upf-roundtrip-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future OpenROAD UPF read/write and voltage-domain command use requires reviewed E1 power-state, supply-set, always-on, reset, scan, clock, and domain ownership manifests",
+                "acceptance_gates": [
+                    "make platform-contract-check",
+                    "make pd-contract-check",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+            {
+                "id": "openroad-clock-gating-backend-watch",
+                "status": "CAPTURED_NOT_TRANSFORMED",
+                "target": "future OpenROAD ABC-backed clock-gating use requires pinned OpenROAD/ABC revisions, ICG library manifests, equivalence, scan/DFT, CDC/RDC, STA, and power evidence",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "low-power-ppa-before-after-contract",
                 "status": "CAPTURED_NOT_MEASURED",
                 "target": "future low-power claims need before/after RTL, synthesis, timing, power, OpenLane, scan/DFT, and equivalence evidence",
@@ -250,8 +273,9 @@ def main() -> int:
         "blocked_by": [
             "no E1 power-state table, always-on partition, supply-set map, or IEEE 1801 UPF source",
             "no local power-aware simulation or formal low-power verification backend",
+            "no approved OpenROAD UPF revision, UPF round-trip policy, domain map, or power-aware verification replay",
             "no approved clock-gating, power-gating, DVFS, retention, isolation, or level-shifter insertion workflow",
-            "no approved Lighter plugin revision, library-map review, or RTL-OPT benchmark asset/non-overlap review",
+            "no approved Lighter or OpenROAD clock-gating revision, library-map review, ABC revision, or RTL-OPT benchmark asset/non-overlap review",
             "no scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains",
             "no workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation",
             "no before/after low-power PPA corpus with equivalence and signoff evidence for E1",

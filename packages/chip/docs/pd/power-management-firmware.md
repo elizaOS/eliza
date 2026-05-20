@@ -49,9 +49,22 @@ Status: `planning_skeleton_release_blocked`
 
 ### M-mode OpenSBI
 
-Pin the **OpenSBI release** at silicon bring-up. Current target: OpenSBI 1.5
-or newer with merged SBI MPxy + RPMI proxy support. The pin is recorded in
-`docs/evidence/power/pmic-procurement.yaml` once selected.
+Pinned at **OpenSBI v1.8.1** (commit `74434f25...`, January 2026). Earlier
+prototype evidence pinned v1.5; that release pre-dated upstream MPxy and was
+unsuitable for the RPMI v1.0 control plane. Version delta since v1.5:
+
+- v1.6: SBI MPxy framework + RPMI shared-memory transport land in-tree
+  (`include/sbi/sbi_mpxy.h`, `lib/sbi/sbi_mpxy.c`,
+  `lib/utils/mailbox/rpmi_mailbox.c`,
+  `lib/utils/mailbox/fdt_mailbox_rpmi_shmem.c`).
+- v1.7: SBI v3.0 alignment, Counter Delegation (CTR), dynamic SSE events.
+- v1.8: hart-protection, SiFive CLINTv2, SpacemiT K1 + Andes QiLai platform
+  support, plus RPMI message-protocol fan-out
+  (`fdt_mpxy_rpmi_{clock,voltage,performance,device_power,sysmsi}.c`).
+- v1.8.1: hart-protection PMP-absent fix.
+
+Pin manifest: `external/opensbi/pin-manifest.json`. Build + symbol-presence
+evidence: `docs/evidence/power/opensbi-pin-evidence.yaml`.
 
 ### AON Ibex PMC firmware
 
@@ -211,11 +224,16 @@ PMC restores the rails it had already commanded before the failure.
 
 ## Release blockers
 
-- OpenSBI release tag not pinned. See `docs/evidence/power/pmic-procurement.yaml`.
 - DVFS tables not generated; loop arbitration runs against a single TT-25C
   placeholder until silicon characterization completes.
 - SPMI v2.0 master firmware skeleton only.
 - Secure-boot key provisioning policy not closed.
+
+## Resolved release blockers
+
+- OpenSBI release tag pinned at v1.8.1 with MPxy + RPMI present in-tree.
+  Build artifacts and 89 verified MPxy/RPMI symbols recorded in
+  `docs/evidence/power/opensbi-pin-evidence.yaml`.
 
 ## Resolved milestones
 

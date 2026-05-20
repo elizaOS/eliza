@@ -46,6 +46,8 @@ INPUT_ARTIFACTS = (
 OPTIONAL_COMMANDS = (
     "qemu-system-riscv64",
     "renode",
+    "verilator",
+    "spike",
     "dtc",
     "riscv64-linux-gnu-gcc",
     "riscv64-unknown-elf-gcc",
@@ -115,6 +117,13 @@ def main() -> int:
         "source_ids": [
             "llm-firmware-validation",
             "eok-riscv-kernel-optimization",
+            "qemu-riscv",
+            "renode",
+            "verilator",
+            "spike-riscv-isa-sim",
+            "sail-riscv",
+            "device-tree-compiler",
+            "buildroot",
             "intrintrans-rvv",
             "autodriver-drivebench",
             "os-r1-kernel-tuning",
@@ -179,6 +188,28 @@ def main() -> int:
                 ],
             },
             {
+                "id": "deterministic-boot-simulator-replay-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future QEMU, Renode, Verilator, Spike, Sail-RISC-V, DTC, or Buildroot use must pin simulator/build revisions, machine/platform descriptions, ISA/profile assumptions, DTS/DTB hashes, firmware/kernel/rootfs artifacts, command lines, transcripts, warning logs, and reviewer disposition before accepting generated BSP or firmware changes",
+                "acceptance_gates": [
+                    "make software-bsp-check",
+                    "make qemu-check",
+                    "make renode-check",
+                    "make software-bsp-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "firmware-isa-reference-replay-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future boot ROM, OpenSBI, U-Boot, or kernel smoke binaries must be compared against pinned Spike or Sail-RISC-V reference behavior only after E1 ISA/profile, CSR, privilege, memory-map, and platform-device assumptions are reviewed",
+                "acceptance_gates": [
+                    "make bootrom-check",
+                    "make software-bsp-check",
+                    "make qemu-check",
+                ],
+            },
+            {
                 "id": "riscv-kernel-and-rvv-optimization-watch",
                 "status": "CAPTURED_NOT_OPTIMIZED",
                 "target": "future advisory optimization for RISC-V kernels or RVV code after runnable benchmark logs exist",
@@ -224,9 +255,11 @@ def main() -> int:
         ],
         "blocked_by": [
             "no executable E1 Linux boot transcript through RTL-equivalent simulator",
+            "no pinned Verilator, Spike, or Sail-RISC-V replay for boot ROM, OpenSBI, U-Boot, kernel, or generated firmware binaries with E1 ISA/profile and platform assumptions",
             "no imported external Linux/OpenSBI/U-Boot tree with pinned revision and evidence logs",
             "no approved LLM firmware patch workflow or reviewer signoff contract",
             "no QEMU/Renode transcript tied to the E1 RTL-equivalent memory map and device tree",
+            "no pinned QEMU, Renode, Verilator, Spike, Sail-RISC-V, DTC, or Buildroot revision/artifact replay policy for generated BSP, device-tree, rootfs, or firmware evidence",
             "no static-analysis, fuzzing, or runtime-monitoring gate for generated firmware patches",
             "no runnable RISC-V kernel/RVV benchmark corpus for E1 NPU software optimization",
             "no license-reviewed Linux driver co-evolution benchmark or agent workflow with generated patch quarantine, E1 driver tests, and platform-contract replay",

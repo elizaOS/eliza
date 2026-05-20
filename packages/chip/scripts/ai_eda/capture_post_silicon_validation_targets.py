@@ -122,6 +122,10 @@ def main() -> int:
         "source_ids": [
             "symbolic-qed",
             "soc-trace-protocol-debug",
+            "verilator",
+            "spike-riscv-isa-sim",
+            "sail-riscv",
+            "riscv-formal",
             "riscv-dv",
             "riscof",
             "riscv-arch-test",
@@ -173,11 +177,21 @@ def main() -> int:
             {
                 "id": "riscv-compliance-and-random-validation-watch",
                 "status": "CAPTURED_NOT_RUN",
-                "target": "future RISCOF, riscv-arch-test, riscv-dv, riscvISACOV, Lyra, DifuzzRTL, RFUZZ, Cascade, XFUZZ, DiffTest, or FERIVer use must be pinned and tied to a buildable E1-compatible DUT, ISS/reference, result signatures, coverage, and replayable logs",
+                "target": "future Verilator, Spike, Sail-RISC-V, riscv-formal, RISCOF, riscv-arch-test, riscv-dv, riscvISACOV, Lyra, DifuzzRTL, RFUZZ, Cascade, XFUZZ, DiffTest, or FERIVer use must be pinned and tied to a buildable E1-compatible DUT, ISS/reference, result signatures, coverage, and replayable logs",
                 "acceptance_gates": [
                     "make platform-contract-check",
                     "make qemu-check",
                     "python3 scripts/check_ai_eda_source_inventory.py",
+                ],
+            },
+            {
+                "id": "deterministic-riscv-reference-model-watch",
+                "status": "CAPTURED_NOT_CONNECTED",
+                "target": "future Spike, Sail-RISC-V, Verilator, or riscv-formal reference checks require E1 ISA/profile selection, CSR and memory-map policy, RVFI or trace adapters, command logs, signatures, and reviewer disposition",
+                "acceptance_gates": [
+                    "make platform-contract-check",
+                    "make formal",
+                    "make qemu-check",
                 ],
             },
             {
@@ -256,6 +270,7 @@ def main() -> int:
         "blocked_by": [
             "no E1 silicon, FPGA hardware transcript, JTAG log, or lab measurement corpus",
             "no pinned external RISCOF, riscv-arch-test, or riscv-dv checkout executed against a buildable E1-compatible DUT",
+            "no pinned Verilator, Spike, Sail-RISC-V, or riscv-formal replay tied to E1 CPU wrappers, RVFI/trace adapters, ISA profile, CSR map, memory map, signatures, and reviewer disposition",
             "no RISC-V ISA compliance, random-instruction, or ISS co-simulation evidence tied to E1 CPU wrappers",
             "no pinned riscvISACOV/RVVI trace adapter, ISA coverage database, or coverage-gap disposition for E1",
             "no Lyra/FERIVer/DifuzzRTL/RFUZZ/Cascade/XFUZZ/DiffTest asset, generator seed/model/toolchain manifest, FPGA bitstream where applicable, ISS co-simulation checkpoint, differential failure log, or coverage replay evidence",

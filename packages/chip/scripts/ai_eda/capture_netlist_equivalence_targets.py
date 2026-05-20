@@ -179,6 +179,11 @@ def main() -> int:
         "source_ids": [
             "yosys-eqy",
             "yosys-equivalence",
+            "symbiyosys-sby",
+            "yosys-smtbmc",
+            "bitwuzla-smt",
+            "boolector-smt",
+            "z3-smt",
             "circt-lec",
             "abc",
             "datapath-cec-hybrid-sweeping",
@@ -231,6 +236,18 @@ def main() -> int:
                 ],
             },
             {
+                "id": "smtbmc-proof-replay-watch",
+                "status": "CAPTURED_NOT_PROVEN",
+                "target": "future SymbiYosys/yosys-smtbmc proof replay must capture exact SBY/SMT inputs, solver revisions, command options, bounds, assumptions, witnesses, counterexamples, logs, and reviewer disposition before accepting generated RTL, assertion, or netlist changes",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+                    "make formal",
+                    "make rtl-check",
+                    "make cocotb-contract",
+                ],
+            },
+            {
                 "id": "post-pd-netlist-consistency-watch",
                 "status": "CAPTURED_NOT_COMPARED",
                 "target": "future post-PD netlist comparisons must hash synthesized, floorplan, placement, CTS, routed, and final signoff netlists with matching constraints and OpenLane manifests",
@@ -259,6 +276,7 @@ def main() -> int:
         "blocked_by": [
             "no dedicated E1 EQY, Yosys equiv_*, CIRCT LEC, or ABC CEC harness is accepted for RTL-to-netlist or post-PD netlist comparisons",
             "no pinned equivalence specification for black boxes, memories, resets, x-propagation, unmapped cells, clocking assumptions, and hierarchy matching",
+            "no accepted SymbiYosys/yosys-smtbmc proof replay policy with solver revisions, SMT input hashes, bound/depth settings, witnesses, counterexamples, and cross-solver triage",
             "no release policy allowing AI-generated netlists, miters, equivalence scripts, waivers, or proof logs to bypass RTL, formal, cocotb, synthesis, STA/OpenLane, power, and review gates",
         ],
     }

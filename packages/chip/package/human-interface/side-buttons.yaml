@@ -1,0 +1,72 @@
+schema: eliza.side_buttons_binding.v1
+as_of: 2026-05-20
+status: planning_binding_no_schematic_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No tactile switches, side-key flex, ESD protection,
+  pull resistors, or wake-capable GPIOs are mounted or validated.
+
+mechanical_target:
+  placement: left_edge_side_spine
+  board_region_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+  enclosure_features:
+    - one_power_button_oriented_for_index_finger_reach
+    - two_volume_buttons_or_rocker_above_power_button
+    - elastomer_or_plastic_actuator_between_external_button_and_side_push_switch
+    - local stiffener or enclosure rib to prevent switch solder joint loading
+  serviceability:
+    preferred_implementation: small_side_key_flex_with_board_to_board_or_fpc_connector
+    fallback_implementation: switches_directly_on_mainboard_edge
+
+primary_switch_family:
+  vendor: Panasonic
+  family: EVQ-P7_EVQ-P3_EVQ-9P7
+  type: SMD_side_push_tactile
+  dimensions_mm: {length: 3.5, width: 2.9, height: 1.35}
+  travel_mm: 0.2
+  terminal_options: [L_shape, J_bent, straight]
+  applications: [mobile_phones, digital_cameras, portable_audio]
+  source_url: https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247
+
+alternate_switch_family:
+  vendor: Littelfuse_CK
+  family: KMR2
+  type: micro_miniature_SMT_tactile_top_actuated
+  dimensions_mm: {length: 4.2, width: 2.2, height: 1.9}
+  source_url: https://www.ckswitches.com/products/switches/product-details/Tactile/KMR2
+  note: >
+    Use only if the enclosure has a plunger that converts side motion to a
+    top-actuated force path. The Panasonic side-push family is mechanically
+    cleaner for a phone edge.
+
+logical_buttons:
+  power:
+    gpio_contract: PWR_KEY_N
+    wake_capable: true
+    default_pull: up_to_aon_1v8
+    debounce_ms: 20
+    long_press_policy: pmic_or_aon_controller_hard_reset_after_8_to_12_s
+  volume_up:
+    gpio_contract: VOL_UP_N
+    wake_capable: optional
+    default_pull: up_to_aon_1v8
+    debounce_ms: 20
+  volume_down:
+    gpio_contract: VOL_DOWN_N
+    wake_capable: optional
+    default_pull: up_to_aon_1v8
+    debounce_ms: 20
+
+electrical_requirements:
+  rails:
+    - {name: AON_1V8, owner: PMIC_AON_LDO, status: missing}
+  protection:
+    - Place low-capacitance ESD near any side-key flex connector if buttons are off-board.
+    - Add series damping or RC debounce only after PMIC/AON input leakage is known.
+  firmware:
+    - Power key must be readable by always-on firmware before AP boot.
+    - Volume keys must be readable by bootloader for recovery and factory modes.
+
+forbidden_claims:
+  - side_buttons_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready

@@ -17,16 +17,22 @@ and first-article logs before any release claim.
 
 ## Proposed Board Metrics
 
-The initial single-mainboard concept is a rigid PCB with top and bottom
-component islands and a side spine around the battery window.
+The current single-mainboard concept is optimized around commodity 5.5 inch
+1080 x 1920 MIPI display modules because those panels are easier to buy as OEM
+LCM/CTP assemblies than newer high-refresh phone panels with controlled supply.
+The mechanical anchor is a 68.04 x 120.96 mm active area and roughly 70-71 mm
+TFT outline, with the phone enclosure driven by the touch lens and side-key
+stack.
 
-- Device envelope: 72 x 152 x 9.5 mm.
-- Mainboard bounding box: 68 x 138 mm, 9,384 mm2.
-- Estimated actual PCB area: 6,088 mm2.
-- Battery/non-PCB window: 3,296 mm2.
-- PCB utilization of bounding box: 64.9%.
-- Estimated unallocated/wasted area in concept placement: 958 mm2, or 15.7%.
-- Target after first placement pass: 8-14% unallocated board area.
+- Device envelope: 72 x 148 x 9.5 mm, before enclosure ME tolerance stack.
+- Display anchor: 5.5 inch FHD 1080 x 1920 MIPI-DSI, 68.04 x 120.96 mm active
+  area.
+- Mainboard bounding box: 64 x 132 mm, 8,448 mm2.
+- Estimated actual PCB area: 4,990 mm2.
+- Battery/non-PCB window: 3,458 mm2.
+- PCB utilization of bounding box: 59.1%.
+- Estimated unallocated/wasted area in concept placement: 550 mm2, or 11.0%.
+- Target after first placement pass: 8-12% unallocated board area.
 - First prototype stackup: 8L 0.8 mm HDI minimum.
 - Preferred production stackup: 10L 0.8 mm HDI.
 
@@ -45,10 +51,35 @@ The concept preview lives at:
 - `board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png`
 
 This is a CAD-style floorplan preview, not routed PCB CAD. It defines the
-first placement intent for KiCad: RF at the top edge, cameras near the top
-right, SoC/LPDDR/PMIC near the top-center thermal path, cellular on the top
-left with antenna keepouts, battery window in the center, and USB-C/audio at
-the bottom edge.
+first placement intent for KiCad: top/bottom antenna keepouts, cellular near
+the upper-left RF edge, cameras and display FFCs near the upper-right edge,
+SoC/LPDDR/PMIC near the top-center graphite path, side buttons on the left
+spine, battery window in the center, and USB-C/audio at the bottom edge.
+
+## Sourcing Baseline
+
+The first sourcing pass deliberately favors modules with marketplace evidence
+and public vendor pages over raw chips:
+
+- Display: 5.5 inch 1080 x 1920 MIPI-DSI 4-lane LCM with CTP. Alibaba listings
+  for 055WU01-class modules show 40-pin MIPI, 1000 nit typical brightness, and
+  68.04 x 120.96 mm active area. Made-in-China listings for Chenghao
+  CH550FH01A-CT show 77.1 x 151.77 x 3.39 mm CTP outline, 70.78 x 129.17 x
+  1.7 mm TFT outline, 68.04 x 120.96 mm active area, and MIPI interface.
+- Rear camera: 13 MP OV13855/OV13850 autofocus MIPI CSI module, 24-30 pin FPC,
+  selected only after the vendor provides a pinout, lens stack height, and
+  Linux/Android driver plan.
+- Front camera: smaller fixed-focus MIPI CSI module chosen by enclosure
+  z-height after the rear module is locked.
+- Cellular: Quectel RG255C/RM255C 5G RedCap for first integrated phone board;
+  RM520N-GL M.2 remains the lab/dev-board fallback for higher-throughput 5G
+  bring-up because M.2 modules are easier to socket and replace.
+- Wi-Fi/Bluetooth: Murata Type 2EA (LBEE5XV2EA-802) as the phone-class
+  Wi-Fi 6E + Bluetooth 5.3 target; current Type 1DX stays as the low-risk
+  Linux SDIO/UART fallback.
+
+See `docs/board/e1-phone-oem-sourcing.md` for source links, dimensions, and
+open procurement questions.
 
 ## Required Hardware Blocks
 
@@ -73,6 +104,17 @@ the bottom edge.
   storage, and always-on domains.
 - Per-rail current limits for first article and production test.
 - Efficiency targets in `e1-phone-mainboard-metrics.yaml`.
+
+USB-C implementation baseline:
+
+- EVT0: GCT USB4105-class USB2 Type-C receptacle for charge, USB2 data,
+  ADB/fastboot/debug, and PD CC handling through TPS65987. This minimizes
+  routing risk while the SoC package/PHY decision is still open.
+- Production option: Molex 221632/217804 waterproof 24-pin Type-C if USB3 or
+  waterproofing becomes a hard requirement and the final package bonds the
+  high-speed lanes.
+- Mechanical rule: the enclosure must capture connector insertion/removal
+  forces; do not rely on solder joints alone.
 
 ### Thermal
 
@@ -118,6 +160,32 @@ the bottom edge.
 - Buttons, haptics driver and actuator, IMU, magnetometer, barometer,
   ambient/proximity sensors, fingerprint decision, board ID straps, and
   service/test pads.
+
+Side-button implementation baseline:
+
+- Use a side-key flex or left-edge switch island for power, volume up, and
+  volume down.
+- Primary switch family: Panasonic EVQ-P7/P3/9P7 side-push tactile, 3.5 x
+  2.9 x 1.35 mm, 0.2 mm travel, phone/portable-device class.
+- Power key must be connected to an always-on wake-capable input and support a
+  hard reset/long-press path through the PMIC or AON controller.
+- Volume keys must be visible to bootloader/recovery before Android starts.
+
+## Enclosure Interface
+
+The current enclosure/PCB interface source of truth is
+`docs/board/e1-phone-enclosure-interface.yaml`.
+
+Critical constraints captured there:
+
+- 64 x 132 mm rigid board behind a 5.5 inch FHD display stack.
+- 45 x 72 mm central battery window.
+- Bottom-center USB-C zone at x=26-42 mm, y=124-130 mm.
+- Left-edge side-key zone at x=4-11 mm, y=50-96 mm.
+- Top/bottom antenna keepouts that must remain plastic/low-metal unless an RF
+  vendor signs off the enclosure stack.
+- A 9.5 mm thickness target that still requires STEP and tolerance-stack
+  closure before any enclosure-fit claim.
 
 ## Required Analyses Before Layout Release
 

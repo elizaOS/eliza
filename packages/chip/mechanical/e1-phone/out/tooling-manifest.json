@@ -1,0 +1,211 @@
+[
+  {
+    "name": "mold_sprue_bushing",
+    "role": "tooling",
+    "material": "sprue bushing placeholder",
+    "obj": "mechanical/e1-phone/out/mold_sprue_bushing.obj",
+    "stl": "mechanical/e1-phone/out/mold_sprue_bushing.stl",
+    "bounds_mm": [
+      [
+        -2.0,
+        -98.8,
+        -13.8
+      ],
+      [
+        2.0,
+        -94.8,
+        -5.8
+      ]
+    ]
+  },
+  {
+    "name": "mold_primary_runner",
+    "role": "tooling",
+    "material": "cold runner",
+    "obj": "mechanical/e1-phone/out/mold_primary_runner.obj",
+    "stl": "mechanical/e1-phone/out/mold_primary_runner.stl",
+    "bounds_mm": [
+      [
+        -1.1,
+        -99.8,
+        -10.9
+      ],
+      [
+        1.1,
+        -65.8,
+        -8.7
+      ]
+    ]
+  },
+  {
+    "name": "mold_left_submarine_gate",
+    "role": "tooling",
+    "material": "submarine gate into back shell",
+    "obj": "mechanical/e1-phone/out/mold_left_submarine_gate.obj",
+    "stl": "mechanical/e1-phone/out/mold_left_submarine_gate.stl",
+    "bounds_mm": [
+      [
+        -30.0,
+        -77.625,
+        -10.225
+      ],
+      [
+        -6.0,
+        -76.775,
+        -9.375
+      ]
+    ]
+  },
+  {
+    "name": "mold_right_submarine_gate",
+    "role": "tooling",
+    "material": "submarine gate into back shell",
+    "obj": "mechanical/e1-phone/out/mold_right_submarine_gate.obj",
+    "stl": "mechanical/e1-phone/out/mold_right_submarine_gate.stl",
+    "bounds_mm": [
+      [
+        6.0,
+        -77.625,
+        -10.225
+      ],
+      [
+        30.0,
+        -76.775,
+        -9.375
+      ]
+    ]
+  },
+  {
+    "name": "mold_parting_line_reference",
+    "role": "tooling",
+    "material": "mid-plane parting line reference",
+    "obj": "mechanical/e1-phone/out/mold_parting_line_reference.obj",
+    "stl": "mechanical/e1-phone/out/mold_parting_line_reference.stl",
+    "bounds_mm": [
+      [
+        -40.0,
+        -77.8,
+        -0.075
+      ],
+      [
+        40.0,
+        77.8,
+        0.075
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_1",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_1.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_1.stl",
+    "bounds_mm": [
+      [
+        -29.9,
+        57.1,
+        -4.25
+      ],
+      [
+        -28.1,
+        58.9,
+        -1.25
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_2",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_2.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_2.stl",
+    "bounds_mm": [
+      [
+        28.1,
+        57.1,
+        -4.25
+      ],
+      [
+        29.9,
+        58.9,
+        -1.25
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_3",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_3.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_3.stl",
+    "bounds_mm": [
+      [
+        -29.9,
+        -58.9,
+        -4.25
+      ],
+      [
+        -28.1,
+        -57.1,
+        -1.25
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_4",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_4.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_4.stl",
+    "bounds_mm": [
+      [
+        28.1,
+        -58.9,
+        -4.25
+      ],
+      [
+        29.9,
+        -57.1,
+        -1.25
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_5",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_5.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_5.stl",
+    "bounds_mm": [
+      [
+        -29.9,
+        -20.9,
+        -4.25
+      ],
+      [
+        -28.1,
+        -19.1,
+        -1.25
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_6",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_6.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_6.stl",
+    "bounds_mm": [
+      [
+        28.1,
+        -20.9,
+        -4.25
+      ],
+      [
+        29.9,
+        -19.1,
+        -1.25
+      ]
+    ]
+  }
+]

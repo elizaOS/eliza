@@ -29,6 +29,8 @@ INPUT_ARTIFACTS = (
 
 OPTIONAL_COMMANDS = (
     "ngspice",
+    "Xyce",
+    "openvaf",
     "xschem",
     "magic",
     "netgen",
@@ -37,6 +39,7 @@ OPTIONAL_COMMANDS = (
 )
 
 OPTIONAL_PYTHON_MODULES = (
+    "PySpice",
     "align",
     "gym",
     "torch",
@@ -106,6 +109,10 @@ def main() -> int:
             "autosizer-ams",
             "easysize",
             "self-calibrating-analog-equations",
+            "ngspice",
+            "pyspice",
+            "xyce",
+            "openvaf",
             "eesizer",
             "analogmaster",
             "vlm-cad",
@@ -173,6 +180,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "deterministic-spice-replay-backend-watch",
+                "status": "CAPTURED_NOT_SIMULATED",
+                "target": "future ngspice, PySpice, Xyce, or OpenVAF use must pin simulator/model/compiler revisions, PDK and model hashes, deck hashes, command lines, raw outputs, convergence logs, PVT/corner manifests, and reviewer disposition before accepting analog AI results",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_analog_mixed_signal_targets.py --run-id validation",
+                    "make padframe-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "analog-design-equation-watch",
                 "status": "CAPTURED_NOT_GENERATED",
                 "target": "future self-calibrating LLM-generated design equations or Python sizing functions must cite constraint traceability, calibration data, SPICE replay, PVT sweeps, sensitivity reports, and reviewer disposition",
@@ -223,6 +241,7 @@ def main() -> int:
         ],
         "blocked_by": [
             "no local analog SPICE specs or testbenches for E1",
+            "no approved ngspice, PySpice, Xyce, or OpenVAF revision/model/deck replay policy for E1 analog or extracted-netlist evidence",
             "no foundry pad library selected or released",
             "no IBIS, S-parameter, package parasitic, or rail impedance model",
             "no quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition",

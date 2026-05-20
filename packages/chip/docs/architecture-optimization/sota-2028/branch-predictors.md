@@ -209,7 +209,7 @@ Gauntlet (gate before any 2028 BPU claim):
 - [Garza et al. — Firestorm + Oryon predictors, arXiv 2411.13900](https://arxiv.org/html/2411.13900v1)
 - [Bullseye Predictor, arXiv 2506.06773](https://arxiv.org/html/2506.06773v1)
 - [Seznec — TAGE-SC-L for CBP2025](https://ericrotenberg.wordpress.ncsu.edu/files/2025/06/cbp2025-final37-Seznec.pdf)
-- [XiangShan Parameters.scala (kunminghu-v2)](https://github.com/OpenXiangShan/XiangShan/blob/kunminghu-v2/src/main/scala/xiangshan/Parameters.scala)
+- [XiangShan Parameters.scala (kunminghu-v3)](https://github.com/OpenXiangShan/XiangShan/blob/kunminghu-v3/src/main/scala/xiangshan/Parameters.scala)
 - [XiangShan KMH RISC-V Europe 2025 slides](https://riscv-europe.org/summit/2025/media/proceedings/2025-05-14-RISC-V-Summit-Europe-09h30-BAO-slides.pdf)
 - [BOOM backing predictor docs](https://docs.boom-core.org/en/latest/sections/branch-prediction/backing-predictor.html)
 - [CVA6 cv64a6_imafdc_sv39_hpdcache_config_pkg.sv](https://github.com/openhwgroup/cva6/blob/master/core/include/cv64a6_imafdc_sv39_hpdcache_config_pkg.sv)

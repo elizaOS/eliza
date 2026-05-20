@@ -1,0 +1,99 @@
+schema: eliza.e1_phone_preliminary_bom.v1
+status: sourcing_shortlist_not_release_bom
+date: 2026-05-20
+claim_boundary: >
+  This is a preliminary sourcing/BOM shortlist for architecture and layout
+  planning. It is not an AVL, approved vendor list, purchase order, assembly
+  BOM, or lifecycle-checked production release.
+
+major_items:
+  - function: display_touch
+    qty: 1
+    primary: Chenghao_CH550FH01A_CT_or_pin_compatible_5p5_FHD_MIPI_CTP
+    alternates: [META_055WU01_class, 5p5_AMOLED_RM67191_class]
+    sourcing: docs/board/e1-phone-oem-sourcing.md
+    pcb_dependency: 40pin_or_supplier_defined_display_fpc_connector
+    freeze_blockers: [exact_pinout, fpc_drawing, init_sequence, touch_controller]
+
+  - function: rear_camera
+    qty: 1
+    primary: Sincere_First_SF_XR3855A_A0_OV13855_13MP_AF_MIPI
+    alternates: [AR1335_13MP_AF_4lane_MIPI_module]
+    sourcing: package/camera/oem-mipi-csi-modules.yaml
+    pcb_dependency: 24_to_30pin_camera_fpc_connector
+    freeze_blockers: [exact_pinout, z_height, lens_axis, driver_support, otp_calibration]
+
+  - function: front_camera
+    qty: 1
+    primary: 5MP_to_8MP_fixed_focus_MIPI_module_TBD
+    sourcing: package/camera/oem-mipi-csi-modules.yaml
+    pcb_dependency: small_camera_fpc_connector
+    freeze_blockers: [supplier_selection, exact_pinout, enclosure_z_stack]
+
+  - function: cellular
+    qty: 1
+    primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
+    alternates: [Quectel_RM520N_GL_M2_lab_fallback]
+    sourcing: package/cellular/quectel-5g-redcap.yaml
+    pcb_dependency: module_land_pattern_or_m2_socket_plus_sim_esim
+    freeze_blockers: [region_sku, bands, antenna_plan, carrier_certification_plan]
+
+  - function: wifi_bluetooth
+    qty: 1
+    primary: Murata_LBEE5XV2EA_802_Type_2EA_WiFi6E_BT5p3
+    alternates: [Murata_Type_1DX_SDIO_UART_fallback]
+    sourcing: package/wifi/murata-type-2ea-wifi6e.yaml
+    pcb_dependency: murata_reference_land_pattern_and_rf_feed
+    freeze_blockers: [firmware_license, antenna_layout, regulatory_scope]
+
+  - function: usb_c_receptacle_evt0
+    qty: 1
+    primary: GCT_USB4105_USB2_Type_C
+    alternates: [Molex_221632_or_217804_waterproof_24pin_if_USB3_required]
+    sourcing: package/usb-c/e1-phone-usb-c-port.yaml
+    pcb_dependency: connector_footprint_esd_pd_controller_charger
+    freeze_blockers: [mechanical_capture, port_cutout, pd_policy, esd_selection]
+
+  - function: side_buttons
+    qty: 3
+    primary: Panasonic_EVQ_P7_or_EVQ_P3_side_push_tactile
+    alternates: [C_and_K_KMR2_with_enclosure_plunger]
+    sourcing: package/human-interface/side-buttons.yaml
+    pcb_dependency: side_key_flex_or_left_edge_switch_island
+    freeze_blockers: [button_travel_stack, actuator_rib, wake_gpio_assignment]
+
+  - function: usb_pd_controller
+    qty: 1
+    primary: TI_TPS65987DDH
+    sourcing: package/usb-pd/tps65987.yaml
+    pcb_dependency: i2c_spi_flash_optional_cc_lines_vbus_path
+    freeze_blockers: [firmware_blob, pd_policy, pps_requirement]
+
+  - function: charger_power_path
+    qty: 1
+    primary: MAX77860_class
+    sourcing: package/charger/max77860.yaml
+    pcb_dependency: vbus_battery_sys_power_path_thermal_copper
+    freeze_blockers: [battery_pack, charge_current, thermistor_policy]
+
+  - function: pmic
+    qty: 1
+    primary: DA9063_class
+    sourcing: package/pmic/da9063.yaml
+    pcb_dependency: rail_tree_power_sequence_aon_domain
+    freeze_blockers: [rail_current_budget, reset_tree, rtc_backup_policy]
+
+  - function: audio_codec_amp_mics
+    qty: 1
+    primary: v0_audio_codec_binding
+    sourcing: package/audio/v0-codec.yaml
+    pcb_dependency: bottom_audio_region_speaker_mic_flexes
+    freeze_blockers: [speaker_box, mic_port_locations, acoustic_gaskets]
+
+production_bom_requirements:
+  - every_item_has_manufacturer_part_number_and_supplier_part_number
+  - every_connector_has_mating_fpc_or_cable_drawing
+  - alternates_are_pin_and_footprint_compatible_or_variant_controlled
+  - lifecycle_status_checked_for_12_month_supply
+  - region_specific_cellular_sku_and_antenna_parts_selected
+  - RoHS_REACH_and_battery_shipping_documents_collected

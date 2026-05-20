@@ -3,11 +3,18 @@
 set -eu
 
 repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -d "$repo_root/tools/bin" ]; then
+	PATH="$repo_root/tools/bin${PATH:+:$PATH}"
+fi
+if [ -d "$repo_root/.venv/bin" ]; then
+	PATH="$repo_root/.venv/bin${PATH:+:$PATH}"
+fi
 report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.json}"
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
 aosp_shell=${AOSP_SHELL:-bash}
 aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}
+aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}
 aosp_cuttlefish_launcher=${AOSP_CUTTLEFISH_LAUNCHER:-}
 aosp_adb_timeout_seconds=${AOSP_ADB_TIMEOUT_SECONDS:-180}
@@ -427,8 +434,8 @@ fi
 
 if [ "$run_cuttlefish" -eq 1 ]; then
 	set +e
-	AOSP_PRODUCT="$aosp_product" \
-		AOSP_SHELL="$aosp_shell" \
+		AOSP_PRODUCT="$aosp_cuttlefish_product" \
+			AOSP_SHELL="$aosp_shell" \
 		AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
 		AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
 		AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
@@ -444,10 +451,10 @@ if [ "$run_cuttlefish" -eq 1 ]; then
 	capture_aosp_shell \
 		cuttlefish_riscv64_smoke \
 		"$evidence_dir/cuttlefish_riscv64_smoke.log" \
-		"launch_cvd or cvd start followed by adb shell getprop smoke checks" \
-		'source build/envsetup.sh &&
-			lunch "$AOSP_PRODUCT" >/dev/null &&
-			echo "eliza_ai_soc" &&
+			"launch_cvd or cvd create followed by adb shell getprop smoke checks" \
+			'source build/envsetup.sh &&
+				lunch "$AOSP_PRODUCT" >/dev/null &&
+				echo "AOSP_CUTTLEFISH_PRODUCT=$AOSP_PRODUCT" &&
 			cleanup() { stop_cvd >/dev/null 2>&1 || cvd stop >/dev/null 2>&1 || true; } &&
 			trap cleanup EXIT INT TERM &&
 			if [ -n "$AOSP_CUTTLEFISH_LAUNCHER" ]; then
@@ -459,7 +466,15 @@ if [ "$run_cuttlefish" -eq 1 ]; then
 			fi &&
 			echo "CUTTLEFISH_LAUNCHER=$cuttlefish_launcher" &&
 			if [ "$cuttlefish_launcher" = cvd ]; then
-				cvd start $AOSP_CUTTLEFISH_ARGS --daemon
+				cvd_host_arg= &&
+				cvd_product_arg= &&
+				if [ -d /usr/lib/cuttlefish-common/bin ]; then
+					cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
+				fi &&
+				if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+					cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+				fi &&
+				cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 			else
 				"$cuttlefish_launcher" $AOSP_CUTTLEFISH_ARGS -daemon
 			fi &&

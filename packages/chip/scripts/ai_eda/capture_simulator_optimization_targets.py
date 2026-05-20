@@ -94,6 +94,9 @@ def main() -> int:
             "waveform-mcp",
             "mcp-vcd-waveform",
             "vaporview-waveform",
+            "cocotb-core",
+            "cocotb-test",
+            "cocotb-bus",
             "cocotb-coverage",
             "pyuvm-cocotb",
             "cocotbext-axi",
@@ -115,7 +118,7 @@ def main() -> int:
             "no pinned GPU/FPGA RTL simulator backend, supported-SystemVerilog subset, waveform correlation, or speedup replay",
             "no approved generated cocotb stub, generated testbench, mutation-test, or simulator failure-taxonomy workflow",
             "no approved waveform-context MCP/viewer workflow with trace hashes, signal scope allowlists, prompt redaction, and simulator replay",
-            "no approved functional-coverage, Python-UVM, or AXI VIP workflow with seed manifests, coverage database hashes, scoreboard policy, and cocotb/formal correlation",
+            "no approved cocotb core, cocotb-test, cocotb-bus, functional-coverage, Python-UVM, or AXI VIP workflow with seed manifests, coverage database hashes, scoreboard policy, and cocotb/formal correlation",
         ],
     }
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -51,7 +51,12 @@ OPTIONAL_COMMANDS = (
 )
 
 OPTIONAL_PYTHON_MODULES = (
+    "cocotb",
+    "cocotb_bus",
+    "cocotb_test",
+    "cocotbext.axi",
     "networkx",
+    "pyuvm",
     "pyverilog",
     "vcdvcd",
     "yaml",
@@ -91,9 +96,13 @@ def command_entry(name: str) -> dict[str, str | None]:
 
 
 def module_entry(name: str) -> dict[str, str]:
+    try:
+        present = importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        present = False
     return {
         "module": name,
-        "status": "PRESENT" if importlib.util.find_spec(name) else "MISSING",
+        "status": "PRESENT" if present else "MISSING",
     }
 
 
@@ -130,6 +139,7 @@ def main() -> int:
             "fvdebug",
             "veridebug",
             "siliconmind-v1",
+            "rtlfixer",
             "uvmarvel",
             "meic-rtl-debug",
             "r3a-rtl-repair",
@@ -137,6 +147,9 @@ def main() -> int:
             "waveform-mcp",
             "mcp-vcd-waveform",
             "vaporview-waveform",
+            "cocotb-core",
+            "cocotb-test",
+            "cocotb-bus",
             "cocotb-coverage",
             "pyuvm-cocotb",
             "cocotbext-axi",
@@ -232,7 +245,7 @@ def main() -> int:
             {
                 "id": "patch-quarantine-equivalence-watch",
                 "status": "CAPTURED_NOT_PATCHED",
-                "target": "future MEIC, UVLLM, FVDebug, VeriDebug, SiliconMind, R3A, or Clover debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
+                "target": "future MEIC, UVLLM, FVDebug, VeriDebug, SiliconMind, RTLFixer, R3A, or Clover debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
                 "acceptance_gates": [
                     "make formal",
                     "make synth",
@@ -253,7 +266,7 @@ def main() -> int:
             {
                 "id": "python-verification-infrastructure-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future cocotb-coverage, pyuvm, or cocotbext-axi use must pin versions, coverage schemas, bus-interface mappings, scoreboards, seed manifests, simulator logs, and cocotb/formal correlation before generated tests or coverage claims are promoted",
+                "target": "future cocotb, cocotb-test, cocotb-bus, cocotb-coverage, pyuvm, or cocotbext-axi use must pin versions, coverage schemas, bus-interface mappings, scoreboards, seed manifests, simulator logs, and cocotb/formal correlation before generated tests or coverage claims are promoted",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation",
                     "make cocotb-npu",
@@ -266,7 +279,7 @@ def main() -> int:
             "no approved AI-generated verification-plan promotion workflow",
             "no archived failing formal counterexample corpus for E1",
             "no waveform/trace-to-causal-graph parser pinned for local formal failures",
-            "no license-reviewed PRO-V, AutoBench, Project Ava, HAVEN, VerilogCoder, Saarthi, SANGAM, STELLAR, ProofLoop, FVDebug, VeriDebug, or SiliconMind integration path",
+            "no license-reviewed PRO-V, AutoBench, Project Ava, HAVEN, VerilogCoder, Saarthi, SANGAM, STELLAR, ProofLoop, FVDebug, VeriDebug, SiliconMind, or RTLFixer integration path",
             "no license-reviewed CorrectBench, UVLLM, UVM2, VerifLLMBench, MEIC, R3A, or Clover asset path with benchmark non-overlap and prompt/model provenance",
             "no UVM-capable simulator/license, protocol IR, or coverage-to-cocotb correlation workflow for E1 subsystem verification",
             "no approved mutation-test, cocotb-repair, AST-waveform tracing, or simulator failure-taxonomy workflow for generated verification collateral",
@@ -276,7 +289,7 @@ def main() -> int:
             "no reviewer disposition schema for AI-suggested root causes or patches",
             "no deterministic source-promotion gate for AI-generated testbenches, assertions, or RTL fixes",
             "no approved Waveform MCP, MCP VCD, or VaporView workflow with trace scope allowlists, waveform hashes, MCP/tool logs, prompt redaction, replay evidence, and reviewer disposition",
-            "no approved cocotb-coverage, pyuvm, or cocotbext-axi integration path with version pins, coverage schemas, bus mappings, scoreboards, seeds, simulator logs, and cocotb/formal correlation",
+            "no approved cocotb core, cocotb-test, cocotb-bus, cocotb-coverage, pyuvm, or cocotbext-axi integration path with version pins, coverage schemas, bus mappings, scoreboards, seeds, simulator logs, and cocotb/formal correlation",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

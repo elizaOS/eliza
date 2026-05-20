@@ -72,6 +72,42 @@ entries:
     risk:
       - Tool-driving agents can hallucinate Tcl or shell commands.
       - Microservice automation can hide nondeterminism unless logs are archived.
+  - id: eda-mcp-server
+    name: EDA-MCP Server
+    kind: eda_mcp_server
+    stage:
+      - agentic_orchestration
+      - eda_tool_control
+      - mcp
+      - simulation
+      - synthesis
+      - physical_design
+    priority: P1
+    source_url: https://github.com/SaeronLab/eda-mcp
+    code_url: https://github.com/SaeronLab/eda-mcp
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant as a concrete MCP server for exposing EDA operations
+      to coding agents and chat clients, useful for defining command schemas,
+      tool-call logging, and no-write defaults before any E1 tool control.
+    integration_action: >
+      Track as a blocked server candidate only. Do not install, start, or route
+      E1 tool calls through it until revision, dependencies, authentication,
+      sandboxing, allowlists, and artifact quarantine are reviewed.
+    evidence_gate: >
+      Any EDA-MCP server use requires pinned server revision, dependency and
+      license review, command allowlist, read/write scope manifest, archived
+      MCP request/response logs, tool stdout/stderr, input/output hashes,
+      rollback plan, deterministic local gates, and reviewer disposition.
+    risk:
+      - Generic EDA tool wrappers can expose write-capable or destructive
+        commands unless a strict allowlist and sandbox are enforced.
+      - MCP logs are not design evidence unless mapped to deterministic E1
+        make targets and reviewed artifacts.
   - id: chateda
     name: ChatEDA
     kind: agent_framework
@@ -440,6 +476,42 @@ entries:
     risk:
       - Benchmark tasks are small and may not cover SoC integration behavior.
       - Public pass rates can hide simulator/version differences.
+  - id: rtlfixer
+    name: RTLFixer
+    kind: llm_verilog_syntax_repair_framework
+    stage:
+      - rtl_generation
+      - verification_debug
+      - benchmark_evaluation
+      - external_model_corpus_intake
+    priority: P1
+    source_url: https://arxiv.org/abs/2311.16543
+    code_url: https://github.com/NVlabs/RTLFixer
+    model_url: null
+    dataset_url: https://github.com/NVlabs/RTLFixer
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: no_model_external_api_workflow
+    e1_fit: >
+      Useful repair-loop and benchmark reference for quarantined LLM-generated
+      Verilog because it combines compiler/simulator feedback, RAG/ReAct-style
+      repair, and VerilogEval-derived syntax/simulation datasets.
+    integration_action: >
+      Track as a blocked syntax-repair and evaluation-hygiene candidate only.
+      Do not call external APIs, repair E1 source, import datasets, or accept
+      generated patches until exact revisions, compiler versions, prompts,
+      output hashes, and local review gates are defined.
+    evidence_gate: >
+      Any RTLFixer-style use requires repository revision and license review,
+      benchmark/dataset hashes, API/model identity if used, prompt/output logs,
+      generated RTL quarantine, compiler and simulator logs, local lint,
+      cocotb/formal/synthesis follow-up where applicable, contamination review,
+      and reviewer disposition.
+    risk:
+      - Syntax repair can make invalid RTL compile without making it
+        functionally correct, synthesizable, or safe for integration.
+      - External API workflows and benchmark-derived datasets are not
+        release-suitable without privacy, license, and non-overlap review.
   - id: cvdp
     name: Comprehensive Verilog Design Problems
     kind: benchmark_dataset
@@ -467,6 +539,107 @@ entries:
     risk:
       - Hugging Face mirrors may not preserve upstream licensing exactly.
       - Benchmark success can overstate readiness for production RTL.
+  - id: pyhdl-eval
+    name: PyHDL-Eval
+    kind: multi_hdl_llm_evaluation_framework
+    stage:
+      - rtl_generation
+      - benchmark_evaluation
+      - python_hdl_dsl
+      - external_model_corpus_intake
+    priority: P2
+    source_url: https://github.com/cornell-brg/pyhdl-eval
+    code_url: https://github.com/cornell-brg/pyhdl-eval
+    model_url: null
+    dataset_url: https://github.com/cornell-brg/pyhdl-eval
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful benchmark and harness reference for comparing LLM spec-to-RTL
+      behavior across Verilog plus Python-embedded HDL DSLs such as PyMTL,
+      PyRTL, MyHDL, Migen, and Amaranth.
+    integration_action: >
+      Track as a blocked external benchmark framework only. Do not import tasks,
+      run generated HDL, adopt a Python HDL DSL, or compare model quality until
+      exact revisions, dependencies, simulator/toolchain versions, and
+      benchmark-overlap review exist.
+    evidence_gate: >
+      Any PyHDL-Eval-style use requires pinned repository revision, license and
+      dependency review, task and reference-solution hashes, generated output
+      quarantine, Python/Verilog test logs, simulator/synthesis follow-up,
+      benchmark non-overlap review, and reviewer disposition.
+    risk:
+      - DSL success can hide semantics or lowering issues that do not transfer
+        to E1 SystemVerilog, toolchain, reset, bus, or synthesis constraints.
+      - Public benchmark tasks are not evidence that generated production RTL
+        is correct or integration-safe.
+  - id: posteda-bench
+    name: PostEDA-Bench
+    kind: post_eda_agent_benchmark
+    stage:
+      - agentic_orchestration
+      - physical_design
+      - drc_fixing
+      - ppa_optimization
+      - benchmark_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.06936
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant benchmark direction for post-layout EDA agents that attempt DRC
+      fixing and PPA improvement after conventional EDA flow execution.
+    integration_action: >
+      Track as benchmark-governance context only. Do not import tasks, run
+      agents, change DEF/GDS/Tcl/config, or claim physical-design repair until
+      exact assets, licenses, and local replay gates exist.
+    evidence_gate: >
+      Any PostEDA-Bench-style use requires benchmark revision and license
+      review, design/task hashes, generated patch or script quarantine,
+      before/after OpenROAD/OpenLane logs, DRC/antenna/STA/power/signoff
+      replay, benchmark non-overlap review, and reviewer disposition.
+    risk:
+      - Post-layout agent fixes can optimize public benchmark metrics while
+        breaking E1 constraints, manufacturability, or reproducibility.
+      - DRC/PPA success on benchmark designs is not signoff evidence for E1.
+  - id: eda-schema-v2
+    name: EDA-Schema-V2
+    kind: eda_agent_data_schema
+    stage:
+      - agentic_orchestration
+      - physical_design
+      - data_schema
+      - benchmark_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.06952
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful schema reference for representing EDA agent tasks, tool states,
+      physical-design artifacts, and benchmark evidence in a structured way.
+    integration_action: >
+      Track as schema-governance context only. Do not convert E1 evidence,
+      import schemas, or expose tool state to agents until schema versioning,
+      redaction, artifact hashes, and reviewer rules are defined.
+    evidence_gate: >
+      Any EDA-Schema-V2-style adoption requires exact schema revision, license
+      review, mapping from E1 artifacts to schema fields, redaction policy,
+      generated schema-output hashes, compatibility checks, and reviewer
+      disposition.
+    risk:
+      - A generic schema can omit E1-specific provenance, license, safety, or
+        signoff fields unless mapped explicitly.
+      - Structured agent data may leak private design context if redaction and
+        export boundaries are not reviewed.
   - id: rtllm
     name: RTLLM
     kind: rtl_generation_benchmark
@@ -3232,6 +3405,102 @@ entries:
       - Viewer state and screenshots are weak evidence without archived
         waveforms and reproducible simulator commands.
       - Extension APIs can change and break trace-link workflows.
+  - id: cocotb-core
+    name: cocotb
+    kind: python_hdl_cosimulation_framework
+    stage:
+      - verification
+      - cocotb
+      - simulator_feedback
+      - testbench_infrastructure
+    priority: P0
+    source_url: https://docs.cocotb.org/
+    code_url: https://github.com/cocotb/cocotb
+    model_url: null
+    dataset_url: null
+    license_status: BSD_3_reported_review_required
+    code_status: local_or_available_to_review
+    model_status: no_model
+    e1_fit: >
+      Core deterministic Python co-simulation framework behind E1's existing
+      cocotb tests and the safest execution gate for AI-proposed stimulus,
+      monitors, and debug hypotheses.
+    integration_action: >
+      Treat as the baseline simulator-feedback harness. AI-generated tests or
+      stimulus remain non-evidence until cocotb runs are pinned by simulator
+      version, seed manifest, logs, result XML, and reviewer disposition.
+    evidence_gate: >
+      Use requires exact cocotb and simulator versions, DUT/source hashes,
+      Makefile plus environment manifests, seed and stimulus manifests,
+      pass/fail logs, result XML hashes, and correlation with formal where
+      applicable.
+    risk:
+      - Passing cocotb tests can still miss protocol, reset, timing, CDC/RDC,
+        and software-visible behavior outside the tested scenarios.
+      - AI-authored tests can encode the same wrong assumption as a generated
+        implementation or oracle.
+  - id: cocotb-test
+    name: cocotb-test
+    kind: pytest_cocotb_runner
+    stage:
+      - verification
+      - cocotb
+      - pytest
+      - regression_infrastructure
+    priority: P1
+    source_url: https://github.com/themperek/cocotb-test
+    code_url: https://github.com/themperek/cocotb-test
+    model_url: null
+    dataset_url: null
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open pytest runner for packaging future AI-proposed cocotb
+      scenarios as reproducible Python regressions with parameterized seeds and
+      simulator options.
+    integration_action: >
+      Track as regression-harness candidate only; do not migrate E1 tests or
+      accept generated testcases until runner version, simulator matrix, and
+      result-log contracts are reviewed.
+    evidence_gate: >
+      Use requires exact revision, pytest and simulator versions, generated
+      test quarantine, parameter manifests, stdout/stderr logs, result hashes,
+      and review.
+    risk:
+      - Runner convenience can hide simulator option differences or weaken
+        make-target evidence if logs and parameters are not archived.
+  - id: cocotb-bus
+    name: cocotb-bus
+    kind: cocotb_bus_driver_monitor_library
+    stage:
+      - verification
+      - cocotb
+      - bus_functional_model
+      - scoreboard
+    priority: P1
+    source_url: https://github.com/cocotb/cocotb-bus
+    code_url: https://github.com/cocotb/cocotb-bus
+    model_url: null
+    dataset_url: null
+    license_status: BSD_3_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical reference for reusable cocotb drivers, monitors, scoreboards,
+      and bus-functional patterns that can constrain AI-generated E1 testbench
+      code toward reviewed infrastructure.
+    integration_action: >
+      Track as verification-infrastructure candidate only; no library import or
+      generated BFM promotion until bus mappings, scoreboards, reset behavior,
+      and replay logs are reviewed.
+    evidence_gate: >
+      Use requires exact revision, license review, interface mapping, scoreboard
+      policy, generated-test quarantine, seeds, simulator logs, coverage or
+      result hashes, and reviewer disposition.
+    risk:
+      - Generic bus patterns can mismatch E1 AXI-lite, DMA, interrupt, reset,
+        or memory-map conventions without local adapters.
   - id: cocotb-coverage
     name: cocotb-coverage
     kind: cocotb_functional_coverage_library
@@ -4152,6 +4421,137 @@ entries:
       - Partial traces can create plausible but wrong reconstructions.
       - E1 currently lacks hardware trace capture and protocol-observation
         points.
+  - id: verilator
+    name: Verilator
+    kind: open_source_systemverilog_simulator
+    stage:
+      - rtl_simulation
+      - pre_silicon_verification
+      - lint
+      - coverage
+      - post_silicon_validation
+    priority: P0
+    source_url: https://github.com/verilator/verilator
+    code_url: https://github.com/verilator/verilator
+    model_url: null
+    dataset_url: null
+    license_status: LGPL_3_or_Artistic_2_reported_review_required
+    code_status: local_tool_or_available_to_review
+    model_status: no_model
+    e1_fit: >
+      Core deterministic open RTL simulator and lint backend for E1 cocotb,
+      C++ smoke tests, AI-generated stimulus replay, and future simulator-speed
+      optimization studies.
+    integration_action: >
+      Treat as a required evidence backend, not as an AI oracle. Any generated
+      testbench, waveform summary, or RTL change must cite Verilator version,
+      command line, source hashes, logs, result artifacts, and reviewer
+      disposition.
+    evidence_gate: >
+      Use requires pinned Verilator revision or package version, compile
+      command, supported-SystemVerilog subset notes, seed/stimulus manifests,
+      waveform/result hashes, pass/fail logs, and formal or reference-model
+      correlation where applicable.
+    risk:
+      - Verilator semantics and supported verification constructs differ from
+        full commercial simulators.
+      - Fast simulation does not prove reset, CDC/RDC, timing, low-power, or
+        software-visible behavior without independent gates.
+  - id: spike-riscv-isa-sim
+    name: Spike RISC-V ISA Simulator
+    kind: riscv_isa_reference_simulator
+    stage:
+      - cpu_validation
+      - iss
+      - software_validation
+      - post_silicon_validation
+    priority: P0
+    source_url: https://github.com/riscv-software-src/riscv-isa-sim
+    code_url: https://github.com/riscv-software-src/riscv-isa-sim
+    model_url: null
+    dataset_url: null
+    license_status: BSD_3_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical golden ISA simulator candidate for future E1 CPU, firmware,
+      RISCOF, riscv-dv, fuzzing, compiler, and differential co-simulation
+      evidence.
+    integration_action: >
+      Track as reference-model watchlist only until E1 CPU profile, privilege
+      mode, CSR map, memory map, and trace/signature adapter are reviewed.
+    evidence_gate: >
+      Spike use requires exact revision, ISA/profile configuration, binary and
+      ELF hashes, command line, signature or trace hashes, DUT comparison logs,
+      undefined-behavior policy, and reviewer disposition.
+    risk:
+      - Reference-model mismatch on CSRs, privilege behavior, memory effects,
+        interrupts, or platform devices can produce false failures or false
+        confidence.
+  - id: sail-riscv
+    name: Sail RISC-V Model
+    kind: formal_riscv_isa_model
+    stage:
+      - cpu_validation
+      - formal_semantics
+      - iss
+      - compliance
+      - post_silicon_validation
+    priority: P1
+    source_url: https://github.com/riscv/sail-riscv
+    code_url: https://github.com/riscv/sail-riscv
+    model_url: null
+    dataset_url: null
+    license_status: BSD_2_reported_review_required
+    code_status: available_to_review
+    model_status: executable_specification
+    e1_fit: >
+      Useful formal ISA semantics reference for future E1 compliance,
+      compiler, and generated-kernel correctness checks when Spike/QEMU traces
+      need an independently specified baseline.
+    integration_action: >
+      Track as executable-spec reference only; do not claim compliance or
+      generated-code correctness until Sail version, ISA profile, adapters,
+      command logs, and comparison artifacts are pinned.
+    evidence_gate: >
+      Sail use requires exact revision, selected ISA/profile, generated
+      emulator or theorem artifact hashes, binary/trace inputs, comparison
+      logs, semantic-assumption review, and reviewer disposition.
+    risk:
+      - Executable specification setup can diverge from E1 platform behavior,
+        especially CSRs, memory map, interrupts, debug, and device effects.
+  - id: riscv-formal
+    name: riscv-formal
+    kind: riscv_formal_verification_framework
+    stage:
+      - cpu_validation
+      - formal_verification
+      - riscv_compliance
+      - pre_silicon_verification
+    priority: P1
+    source_url: https://github.com/SymbioticEDA/riscv-formal
+    code_url: https://github.com/SymbioticEDA/riscv-formal
+    model_url: null
+    dataset_url: null
+    license_status: ISC_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Strong formal-checking reference for future RISC-V core wrapper work once
+      E1 exposes a compatible RVFI trace interface and bounded proof harness.
+    integration_action: >
+      Track as formal target only. Do not bind RVFI, import properties, or
+      claim compliance until the CPU wrapper, assumptions, solver commands, and
+      proof logs are reviewed.
+    evidence_gate: >
+      Use requires pinned framework and solver revisions, RVFI signal mapping,
+      ISA/profile configuration, assumption manifest, SMT/proof logs, witness
+      artifacts for failures, and reviewer disposition.
+    risk:
+      - RVFI mapping or environmental assumptions can make proofs vacuous or
+        over-constrained.
+      - Formal ISA checks do not cover SoC integration, interrupts, debug,
+        caches, memory fabric, or software ABI behavior by themselves.
   - id: riscv-dv
     name: RISC-V DV
     kind: riscv_random_instruction_generator
@@ -4812,6 +5212,98 @@ entries:
     risk:
       - DFT insertion can alter timing or area and must be checked downstream.
       - Open-source DFT support may not cover all E1 sequential structures.
+  - id: openroad-dft
+    name: OpenROAD DFT
+    kind: open_source_scan_insertion_flow
+    stage:
+      - design_for_test
+      - scan_insertion
+      - openroad_flow
+    priority: P1
+    source_url: https://openroad-flow-scripts.readthedocs.io/en/latest/user/FlowTutorial.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant deterministic DFT backend candidate for future E1 scan-chain
+      planning, especially because other OpenROAD lanes are already tracked.
+    integration_action: >
+      Track as a blocked scan-flow backend only; do not enable scan insertion
+      until E1 has a scan architecture, DFT rule contract, netlist flow, and
+      downstream signoff replay.
+    evidence_gate: >
+      Use requires pinned OpenROAD revision, input netlist hash, scan config,
+      generated netlist/DEF hashes, DFT logs, ATPG/fault-coverage backend
+      evidence, timing/power/area deltas, and human DFT review.
+    risk:
+      - Scan-chain insertion can alter timing, reset, clock, or physical
+        assumptions.
+      - OpenROAD DFT does not by itself prove ATPG pattern quality or tester
+        compatibility.
+  - id: atalanta-atpg
+    name: Atalanta ATPG
+    kind: open_source_atpg_fault_simulation_baseline
+    stage:
+      - design_for_test
+      - atpg
+      - fault_simulation
+      - stuck_at_faults
+    priority: P2
+    source_url: https://github.com/hsluoyz/Atalanta
+    code_url: https://github.com/hsluoyz/Atalanta
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful deterministic ATPG and fault-simulation reference for comparing
+      AI ATPG proposals against a classic stuck-at baseline.
+    integration_action: >
+      Keep as a backend watch item only; no E1 netlist conversion, ATPG run, or
+      coverage claim is allowed until license, circuit-format, and fault-list
+      contracts are reviewed.
+    evidence_gate: >
+      Any use requires pinned source revision, accepted netlist subset, fault
+      model manifest, pattern hashes, fault-simulation logs, and comparison
+      against the selected E1 DFT flow.
+    risk:
+      - Classic stuck-at ATPG coverage is not enough for full manufacturing
+        test quality.
+      - Legacy parser and netlist-format limits may not support E1 SoC scale.
+  - id: fault-ucb-hw-testing
+    name: Fault Hardware Testing Framework
+    kind: python_hardware_testing_framework
+    stage:
+      - verification
+      - design_for_test
+      - test_generation
+      - simulation
+    priority: P2
+    source_url: https://fault.readthedocs.io/en/latest/
+    code_url: https://github.com/leonardt/fault
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant as a Python test orchestration reference for generated or
+      transformed hardware tests, but not a manufacturing ATPG replacement.
+    integration_action: >
+      Track for future DFT-adjacent test-harness glue only after E1 has pinned
+      simulators, testbench interfaces, and generated-test quarantine.
+    evidence_gate: >
+      Use requires pinned package revision, simulator backend capture, input
+      RTL hashes, generated-test quarantine, replay logs, and reviewer
+      disposition.
+    risk:
+      - Simulation test generation can be confused with manufacturing ATPG if
+        claim boundaries are not explicit.
+      - Backend support and HDL subset limits need local replay evidence.
   - id: verirag-llm4dft
     name: VeriRAG / LLM4DFT
     kind: llm_dft_testability_repair
@@ -5051,6 +5543,66 @@ entries:
     risk:
       - Scope may be limited to small combinational circuits.
       - Educational tooling can produce misleading confidence for SoC DFT.
+  - id: fan-atpg
+    name: FAN ATPG
+    kind: open_source_fan_atpg_baseline
+    stage:
+      - design_for_test
+      - atpg
+      - fault_simulation
+      - stuck_at_faults
+    priority: P3
+    source_url: https://github.com/NTU-LaDS-II/FAN_ATPG
+    code_url: https://github.com/NTU-LaDS-II/FAN_ATPG
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful as a compact FAN-algorithm ATPG reference for sanity-checking
+      stuck-at examples and AI ATPG claims, not as an E1 production backend.
+    integration_action: >
+      Track as educational/open ATPG context only until scale, format, license,
+      and replay constraints are reviewed.
+    evidence_gate: >
+      Any use requires pinned revision, circuit-format manifest, fault-list
+      hashes, generated pattern hashes, and independent fault-simulation logs.
+    risk:
+      - Academic examples may not cover sequential scan, SoC hierarchy, or E1
+        physical-test constraints.
+      - Small-circuit success can overstate readiness for manufacturing test.
+  - id: quaigh-atpg-equivalence
+    name: Quaigh
+    kind: rust_atpg_fault_simulation_equivalence_library
+    stage:
+      - design_for_test
+      - atpg
+      - fault_simulation
+      - equivalence_checking
+    priority: P3
+    source_url: https://github.com/Coloquinte/quaigh
+    code_url: https://github.com/Coloquinte/quaigh
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant because it combines ATPG, stuck-at fault simulation, and
+      equivalence-checking primitives that could support future reproducible
+      DFT experiments.
+    integration_action: >
+      Keep as a backend watch item; do not import or execute until build,
+      license, netlist-format, and E1 fault-model contracts are reviewed.
+    evidence_gate: >
+      Use requires pinned crate/source revision, build logs, accepted circuit
+      subset, fault-list hashes, pattern/fault-simulation logs, and independent
+      review.
+    risk:
+      - Library APIs may not map cleanly onto E1 gate-level outputs or scan
+        semantics.
+      - Equivalence/ATPG primitives still need a full DFT signoff wrapper.
   - id: nn-for-atpg
     name: NN-for-ATPG Hybrid ATPG Dataset
     kind: ml_atpg_artifact
@@ -6594,6 +7146,40 @@ entries:
     risk:
       - Conversational control of EDA tools can hide unsafe write actions.
       - Backend-aware optimization can overfit without held-out E1 evidence.
+  - id: fluxeda
+    name: FluxEDA
+    kind: stateful_eda_agent_framework
+    stage:
+      - agentic_orchestration
+      - mcp
+      - physical_design
+      - script_generation
+      - workflow_memory
+    priority: P2
+    source_url: https://arxiv.org/abs/2603.25243
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant method reference for stateful EDA agents that combine persistent
+      design context, reusable skills, and MCP-style tool access for
+      physical-design workflows.
+    integration_action: >
+      Track as an orchestration-pattern reference only. Do not add persistent
+      agent memory, skills, generated scripts, or tool-call execution for E1
+      until storage boundaries, redaction, replay, and review policy exist.
+    evidence_gate: >
+      Any FluxEDA-style use requires explicit memory snapshots, prompt/tool-call
+      logs, skill revisions, command schemas, generated-script quarantine,
+      deterministic local replay, signoff follow-up, and reviewer disposition.
+    risk:
+      - Persistent memories and reusable skills can carry stale or proprietary
+        assumptions into later E1 runs.
+      - Stateful agents can make tool outcomes harder to reproduce unless every
+        memory and tool action is versioned and replayed.
   - id: llm-firmware-validation
     name: LLM-Generated Embedded Firmware Validation and Patching
     kind: llm_firmware_validation_loop
@@ -6652,6 +7238,130 @@ entries:
     risk:
       - Kernel speedups may not transfer to E1 CPU/NPU memory behavior.
       - Generated kernels can exploit undefined behavior or benchmark artifacts.
+  - id: qemu-riscv
+    name: QEMU RISC-V System Emulator
+    kind: full_system_emulator
+    stage:
+      - qemu_simulation
+      - linux_boot
+      - firmware_validation
+      - bsp
+    priority: P1
+    source_url: https://www.qemu.org/
+    code_url: https://gitlab.com/qemu-project/qemu
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Required deterministic full-system simulator candidate for E1 Linux,
+      OpenSBI, boot ROM, driver, and generated-BSP replay.
+    integration_action: >
+      Track as a boot evidence backend; no AI-generated firmware, DTS, driver,
+      or kernel-config change can be promoted without pinned QEMU command lines
+      and transcripts.
+    evidence_gate: >
+      QEMU-backed claims require exact QEMU revision or package provenance,
+      machine/CPU/device model configuration, firmware/kernel/initramfs/DTB
+      hashes, command line, serial transcript, exit status, and reviewer
+      disposition.
+    risk:
+      - QEMU models can diverge from E1 RTL, timing, interrupts, DMA, or reset
+        behavior.
+      - A boot transcript is not hardware evidence without RTL/FPGA correlation.
+  - id: renode
+    name: Renode
+    kind: full_system_embedded_simulator
+    stage:
+      - renode_simulation
+      - firmware_validation
+      - bsp
+      - peripheral_modeling
+    priority: P1
+    source_url: https://renode.io/
+    code_url: https://github.com/renode/renode
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful complementary simulator for scripted firmware/peripheral bring-up
+      and for cross-checking QEMU-centric boot assumptions.
+    integration_action: >
+      Track as a Renode replay backend only; generated platform descriptions,
+      scripts, or firmware changes remain quarantined until exact model and log
+      provenance exists.
+    evidence_gate: >
+      Use requires pinned Renode revision, platform description hashes, loaded
+      binary/DTB hashes, script hashes, UART/peripheral logs, pass/fail
+      criteria, and human review.
+    risk:
+      - Peripheral models can be too abstract for DMA, interrupt, reset, or
+        timing issues.
+      - Cross-simulator agreement can still miss RTL or silicon behavior.
+  - id: device-tree-compiler
+    name: Device Tree Compiler
+    kind: device_tree_compiler_and_validator
+    stage:
+      - device_tree
+      - bsp
+      - linux_boot
+      - platform_contract
+    priority: P1
+    source_url: https://git.kernel.org/pub/scm/utils/dtc/dtc.git
+    code_url: https://git.kernel.org/pub/scm/utils/dtc/dtc.git
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Required deterministic compiler/checker for E1 DTS, generated platform
+      includes, QEMU DTBs, and Linux/OpenSBI handoff evidence.
+    integration_action: >
+      Track as a platform-contract backend; AI-generated DTS or binding changes
+      must remain outside source until DTC and software-contract gates pass.
+    evidence_gate: >
+      Device-tree use requires exact DTC revision, DTS/DTSI/input hashes, DTB
+      hashes, warning logs, binding checks where available, simulator boot
+      transcript, and reviewer disposition.
+    risk:
+      - DTC syntax success does not prove driver binding, interrupt wiring, DMA
+        windows, clocks, resets, or hardware behavior.
+      - Generated DTs can accidentally encode simulator-only assumptions.
+  - id: buildroot
+    name: Buildroot
+    kind: embedded_linux_build_system
+    stage:
+      - linux_boot
+      - rootfs
+      - bsp
+      - software_evidence
+    priority: P2
+    source_url: https://buildroot.org/
+    code_url: https://gitlab.com/buildroot.org/buildroot
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant deterministic rootfs/kernel/BSP build backend for future E1
+      Linux smoke tests and AI-assisted package/config review.
+    integration_action: >
+      Track as a build evidence backend only; no generated Buildroot defconfig,
+      package, or kernel fragment enters source without reproducible build and
+      boot logs.
+    evidence_gate: >
+      Buildroot use requires pinned revision, defconfig/package/kernel hashes,
+      toolchain provenance, build logs, output image hashes, QEMU/Renode boot
+      transcript, and license manifest review.
+    risk:
+      - Rootfs build success does not prove device-driver or platform-contract
+        correctness.
+      - Package/license drift can break reproducibility or release evidence.
   - id: intrintrans-rvv
     name: IntrinTrans
     kind: llm_riscv_vector_intrinsic_translation
@@ -9553,6 +10263,131 @@ entries:
       - Generated equations can look interpretable while omitting second-order
         effects, mismatch, noise, stability, or layout parasitics.
       - Calibration on schematic simulations can overfit idealized devices.
+  - id: ngspice
+    name: ngspice
+    kind: open_source_spice_simulator
+    stage:
+      - analog_simulation
+      - spice
+      - mixed_signal
+      - pdk_replay
+    priority: P1
+    source_url: https://ngspice.sourceforge.io/
+    code_url: https://git.code.sf.net/p/ngspice/ngspice
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Primary open SPICE replay candidate for any future analog-agent,
+      SPICE-generation, sizing, pad, IO, or extracted-netlist evidence.
+    integration_action: >
+      Track as a required deterministic simulator backend; do not run decks or
+      accept analog claims until E1 has approved SPICE specs, device models,
+      simulator revisions, corner decks, and review.
+    evidence_gate: >
+      Use requires exact ngspice revision, PDK/model hashes, SPICE deck hashes,
+      simulator command lines, raw output hashes, PVT/corner manifests,
+      convergence logs, waveform/measurement artifacts, and analog review.
+    risk:
+      - Simulator pass/fail results are only meaningful with reviewed models,
+        corners, measurements, and convergence policy.
+      - Schematic-level ngspice replay can diverge from extracted-layout or
+        package-aware behavior.
+  - id: pyspice
+    name: PySpice
+    kind: python_ngspice_orchestration_library
+    stage:
+      - analog_simulation
+      - spice
+      - python_orchestration
+      - benchmark_replay
+    priority: P2
+    source_url: https://pyspice.fabrice-salvaire.fr/
+    code_url: https://github.com/PySpice-org/PySpice
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful orchestration layer for SPICEPilot-style benchmark replay and
+      future quarantined analog optimization loops around ngspice.
+    integration_action: >
+      Track as a wrapper only; Python orchestration cannot bypass simulator,
+      deck, PDK, prompt, generated-output, and review evidence gates.
+    evidence_gate: >
+      Use requires pinned PySpice and ngspice revisions, Python environment
+      capture, input deck hashes, generated-script quarantine, simulator logs,
+      output hashes, and reviewer disposition.
+    risk:
+      - Python wrappers can hide simulator options, generated decks, or
+        measurement scripts unless command provenance is explicit.
+      - Package/API drift can make benchmark replay fragile.
+  - id: xyce
+    name: Xyce Parallel Electronic Simulator
+    kind: parallel_spice_simulator
+    stage:
+      - analog_simulation
+      - spice
+      - mixed_signal
+      - large_scale_circuit_replay
+    priority: P2
+    source_url: https://xyce.sandia.gov/
+    code_url: https://github.com/Xyce/Xyce
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful second simulator candidate for larger extracted or mixed-signal
+      decks and cross-simulator triage if E1 develops analog or SI/PI models.
+    integration_action: >
+      Track as a simulator-backend watch item; do not use for release evidence
+      until model compatibility, deck syntax, solver options, and replay gates
+      are reviewed.
+    evidence_gate: >
+      Use requires exact Xyce revision, dependency/build provenance, model and
+      deck hashes, solver option manifests, raw output hashes, convergence
+      logs, cross-simulator comparison where feasible, and analog review.
+    risk:
+      - Simulator syntax/model compatibility can differ from ngspice or foundry
+        signoff decks.
+      - Parallel simulation speed does not prove correctness or signoff quality.
+  - id: openvaf
+    name: OpenVAF
+    kind: open_source_verilog_a_compiler
+    stage:
+      - analog_modeling
+      - verilog_a
+      - spice
+      - compact_model_replay
+    priority: P2
+    source_url: https://openvaf.semimod.de/
+    code_url: https://github.com/pascalkuthe/OpenVAF
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for future Verilog-A compact model or behavioral-model replay in
+      open SPICE flows, but E1 has no approved analog compact-model intake.
+    integration_action: >
+      Track as model-compilation backend context only; do not compile or import
+      Verilog-A models until model licenses, process authority, simulator
+      compatibility, and review gates exist.
+    evidence_gate: >
+      Use requires model source hashes, license/process provenance, OpenVAF
+      revision, generated module hashes, simulator compatibility logs, SPICE
+      replay artifacts, and analog review.
+    risk:
+      - Compiled compact models are not valid without foundry/process authority
+        and simulator compatibility checks.
+      - Verilog-A behavioral shortcuts can hide layout, mismatch, noise, or
+        convergence issues.
   - id: eesizer
     name: EEsizer / LLM Transistor Sizing
     kind: code_bearing_llm_ngspice_analog_sizing_agent
@@ -10043,6 +10878,75 @@ entries:
       - Fast CPI models can hide component interactions outside their training
         space.
       - Paper-level results are not reproducible without code and workloads.
+  - id: gem5-simulator
+    name: gem5
+    kind: computer_architecture_simulator
+    stage:
+      - cpu_microarchitecture
+      - memory_hierarchy
+      - full_system_simulation
+      - architecture_dse
+      - simulator
+    priority: P1
+    source_url: https://github.com/gem5/gem5
+    code_url: https://github.com/gem5/gem5
+    model_url: null
+    dataset_url: null
+    license_status: BSD-3-Clause_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical open architecture simulator for future CPU/cache/memory and
+      full-system experiments, including RISC-V studies, once E1 has pinned
+      configs, workloads, and reference traces.
+    integration_action: >
+      Track as simulator backend watchlist only; do not run gem5 or accept
+      generated microarchitecture decisions until configs, binaries, traces,
+      versions, and replay logs are reviewed.
+    evidence_gate: >
+      gem5 use requires exact revision, build config, ISA/platform config,
+      workload and binary hashes, checkpoint or trace manifests, command lines,
+      stats output hashes, error analysis, and reviewer disposition.
+    risk:
+      - gem5 configuration choices can dominate results and may not match E1
+        RTL, memory-map, interrupt, cache, or NPU behavior.
+      - Simulator performance estimates do not prove area, timing, power, or
+        product performance without local calibration and downstream gates.
+  - id: sniper-simulator
+    name: Sniper Multi-Core Simulator
+    kind: interval_multicore_architecture_simulator
+    stage:
+      - cpu_microarchitecture
+      - memory_hierarchy
+      - multicore_simulation
+      - performance_analysis
+      - simulator
+    priority: P2
+    source_url: https://github.com/snipersim/snipersim
+    code_url: https://github.com/snipersim/snipersim
+    model_url: null
+    dataset_url: null
+    license_status: project_notice_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for fast multicore interval simulation, CPI-stack
+      analysis, and cache/memory bottleneck studies if E1 later needs
+      higher-level CPU/AP workload triage.
+    integration_action: >
+      Track as method/backend context only; no E1 performance, cache, or memory
+      decision may rely on Sniper until ISA support, workload portability,
+      model assumptions, and replay evidence are reviewed.
+    evidence_gate: >
+      Sniper use requires exact revision, license/notice review, workload
+      hashes, architecture config, simulator logs, CPI-stack outputs, model
+      assumption review, comparison to local E1/gem5/QEMU evidence where
+      applicable, and reviewer disposition.
+    risk:
+      - Sniper is primarily an x86 multicore simulator; applicability to E1
+        RISC-V/AI-SoC behavior may be indirect.
+      - Interval models can miss microarchitectural details that matter for
+        branch, cache, accelerator, and software-visible behavior.
   - id: champsim
     name: ChampSim
     kind: trace_based_microarchitecture_simulator
@@ -10873,6 +11777,73 @@ entries:
       - Benchmark performance can be mistaken for board correctness.
       - Dataset tasks may not include E1 package, SI/PI, RF, or manufacturing
         constraints.
+  - id: kicad-eda
+    name: KiCad EDA
+    kind: open_source_pcb_eda_toolchain
+    stage:
+      - pcb_schematic
+      - pcb_layout
+      - erc_drc
+      - manufacturing_outputs
+      - package_board
+    priority: P1
+    source_url: https://www.kicad.org/
+    code_url: https://gitlab.com/kicad/code/kicad
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Primary deterministic EDA backend for E1 board, schematic, ERC/DRC, and
+      fabrication-output evidence before any AI-generated PCB artifact can be
+      considered.
+    integration_action: >
+      Track as the required KiCad replay backend; do not run write-capable CLI,
+      accept generated schematics, or export manufacturing files until exact
+      tool revisions, project hashes, and review gates are pinned.
+    evidence_gate: >
+      KiCad-backed claims require tool/version provenance, project/schematic/
+      PCB/library hashes, ERC/DRC logs, BOM/fabrication output hashes, board
+      stackup/manufacturing manifests, package cross-probe evidence, and human
+      review.
+    risk:
+      - KiCad ERC/DRC success is not SI/PI, RF, regulatory, DFM, assembly, or
+        package-signoff evidence by itself.
+      - CLI exports can create release-looking artifacts from unreviewed board
+        sources.
+  - id: kibot
+    name: KiBot
+    kind: kicad_automation_and_fabrication_output_tool
+    stage:
+      - pcb_schematic
+      - pcb_layout
+      - fabrication_outputs
+      - bom
+      - manufacturing
+    priority: P2
+    source_url: https://github.com/INTI-CMNB/KiBot
+    code_url: https://github.com/INTI-CMNB/KiBot
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful deterministic automation backend for producing reproducible KiCad
+      ERC/DRC/BOM/Gerber/position evidence from reviewed E1 board sources.
+    integration_action: >
+      Track as a fabrication-output automation candidate only; AI-generated
+      KiBot configs or outputs remain quarantined until board sources and
+      manufacturing gates pass.
+    evidence_gate: >
+      Use requires pinned KiBot/KiCad revisions, configuration hashes, input
+      project hashes, output artifact hashes, logs, DRC/ERC status, fab/BOM
+      review, and reviewer disposition.
+    risk:
+      - Automated export can amplify stale footprints, libraries, or board
+        rules into misleading release collateral.
+      - Plugin/container differences can affect output reproducibility.
   - id: pcbagent
     name: PCBAgent
     kind: agentic_pcb_placement_method
@@ -11462,6 +12433,70 @@ entries:
         footprints, and part assumptions.
       - Corpus overlap can contaminate schematic-generation or visual-QA
         evaluations for E1 artifacts.
+  - id: openems
+    name: openEMS
+    kind: open_source_electromagnetic_field_solver
+    stage:
+      - signal_integrity
+      - electromagnetic_simulation
+      - pcb_simulation
+      - package_board
+    priority: P2
+    source_url: https://www.openems.de/
+    code_url: https://github.com/thliebig/openEMS
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant deterministic EM solver backend for future board/package SI
+      experiments derived from reviewed KiCad and stackup artifacts.
+    integration_action: >
+      Track as an SI/PI simulation backend only; no generated simulation case,
+      field result, or SI claim enters evidence until stackup, port, solver,
+      and comparison contracts are reviewed.
+    evidence_gate: >
+      Use requires pinned openEMS revision, generated geometry and mesh hashes,
+      stackup/material/port manifests, solver logs, result hashes, comparison
+      to measured or approved reference evidence, and reviewer disposition.
+    risk:
+      - EM simulations are highly sensitive to material, port, mesh, boundary,
+        package, connector, and return-path assumptions.
+      - Solver output can be misread as board release evidence without local
+        measurement or reviewed SI/PI context.
+  - id: gerber2ems
+    name: gerber2ems
+    kind: gerber_to_openems_preprocessor
+    stage:
+      - signal_integrity
+      - pcb_simulation
+      - gerber_processing
+      - openems
+    priority: P3
+    source_url: https://github.com/antmicro/gerber2ems
+    code_url: https://github.com/antmicro/gerber2ems
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful preprocessing backend for translating reviewed Gerber-derived
+      geometry into openEMS simulation inputs in a controlled SI workflow.
+    integration_action: >
+      Track as a preprocessor watch source only; do not generate slices or
+      simulation decks from E1 boards until KiCad exports, stackup, and port
+      definitions are approved.
+    evidence_gate: >
+      Use requires pinned revision, input Gerber/drill/stackup hashes,
+      generated geometry hashes, openEMS deck hashes, simulation logs, and
+      reviewer disposition.
+    risk:
+      - Gerber-derived geometry can miss schematic intent, component models,
+        package parasitics, and manufacturing variations.
+      - Preprocessed simulation decks can silently encode bad layer or unit
+        assumptions.
   - id: gerberformer-pcb-defect
     name: GerberFormer
     kind: design_conditioned_pcb_defect_detection_model
@@ -11855,6 +12890,37 @@ entries:
     risk:
       - Example designs can omit E1-specific reset, scan, firmware, and physical
         power constraints.
+  - id: openroad-upf
+    name: OpenROAD UPF Utility
+    kind: open_source_upf_backend
+    stage:
+      - low_power
+      - power_intent
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/upf/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/upf
+    model_url: null
+    dataset_url: null
+    license_status: BSD-3-Clause_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical deterministic backend for future UPF read/write, voltage-domain,
+      power-switch, isolation, level-shifter, and retention command round trips
+      once E1 has an owned power-intent source.
+    integration_action: >
+      Track as backend watchlist only; do not generate, import, or promote UPF
+      until E1 has reviewed power-state, supply-set, always-on, reset, scan,
+      clock, and domain ownership manifests.
+    evidence_gate: >
+      Use requires pinned OpenROAD revision, UPF source hash, command transcript,
+      before/after UPF hashes, domain mapping review, physical-design replay,
+      power-aware verification evidence, and reviewer disposition.
+    risk:
+      - Tool-level UPF parsing or emission does not prove that power domains,
+        isolation, retention, reset, scan, firmware, or package constraints are
+        correct for E1.
   - id: yosys-clockgate
     name: Yosys clockgate Pass
     kind: clock_gating_tool
@@ -11914,6 +12980,37 @@ entries:
       - Plugin/library-map assumptions can create gated-clock structures that
         are incompatible with E1 reset, scan, clock, or timing policy.
       - Benchmark power reductions from external designs are not E1 evidence.
+  - id: openroad-clock-gating
+    name: OpenROAD Clock Gating
+    kind: open_source_clock_gating_backend
+    stage:
+      - low_power
+      - clock_gating
+      - physical_design
+      - synthesis
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/cgt/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/cgt
+    model_url: null
+    dataset_url: null
+    license_status: BSD-3-Clause_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical deterministic backend candidate for ABC-backed flip-flop clock
+      gating after E1 has ICG-cell, scan-enable, CDC/RDC, reset, timing, and
+      power evidence.
+    integration_action: >
+      Keep as clock-gating watchlist only; no gated netlist or RTL change may
+      enter source without equivalence, DFT, timing, power, and review gates.
+    evidence_gate: >
+      OpenROAD clock-gating use requires pinned OpenROAD and ABC revisions, ICG
+      library-cell manifests, before/after netlist hashes, equivalence,
+      synthesis, STA, scan/DFT, CDC/RDC, power reports, and reviewer approval.
+    risk:
+      - Automatic clock gating can create reset, scan, CDC/RDC, glitch,
+        enable-polarity, timing, and physical-design regressions even when area
+        or power proxies improve.
   - id: codmas-rtlopt
     name: CODMAS And RTLOPT
     kind: llm_clock_gating_optimization_method
@@ -13286,6 +14383,128 @@ entries:
       hashes, platform/Linux/RTL checks, and review.
     risk:
       - Generator templates may not match E1 coding style or ABI requirements.
+  - id: peakrdl-regblock
+    name: PeakRDL Regblock
+    kind: systemrdl_register_block_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - rtl_generation
+      - verification
+    priority: P1
+    source_url: https://github.com/SystemRDL/PeakRDL-regblock
+    code_url: https://github.com/SystemRDL/PeakRDL-regblock
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical SystemRDL-to-SystemVerilog register-block backend that could
+      become useful if E1 migrates from JSON contracts to a generated register
+      source of truth.
+    integration_action: >
+      Track as a quarantined RTL-generator reference only; do not generate,
+      import, or replace E1 register RTL until platform, ABI, verification, and
+      synthesis gates are defined.
+    evidence_gate: >
+      Use requires exact package version, source RDL hash, generated RTL hashes,
+      reset/access-mode diff, platform/Linux/header diff, cocotb/formal tests,
+      synthesis logs, and reviewer disposition.
+    risk:
+      - Generated register RTL can silently change reset semantics, side
+        effects, byte enables, or software-visible ordering.
+      - A generator pass is not evidence unless software and RTL views remain
+        synchronized.
+  - id: peakrdl-html
+    name: PeakRDL HTML
+    kind: systemrdl_documentation_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - documentation
+      - software_contract
+    priority: P2
+    source_url: https://github.com/SystemRDL/PeakRDL-html
+    code_url: https://github.com/SystemRDL/PeakRDL-html
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful documentation-backend reference for keeping generated register docs
+      synchronized with E1 platform contracts and software headers.
+    integration_action: >
+      Track as a docs-generator reference only; generated docs must stay
+      quarantined until source maps, generated output, and ABI diffs are
+      reviewed.
+    evidence_gate: >
+      Use requires pinned version, source RDL hash, generated doc hashes,
+      register-map diff, docs-check, platform-contract check, and reviewer
+      disposition.
+    risk:
+      - Pretty generated docs can obscure mismatches between RTL, headers,
+        reset values, and driver expectations.
+  - id: peakrdl-cheader
+    name: PeakRDL C Header
+    kind: systemrdl_c_header_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - software_contract
+      - firmware
+    priority: P1
+    source_url: https://github.com/SystemRDL/PeakRDL-cheader
+    code_url: https://github.com/SystemRDL/PeakRDL-cheader
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for future single-source generation of C headers used by boot
+      ROM, firmware, Linux, and NPU runtime views of E1 registers.
+    integration_action: >
+      Track as a software-contract generator candidate only; do not replace
+      checked generated headers until ABI drift gates and driver replay pass.
+    evidence_gate: >
+      Use requires exact revision, source RDL hash, generated header hashes,
+      ABI diff, boot/runtime/Linux contract checks, compile logs, and reviewer
+      disposition.
+    risk:
+      - Header generation can break ABI through type widths, offsets, volatile
+        semantics, packed structs, or naming changes.
+  - id: peakrdl-uvm
+    name: PeakRDL UVM
+    kind: systemrdl_uvm_register_model_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - verification
+      - uvm
+    priority: P2
+    source_url: https://github.com/SystemRDL/PeakRDL-uvm
+    code_url: https://github.com/SystemRDL/PeakRDL-uvm
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful future reference for generated register verification collateral if
+      E1 adopts UVM/RAL or needs cross-checks against cocotb register tests.
+    integration_action: >
+      Track as verification-collateral context only; do not generate or import
+      UVM models until simulator availability, protocol adapters, and cocotb
+      correlation are reviewed.
+    evidence_gate: >
+      Use requires pinned version, source RDL hash, generated UVM hashes,
+      simulator logs, cocotb/formal correlation, register-access coverage, and
+      reviewer disposition.
+    risk:
+      - Generated UVM/RAL collateral can agree with a wrong register source of
+        truth and miss RTL or software ABI drift.
   - id: peakrdl-ipxact
     name: PeakRDL IP-XACT
     kind: ipxact_register_interchange_tool
@@ -13506,6 +14725,38 @@ entries:
     risk:
       - Generated register semantics may not match E1 reset, access, and
         software ABI conventions.
+  - id: hdl-registers
+    name: hdl-registers
+    kind: register_code_generation_tool
+    stage:
+      - ip_integration
+      - register_generation
+      - rtl_generation
+      - documentation
+      - software_contract
+    priority: P2
+    source_url: https://github.com/hdl-registers/hdl-registers
+    code_url: https://github.com/hdl-registers/hdl-registers
+    model_url: null
+    dataset_url: null
+    license_status: BSD_3_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful alternative register/code generation framework that can generate
+      HDL, headers, docs, and verification-facing collateral from structured
+      register descriptions.
+    integration_action: >
+      Track as an alternative backend only; no migration from E1's current
+      platform contract is allowed without generated-output quarantine and
+      cross-language ABI checks.
+    evidence_gate: >
+      Use requires exact revision, source register spec hash, generated HDL,
+      header, doc, and test collateral hashes, ABI and RTL diffs, local checks,
+      and reviewer disposition.
+    risk:
+      - Multi-language generators can produce internally consistent collateral
+        that still disagrees with existing E1 software, RTL, or reset policy.
   - id: openram
     name: OpenRAM
     kind: open_source_sram_compiler
@@ -14703,6 +15954,159 @@ entries:
     risk:
       - Equivalence-command success depends on setup quality and can be
         insufficient for sequential, memory, or black-box-heavy comparisons.
+  - id: symbiyosys-sby
+    name: SymbiYosys
+    kind: yosys_formal_verification_frontend
+    stage:
+      - formal
+      - bounded_model_checking
+      - induction
+      - netlist_equivalence
+    priority: P1
+    source_url: https://symbiyosys.readthedocs.io/
+    code_url: https://github.com/YosysHQ/sby
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant as the open formal orchestration layer for future E1
+      proof, cover, induction, and equivalence replay around generated RTL or
+      synthesis changes.
+    integration_action: >
+      Track as a primary formal backend candidate; do not generate SBY jobs,
+      change proof scripts, or accept proof logs until assumptions, solvers,
+      bounds, and source hashes are pinned.
+    evidence_gate: >
+      Any proof use requires exact SBY/Yosys/solver revisions, SBY file hashes,
+      RTL/netlist hashes, bound/depth and mode manifests, reset/clock/memory
+      assumptions, counterexample traces, proof logs, and human review.
+    risk:
+      - A passing bounded or induction proof can be irrelevant if assumptions,
+        reset state, memories, black boxes, or hierarchy matching are wrong.
+      - Solver and parser licensing can differ from the SBY front-end license.
+  - id: yosys-smtbmc
+    name: Yosys SMTBMC
+    kind: yosys_smt_bounded_model_checker
+    stage:
+      - formal
+      - bounded_model_checking
+      - induction
+      - smt_solving
+    priority: P1
+    source_url: https://yosyshq.readthedocs.io/projects/yosys/en/latest/appendix/auxprogs.html#yosys-smtbmc
+    code_url: https://github.com/YosysHQ/yosys
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Core executable backend for open SMT-based RTL proofs, assertion
+      candidate promotion, and bounded replay of generated changes.
+    integration_action: >
+      Keep as blocked formal backend context; no E1 proof or counterexample
+      claim is allowed until generated scripts and solver settings are pinned
+      and replayed locally.
+    evidence_gate: >
+      Use requires Yosys/yosys-smtbmc version capture, SMT2/model hashes,
+      solver command line, bound/depth, assumptions, VCD or witness hashes,
+      result logs, and reviewer disposition.
+    risk:
+      - SMT encodings and memory modeling options can change proof meaning.
+      - Solver-specific behavior can hide portability or completeness issues.
+  - id: bitwuzla-smt
+    name: Bitwuzla SMT Solver
+    kind: smt_solver_backend
+    stage:
+      - formal
+      - smt_solving
+      - bounded_model_checking
+      - netlist_equivalence
+    priority: P2
+    source_url: https://bitwuzla.github.io/
+    code_url: https://github.com/bitwuzla/bitwuzla
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful SMT backend candidate for bit-vector, array, and uninterpreted-
+      function obligations emitted by Yosys/SBY-style formal checks.
+    integration_action: >
+      Track as a solver candidate only; any solver result must be tied to exact
+      Yosys/SBY inputs, solver revision, command line, and independent replay.
+    evidence_gate: >
+      Solver-backed claims require solver version, build/provenance, SMT input
+      hashes, options, logs, counterexample/witness artifacts, and cross-solver
+      or reviewer triage when feasible.
+    risk:
+      - Solver success or timeout behavior is not a design-correctness claim
+        without the formal harness context.
+      - Version changes can alter performance, model generation, or supported
+        theories.
+  - id: boolector-smt
+    name: Boolector SMT Solver
+    kind: smt_solver_backend
+    stage:
+      - formal
+      - smt_solving
+      - bounded_model_checking
+      - netlist_equivalence
+    priority: P2
+    source_url: https://boolector.github.io/
+    code_url: https://github.com/Boolector/boolector
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant legacy/open solver backend for bit-vector and array-heavy
+      hardware obligations and for comparing proof replay behavior.
+    integration_action: >
+      Track as a secondary solver backend; do not promote results without
+      pinned SMT inputs, options, and solver-version evidence.
+    evidence_gate: >
+      Use requires exact solver revision, build logs or binary provenance,
+      SMT input hashes, command line, logs, witness/counterexample hashes, and
+      reviewer triage.
+    risk:
+      - Solver maintenance and option compatibility can affect replay.
+      - A solver result inherits all assumptions and limitations of the
+        generated SMT harness.
+  - id: z3-smt
+    name: Z3 Theorem Prover
+    kind: smt_solver_backend
+    stage:
+      - formal
+      - smt_solving
+      - bounded_model_checking
+      - netlist_equivalence
+    priority: P2
+    source_url: https://github.com/Z3Prover/z3
+    code_url: https://github.com/Z3Prover/z3
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      General-purpose SMT solver candidate for replaying Yosys/SBY obligations
+      and cross-checking solver-dependent failures or witnesses.
+    integration_action: >
+      Track as a solver backend only; no proof, equivalence, or signoff claim
+      is accepted without exact formal inputs, options, logs, and review.
+    evidence_gate: >
+      Use requires solver revision, build or package provenance, SMT input
+      hashes, command options, logs, model/witness artifacts where applicable,
+      and human review.
+    risk:
+      - General SMT capability does not prove the hardware harness is complete
+        or correctly constrained.
+      - Solver-specific models can differ for underconstrained problems.
   - id: circt-lec
     name: CIRCT Logical Equivalence Checking
     kind: compiler_ir_logical_equivalence_checker

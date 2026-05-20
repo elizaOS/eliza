@@ -1,0 +1,34 @@
+{
+  "claim_boundary": "EVT0 mechanical drawing for review; not GD&T-controlled release drawing.",
+  "units": "mm",
+  "device_envelope_mm": [
+    78.0,
+    153.6,
+    9.6
+  ],
+  "corner_radius_mm": 7.5,
+  "wall_thickness_mm": 1.15,
+  "display_cover_glass_mm": [
+    77.1,
+    151.77,
+    0.7
+  ],
+  "pcb_outline_mm": [
+    64.0,
+    132.0,
+    0.8
+  ],
+  "battery_envelope_mm": [
+    55.0,
+    92.0,
+    4.1
+  ],
+  "manufacturing": {
+    "draft_deg": 2.0,
+    "sprue_diameter_mm": 4.0,
+    "runner_diameter_mm": 2.2,
+    "gate_thickness_mm": 0.85,
+    "screw_boss_count": 6,
+    "snap_hook_count": 8
+  }
+}

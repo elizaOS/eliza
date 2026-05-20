@@ -15,6 +15,42 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: dry_run_reference_only
+  - source_id: eda-mcp-server
+    asset_type: eda_mcp_server_code
+    asset_url: https://github.com/SaeronLab/eda-mcp
+    license_status: review_required
+    release_use: blocked_pending_revision_dependency_auth_allowlist_log_and_replay_review
+    allowed_current_use: metadata_reference_only
+  - source_id: rtlfixer
+    asset_type: verilog_syntax_repair_code_and_benchmark_data
+    asset_url: https://github.com/NVlabs/RTLFixer
+    license_status: MIT_reported_review_required
+    release_use: blocked_pending_revision_api_dataset_contamination_and_local_repair_gate_review
+    allowed_current_use: metadata_reference_only
+  - source_id: pyhdl-eval
+    asset_type: multi_hdl_llm_evaluation_framework_and_benchmarks
+    asset_url: https://github.com/cornell-brg/pyhdl-eval
+    license_status: MIT_reported_review_required
+    release_use: blocked_pending_revision_dependency_benchmark_overlap_and_local_eval_review
+    allowed_current_use: metadata_reference_only
+  - source_id: posteda-bench
+    asset_type: post_eda_agent_benchmark
+    asset_url: https://arxiv.org/abs/2605.06936
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_benchmark_assets_license_nonoverlap_and_physical_replay_review
+    allowed_current_use: benchmark_method_reference_only
+  - source_id: eda-schema-v2
+    asset_type: eda_agent_schema_reference
+    asset_url: https://arxiv.org/abs/2605.06952
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_schema_assets_license_redaction_mapping_and_compatibility_review
+    allowed_current_use: schema_method_reference_only
+  - source_id: fluxeda
+    asset_type: stateful_eda_agent_method
+    asset_url: https://arxiv.org/abs/2603.25243
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_memory_skill_tool_schema_replay_and_license_review
+    allowed_current_use: method_reference_only
   - source_id: chipcraftx-rtlgen-7b
     asset_type: huggingface_model
     asset_url: https://huggingface.co/chipcraftx-io/chipcraftx-rtlgen-7b
@@ -220,6 +256,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_license_templates_and_local_gate_review
     allowed_current_use: citation_reference_only
+  - source_id: peakrdl-regblock
+    asset_type: systemrdl_register_block_generator
+    asset_url: https://github.com/SystemRDL/PeakRDL-regblock
+    license_status: review_required
+    release_use: blocked_pending_version_rdl_generated_rtl_abi_verification_synthesis_and_review
+    allowed_current_use: register_generator_reference_only
+  - source_id: peakrdl-html
+    asset_type: systemrdl_documentation_generator
+    asset_url: https://github.com/SystemRDL/PeakRDL-html
+    license_status: review_required
+    release_use: blocked_pending_version_rdl_generated_docs_abi_and_review
+    allowed_current_use: register_docs_generator_reference_only
+  - source_id: peakrdl-cheader
+    asset_type: systemrdl_c_header_generator
+    asset_url: https://github.com/SystemRDL/PeakRDL-cheader
+    license_status: review_required
+    release_use: blocked_pending_version_rdl_generated_headers_abi_compile_and_review
+    allowed_current_use: register_header_generator_reference_only
+  - source_id: peakrdl-uvm
+    asset_type: systemrdl_uvm_register_model_generator
+    asset_url: https://github.com/SystemRDL/PeakRDL-uvm
+    license_status: review_required
+    release_use: blocked_pending_version_rdl_generated_uvm_sim_cocotb_correlation_and_review
+    allowed_current_use: register_verification_generator_reference_only
   - source_id: peakrdl-ipxact
     asset_type: ipxact_register_interchange_tool
     asset_url: https://github.com/SystemRDL/PeakRDL-ipxact
@@ -268,6 +328,12 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_license_template_and_abi_review
     allowed_current_use: citation_reference_only
+  - source_id: hdl-registers
+    asset_type: register_code_generation_tool
+    asset_url: https://github.com/hdl-registers/hdl-registers
+    license_status: BSD_3_reported_review_required
+    release_use: blocked_pending_revision_source_spec_generated_collateral_abi_and_review
+    allowed_current_use: register_generator_reference_only
   - source_id: openrtlset
     asset_type: huggingface_rtl_dataset
     asset_url: https://huggingface.co/datasets/ESCAD/OpenRTLSet
@@ -574,6 +640,24 @@ entries:
     license_status: AGPL_3_reported_review_required
     release_use: blocked_pending_license_revision_waveform_hashes_and_review_policy
     allowed_current_use: manual_waveform_review_reference_only
+  - source_id: cocotb-core
+    asset_type: python_hdl_cosimulation_framework
+    asset_url: https://github.com/cocotb/cocotb
+    license_status: BSD_3_reported_review_required
+    release_use: blocked_pending_version_simulator_seed_log_and_review_policy
+    allowed_current_use: local_verification_gate_reference
+  - source_id: cocotb-test
+    asset_type: pytest_cocotb_runner
+    asset_url: https://github.com/themperek/cocotb-test
+    license_status: MIT_reported_review_required
+    release_use: blocked_pending_revision_pytest_simulator_matrix_and_replay_review
+    allowed_current_use: regression_harness_watchlist_only
+  - source_id: cocotb-bus
+    asset_type: cocotb_bus_driver_monitor_library
+    asset_url: https://github.com/cocotb/cocotb-bus
+    license_status: BSD_3_reported_review_required
+    release_use: blocked_pending_revision_bus_mapping_scoreboard_seed_and_replay_review
+    allowed_current_use: verification_infrastructure_watchlist_only
   - source_id: cocotb-coverage
     asset_type: cocotb_functional_coverage_library
     asset_url: https://github.com/cocotb/cocotb-coverage
@@ -671,6 +755,24 @@ entries:
     release_use: blocked_pending_review
     allowed_current_use: method_reference_only
     risk: bundled ATPG engines may include proprietary or noncommercial terms
+  - source_id: openroad-dft
+    asset_type: open_source_scan_insertion_flow
+    asset_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    license_status: review_required
+    release_use: blocked_pending_revision_scan_policy_netlist_flow_atpg_and_signoff_review
+    allowed_current_use: backend_watchlist_only
+  - source_id: atalanta-atpg
+    asset_type: open_source_atpg_fault_simulation_baseline
+    asset_url: https://github.com/hsluoyz/Atalanta
+    license_status: review_required
+    release_use: blocked_pending_revision_license_netlist_format_fault_model_and_replay_review
+    allowed_current_use: backend_watchlist_only
+  - source_id: fault-ucb-hw-testing
+    asset_type: python_hardware_testing_framework
+    asset_url: https://github.com/leonardt/fault
+    license_status: review_required
+    release_use: blocked_pending_revision_simulator_interface_generated_test_quarantine_and_review
+    allowed_current_use: test_harness_reference_only
   - source_id: deeptpi
     asset_type: rl_test_point_insertion_code
     asset_url: https://github.com/cure-lab/DeepTPI
@@ -713,6 +815,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_scope_license_and_fault_model_review
     allowed_current_use: citation_reference_only
+  - source_id: fan-atpg
+    asset_type: open_source_fan_atpg_baseline
+    asset_url: https://github.com/NTU-LaDS-II/FAN_ATPG
+    license_status: review_required
+    release_use: blocked_pending_revision_license_scope_fault_model_and_replay_review
+    allowed_current_use: educational_backend_watchlist_only
+  - source_id: quaigh-atpg-equivalence
+    asset_type: rust_atpg_fault_simulation_equivalence_library
+    asset_url: https://github.com/Coloquinte/quaigh
+    license_status: review_required
+    release_use: blocked_pending_revision_build_netlist_format_fault_model_and_review
+    allowed_current_use: backend_watchlist_only
   - source_id: nn-for-atpg
     asset_type: ml_atpg_artifact
     asset_url: https://datadryad.org/dataset/doi:10.5061/dryad.m0cfxppcm
@@ -1073,6 +1187,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_dataset_and_benchmark_review
     allowed_current_use: method_reference_only
+  - source_id: qemu-riscv
+    asset_type: full_system_emulator
+    asset_url: https://gitlab.com/qemu-project/qemu
+    license_status: review_required
+    release_use: blocked_pending_revision_machine_config_artifact_hashes_and_boot_review
+    allowed_current_use: simulator_backend_watchlist_only
+  - source_id: renode
+    asset_type: full_system_embedded_simulator
+    asset_url: https://github.com/renode/renode
+    license_status: review_required
+    release_use: blocked_pending_revision_platform_model_script_logs_and_review
+    allowed_current_use: simulator_backend_watchlist_only
+  - source_id: device-tree-compiler
+    asset_type: device_tree_compiler_and_validator
+    asset_url: https://git.kernel.org/pub/scm/utils/dtc/dtc.git
+    license_status: review_required
+    release_use: blocked_pending_revision_dts_dtb_warning_boot_and_review
+    allowed_current_use: platform_contract_backend_only
+  - source_id: buildroot
+    asset_type: embedded_linux_build_system
+    asset_url: https://gitlab.com/buildroot.org/buildroot
+    license_status: review_required
+    release_use: blocked_pending_revision_defconfig_build_boot_and_license_review
+    allowed_current_use: build_backend_watchlist_only
   - source_id: intrintrans-rvv
     asset_type: llm_riscv_vector_intrinsic_translation
     asset_url: https://arxiv.org/abs/2510.10119
@@ -1451,6 +1589,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_equation_calibration_spice_pvt_and_review
     allowed_current_use: methodology_reference_only
+  - source_id: ngspice
+    asset_type: open_source_spice_simulator
+    asset_url: https://ngspice.sourceforge.io/
+    license_status: review_required
+    release_use: blocked_pending_simulator_revision_pdk_model_deck_pvt_and_review
+    allowed_current_use: simulator_backend_watchlist_only
+  - source_id: pyspice
+    asset_type: python_ngspice_orchestration_library
+    asset_url: https://github.com/PySpice-org/PySpice
+    license_status: review_required
+    release_use: blocked_pending_python_env_ngspice_deck_output_and_review
+    allowed_current_use: simulator_wrapper_watchlist_only
+  - source_id: xyce
+    asset_type: parallel_spice_simulator
+    asset_url: https://github.com/Xyce/Xyce
+    license_status: review_required
+    release_use: blocked_pending_revision_model_deck_solver_and_cross_sim_review
+    allowed_current_use: simulator_backend_watchlist_only
+  - source_id: openvaf
+    asset_type: open_source_verilog_a_compiler
+    asset_url: https://github.com/pascalkuthe/OpenVAF
+    license_status: review_required
+    release_use: blocked_pending_model_license_process_simulator_and_review
+    allowed_current_use: model_compiler_watchlist_only
   - source_id: eesizer
     asset_type: code_bearing_llm_ngspice_analog_sizing_agent
     asset_url: https://github.com/eelab-dev/LLM-transistor-sizing
@@ -1613,6 +1775,18 @@ entries:
     license_status: BSD-3-Clause_reported_review_required
     release_use: blocked_pending_systemc_dependency_and_extension_review
     allowed_current_use: citation_reference_only
+  - source_id: gem5-simulator
+    asset_type: computer_architecture_simulator
+    asset_url: https://github.com/gem5/gem5
+    license_status: BSD-3-Clause_reported_review_required
+    release_use: blocked_pending_revision_config_workload_stats_and_calibration_review
+    allowed_current_use: simulator_backend_watchlist_only
+  - source_id: sniper-simulator
+    asset_type: interval_multicore_architecture_simulator
+    asset_url: https://github.com/snipersim/snipersim
+    license_status: project_notice_review_required
+    release_use: blocked_pending_revision_isa_workload_model_and_comparison_review
+    allowed_current_use: simulator_method_reference_only
   - source_id: gem5-aladdin
     asset_type: accelerator_system_simulator
     asset_url: https://github.com/harvard-acc/gem5-aladdin
@@ -1673,6 +1847,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_benchmark_dataset_and_license_review
     allowed_current_use: citation_reference_only
+  - source_id: kicad-eda
+    asset_type: open_source_pcb_eda_toolchain
+    asset_url: https://gitlab.com/kicad/code/kicad
+    license_status: review_required
+    release_use: blocked_pending_tool_version_project_hash_erc_drc_fab_and_review
+    allowed_current_use: deterministic_backend_watchlist_only
+  - source_id: kibot
+    asset_type: kicad_automation_and_fabrication_output_tool
+    asset_url: https://github.com/INTI-CMNB/KiBot
+    license_status: review_required
+    release_use: blocked_pending_config_input_output_log_and_fab_review
+    allowed_current_use: deterministic_export_watchlist_only
   - source_id: pcbagent
     asset_type: agentic_pcb_placement_method
     asset_url: https://www.cse.cuhk.edu.hk/~byu/papers/C247-ASPDAC2025-PCBAgent.pdf
@@ -1787,6 +1973,18 @@ entries:
     license_status: cc-by-4.0_reported_review_required
     release_use: blocked_pending_dataset_snapshot_license_overlap_and_kicad_review
     allowed_current_use: dataset_governance_reference_only
+  - source_id: openems
+    asset_type: open_source_electromagnetic_field_solver
+    asset_url: https://github.com/thliebig/openEMS
+    license_status: review_required
+    release_use: blocked_pending_revision_stackup_port_mesh_solver_result_and_review
+    allowed_current_use: si_pi_solver_watchlist_only
+  - source_id: gerber2ems
+    asset_type: gerber_to_openems_preprocessor
+    asset_url: https://github.com/antmicro/gerber2ems
+    license_status: review_required
+    release_use: blocked_pending_revision_gerber_stackup_geometry_simulation_and_review
+    allowed_current_use: si_preprocessor_watchlist_only
   - source_id: gerberformer-pcb-defect
     asset_type: design_conditioned_pcb_defect_detection_model
     asset_url: https://huggingface.co/pulipakav-1/gerberformer
@@ -1805,6 +2003,12 @@ entries:
     license_status: standard_example_terms_review_required
     release_use: blocked_pending_example_license_and_revision_review
     allowed_current_use: citation_reference_only
+  - source_id: openroad-upf
+    asset_type: open_source_upf_backend
+    asset_url: https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/upf
+    license_status: BSD-3-Clause_reported_review_required
+    release_use: blocked_pending_revision_upf_domain_verification_and_pd_review
+    allowed_current_use: backend_watchlist_only
   - source_id: yosys-clockgate
     asset_type: clock_gating_tool
     asset_url: https://github.com/YosysHQ/yosys
@@ -1817,6 +2021,12 @@ entries:
     license_status: Apache-2.0_reported_review_required
     release_use: blocked_pending_revision_library_map_icg_scan_timing_and_power_review
     allowed_current_use: citation_reference_only
+  - source_id: openroad-clock-gating
+    asset_type: open_source_clock_gating_backend
+    asset_url: https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/cgt
+    license_status: BSD-3-Clause_reported_review_required
+    release_use: blocked_pending_revision_icg_abc_scan_timing_power_and_review
+    allowed_current_use: backend_watchlist_only
   - source_id: codmas-rtlopt
     asset_type: llm_clock_gating_optimization_method
     asset_url: https://arxiv.org/abs/2603.17204
@@ -2213,6 +2423,36 @@ entries:
     license_status: review_required
     release_use: blocked_pending_script_solver_and_result_review
     allowed_current_use: local_tool_reference_only
+  - source_id: symbiyosys-sby
+    asset_type: yosys_formal_verification_frontend
+    asset_url: https://github.com/YosysHQ/sby
+    license_status: review_required
+    release_use: blocked_pending_version_assumption_solver_bound_and_proof_review
+    allowed_current_use: formal_backend_watchlist_only
+  - source_id: yosys-smtbmc
+    asset_type: yosys_smt_bounded_model_checker
+    asset_url: https://github.com/YosysHQ/yosys
+    license_status: review_required
+    release_use: blocked_pending_smt_input_solver_options_witness_and_review
+    allowed_current_use: formal_backend_watchlist_only
+  - source_id: bitwuzla-smt
+    asset_type: smt_solver_backend
+    asset_url: https://github.com/bitwuzla/bitwuzla
+    license_status: review_required
+    release_use: blocked_pending_solver_revision_smt_input_options_and_replay_review
+    allowed_current_use: solver_watchlist_only
+  - source_id: boolector-smt
+    asset_type: smt_solver_backend
+    asset_url: https://github.com/Boolector/boolector
+    license_status: review_required
+    release_use: blocked_pending_solver_revision_smt_input_options_and_replay_review
+    allowed_current_use: solver_watchlist_only
+  - source_id: z3-smt
+    asset_type: smt_solver_backend
+    asset_url: https://github.com/Z3Prover/z3
+    license_status: review_required
+    release_use: blocked_pending_solver_revision_smt_input_options_and_replay_review
+    allowed_current_use: solver_watchlist_only
   - source_id: circt-lec
     asset_type: compiler_ir_logical_equivalence_checker
     asset_url: https://github.com/llvm/circt
@@ -2285,6 +2525,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_capture_profile_probe_raw_trace_and_review
     allowed_current_use: optional_tool_reference_only
+  - source_id: verilator
+    asset_type: open_source_systemverilog_simulator
+    asset_url: https://github.com/verilator/verilator
+    license_status: LGPL_3_or_Artistic_2_reported_review_required
+    release_use: blocked_pending_version_command_waveform_result_and_review
+    allowed_current_use: local_simulator_gate_reference
+  - source_id: spike-riscv-isa-sim
+    asset_type: riscv_isa_reference_simulator
+    asset_url: https://github.com/riscv-software-src/riscv-isa-sim
+    license_status: BSD_3_reported_review_required
+    release_use: blocked_pending_revision_profile_signature_trace_and_review
+    allowed_current_use: iss_reference_watchlist_only
+  - source_id: sail-riscv
+    asset_type: formal_riscv_isa_model
+    asset_url: https://github.com/riscv/sail-riscv
+    license_status: BSD_2_reported_review_required
+    release_use: blocked_pending_revision_profile_adapter_semantics_and_review
+    allowed_current_use: executable_specification_reference_only
+  - source_id: riscv-formal
+    asset_type: riscv_formal_verification_framework
+    asset_url: https://github.com/SymbioticEDA/riscv-formal
+    license_status: ISC_reported_review_required
+    release_use: blocked_pending_rvfi_mapping_solver_proof_and_review
+    allowed_current_use: formal_framework_watchlist_only
   - source_id: riscv-isacov
     asset_type: riscv_isa_functional_coverage_library
     asset_url: https://github.com/riscv-verification/riscvISACOV

@@ -356,7 +356,7 @@ describe("AcpService", () => {
     );
   });
 
-  it("defaults untyped sessions to the native codex agent", async () => {
+  it("defaults untyped native sessions to the elizaos agent", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
     await service.start();
 
@@ -365,12 +365,10 @@ describe("AcpService", () => {
       workdir: "/tmp/acp-test",
     });
 
-    expect(spawned.agentType).toBe("codex");
+    expect(spawned.agentType).toBe("elizaos");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(nativeClientMock.instances).toHaveLength(1);
-    expect(nativeClientMock.instances[0]?.opts.command).toBe(
-      "npx -y @zed-industries/codex-acp@0.14.0",
-    );
+    expect(nativeClientMock.instances[0]?.opts.command).toBe("elizaos");
   });
 
   it("supports pi-agent as a configured native default", async () => {

@@ -69,10 +69,11 @@ SIM_OBJS  := $(patsubst $(SRC_DIR)/%.c,$(SIM_BUILD_DIR)/%.o,$(SRCS)) \
 
 ELF     := $(BUILD_DIR)/pmc.elf
 SIM_ELF := $(BUILD_DIR)/pmc.sim.elf
+AON_HEX := $(BUILD_DIR)/pmc.aon.hex
 
 TEST_SPMI_BIN := $(BUILD_DIR)/test_spmi
 
-.PHONY: all clean test elf sim-elf sizes
+.PHONY: all clean test elf sim-elf aon-hex sizes
 
 all: $(HOST_OBJS)
 	@echo "fw/pmc: host-gcc compile-only sanity build complete ($(words $(HOST_OBJS)) objects)"
@@ -82,6 +83,13 @@ elf: $(ELF)
 
 sim-elf: $(SIM_ELF)
 	@$(RV_SIZE) $(SIM_ELF)
+
+# aon-hex: produce a $readmemh-compatible 32b/word hex of pmc.elf with the
+# AON_SRAM origin (0x10050000) projected to word index 0. Used by the cocotb
+# integration harness to preload `aon_sram_q` inside rtl/power/pmc_top.sv
+# under +define+PMC_INSTANTIATE_IBEX. See docs/evidence/power/pmc-soc-
+# integration-evidence.yaml.
+aon-hex: $(AON_HEX)
 
 sizes: $(ELF)
 	@$(RV_SIZE) -A $(ELF)
@@ -104,6 +112,13 @@ $(SIM_BUILD_DIR)/crt0.o: $(CRT0) | $(SIM_BUILD_DIR)
 
 $(ELF): $(RV_OBJS) $(PMC_DIR)/link.ld | $(BUILD_DIR)
 	$(RV_CC) $(RV_LDFLAGS) -Wl,-Map,$(@:.elf=.map) -T $(PMC_DIR)/link.ld $(RV_OBJS) -o $@ $(RV_LIBS)
+
+# Verilog $readmemh image. AON_SRAM origin (0x10050000) maps to word 0 of
+# the aon_sram_q array in pmc_top.sv. The conversion uses objcopy to emit a
+# raw binary covering the AON aperture, then a small python projector emits
+# one 32b hex word per line.
+$(AON_HEX): $(ELF) $(PMC_DIR)/aon_elf_to_hex.py | $(BUILD_DIR)
+	python3 $(PMC_DIR)/aon_elf_to_hex.py --elf $(ELF) --aon-origin 0x10050000 --aon-bytes 16384 --out $@
 
 $(SIM_ELF): $(SIM_OBJS) $(PMC_DIR)/link.sim.ld | $(BUILD_DIR)
 	$(RV_CC) $(RV_LDFLAGS) -Wl,-Map,$(@:.elf=.map) -T $(PMC_DIR)/link.sim.ld $(SIM_OBJS) -o $@ $(RV_LIBS)

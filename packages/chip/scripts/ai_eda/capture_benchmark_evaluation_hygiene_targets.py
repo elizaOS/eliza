@@ -109,6 +109,8 @@ def main() -> int:
         "source_ids": [
             "vericontaminated",
             "verilog-eval",
+            "rtlfixer",
+            "pyhdl-eval",
             "rtllm",
             "cvdp",
             "protocolllm",

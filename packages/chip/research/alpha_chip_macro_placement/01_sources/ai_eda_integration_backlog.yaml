@@ -16,6 +16,7 @@ work_items:
     source_ids:
       - agentic-eda-survey-2512-23189v2
       - autoeda-mcp
+      - eda-mcp-server
       - chateda
       - llm-eda-log-analysis
       - rtl-coder
@@ -189,6 +190,9 @@ work_items:
       - hwe-bench
       - audopeda-openroad
       - openroad-mcp
+      - fluxeda
+      - posteda-bench
+      - eda-schema-v2
       - iscript-pd-tcl
     target_area:
       - agentic_orchestration
@@ -199,15 +203,19 @@ work_items:
       - hardware_agent_benchmark
       - mcp_sandboxing
       - openroad_tool_development
+      - stateful_agent_memory
+      - eda_schema_governance
+      - post_eda_benchmarking
     owner_scope: dry-run target capture only; no agent execution, MCP server startup, commercial API call, EDA tool invocation, generated Tcl/shell, source edit, PD config edit, signoff, or release use
     objective: >
       Track MCP-style open EDA wrappers, physical-design Tcl generators,
-      OpenROAD-specific MCP servers, write-capable EDA agents, coding-agent
-      OpenROAD tool-improvement methods, commercial copilots, and
-      hardware-agent benchmarks while keeping every executable action behind
-      typed command schemas, explicit scopes, sandbox and authentication policy,
-      commercial license review, local replay manifests, deterministic gates,
-      and human review.
+      generic and OpenROAD-specific MCP servers, stateful memory/skill agents,
+      structured EDA-agent schemas, post-EDA repair benchmarks, write-capable
+      EDA agents, coding-agent OpenROAD tool-improvement methods, commercial
+      copilots, and hardware-agent benchmarks while keeping every executable
+      action behind typed command schemas, explicit scopes, sandbox and
+      authentication policy, commercial license review, redaction policy, local
+      replay manifests, deterministic gates, and human review.
     deliverables:
       - scripts/ai_eda/capture_eda_tool_agent_interop_targets.py
       - build/ai_eda/eda_tool_agent_interop_targets/<run-id>/targets_report.json
@@ -232,6 +240,10 @@ work_items:
       - No local replay harness that can reproduce AI-generated EDA actions from archived inputs, commands, logs, and output hashes
       - No accepted MCP server version, authentication model, sandbox policy, or artifact quarantine path for E1
       - No license-reviewed OpenROAD MCP server revision with an explicit command allowlist and rollback plan
+      - No pinned EDA-MCP server revision with dependency, authentication, read/write-scope, and request/response log review
+      - No FluxEDA-style memory/skill storage policy with redaction, snapshot hashes, replay, and stale-context handling
+      - No approved EDA-Schema-V2 mapping for E1 artifacts, provenance, redaction, and signoff fields
+      - No approved PostEDA-Bench asset path, benchmark non-overlap report, DRC/PPA replay policy, or generated-output quarantine
       - No approved coding-agent workflow for OpenROAD/OpenLane tool patches with E1 before/after replay
       - No evidence that hardware-agent benchmark success transfers to E1 multi-file RTL, PD, verification, or software integration tasks
     acceptance_criteria:
@@ -435,6 +447,9 @@ work_items:
       - waveform-mcp
       - mcp-vcd-waveform
       - vaporview-waveform
+      - cocotb-core
+      - cocotb-test
+      - cocotb-bus
       - cocotb-coverage
       - pyuvm-cocotb
       - cocotbext-axi
@@ -453,8 +468,9 @@ work_items:
       benchmark governance, VerilogCoder waveform tracing,
       SANGAM/STELLAR/ProofLoop-style assertion refinement, and
       MEIC/FVDebug/VeriDebug/SiliconMind/R3A/Clover-style debug and repair,
-      waveform-context MCP/viewer tooling, functional coverage, Python-UVM, and
-      AXI VIP references as target tasks behind deterministic E1 gates.
+      waveform-context MCP/viewer tooling, cocotb core, pytest cocotb runners,
+      bus driver/monitor libraries, functional coverage, Python-UVM, and AXI
+      VIP references as target tasks behind deterministic E1 gates.
     deliverables:
       - scripts/ai_eda/capture_verification_debug_targets.py
       - build/ai_eda/verification_debug_targets/validation/targets_report.json
@@ -477,7 +493,7 @@ work_items:
       - No approved oracle-independence, repair-search-trace, or coverage-waiver disposition workflow for generated verification artifacts
       - No approved STELLAR/ProofLoop assertion retrieval corpus, AST fingerprint, solver-query log, or proof replay workflow
       - No approved Waveform MCP, MCP VCD, or VaporView workflow with trace scope allowlists, waveform hashes, MCP/tool logs, prompt redaction, replay evidence, and reviewer disposition
-      - No approved cocotb-coverage, pyuvm, or cocotbext-axi integration path with version pins, coverage schemas, bus mappings, scoreboards, seeds, simulator logs, and cocotb/formal correlation
+      - No approved cocotb core, cocotb-test, cocotb-bus, cocotb-coverage, pyuvm, or cocotbext-axi integration path with version pins, coverage schemas, bus mappings, scoreboards, seeds, simulator logs, and cocotb/formal correlation
     acceptance_criteria:
       - Dry-run report forbids patch, testbench, assertion, and release claims.
       - Candidate tasks name deterministic follow-up gates.
@@ -757,6 +773,9 @@ work_items:
       - waveform-mcp
       - mcp-vcd-waveform
       - vaporview-waveform
+      - cocotb-core
+      - cocotb-test
+      - cocotb-bus
       - cocotb-coverage
       - pyuvm-cocotb
       - cocotbext-axi
@@ -775,9 +794,10 @@ work_items:
     objective: >
       Capture local NPU simulator and benchmark targets that AI/DSE tools can
       optimize once calibrated labels and executable backends exist, while
-      tracking GPU/FPGA RTL simulation, typed cocotb, waveform-context,
-      functional coverage, Python-UVM, AXI VIP, generated-testbench, and
-      waveform-debug candidates as blocked simulator feedback-loop work.
+      tracking GPU/FPGA RTL simulation, typed cocotb, pytest cocotb runners,
+      bus-functional libraries, waveform-context, functional coverage,
+      Python-UVM, AXI VIP, generated-testbench, and waveform-debug candidates
+      as blocked simulator feedback-loop work.
     deliverables:
       - scripts/ai_eda/capture_simulator_optimization_targets.py
       - build/ai_eda/simulator_optimization/<run-id>/targets_report.json
@@ -797,7 +817,7 @@ work_items:
       - No pinned GPU/FPGA RTL simulator backend, supported-SystemVerilog subset, waveform correlation, or speedup replay
       - No approved generated cocotb stub, generated testbench, mutation-test, or simulator failure-taxonomy workflow
       - No approved waveform-context MCP/viewer workflow with trace hashes, signal scope allowlists, prompt redaction, and simulator replay
-      - No approved functional-coverage, Python-UVM, or AXI VIP workflow with seed manifests, coverage database hashes, scoreboard policy, and cocotb/formal correlation
+      - No approved cocotb core, cocotb-test, cocotb-bus, functional-coverage, Python-UVM, or AXI VIP workflow with seed manifests, coverage database hashes, scoreboard policy, and cocotb/formal correlation
     acceptance_criteria:
       - Report hashes benchmark plan and runtime simulator inputs.
       - Report lists target workloads without claiming performance.
@@ -992,6 +1012,10 @@ work_items:
       - autosizer-ams
       - easysize
       - self-calibrating-analog-equations
+      - ngspice
+      - pyspice
+      - xyce
+      - openvaf
       - eesizer
       - analogmaster
       - vlm-cad
@@ -1019,6 +1043,7 @@ work_items:
     objective: >
       Track analog and mixed-signal AI automation sources, including 2026
       LLM/VLM analog agents, schematic parsers, sizing optimizers,
+      deterministic SPICE replay backends, Verilog-A model compilation,
       SPICE-generation benchmarks, domain-tuned analog models, and
       schematic/netlist/layout/SPICE datasets, while tying any future E1 use to
       local padframe, package, Wi-Fi IO, SI/PI, process, simulator, dataset,
@@ -1027,15 +1052,16 @@ work_items:
       - scripts/ai_eda/capture_analog_mixed_signal_targets.py
       - build/ai_eda/analog_mixed_signal_targets/<run-id>/targets_report.json
     evidence_gate: >
-      Analog automation output is advisory only until SPICE specs, model
-      provenance, DRC/LVS, extraction, SI/PI, package, and human analog review
-      evidence exist.
+      Analog automation output is advisory only until SPICE specs, simulator
+      and model provenance, deck and output hashes, DRC/LVS, extraction, SI/PI,
+      package, and human analog review evidence exist.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_analog_mixed_signal_targets.py --run-id validation
       - make padframe-check
     blocked_by:
       - No local analog SPICE specs or testbenches for E1
+      - No approved ngspice, PySpice, Xyce, or OpenVAF revision/model/deck replay policy for E1 analog or extracted-netlist evidence
       - No foundry pad library selected or released
       - No IBIS, S-parameter, package parasitic, or rail impedance model
       - No quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition
@@ -1067,6 +1093,8 @@ work_items:
       - ramulator2
       - dramsim3
       - dramsys
+      - gem5-simulator
+      - sniper-simulator
       - gem5-aladdin
       - gem5-accesys
       - memexplorer
@@ -1088,11 +1116,12 @@ work_items:
     owner_scope: dry-run target capture only; no memory map, RTL fabric, coherency, or QoS changes
     objective: >
       Track AI-assisted architecture DSE, NoC simulation, DRAM simulation,
-      NoC generators, CIM simulators, memory-system simulators, agentic NPU
-      memory hierarchy DSE, LLM bottleneck analysis, stacked-AI accelerator
-      studies, and accelerator-system simulation sources, including inverse ML,
-      diffusion, GNN, and DRL NoC parameter or routing prediction, while tying
-      any future E1 use to the existing memory/interconnect contract gates.
+      NoC generators, CPU/cache/memory architecture simulators, CIM
+      simulators, memory-system simulators, agentic NPU memory hierarchy DSE,
+      LLM bottleneck analysis, stacked-AI accelerator studies, and
+      accelerator-system simulation sources, including inverse ML, diffusion,
+      GNN, and DRL NoC parameter or routing prediction, while tying any future
+      E1 use to the existing memory/interconnect contract gates.
     deliverables:
       - scripts/ai_eda/capture_memory_interconnect_targets.py
       - build/ai_eda/memory_interconnect_targets/<run-id>/targets_report.json
@@ -1112,7 +1141,7 @@ work_items:
     blocked_by:
       - Current E1 fabric is an AXI-Lite SRAM-backed scaffold
       - No cache hierarchy, coherent fabric, IOMMU/SMMU, LPDDR PHY, or QoS implementation
-      - No pinned BookSim, Ramulator, DRAMsim3, DRAMSys, gem5-Aladdin, or AcceSys backend
+      - No pinned BookSim, Ramulator, DRAMsim3, DRAMSys, gem5, Sniper, gem5-Aladdin, or AcceSys backend
       - No approved NoC inverse-ML dataset-generation manifest, topology constraints, traffic traces, or BookSim replay evidence
       - No license-reviewed FlooNoC or AutoNoC generator revision, configuration hash, generated-RTL quarantine, or E1 fabric replay
       - No approved MICSim/CIM array, workload, quantization, calibration, power, or thermal assumptions
@@ -1161,6 +1190,9 @@ work_items:
     status: IN_PROGRESS
     source_ids:
       - fault-dft
+      - openroad-dft
+      - atalanta-atpg
+      - fault-ucb-hw-testing
       - verirag-llm4dft
       - deeptpi
       - deft-atpg
@@ -1169,6 +1201,8 @@ work_items:
       - drl-atpg
       - atpg-via-ai-survey
       - atpg-toolkit
+      - fan-atpg
+      - quaigh-atpg-equivalence
       - nn-for-atpg
     target_area:
       - design_for_test
@@ -1179,10 +1213,11 @@ work_items:
       - manufacturing_test
     owner_scope: dry-run target capture only; no scan insertion, test-point insertion, RTL testability repair, ATPG execution, or pattern generation
     objective: >
-      Track open DFT tooling and AI-assisted ATPG/testability methods,
-      including retrieval-augmented RTL testability repair and FFR/QGNN-guided
-      RL ATPG, while tying any future E1 use to scan-policy, netlist, DFT-rule
-      oracle, manufacturing, and downstream signoff gates.
+      Track open DFT tooling, deterministic ATPG/fault-simulation baselines,
+      Python hardware-test orchestration, and AI-assisted ATPG/testability
+      methods, including retrieval-augmented RTL testability repair and
+      FFR/QGNN-guided RL ATPG, while tying any future E1 use to scan-policy,
+      netlist, DFT-rule oracle, manufacturing, and downstream signoff gates.
     deliverables:
       - scripts/ai_eda/capture_dft_atpg_targets.py
       - build/ai_eda/dft_atpg_targets/<run-id>/targets_report.json
@@ -1190,8 +1225,11 @@ work_items:
       DFT/ATPG automation reports may only hash local RTL, constraints, and
       manufacturing/signoff inputs; scan, test-point, RTL repair, ATPG,
       pattern, and fault coverage claims require pinned backends and
-      deterministic evidence. RL/GNN ATPG methods require fault-list hashes,
-      feature manifests, training logs, pattern hashes, replay logs, and review.
+      deterministic evidence. Deterministic ATPG baselines require exact
+      revisions, accepted netlist subsets, fault-list hashes, generated-pattern
+      hashes, and replay logs before they can be used to judge AI ATPG methods.
+      RL/GNN ATPG methods require fault-list hashes, feature manifests,
+      training logs, pattern hashes, replay logs, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation
@@ -1518,6 +1556,13 @@ work_items:
       - agentic-eda-survey-2512-23189v2
       - llm-firmware-validation
       - eok-riscv-kernel-optimization
+      - qemu-riscv
+      - renode
+      - verilator
+      - spike-riscv-isa-sim
+      - sail-riscv
+      - device-tree-compiler
+      - buildroot
       - intrintrans-rvv
       - autodriver-drivebench
       - os-r1-kernel-tuning
@@ -1545,16 +1590,18 @@ work_items:
       co-evolution, Linux kernel configuration tuning, firmware security and
       fuzzing, RISC-V software optimization, and deterministic
       OpenSBI/U-Boot/Linux BSP sources while tying any future E1 use to boot
-      ROM, QEMU/Renode, Linux BSP, OpenSBI, U-Boot, platform-contract,
-      security, and benchmark evidence gates.
+      ROM, QEMU/Renode, Verilator, Spike, Sail-RISC-V, DTC, Buildroot, Linux
+      BSP, OpenSBI, U-Boot, platform-contract, security, and benchmark evidence
+      gates.
     deliverables:
       - scripts/ai_eda/capture_software_bsp_firmware_targets.py
       - build/ai_eda/software_bsp_firmware_targets/<run-id>/targets_report.json
     evidence_gate: >
       Software/BSP automation reports may only hash local boot, firmware, DTS,
-      driver, simulator, and evidence contracts; generated patches, boot
+      driver, simulator, build, and evidence contracts; generated patches, boot
       claims, BSP claims, and kernel-performance claims require deterministic
-      build, simulation, transcript, static-analysis, and review evidence.
+      build, simulation, transcript, static-analysis, artifact-hash, and review
+      evidence.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_software_bsp_firmware_targets.py --run-id validation
@@ -1563,9 +1610,11 @@ work_items:
       - make renode-check
     blocked_by:
       - No executable E1 Linux boot transcript through an RTL-equivalent simulator
+      - No pinned Verilator, Spike, or Sail-RISC-V replay for boot ROM, OpenSBI, U-Boot, kernel, or generated firmware binaries with E1 ISA/profile and platform assumptions
       - No imported external Linux/OpenSBI/U-Boot tree with pinned revision and evidence logs
       - No approved LLM firmware patch workflow or reviewer signoff contract
       - No QEMU/Renode transcript tied to the E1 RTL-equivalent memory map and device tree
+      - No pinned QEMU, Renode, Verilator, Spike, Sail-RISC-V, DTC, or Buildroot revision/artifact replay policy for generated BSP, device-tree, rootfs, or firmware evidence
       - No static-analysis, fuzzing, or runtime-monitoring gate for generated firmware patches
       - No runnable RISC-V kernel/RVV benchmark corpus for E1 NPU software optimization
       - No license-reviewed Linux driver co-evolution benchmark or agent workflow with generated patch quarantine, E1 driver tests, and platform-contract replay
@@ -1637,6 +1686,8 @@ work_items:
       - omnisch
       - circuitron-pcb-agent
       - pcb-bench
+      - kicad-eda
+      - kibot
       - pcbagent
       - neurpcb
       - pcb-migrator
@@ -1656,6 +1707,8 @@ work_items:
       - kicad-mcp-pro
       - kicad-si-wrapper
       - open-schematics-kicad
+      - openems
+      - gerber2ems
       - gerberformer-pcb-defect
     target_area:
       - package_pinout
@@ -1663,8 +1716,10 @@ work_items:
       - pcb_schematic_visual_reasoning
       - pcb_layout
       - pcb_autorouting
+      - deterministic_kicad_replay
       - kicad_agent_tooling
       - signal_integrity
+      - electromagnetic_simulation
       - schematic_corpus_governance
       - aoi_model_governance
       - manufacturing_evidence
@@ -1673,9 +1728,10 @@ work_items:
     owner_scope: dry-run target capture only; no schematic, PCB, package, pinout, FPGA, fab, or regulatory edits
     objective: >
       Track AI-assisted PCB schematic generation, multimodal schematic
-      reasoning, KiCad placement/routing, agent/MCP tool surfaces, PCB
-      migration, autorouting, SI simulation preprocessors, schematic corpora,
-      FPGA placement, FPGA CAD/fabric-generation frameworks, and
+      reasoning, KiCad placement/routing, deterministic KiCad/KiBot replay,
+      agent/MCP tool surfaces, PCB migration, autorouting, SI simulation
+      preprocessors, openEMS/gerber2ems solver flows, schematic corpora, FPGA
+      placement, FPGA CAD/fabric-generation frameworks, and
       manufacturing-inspection models while tying any future E1 use to package,
       board, FPGA, and release-evidence gates.
     deliverables:
@@ -1685,7 +1741,8 @@ work_items:
       Board/package/FPGA automation reports may only hash local package,
       KiCad, FPGA, Wi-Fi/RF, manufacturing, and checker inputs; generated
       schematics, board placement, routes, Gerbers, package edits, pinout edits,
-      bitstreams, and release claims require deterministic checks and review.
+      bitstreams, SI simulation outputs, and release claims require
+      deterministic checks and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_board_package_fpga_targets.py --run-id validation
@@ -1697,12 +1754,13 @@ work_items:
     blocked_by:
       - No reviewed package vendor drawing, footprint, bonding diagram, or electrical model
       - No release-clean KiCad ERC, DRC, fabrication, DFM, SI, or PI evidence for AI-modified board artifacts
+      - No approved KiCad or KiBot replay policy with pinned tool revisions, project/library hashes, generated output hashes, logs, package cross-probe evidence, and reviewer disposition
       - No exact FPGA board revision, device/fabric architecture manifest, timing-clean constraints, or hardware bring-up transcript for AI-assisted FPGA output
       - No antenna, shielding, SAR, modular approval, or regional regulatory evidence
       - No license-reviewed multimodal schematic benchmark snapshot, E1 image/prompt non-overlap report, or KiCad follow-up workflow
       - No approved agentic KiCad generation workflow with dependency pins, prompt/output quarantine, ERC/DRC/fab logs, and human review
       - No approved Circuit Weaver or KiCad MCP Pro flow with pinned command schemas, tool allowlists, model/provider manifests, generated-output quarantine, and KiCad evidence
-      - No approved KiCad SI wrapper or OpenEMS preprocessing flow with board stackup, selected-net, port, generated-slice, simulator, and SI/PI comparison evidence
+      - No approved KiCad SI wrapper, openEMS, or gerber2ems preprocessing flow with board stackup, selected-net, port, generated-slice/geometry, solver, result-hash, and SI/PI comparison evidence
       - No license-reviewed Open Schematics, GerberFormer, or other PCB schematic/AOI model corpus with exact snapshot, split/non-overlap review, E1 artifact overlap checks, local board images, and reviewer disposition
       - No approved PCB routing policy or route-output quarantine for world-model RL, geometric routing, or FreeRouting-backed experiments
       - No approved OpenPARF, VTR, OpenFPGA, FABulous, RapidWright, or DREAMPlaceFPGA flow with pinned revisions, device/fabric constraints, generated-output quarantine, flow logs, timing evidence, bitstream hashes, and bring-up review
@@ -1872,8 +1930,10 @@ work_items:
     source_ids:
       - ieee-1801-upf
       - ieee-upf-open-source
+      - openroad-upf
       - yosys-clockgate
       - lighter-clock-gating
+      - openroad-clock-gating
       - codmas-rtlopt
       - rtl-opt-benchmark
       - prompting-for-power
@@ -1896,8 +1956,9 @@ work_items:
     owner_scope: dry-run target capture only; no RTL, SDC, UPF, clock-gating, DVFS, retention, isolation, or power-domain edits
     objective: >
       Track low-power RTL optimization, clock-gating, IEEE 1801 UPF, DVFS,
-      idle-state, retention, isolation, power-aware verification, open
-      clock-gating backends, symbolic RTL rewrite methods, HLS power
+      idle-state, retention, isolation, power-aware verification, OpenROAD UPF
+      round-trip and voltage-domain command support, open clock-gating backends,
+      symbolic RTL rewrite methods, HLS power
       estimators, architecture-level CPU/AP and RTL power priors, and PPA
       benchmark sources while tying any future E1 use to
       deterministic RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and
@@ -1911,7 +1972,8 @@ work_items:
       retention, isolation, level-shifter, or power-domain changes require
       deterministic verification and review. External benchmark tasks and
       plugin/library maps require pinned revisions, license review, non-overlap
-      checks, and reviewer disposition.
+      checks, OpenROAD/ABC command transcripts where applicable, and reviewer
+      disposition.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation
@@ -1923,8 +1985,9 @@ work_items:
     blocked_by:
       - No E1 power-state table, always-on partition, supply-set map, or UPF source
       - No local power-aware simulation or formal low-power verification backend
+      - No approved OpenROAD UPF round-trip policy, domain map, or power-aware verification replay
       - No approved clock-gating, power-gating, DVFS, retention, isolation, or level-shifter insertion workflow
-      - No approved Lighter plugin revision, library-map review, or RTL-OPT benchmark asset/non-overlap review
+      - No approved Lighter or OpenROAD clock-gating revision, library-map review, ABC revision, or RTL-OPT benchmark asset/non-overlap review
       - No scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains
       - No workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation
       - No calibrated HLS/RTL power-label corpus or held-out E1 error analysis for early-stage power estimators
@@ -1933,7 +1996,7 @@ work_items:
       - Report hashes local RTL, SDC, power/thermal, CPU/AP, NPU, and PD inputs.
       - Report states no UPF, RTL, constraint, clock-gating, DVFS, retention, isolation, power-domain, or release claim is enabled.
       - Candidate tasks list deterministic platform, PD, RTL, formal, synthesis, CDC/RDC, DFT, software/BSP, and power/thermal gates.
-      - Benchmark and plugin candidates remain metadata-only until revision, license, non-overlap, and reviewer gates pass.
+      - Benchmark and backend candidates remain metadata-only until revision, license, non-overlap, command-transcript, and reviewer gates pass.
       - HLS power-estimator and RTL rewrite candidates remain advisory until feature provenance, replay, equivalence, and power-label error gates pass.
       - Architecture-level CPU/AP and RTL power priors remain advisory until feature mapping, activity provenance, calibration, split review, and held-out E1 error gates pass.
   - id: p1-post-silicon-validation-target-capture
@@ -1943,6 +2006,10 @@ work_items:
     source_ids:
       - symbolic-qed
       - soc-trace-protocol-debug
+      - verilator
+      - spike-riscv-isa-sim
+      - sail-riscv
+      - riscv-formal
       - riscv-dv
       - riscof
       - riscv-arch-test
@@ -1978,8 +2045,9 @@ work_items:
     owner_scope: dry-run target capture only; no hardware actions, generated lab scripts, test binaries, FPGA bitstreams, or compliance claims
     objective: >
       Track post-silicon debug methods, QED/trace-analysis approaches, RISC-V
-      compatibility tests, ISA coverage, random-instruction and generative
-      RISC-V fuzzing, coverage-guided RTL fuzzing, CPU co-simulation,
+      deterministic simulator/reference-model backends, compatibility tests,
+      ISA coverage, random-instruction and generative RISC-V fuzzing,
+      coverage-guided RTL fuzzing, CPU co-simulation,
       FPGA-assisted CPU validation, cross-target on-device tests, RISC-V
       debug/lab capture tooling, ML/XAI boot-failure triage, LLM
       hardware-debug datasets, and LLM chip-debug benchmarks while tying any
@@ -2003,6 +2071,7 @@ work_items:
     blocked_by:
       - No E1 silicon, FPGA hardware transcript, JTAG log, or lab measurement corpus
       - No pinned external RISCOF, riscv-arch-test, or riscv-dv checkout executed against a buildable E1-compatible DUT
+      - No pinned Verilator, Spike, Sail-RISC-V, or riscv-formal replay tied to E1 CPU wrappers, RVFI/trace adapters, ISA profile, CSR map, memory map, signatures, and reviewer disposition
       - No RISC-V ISA compliance, random-instruction, or ISS co-simulation evidence tied to E1 CPU wrappers
       - No pinned riscvISACOV/RVVI trace adapter, ISA coverage database, or coverage-gap disposition for E1
       - No Lyra/FERIVer/DifuzzRTL/RFUZZ/Cascade/XFUZZ/DiffTest asset, generator seed/model/toolchain manifest, FPGA bitstream where applicable, ISS co-simulation checkpoint, differential failure log, or coverage replay evidence
@@ -2138,6 +2207,8 @@ work_items:
       - agentic-architect
       - perfvec
       - concorde-cpu-performance-model
+      - gem5-simulator
+      - sniper-simulator
       - champsim
       - branchnet
       - llbp
@@ -2155,8 +2226,9 @@ work_items:
     objective: >
       Track agentic and ML-assisted CPU microarchitecture exploration for
       branch prediction, cache replacement, prefetching, and CPU performance
-      modeling while keeping all future E1 use behind local traces, simulator
-      configs, RTL hashes, deterministic gates, and human review.
+      modeling, plus gem5/Sniper-style architecture simulator backends, while
+      keeping all future E1 use behind local traces, simulator configs, RTL
+      hashes, deterministic gates, calibration, and human review.
     deliverables:
       - scripts/ai_eda/capture_cpu_microarchitecture_targets.py
       - build/ai_eda/cpu_microarchitecture_targets/<run-id>/targets_report.json
@@ -2173,7 +2245,7 @@ work_items:
       - make mpki-eval
       - python3 scripts/check_cache_hierarchy.py
     blocked_by:
-      - No pinned ChampSim, gem5, PerfVec, Concorde, Agentic Architect, BranchNet, Pythia, Mockingjay, or Drishti backend selected for local execution
+      - No pinned ChampSim, gem5, Sniper, PerfVec, Concorde, Agentic Architect, BranchNet, Pythia, Mockingjay, or Drishti backend selected for local execution
       - No license-reviewed external branch, cache, or SPEC/DPC trace corpus imported for E1 experiments
       - No held-out E1 application trace suite with branch, cache, prefetch, IPC, area, power, and workload provenance
       - No before/after RTL, synthesis, formal, cocotb, simulator, and benchmark promotion policy for generated microarchitecture changes
@@ -2337,6 +2409,8 @@ work_items:
       - llm-eda-opencores
       - hardware-verilogeval-v2-hf
       - llm4verilog-dataset
+      - rtlfixer
+      - pyhdl-eval
       - siliconmind-v1
       - chipcraftx-rtlgen-7b
       - chipseek
@@ -2362,10 +2436,11 @@ work_items:
     objective: >
       Track HuggingFace and GitHub models/datasets for RTL generation,
       repository-level RTL/PPA modeling, EDA-feedback RTL reinforcement
-      learning, verification, metric reasoning, physical-design prediction, SVA
-      datasets, and wafer-defect modeling while keeping every external asset
-      behind exact revision pins, license review, contamination checks,
-      quarantine paths, deterministic local gates, and reviewer disposition.
+      learning, verification, Verilog syntax repair, multi-HDL evaluation,
+      metric reasoning, physical-design prediction, SVA datasets, and
+      wafer-defect modeling while keeping every external asset behind exact
+      revision pins, license review, contamination checks, quarantine paths,
+      deterministic local gates, and reviewer disposition.
     deliverables:
       - scripts/ai_eda/capture_external_model_corpus_intake_targets.py
       - build/ai_eda/external_model_corpus_intake_targets/<run-id>/targets_report.json
@@ -2385,6 +2460,7 @@ work_items:
       - No approved external model or corpus license review for release use
       - No pinned HuggingFace dataset/model revisions, file manifests, or storage quarantine policy
       - No contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts
+      - No RTLFixer or PyHDL-Eval revision, dependency manifest, benchmark-overlap review, API/privacy review, generated-output quarantine, or local lint/sim/synth/formal replay policy
       - No DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1
       - No ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report
       - No CodeV-R1, EvolVE, or VeriAgent revision, model/dataset/search-trace
@@ -2403,6 +2479,8 @@ work_items:
     source_ids:
       - vericontaminated
       - verilog-eval
+      - rtlfixer
+      - pyhdl-eval
       - rtllm
       - cvdp
       - protocolllm
@@ -2426,7 +2504,8 @@ work_items:
       - held_out_tasks
     owner_scope: dry-run target capture only; no benchmark import, dataset/model download, contamination detector execution, prompt export, model run, evaluation run, generated RTL, score claim, or release use
     objective: >
-      Track HDL benchmark contamination, held-out task construction, near-
+      Track HDL benchmark contamination, syntax-repair benchmark reuse,
+      multi-HDL evaluation transfer risk, held-out task construction, near-
       duplicate review, evaluator reproducibility, and public score limits so
       AI/EDA model results cannot be mistaken for E1 design evidence.
     deliverables:
@@ -2447,6 +2526,7 @@ work_items:
       - make docs-check
     blocked_by:
       - No approved benchmark import path with exact revisions, licenses, manifests, and quarantine directory
+      - No RTLFixer or PyHDL-Eval task/dependency snapshot, API/privacy review, or generated-output quarantine plan
       - No contamination report comparing public HDL benchmarks, external RTL corpora, model training disclosures, and held-out E1 tasks
       - No near-duplicate scanner accepted for Verilog/SystemVerilog normalization, generated prompt variants, and source-license provenance
       - No policy for preserving private E1 evaluation prompts outside training, public issue text, or generated feedback loops
@@ -2531,6 +2611,10 @@ work_items:
     source_ids:
       - systemrdl-standard
       - peakrdl
+      - peakrdl-regblock
+      - peakrdl-html
+      - peakrdl-cheader
+      - peakrdl-uvm
       - peakrdl-ipxact
       - opentitan-reggen
       - ip-xact-standard
@@ -2539,6 +2623,7 @@ work_items:
       - bender
       - siliconcompiler
       - rggen
+      - hdl-registers
     target_area:
       - ip_integration
       - register_generation
@@ -2547,9 +2632,10 @@ work_items:
       - dependency_management
     owner_scope: dry-run target capture only; no external IP import, generator run, EDA flow run, platform contract edit, register-map edit, RTL/header/device-tree/driver change, generated collateral, LLM execution, claim, or release use
     objective: >
-      Track register-description languages, register generators, IP-XACT
-      metadata, and IP dependency/orchestration tools while keeping AI
-      suggestions advisory and preserving E1's checked platform-contract gates.
+      Track register-description languages, concrete register collateral
+      generators, IP-XACT metadata, and IP dependency/orchestration tools while
+      keeping AI suggestions advisory and preserving E1's checked
+      platform-contract gates.
     deliverables:
       - scripts/ai_eda/capture_ip_register_contract_targets.py
       - build/ai_eda/ip_register_contract_targets/<run-id>/targets_report.json
@@ -2568,7 +2654,7 @@ work_items:
       - make no-hardware-action-check
       - make docs-check
     blocked_by:
-      - No approved SystemRDL, IP-XACT, Hjson, or RgGen source-of-truth selected for E1 register maps
+      - No approved SystemRDL, IP-XACT, Hjson, hdl-registers, or RgGen source-of-truth selected for E1 register maps
       - No migration policy from sw/platform/e1_platform_contract.json to an external register/IP generator
       - No license-reviewed external IP dependency manifest with revisions, file hashes, bus interfaces, reset domains, and clock domains
       - No AI-to-contract review workflow for generated register fields, memory-map regions, interrupts, DT bindings, headers, or driver ABI changes
@@ -2800,6 +2886,11 @@ work_items:
     source_ids:
       - yosys-eqy
       - yosys-equivalence
+      - symbiyosys-sby
+      - yosys-smtbmc
+      - bitwuzla-smt
+      - boolector-smt
+      - z3-smt
       - circt-lec
       - abc
       - datapath-cec-hybrid-sweeping
@@ -2811,11 +2902,11 @@ work_items:
       - ai_rewrite_safety
     owner_scope: dry-run target capture only; no RTL edit, netlist edit, synthesis/formal script edit, constraint edit, PD config edit, Yosys/EQY/ABC/CIRCT/formal/OpenLane/LLM run, external download, generated miter, generated equivalence script, generated proof, waiver, patch, prediction, equivalence claim, timing/QoR claim, signoff claim, or release use
     objective: >
-      Track open LEC and equivalence-checking flows for RTL-to-netlist,
-      before/after synthesis optimization, post-PD netlist consistency, and
-      AI-generated RTL/netlist quarantine while keeping every proof, waiver,
-      miter, and generated script behind local E1 formal, simulation, synthesis,
-      STA/OpenLane, power, and reviewer gates.
+      Track open LEC, formal, SMTBMC, solver, and equivalence-checking flows
+      for RTL-to-netlist, before/after synthesis optimization, post-PD netlist
+      consistency, and AI-generated RTL/netlist quarantine while keeping every
+      proof, waiver, miter, and generated script behind local E1 formal,
+      simulation, synthesis, STA/OpenLane, power, and reviewer gates.
     deliverables:
       - scripts/ai_eda/capture_netlist_equivalence_targets.py
       - build/ai_eda/netlist_equivalence_targets/<run-id>/targets_report.json
@@ -2823,9 +2914,10 @@ work_items:
       Netlist-equivalence reports may only hash source registries, RTL,
       synthesis/formal scripts, generated netlists when present, OpenLane final
       netlists/constraints when present, PD/signoff evidence, checker scripts,
-      and RAG manifests. Any real LEC requires exact tool/solver revisions,
-      input and output netlist hashes, assumptions for memories, black boxes,
-      resets, x-propagation, hierarchy, logs, counterexamples, and review.
+      and RAG manifests. Any real LEC or proof replay requires exact
+      tool/solver revisions, input and output netlist hashes, SMT inputs where
+      emitted, assumptions for memories, black boxes, resets, x-propagation,
+      hierarchy, bounds/depths, logs, counterexamples or witnesses, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation

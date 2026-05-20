@@ -1,0 +1,79 @@
+schema: eliza.cellular_module_binding.v1
+as_of: 2026-05-20
+module_boundary: certified_cellular_module
+status: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No cellular module is mounted, no SIM/eSIM is wired,
+  no antennas are tuned, and no carrier/PTCRB/GCF/SAR evidence exists.
+
+primary_first_phone:
+  vendor: Quectel
+  family: RG255C_or_RM255C
+  class: 5G_RedCap_Sub_6
+  rationale: >
+    RedCap is the pragmatic first-phone cellular target: lower throughput than
+    full eMBB 5G, but smaller power/RF burden and enough bandwidth for
+    voice, messaging, maps, telemetry, and moderate data.
+  public_features:
+    release: 3GPP_Rel_17_RedCap
+    peak_downlink_mbps: 223
+    peak_uplink_mbps: 123
+    fallback: LTE_Cat_4
+    gnss: optional_multi_constellation
+    host_interfaces: [USB_2_0, PCIe_2_0, PCM, UART, SGMII, SPI]
+    driver_os: [Linux, Android, Windows]
+  sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+
+lab_fallback:
+  vendor: Quectel
+  family: RM520N_GL
+  class: full_5G_M2_dev_module
+  rationale: >
+    Socketed M.2 is larger than a phone LGA module but easier to validate,
+    replace, and use for early Linux/Android modem-manager bring-up.
+  host_interfaces_required: [USB_3_or_PCIe, USB_2_diag, USIM]
+
+host_interfaces:
+  cellular_module:
+    required:
+      - {contract: CELL_USB2_DP, module_role: usb2_dp, direction_at_soc: bidirectional}
+      - {contract: CELL_USB2_DN, module_role: usb2_dn, direction_at_soc: bidirectional}
+      - {contract: CELL_PCIE_TX_P, module_role: pcie_rx_p, direction_at_soc: output}
+      - {contract: CELL_PCIE_TX_N, module_role: pcie_rx_n, direction_at_soc: output}
+      - {contract: CELL_PCIE_RX_P, module_role: pcie_tx_p, direction_at_soc: input}
+      - {contract: CELL_PCIE_RX_N, module_role: pcie_tx_n, direction_at_soc: input}
+      - {contract: CELL_RESET_N, module_role: reset_n, direction_at_soc: output, default: low}
+      - {contract: CELL_WAKE_AP, module_role: wake_host, direction_at_soc: input}
+      - {contract: AP_WAKE_CELL, module_role: wake_module, direction_at_soc: output}
+      - {contract: CELL_W_DISABLE_N, module_role: radio_disable_n, direction_at_soc: output}
+      - {contract: USIM_CLK, module_role: sim_clk, direction_at_soc: output}
+      - {contract: USIM_RST, module_role: sim_rst, direction_at_soc: output}
+      - {contract: USIM_IO, module_role: sim_io, direction_at_soc: bidirectional}
+  rf_ports:
+    minimum_first_board: [cellular_main, cellular_diversity, gnss_optional]
+    production_target: [cellular_main, cellular_diversity, cellular_mimo_0, cellular_mimo_1, gnss]
+
+power_sequence:
+  status: required_not_implemented
+  rails:
+    - {name: CELL_VBAT, owner: battery_power_path_or_dedicated_buck, voltage_v: 3.3_to_4.4, status: missing}
+    - {name: CELL_VDDIO_1V8, owner: PMIC_LDO, voltage_v: 1.8, status: missing}
+  requirements:
+    - Size CELL_VBAT for transmit current bursts from the selected module datasheet.
+    - Keep RESET_N asserted until VBAT and VDDIO are stable.
+    - Provide RF kill path through W_DISABLE_N for regulatory and airplane-mode requirements.
+    - Add conducted RF test pads or coax bring-up points before matching networks.
+
+release_blockers:
+  - selected_region_sku_and_band_matrix
+  - module_datasheet_and_reference_layout_under_NDA_if_required
+  - sim_or_esim_certification_path
+  - antenna_vendor_review
+  - carrier_certification_plan
+  - sar_and_rf_exposure_pre_scan
+
+forbidden_claims:
+  - cellular_ready
+  - carrier_ready
+  - emergency_call_ready
+  - sar_ready

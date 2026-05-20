@@ -1,0 +1,173 @@
+{
+  "claim_boundary": "CAD automation readiness audit; not a manufacturing release.",
+  "overall_status": "cad_package_pass",
+  "manufacturing_release_ready": false,
+  "why_not_release_ready": [
+    "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
+    "Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers are not locked.",
+    "No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical samples.",
+    "No GD&T-controlled release drawing package or toolmaker DFM signoff."
+  ],
+  "parameters": {
+    "device_envelope_mm": [
+      78.0,
+      153.6,
+      9.6
+    ],
+    "corner_radius_mm": 7.5,
+    "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+    "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
+    "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+    "estimated_mass_g": 127.51,
+    "target_mass_g": 185,
+    "supplier_items": 7,
+    "kicad_handoff_constraints": 7
+  },
+  "required_outputs": {
+    "assembly_glb": true,
+    "tooling_glb": true,
+    "assembly_manifest": true,
+    "tooling_manifest": true,
+    "fit_report": true,
+    "visual_review": true,
+    "manufacturing_drawing": true,
+    "mass_budget": true,
+    "supplier_lock": true,
+    "kicad_mechanical_handoff": true
+  },
+  "subsystem_evidence_present": {
+    "molded_orange_enclosure": true,
+    "screen_stack": true,
+    "pcb_integration": true,
+    "buttons": true,
+    "usb_audio_ports": true,
+    "cameras_and_handset": true,
+    "injection_mold_tooling": true,
+    "review_automation": true
+  },
+  "all_cad_checks_pass": true,
+  "visual_review_pass": true,
+  "subsystems": [
+    {
+      "subsystem": "molded_orange_enclosure",
+      "status": "cad_pass",
+      "evidence": [
+        "orange_back_shell",
+        "orange_side_frame",
+        "rounded_enclosure_geometry",
+        "mesh_integrity",
+        "mass_budget",
+        "molded_retention_features",
+        "manufacturing_drawing.json"
+      ],
+      "remaining_blockers": [
+        "No vendor mold-flow simulation.",
+        "No measured shrink/warp data for selected PC+ABS resin.",
+        "No GD&T-controlled 2D release drawing."
+      ]
+    },
+    {
+      "subsystem": "screen_stack",
+      "status": "cad_pass",
+      "evidence": [
+        "screen_cover_glass",
+        "display_lcm",
+        "screen_adhesive_top",
+        "display_fpc_connector",
+        "screen_mount_and_connection"
+      ],
+      "remaining_blockers": [
+        "Need supplier drawing and exact FPC exit direction.",
+        "Need verified touch/display pinout and bend test with real sample."
+      ]
+    },
+    {
+      "subsystem": "pcb_integration",
+      "status": "cad_pass",
+      "evidence": [
+        "main_pcb",
+        "kicad_outline_integration",
+        "pcb_battery_non_overlap"
+      ],
+      "remaining_blockers": [
+        "KiCad source is still a concept placement, not routed fabrication data.",
+        "Need board STEP from routed KiCad with real component 3D models."
+      ]
+    },
+    {
+      "subsystem": "buttons",
+      "status": "cad_pass",
+      "evidence": [
+        "power_button_cap",
+        "volume_button_cap",
+        "button_force_and_travel",
+        "button_pressure_support"
+      ],
+      "remaining_blockers": [
+        "Need tactile switch vendor part and tolerance stack.",
+        "Need fatigue testing on snap retention and button caps."
+      ]
+    },
+    {
+      "subsystem": "usb_audio_ports",
+      "status": "cad_pass",
+      "evidence": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "bottom_speaker_grille_slot_1",
+        "bottom_microphone_port_1",
+        "usb_c_insertion_envelope",
+        "bottom_io_acoustic_apertures"
+      ],
+      "remaining_blockers": [
+        "Need USB-C receptacle supplier drawing and insertion-cycle mechanical validation.",
+        "Need acoustic simulation/measurement for speaker chamber and microphone tunnels."
+      ]
+    },
+    {
+      "subsystem": "cameras_and_handset",
+      "status": "cad_pass",
+      "evidence": [
+        "rear_camera_module",
+        "front_camera_module",
+        "front_camera_under_glass",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "camera_speaker_behind_glass"
+      ],
+      "remaining_blockers": [
+        "Need exact camera module lens stack, FPC, and vendor keepout drawing.",
+        "Need handset acoustic gasket compression test."
+      ]
+    },
+    {
+      "subsystem": "injection_mold_tooling",
+      "status": "cad_pass",
+      "evidence": [
+        "mold_sprue_bushing",
+        "mold_primary_runner",
+        "mold_left_submarine_gate",
+        "mold_right_submarine_gate",
+        "mold_runner_gate_model"
+      ],
+      "remaining_blockers": [
+        "Runner/gate geometry is a placeholder, not toolmaker-approved steel design.",
+        "Need ejector pin placement, cooling channels, and mold-flow/fill balance analysis."
+      ]
+    },
+    {
+      "subsystem": "review_automation",
+      "status": "cad_pass",
+      "evidence": [
+        "fit-check-report.json",
+        "visual-review.json",
+        "manufacturing_drawing.json",
+        "full_top_down.png",
+        "mold_tooling.png"
+      ],
+      "remaining_blockers": [
+        "Visual checks prove nonblank/high-contrast renders only; they do not replace human DFM review."
+      ]
+    }
+  ]
+}

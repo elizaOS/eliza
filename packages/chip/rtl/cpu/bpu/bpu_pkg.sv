@@ -240,11 +240,23 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // BPU integration types
     // ------------------------------------------------------------------
-    typedef enum logic [1:0] {
-        BR_NONE   = 2'd0,
-        BR_COND   = 2'd1,
-        BR_CALL   = 2'd2,
-        BR_RET    = 2'd3
+    // Branch kind. Widened to 3 bits to add `BR_IND` (indirect jump that
+    // does NOT push the RAS), distinct from `BR_CALL` (call that DOES push
+    // the RAS). Without this distinction, real traces (CBP-5, SPEC, AOSP)
+    // that contain switch dispatch / PLT / vtable indirects corrupt the
+    // RAS on every call-shaped collapse — see
+    // docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
+    //
+    // Numeric values are stable across revisions:
+    //   BR_NONE = 0, BR_COND = 1, BR_CALL = 2, BR_RET = 3, BR_IND = 4.
+    // The Python model in benchmarks/cpu/branch/bpu_model.py uses the
+    // same numeric encoding.
+    typedef enum logic [2:0] {
+        BR_NONE   = 3'd0,
+        BR_COND   = 3'd1,
+        BR_CALL   = 3'd2,
+        BR_RET    = 3'd3,
+        BR_IND    = 3'd4
     } br_kind_e;
 
     // A single FTQ entry describes one predicted fetch block of up to

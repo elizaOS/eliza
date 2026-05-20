@@ -36,6 +36,8 @@ INPUT_ARTIFACTS = (
 OPTIONAL_COMMANDS = (
     "fault",
     "atalanta",
+    "quaigh",
+    "fan_atpg",
     "podem",
     "yosys",
     "verilator",
@@ -106,6 +108,9 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "fault-dft",
+            "openroad-dft",
+            "atalanta-atpg",
+            "fault-ucb-hw-testing",
             "verirag-llm4dft",
             "deeptpi",
             "deft-atpg",
@@ -114,6 +119,8 @@ def main() -> int:
             "drl-atpg",
             "atpg-via-ai-survey",
             "atpg-toolkit",
+            "fan-atpg",
+            "quaigh-atpg-equivalence",
             "nn-for-atpg",
         ],
         "policy": {
@@ -155,10 +162,19 @@ def main() -> int:
             {
                 "id": "atpg-toolchain-backend-watch",
                 "status": "CAPTURED_NOT_RUN",
-                "target": "evaluate Fault/ATPG backends after license and proprietary subtool review",
+                "target": "evaluate Fault/OpenROAD/Atalanta/FAN/Quaigh ATPG and DFT backends after license, netlist-format, and proprietary subtool review",
                 "acceptance_gates": [
                     "make synth",
                     "make manufacturing-artifacts-check",
+                ],
+            },
+            {
+                "id": "deterministic-atpg-baseline-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future AI ATPG comparisons must first pin deterministic ATPG and fault-simulation baselines, accepted netlist subsets, stuck-at/transition fault manifests, pattern hashes, and replay logs",
+                "acceptance_gates": [
+                    "make synth",
+                    "python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation",
                 ],
             },
             {
@@ -195,6 +211,7 @@ def main() -> int:
             "no E1 scan architecture or scan IO contract",
             "no reviewed gate-level DFT netlist flow",
             "no ATPG backend selected, pinned, or license-reviewed",
+            "OpenROAD DFT, Atalanta, FAN_ATPG, Quaigh, and Fault hardware-testing backends are watchlist-only until exact revisions, formats, build logs, fault models, and replay contracts are reviewed",
             "no license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow",
             "no approved InF-ATPG implementation/assets, FFR feature manifest, RL training log, generated-pattern quarantine, or deterministic replay oracle",
             "Fault may bundle proprietary/noncommercial ATPG engines that cannot be assumed release-safe",

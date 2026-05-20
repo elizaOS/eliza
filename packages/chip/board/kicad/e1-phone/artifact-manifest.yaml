@@ -1,0 +1,117 @@
+schema: eliza.e1_phone_board_artifact_manifest.v1
+status: blocked_not_fabrication_ready
+date: 2026-05-20
+claim_boundary: >
+  This manifest records the current phone mainboard artifact package and the
+  evidence required before claiming the PCB is finished end-to-end and ready
+  for enclosure placement. Current artifacts are concept and planning evidence
+  only.
+
+design_target:
+  display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  device_envelope_mm: {width: 72.0, height: 148.0, max_thickness: 9.5}
+  battery_window_mm: {width: 45.0, height: 72.0}
+  usb_c_ports: 1
+  side_buttons: [power, volume_up, volume_down]
+  radios: [5g_redcap_cellular, wifi_6e, bluetooth_5_3, gnss_optional, nfc_optional]
+
+current_artifacts:
+  planning:
+    - docs/board/e1-phone-mainboard-end-to-end.md
+    - docs/board/e1-phone-mainboard-metrics.yaml
+    - docs/board/e1-phone-oem-sourcing.md
+    - docs/board/e1-phone-enclosure-interface.yaml
+    - board/kicad/e1-phone/block-netlist.yaml
+    - board/kicad/e1-phone/placement-interface-matrix.yaml
+    - board/kicad/e1-phone/preliminary-bom.yaml
+    - board/kicad/e1-phone/routing-constraints.yaml
+  package_bindings:
+    - package/display/v0-dsi-720x1280.yaml
+    - package/camera/oem-mipi-csi-modules.yaml
+    - package/cellular/quectel-5g-redcap.yaml
+    - package/wifi/murata-type-2ea-wifi6e.yaml
+    - package/usb-c/e1-phone-usb-c-port.yaml
+    - package/human-interface/side-buttons.yaml
+    - package/usb-pd/tps65987.yaml
+    - package/charger/max77860.yaml
+    - package/pmic/da9063.yaml
+    - package/audio/v0-codec.yaml
+  schematic_scaffold:
+    - board/kicad/e1-phone/e1-phone.kicad_pro
+    - board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+    - board/kicad/e1-phone/schematic/power_usb.kicad_sch
+    - board/kicad/e1-phone/schematic/compute.kicad_sch
+    - board/kicad/e1-phone/schematic/display_camera.kicad_sch
+    - board/kicad/e1-phone/schematic/radios.kicad_sch
+    - board/kicad/e1-phone/schematic/audio_buttons.kicad_sch
+    - board/kicad/e1-phone/preview/schematic/e1-phone.svg
+    - board/kicad/e1-phone/preview/schematic/e1-phone.png
+  kicad_concept:
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+    - board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
+    - board/kicad/e1-phone/preview/kicad-cli-mainboard.png
+  preview_artifacts:
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.svg
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.png
+    - board/kicad/e1-phone/preview/e1-phone-enclosure-fit.svg
+    - board/kicad/e1-phone/preview/e1-phone-enclosure-fit.png
+    - board/kicad/e1-phone/preview/floorplan-html-screenshot.png
+
+release_gates:
+  schematic:
+    status: missing
+    required_evidence:
+      - KiCad hierarchical schematic with every major block in placement-interface-matrix.yaml.
+      - Block netlist in board/kicad/e1-phone/block-netlist.yaml converted
+        into real KiCad schematic nets.
+      - Exact supplier connector pinouts for display, cameras, side-key flex,
+        USB-C, battery, speakers, microphones, antennas, SIM/eSIM, and test.
+      - ERC clean or justified waivers.
+  routed_pcb:
+    status: missing
+    required_evidence:
+      - Routed KiCad PCB with footprints, nets, differential-pair constraints,
+        keepouts, copper pours, test points, fiducials, and mounting features.
+      - Routing constraints in board/kicad/e1-phone/routing-constraints.yaml
+        assigned to KiCad net classes and verified after route.
+      - DRC clean or justified waivers.
+      - Computed board utilization from component courtyards and no-route zones.
+  enclosure:
+    status: missing
+    required_evidence:
+      - STEP assembly with board, display, battery, camera modules, USB-C,
+        side buttons, speaker chambers, antennas, and midframe/rear cover.
+      - Tolerance stack proving the 9.5 mm thickness target.
+      - USB-C insertion load and side-button load path review.
+  power_thermal:
+    status: missing
+    required_evidence:
+      - Rail-by-rail schematic review, PI simulation, regulator load steps,
+        thermal simulation, and measured first-article power logs.
+  rf_si:
+    status: missing
+    required_evidence:
+      - MIPI/USB/PCIe/SDIO SI review.
+      - Cellular/Wi-Fi/GNSS/NFC antenna and matching review.
+      - VNA, conducted, coexistence, and SAR pre-scan evidence.
+  manufacturing:
+    status: missing
+    required_evidence:
+      - Production BOM/AVL, Gerber X2 or IPC-2581, drill files, pick-and-place,
+        assembly drawing, STEP, test plan, DFM/DFA review, and fab quote.
+
+verification_commands:
+  structural_check: python3 scripts/check_e1_phone_board_package.py
+  render_check: make kicad-phone-render
+  preview_check: make kicad-phone-preview-check
+
+forbidden_claims_while_status_blocked:
+  - board_fabrication_ready
+  - enclosure_ready
+  - production_bom_ready
+  - rf_ready
+  - power_thermal_ready
+  - end_to_end_phone_ready

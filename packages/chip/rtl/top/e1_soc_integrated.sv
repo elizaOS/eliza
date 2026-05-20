@@ -135,7 +135,34 @@ module e1_soc_integrated
     // IOMMU fault telemetry — surfaced so the cross-domain test can verify
     // an unmapped DMA hits a non-zero fault count.
     output logic        iommu_fault_irq_o,
-    output logic [31:0] iommu_fault_count_o
+    output logic [31:0] iommu_fault_count_o,
+
+    // CVA6 slot-0 AXI4 traffic counters — surfaced only when the SoC is
+    // compiled with `+define+E1_CLUSTER_SLOT0_CVA6`.  When that define is
+    // not set the wrapper synthesises to a stub that drives the counters
+    // to zero so the SoC harness can read the ports unconditionally.  The
+    // counters increment per-handshake at the 128-bit downstream side of
+    // the CVA6 → width-converter → cluster slot-0 path, so they measure
+    // the end-to-end traffic that reaches the slot-0 receiver (in
+    // contrast to the standalone wrapper TB which counts at the 64-bit
+    // upstream side).  The cocotb in-band SoC boot test
+    // (`test_cva6_boots_in_soc.py`) uses these counters as structural
+    // proof that CVA6 came out of reset, fetched code from the slot-0
+    // boot ROM, and executed the store/load program through the SoC
+    // fabric path.
+    output logic [31:0] cva6_slot0_ar_xfers_o,
+    output logic [31:0] cva6_slot0_aw_xfers_o,
+    output logic [31:0] cva6_slot0_w_xfers_o,
+    output logic [31:0] cva6_slot0_r_xfers_o,
+    output logic [31:0] cva6_slot0_b_xfers_o,
+    // First three 128-bit boot-ROM words mirrored for cocotb preload
+    // verification.  Same role as `boot_rom_word{0,1,2}_o` in the
+    // standalone `e1_cva6_unit_tb`: Verilator's GPI does not always
+    // surface every element of an unpacked logic array, so we re-export
+    // the words the cocotb test cares about as flat ports.
+    output logic [127:0] cva6_slot0_rom_word0_o,
+    output logic [127:0] cva6_slot0_rom_word1_o,
+    output logic [127:0] cva6_slot0_rom_word2_o
 );
 
     // ----------------------------------------------------------------------
@@ -763,8 +790,14 @@ module e1_soc_integrated
     // 64<->128 conversion path; once the cluster transitions out of
     // lite tie-off mode the 128-bit downstream nets below connect into
     // the cluster's slot-0 input ports without further adapter work.
+    // CVA6's cv64a6 executable-PMA region 1 starts at 0x1_0000 (length
+    // 0x10000).  The standalone wrapper TB uses the same vector; the
+    // in-band SoC instance has to honour the same PMA contract because
+    // the CVA6 PMA/PMP check fires before any AR is issued.  Sitting
+    // outside an executable region triggers INSTR_ACCESS_FAULT before
+    // the slot-0 memory ever gets a chance to serve a fetch.
     e1_cpu_subsystem #(
-        .BOOT_ADDR  (64'h0000_0000_8000_0000),
+        .BOOT_ADDR  (64'h0000_0000_0001_0000),
         .AXI_ID_W   (CVA6_AXI_ID_W),
         .AXI_ADDR_W (CVA6_AXI_ADDR_W),
         .AXI_DATA_W (CVA6_AXI_DATA_W),

@@ -52,6 +52,8 @@ OPTIONAL_COMMANDS = (
     "champsim",
     "gem5.opt",
     "gem5",
+    "run-sniper",
+    "sniper",
     "verilator",
     "sby",
     "yosys",
@@ -124,6 +126,8 @@ def main() -> int:
             "agentic-architect",
             "perfvec",
             "concorde-cpu-performance-model",
+            "gem5-simulator",
+            "sniper-simulator",
             "champsim",
             "branchnet",
             "llbp",
@@ -184,10 +188,20 @@ def main() -> int:
             {
                 "id": "cpu-performance-model-watch",
                 "status": "CAPTURED_NOT_PREDICTED",
-                "target": "future PerfVec or Concorde-style CPU performance predictors must use pinned simulator traces, microarchitecture encodings, held-out workloads, and error analysis",
+                "target": "future gem5, Sniper, PerfVec, or Concorde-style CPU performance studies must use pinned simulator configs, traces, microarchitecture encodings, held-out workloads, comparison baselines, and error analysis",
                 "acceptance_gates": [
                     "make benchmark-cpu-ap-sim-metrics",
                     "make benchmark-cpu-ap-sota-sim-metrics",
+                    "make cpu-ap-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "architecture-simulator-backend-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future gem5 or Sniper use must remain advisory until exact revisions, build/config manifests, workload hashes, command logs, stats outputs, model-assumption reviews, and local E1 calibration evidence exist",
+                "acceptance_gates": [
+                    "make benchmark-cpu-ap-sim-metrics",
                     "make cpu-ap-evidence-check",
                     "make no-hardware-action-check",
                 ],
@@ -205,7 +219,7 @@ def main() -> int:
             },
         ],
         "blocked_by": [
-            "no pinned ChampSim, gem5, PerfVec, Concorde, Agentic Architect, BranchNet, Pythia, Mockingjay, or Drishti backend selected for local execution",
+            "no pinned ChampSim, gem5, Sniper, PerfVec, Concorde, Agentic Architect, BranchNet, Pythia, Mockingjay, or Drishti backend selected for local execution",
             "no license-reviewed external branch, cache, or SPEC/DPC trace corpus imported for E1 experiments",
             "no held-out E1 application trace suite with branch, cache, prefetch, IPC, area, power, and workload provenance",
             "no before/after RTL, synthesis, formal, cocotb, simulator, and benchmark promotion policy for generated microarchitecture changes",

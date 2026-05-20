@@ -114,6 +114,8 @@ def main() -> int:
             "llm-eda-opencores",
             "hardware-verilogeval-v2-hf",
             "llm4verilog-dataset",
+            "rtlfixer",
+            "pyhdl-eval",
             "siliconmind-v1",
             "chipcraftx-rtlgen-7b",
             "chipseek",
@@ -157,7 +159,7 @@ def main() -> int:
             {
                 "id": "hf-rtl-model-candidate-watch",
                 "status": "CAPTURED_NOT_DOWNLOADED",
-                "target": "future SiliconMind, ChipCraftX, ChipSeek, CircuitMind/TC-Bench, RTLSeek, QiMeng-CRUX/SALV, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, base-model and reward metadata where applicable, prompts, outputs, benchmark overlap, and evaluator logs",
+                "target": "future SiliconMind, ChipCraftX, ChipSeek, CircuitMind/TC-Bench, RTLFixer, PyHDL-Eval, RTLSeek, QiMeng-CRUX/SALV, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, base-model and reward metadata where applicable, prompts, outputs, benchmark overlap, and evaluator logs",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
@@ -168,7 +170,7 @@ def main() -> int:
             {
                 "id": "rtl-corpus-license-contamination-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future OpenRTLSet, MG-Verilog, DeepCircuitX, OpenCores, VerilogEval, CVDP, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
+                "target": "future OpenRTLSet, MG-Verilog, DeepCircuitX, OpenCores, VerilogEval, RTLFixer, CVDP, PyHDL-Eval, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",

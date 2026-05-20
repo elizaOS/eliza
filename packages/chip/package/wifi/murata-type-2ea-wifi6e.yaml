@@ -1,0 +1,74 @@
+schema: eliza.wifi_bt_module_binding.v1
+as_of: 2026-05-20
+module: murata_type_2ea_lbee5xv2ea_802
+status: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No module is mounted, no antenna path is tuned, no
+  firmware is packaged, and no Wi-Fi/Bluetooth regulatory evidence exists.
+
+selected_for:
+  - Phone-class upgrade over Type 1DX while preserving a shielded module boundary.
+  - Wi-Fi 6E tri-band 2x2 MIMO and Bluetooth 5.3 in a small SMT module.
+  - Public vendor product page and evaluation hardware.
+
+vendor_public_specs:
+  vendor: Murata
+  order_number: LBEE5XV2EA-802
+  chipset: Infineon_CYW55573
+  wireless:
+    wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+    wifi_phy_rate_mbps: 1200
+    bluetooth: 5.3_BR_EDR_LE
+  interfaces: [PCIe, SDIO, UART, GPIO, PCM]
+  io_voltage_v: 1.8
+  package_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+  temperature_c: {min: -40, max: 85}
+  certification_note: FCC_IC_reference_certified
+  sourcing_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+
+fallback:
+  module: murata_type_1dx_sdio_uart_reference
+  binding: package/wifi/murata-1dx-sdio.yaml
+  reason: lower_performance_but_known_linux_brcmfmac_hci_uart_path
+
+host_interfaces:
+  wifi_primary:
+    preferred_bus: PCIe
+    fallback_bus: SDIO
+    signals:
+      - {contract: WIFI_PCIE_TX_P, module_role: pcie_rx_p, direction_at_soc: output}
+      - {contract: WIFI_PCIE_TX_N, module_role: pcie_rx_n, direction_at_soc: output}
+      - {contract: WIFI_PCIE_RX_P, module_role: pcie_tx_p, direction_at_soc: input}
+      - {contract: WIFI_PCIE_RX_N, module_role: pcie_tx_n, direction_at_soc: input}
+      - {contract: WIFI_SDIO_CLK, module_role: sdio_clk, direction_at_soc: output}
+      - {contract: WIFI_SDIO_CMD, module_role: sdio_cmd, direction_at_soc: bidirectional}
+      - {contract: WIFI_SDIO_D0, module_role: sdio_data0, direction_at_soc: bidirectional}
+      - {contract: WIFI_SDIO_D1, module_role: sdio_data1, direction_at_soc: bidirectional}
+      - {contract: WIFI_SDIO_D2, module_role: sdio_data2, direction_at_soc: bidirectional}
+      - {contract: WIFI_SDIO_D3, module_role: sdio_data3, direction_at_soc: bidirectional}
+  bluetooth:
+    preferred_bus: UART
+    flow_control: true
+    signals:
+      - {contract: BT_UART_TX, module_role: uart_rx, direction_at_soc: output}
+      - {contract: BT_UART_RX, module_role: uart_tx, direction_at_soc: input}
+      - {contract: BT_UART_CTS_N, module_role: uart_rts_n, direction_at_soc: input}
+      - {contract: BT_UART_RTS_N, module_role: uart_cts_n, direction_at_soc: output}
+  control:
+    signals:
+      - {contract: WIFI_EN, module_role: wl_reg_on, direction_at_soc: output, default: low}
+      - {contract: BT_EN, module_role: bt_reg_on, direction_at_soc: output, default: low}
+      - {contract: WIFI_HOST_WAKE, module_role: host_wake, direction_at_soc: input}
+      - {contract: WIFI_IRQ, module_role: oob_irq, direction_at_soc: input}
+
+layout_requirements:
+  - Follow Murata reference layout for module land pattern, ground, antenna feed,
+    keepout, and matching network.
+  - Keep Wi-Fi antenna clear of cellular main/diversity antennas and top/bottom
+    metal enclosure rails.
+  - Add pi matching network and conducted test point before antenna feed.
+
+forbidden_claims:
+  - wifi_ready
+  - bluetooth_ready
+  - regulatory_ready

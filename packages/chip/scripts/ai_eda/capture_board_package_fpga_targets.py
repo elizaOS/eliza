@@ -51,6 +51,9 @@ INPUT_ARTIFACTS = (
 
 OPTIONAL_COMMANDS = (
     "kicad-cli",
+    "kibot",
+    "openEMS",
+    "gerber2ems",
     "freerouting",
     "yosys",
     "nextpnr-ecp5",
@@ -125,6 +128,8 @@ def main() -> int:
             "omnisch",
             "circuitron-pcb-agent",
             "pcb-bench",
+            "kicad-eda",
+            "kibot",
             "pcbagent",
             "neurpcb",
             "pcb-migrator",
@@ -144,6 +149,8 @@ def main() -> int:
             "kicad-mcp-pro",
             "kicad-si-wrapper",
             "open-schematics-kicad",
+            "openems",
+            "gerber2ems",
             "gerberformer-pcb-defect",
         ],
         "policy": {
@@ -189,6 +196,18 @@ def main() -> int:
                     "make kicad-artifact-check",
                     "make board-package-evidence-check",
                     "make manufacturing-artifacts-check",
+                ],
+            },
+            {
+                "id": "deterministic-kicad-export-backend-watch",
+                "status": "CAPTURED_NOT_EXPORTED",
+                "target": "future KiCad or KiBot use must pin tool/container revisions, project/library/input hashes, generated ERC/DRC/BOM/Gerber/drill/position output hashes, logs, package cross-probe evidence, and reviewer disposition before accepting AI board artifacts",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make kicad-artifact-check",
+                    "make board-package-evidence-check",
+                    "make manufacturing-artifacts-check",
+                    "make no-hardware-action-check",
                 ],
             },
             {
@@ -246,7 +265,7 @@ def main() -> int:
             {
                 "id": "board-si-simulation-preprocessor-watch",
                 "status": "CAPTURED_NOT_SIMULATED",
-                "target": "future KiCad SI wrapper or OpenEMS-style board simulation preprocessing requires exact tool revisions, board/stackup/net/port hashes, generated slice hashes, simulator logs, SI/PI comparison evidence, and reviewer disposition",
+                "target": "future KiCad SI wrapper, gerber2ems, or openEMS-style board simulation preprocessing requires exact tool revisions, board/stackup/net/port hashes, generated slice and geometry hashes, solver logs, result hashes, SI/PI comparison evidence, and reviewer disposition",
                 "acceptance_gates": [
                     "make board-package-evidence-check",
                     "make package-cross-probe-check",
@@ -268,13 +287,14 @@ def main() -> int:
         "blocked_by": [
             "no vendor package drawing, footprint, bonding diagram, IBIS/electrical model, or reviewed package vendor evidence",
             "no release-clean KiCad ERC, DRC, Gerber, drill, BOM, position, DFM, SI, or PI evidence for AI-modified board artifacts",
+            "no approved KiCad or KiBot replay policy with pinned tool revisions, project/library hashes, generated output hashes, logs, package cross-probe evidence, and reviewer disposition",
             "no exact FPGA board revision, device/fabric architecture manifest, routed constraints, timing-clean bitstream, or hardware bring-up transcript for AI-assisted FPGA optimization",
             "no antenna, shielding, SAR, modular approval, or regional regulatory evidence for Wi-Fi/RF release claims",
             "no license-reviewed multimodal schematic benchmark snapshot, E1 image/prompt non-overlap report, or KiCad follow-up workflow",
             "no approved agentic KiCad generation workflow with dependency pins, prompt/output quarantine, ERC/DRC/fab logs, and human review",
             "no approved PCB routing policy or route-output quarantine for world-model RL, geometric routing, or FreeRouting-backed experiments",
             "no approved Circuit Weaver or KiCad MCP Pro agent-tooling flow with pinned command schemas, tool allowlists, model/provider manifests, generated-output quarantine, and KiCad evidence",
-            "no approved KiCad SI wrapper or OpenEMS preprocessing flow with board stackup, selected-net, port, generated-slice, simulator, and SI/PI comparison evidence",
+            "no approved KiCad SI wrapper, openEMS, or gerber2ems preprocessing flow with board stackup, selected-net, port, generated-slice/geometry, solver, result-hash, and SI/PI comparison evidence",
             "no license-reviewed Open Schematics, GerberFormer, or other PCB schematic/AOI model corpus with exact snapshot, split/non-overlap review, E1 artifact overlap checks, local board images, and reviewer disposition",
             "no approved workflow for AI-generated schematics, PCB placement, routing, pinout, package, or FPGA artifacts",
             "no license-reviewed PCB/FPGA automation implementation path selected for E1",

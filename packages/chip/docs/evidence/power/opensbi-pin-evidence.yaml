@@ -1,27 +1,38 @@
 schema: eliza.power.external_pin_evidence.v1
 ip_name: opensbi
 ip_role: m_mode_sbi_implementation_with_mpxy_rpmi_proxy
-status: pin_resolved_and_rv64_generic_built
-release_use: prototype_only_until_mpxy_lands_upstream
+status: pin_resolved_rv64_generic_built_with_mpxy_rpmi
+release_use: prototype_ready_mpxy_rpmi_present_in_pinned_release
 claim_boundary: >
   Records the executable result of running scripts/bootstrap_opensbi.sh and
-  then building OpenSBI v1.5 against the `generic` platform with the host
+  then building OpenSBI v1.8.1 against the `generic` platform with the host
   RISC-V cross compiler. Proof points:
     - external/opensbi/opensbi checkout exists at the pinned SHA,
     - scripts/check_opensbi_pin.py reports PASS,
     - OpenSBI builds clean for the generic platform under RV64 ilp64
       (the default toolchain configuration on this host),
+    - SBI MPxy framework + RPMI shared-memory transport + RPMI message-protocol
+      drivers (clock, voltage, performance, device_power, sysmsi, mbox) plus
+      RPMI-backed cppc/hsm/suspend/reset utilities are all linked into the
+      pinned firmware artifact, verified by `riscv64-linux-gnu-objdump -t`,
     - the RV32 ilp32 build path is blocked by upstream OpenSBI's hard
       requirement on the RISC-V `A` (atomics) extension which the PMC
       Ibex (RV32IMC) intentionally omits.
   Boot of OpenSBI on an application core is not exercised here; this
-  evidence covers source pin + buildable artifact only.
+  evidence covers source pin + buildable artifact + symbol presence only.
 pin_manifest: external/opensbi/pin-manifest.json
 upstream_repo: https://github.com/riscv-software-src/opensbi.git
-upstream_tag: v1.5
-upstream_commit_pinned: 455de672dd7c2aa1992df54dfb08dc11abbc1b1a
-upstream_commit_message: "include: Bump-up version to 1.5"
-upstream_commit_timestamp: "2024-06-30T14:03:26+05:30"
+upstream_tag: v1.8.1
+upstream_commit_pinned: 74434f255873d74e56cc50aa762d1caf24c099f8
+upstream_commit_message: "lib: sbi: Fix behavior on platform without HART protection"
+upstream_commit_timestamp: "2026-01-07T17:04:56+01:00"
+previous_tag: v1.5
+previous_commit: 455de672dd7c2aa1992df54dfb08dc11abbc1b1a
+tag_delta_summary:
+  - "v1.6: SBI MPxy framework + RPMI shared-memory transport land in-tree"
+  - "v1.7: SBI v3.0 alignment, Counter Delegation (CTR), dynamic SSE events"
+  - "v1.8: hart-protection, SiFive CLINTv2, SpacemiT K1, Andes QiLai platform support"
+  - "v1.8.1: hart-protection PMP-absent fix"
 license: BSD-2-Clause-Patent
 toolchain:
   cross_compiler: external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc
@@ -36,28 +47,31 @@ toolchain:
 bootstrap_run:
   command: scripts/bootstrap_opensbi.sh
   exit_status: 0
-  outcome: HEAD resolved to v1.5 tag commit; manifest rewrite is a no-op when pin already matches.
+  outcome: HEAD resolved to v1.8.1 tag commit; manifest rewrite is a no-op when pin already matches.
 pin_check_run:
   command: scripts/check_opensbi_pin.py
   exit_status: 0
-  outcome: "STATUS: PASS power.opensbi_pin - HEAD=455de67 matches manifest pin"
+  outcome: "STATUS: PASS power.opensbi_pin - HEAD=74434f2 matches manifest pin"
 rv64_generic_build:
   command: >
     make PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc)
   exit_status: 0
   artifacts:
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.bin
-      bytes: 272504
-      sha256: c9dd56d9289de72835fcff26f90e24157b6adad4abc75f0120b9664ccd54f18c
+      bytes: 275928
+      sha256: 5bfe691ae891450fc570b4b536a6482fe5f3464e06e0f0882cadece9ebac2250
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.elf
-      bytes: 1367816
-      sha256: ff8e60209429b979b30eb4875d87700b47e4fda46b6c2e72ff69ccffccbfbace
+      bytes: 2054200
+      sha256: 934e0573a7c9ed40bed73d041ff75428e3bd9f42430d5766b6ae3fbb59f11673
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_jump.bin
-      bytes: 272464
-      sha256: 1dd834205a4c954bf8c7623fec4418c621f37b203ddcb069bf830b932c283e80
+      bytes: 275888
+      sha256: eb2da6e73ea3b3356e288cc8a6004532456f44feff3fd23da455bda46a3210a3
+    - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_jump.elf
+      bytes: 2053792
+      sha256: 354fc6455b43fb2badf35b266ec32be5aa2542cd6119ac5d1f02889d96e2ff8b
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_payload.bin
-      bytes: 2105656
-      sha256: 9e36be1c7e773194e04abf1127633bf237b6c443b33606e6bb66a3fe945e2776
+      bytes: 2105672
+      sha256: 89817764b4c7c6985de163f02aabb6aee97fc159826deb08d5230f5dd561417d
 rv32_generic_build_blocked:
   attempted_command: >
     make PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu-
@@ -72,10 +86,70 @@ rv32_generic_build_blocked:
     the application cores (which include A), not on the AON PMC Ibex.
     The PMC firmware lives at fw/pmc/ and is cross-built separately under
     rv32imc_zicsr (see ibex-pin-evidence.yaml and fw/pmc cross-build run).
-mpxy_status_unchanged:
+mpxy_status:
+  present_in_pinned_release: true
   in_tree_at_v1_5: false
-  manifest_assertion: external/opensbi/opensbi/include/sbi/sbi_mpxy.h absent in v1.5
-  resolution: bump upstream_tag_pinned when MPxy merges upstream (tracked in pin manifest).
-release_blockers_unchanged:
-  - MPxy + RPMI proxy not merged in v1.5; v1.6 ships v1.6 of the spec but MPxy land is still tracked downstream.
-  - SBI v3.0 kernel-facing contract pending upstream sbi_mpxy.{h,c}.
+  in_tree_at_v1_6: true
+  rpmi_mailboxes_at_v1_8: true
+  source_paths_verified:
+    - external/opensbi/opensbi/include/sbi/sbi_mpxy.h
+    - external/opensbi/opensbi/lib/sbi/sbi_mpxy.c
+    - external/opensbi/opensbi/lib/sbi/sbi_ecall_mpxy.c
+    - external/opensbi/opensbi/include/sbi_utils/mailbox/rpmi_mailbox.h
+    - external/opensbi/opensbi/include/sbi_utils/mailbox/rpmi_msgprot.h
+    - external/opensbi/opensbi/include/sbi_utils/mpxy/fdt_mpxy_rpmi_mbox.h
+    - external/opensbi/opensbi/lib/utils/mailbox/rpmi_mailbox.c
+    - external/opensbi/opensbi/lib/utils/mailbox/fdt_mailbox_rpmi_shmem.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_mbox.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_clock.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_voltage.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_performance.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_device_power.c
+    - external/opensbi/opensbi/lib/utils/mpxy/fdt_mpxy_rpmi_sysmsi.c
+    - external/opensbi/opensbi/lib/utils/cppc/fdt_cppc_rpmi.c
+    - external/opensbi/opensbi/lib/utils/hsm/fdt_hsm_rpmi.c
+    - external/opensbi/opensbi/lib/utils/suspend/fdt_suspend_rpmi.c
+    - external/opensbi/opensbi/lib/utils/reset/fdt_reset_rpmi.c
+  symbol_verification:
+    command: >
+      riscv64-linux-gnu-objdump -t
+      external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.elf
+      | grep -E "mpxy|rpmi"
+    matched_symbol_count: 89
+    representative_symbols:
+      - sbi_mpxy_init
+      - sbi_mpxy_send_message
+      - sbi_mpxy_register_channel
+      - sbi_mpxy_get_channel_ids
+      - sbi_mpxy_set_shmem
+      - sbi_mpxy_read_attrs
+      - sbi_mpxy_write_attrs
+      - sbi_mpxy_get_notification_events
+      - sbi_mpxy_channel_available
+      - sbi_mpxy_get_shmem_size
+      - sbi_ecall_mpxy_handler
+      - sbi_ecall_mpxy_register_extensions
+      - rpmi_cppc_cold_init
+      - rpmi_cppc_read
+      - rpmi_cppc_write
+      - rpmi_cppc_probe
+      - rpmi_system_suspend
+      - rpmi_system_suspend_check
+      - rpmi_suspend_init
+      - rpmi_system_reset
+      - rpmi_system_reset_check
+      - rpmi_reset_init
+  notes: >
+    SBI MPxy framework merged in v1.6 along with the RPMI shared-memory
+    transport (rpmi_mailbox / fdt_mailbox_rpmi_shmem). v1.8 added the
+    fan-out of RPMI message-protocol drivers (clock, voltage, performance,
+    device-power, sysmsi) plus the RPMI-backed cppc, hsm, suspend and
+    reset SBI utilities. All are linked into the pinned RV64 generic
+    firmware and verified via the symbol dump above. This matches the
+    kernel-driver contract referenced by drivers/cpufreq/cpufreq-sbi-mpxy.c
+    et al.
+release_blockers_cleared:
+  - "OpenSBI MPxy + RPMI proxy: present in pinned v1.8.1 release."
+  - "SBI v3.0 kernel-facing contract: sbi_mpxy.{h,c} + sbi_ecall_mpxy.c linked into fw_dynamic.elf."
+release_blockers_remaining:
+  - "Boot-level integration test of OpenSBI v1.8.1 -> Linux RPMI driver -> Ibex PMC RPMI server is the next gate (out of scope for source-pin evidence)."

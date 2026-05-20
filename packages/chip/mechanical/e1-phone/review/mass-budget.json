@@ -1,0 +1,426 @@
+{
+  "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
+  "total_estimated_mass_g": 127.51,
+  "mass_by_role_g": {
+    "I/O": 1.77,
+    "PCB": 4.71,
+    "audio": 2.86,
+    "battery": 54.98,
+    "button": 0.09,
+    "camera": 0.99,
+    "connector": 0.21,
+    "molded enclosure": 22.78,
+    "screen": 39.03,
+    "screen retention": 0.09
+  },
+  "parts": [
+    {
+      "name": "orange_back_shell",
+      "role": "molded enclosure",
+      "volume_mm3": 14302.89,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 16.448,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_side_frame",
+      "role": "molded enclosure",
+      "volume_mm3": 4911.279,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 5.648,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "screen_cover_glass",
+      "role": "screen",
+      "volume_mm3": 8152.377,
+      "density_g_per_cm3": 2.5,
+      "mass_g": 20.381,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "display_lcm",
+      "role": "screen",
+      "volume_mm3": 15542.509,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 18.651,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "main_pcb",
+      "role": "PCB",
+      "volume_mm3": 2547.2,
+      "density_g_per_cm3": 1.85,
+      "mass_g": 4.712,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "battery_pouch",
+      "role": "battery",
+      "volume_mm3": 20746.0,
+      "density_g_per_cm3": 2.65,
+      "mass_g": 54.977,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_receptacle",
+      "role": "I/O",
+      "volume_mm3": 226.629,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 1.768,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_external_aperture",
+      "role": "I/O",
+      "volume_mm3": 12.852,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_module",
+      "role": "audio",
+      "volume_mm3": 577.5,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 1.27,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "earpiece_receiver",
+      "role": "audio",
+      "volume_mm3": 180.0,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.396,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "bottom_mic",
+      "role": "audio",
+      "volume_mm3": 9.275,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.02,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "top_mic",
+      "role": "audio",
+      "volume_mm3": 9.275,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.02,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_camera_module",
+      "role": "camera",
+      "volume_mm3": 510.0,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.612,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_camera_lens_window",
+      "role": "camera",
+      "volume_mm3": 28.971,
+      "density_g_per_cm3": 2.5,
+      "mass_g": 0.072,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "front_camera_module",
+      "role": "camera",
+      "volume_mm3": 135.2,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.297,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "front_camera_under_glass",
+      "role": "camera",
+      "volume_mm3": 3.169,
+      "density_g_per_cm3": 2.5,
+      "mass_g": 0.008,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "power_button_cap",
+      "role": "button",
+      "volume_mm3": 26.4,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.032,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "volume_button_cap",
+      "role": "button",
+      "volume_mm3": 46.2,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.055,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "handset_acoustic_slot",
+      "role": "audio",
+      "volume_mm3": 4.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_grille_slot_1",
+      "role": "audio",
+      "volume_mm3": 1.68,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_grille_slot_2",
+      "role": "audio",
+      "volume_mm3": 1.68,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_grille_slot_3",
+      "role": "audio",
+      "volume_mm3": 1.68,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_grille_slot_4",
+      "role": "audio",
+      "volume_mm3": 1.68,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_grille_slot_5",
+      "role": "audio",
+      "volume_mm3": 1.68,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_microphone_port_1",
+      "role": "audio",
+      "volume_mm3": 0.249,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_microphone_port_2",
+      "role": "audio",
+      "volume_mm3": 0.249,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "screen_adhesive_top",
+      "role": "screen retention",
+      "volume_mm3": 13.878,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.016,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "screen_adhesive_bottom",
+      "role": "screen retention",
+      "volume_mm3": 13.878,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.016,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "screen_adhesive_left",
+      "role": "screen retention",
+      "volume_mm3": 27.319,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.031,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "screen_adhesive_right",
+      "role": "screen retention",
+      "volume_mm3": 27.319,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.031,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_1",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_2",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_3",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_4",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_5",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_6",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_1",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_2",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_3",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_4",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_5",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_6",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_7",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_snap_hook_8",
+      "role": "molded enclosure",
+      "volume_mm3": 9.1,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.01,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_battery_left_rib",
+      "role": "molded enclosure",
+      "volume_mm3": 102.9,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.123,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_battery_right_rib",
+      "role": "molded enclosure",
+      "volume_mm3": 102.9,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.123,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_usb_reinforcement_saddle",
+      "role": "molded enclosure",
+      "volume_mm3": 72.0,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.086,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "display_fpc_connector",
+      "role": "connector",
+      "volume_mm3": 69.92,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.21,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "display_fpc_bend_keepout",
+      "role": "connector",
+      "volume_mm3": 66.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_acoustic_chamber",
+      "role": "audio",
+      "volume_mm3": 514.8,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 1.133,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "earpiece_gasket",
+      "role": "audio",
+      "volume_mm3": 15.95,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.018,
+      "excluded_placeholder": false
+    }
+  ]
+}

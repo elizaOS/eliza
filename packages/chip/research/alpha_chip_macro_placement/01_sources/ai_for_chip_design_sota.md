@@ -97,6 +97,10 @@ power, and manufacturing preparation.
 - EasySize paper: https://arxiv.org/abs/2508.05113
 - Self-calibrating analog sizing equations:
   https://arxiv.org/abs/2604.07387
+- ngspice simulator: https://ngspice.sourceforge.io/
+- PySpice orchestration: https://github.com/PySpice-org/PySpice
+- Xyce simulator: https://github.com/Xyce/Xyce
+- OpenVAF Verilog-A compiler: https://github.com/pascalkuthe/OpenVAF
 - EEsizer / LLM transistor sizing:
   https://github.com/eelab-dev/LLM-transistor-sizing
 - AnalogMaster paper: https://arxiv.org/abs/2604.20916
@@ -118,16 +122,19 @@ power, and manufacturing preparation.
   https://huggingface.co/analogllm/analog_model,
   https://huggingface.co/datasets/analogllm/analog_data
 - Use: schematic/image/netlist parsing, analog topology generation, sizing,
-  SPICE/ngspice feedback loops, SPICE-generation benchmark review,
-  LLM-generated design equations, VLM-grounded explainability, and analog
-  schematic/netlist/layout/SPICE dataset and model governance.
+  deterministic SPICE replay, Python ngspice orchestration, cross-simulator
+  triage, Verilog-A model compilation, SPICE/ngspice feedback loops,
+  SPICE-generation benchmark review, LLM-generated design equations,
+  VLM-grounded explainability, and analog schematic/netlist/layout/SPICE
+  dataset and model governance.
 - E1 fit: target capture only. Do not generate SPICE, schematics, CircuitJSON,
   analog layouts, padframe changes, foundry IP, external model inference,
   corpus imports, or reusable analog memories for E1 until exact prompts, model
   versions, memory/search snapshots, dataset snapshots, generated dimension
-  quarantine, design-equation traceability, SPICE/testbench decks, simulator
-  logs, PVT/corner sweeps, DRC/LVS/extraction, package/SI-PI evidence, split
-  and non-overlap review, and human analog review exist.
+  quarantine, design-equation traceability, simulator/model/compiler revisions,
+  SPICE/testbench decks, raw output hashes, convergence logs, PVT/corner
+  sweeps, DRC/LVS/extraction, package/SI-PI evidence, split and non-overlap
+  review, and human analog review exist.
 
 ### Board, Package, and FPGA Automation
 
@@ -135,6 +142,8 @@ power, and manufacturing preparation.
 - OmniSch: https://arxiv.org/abs/2604.00270
 - Circuitron: https://github.com/Shaurya-Sethi/circuitron
 - PCB-Bench: https://github.com/digailab/PCB-Bench
+- KiCad: https://gitlab.com/kicad/code/kicad
+- KiBot: https://github.com/INTI-CMNB/KiBot
 - PCBAgent:
   https://www.cse.cuhk.edu.hk/~byu/papers/C247-ASPDAC2025-PCBAgent.pdf
 - NeurPCB: https://github.com/neurpcb/neurpcb
@@ -152,22 +161,26 @@ power, and manufacturing preparation.
 - KiCad MCP Pro: https://github.com/oaslananka/kicad-mcp-pro
 - Antmicro KiCad SI Wrapper:
   https://github.com/antmicro/kicad-si-simulation-wrapper
+- openEMS: https://github.com/thliebig/openEMS
+- gerber2ems: https://github.com/antmicro/gerber2ems
 - Open Schematics dataset:
   https://huggingface.co/datasets/rifxyz/open-schematics
 - GerberFormer model/data:
   https://huggingface.co/pulipakav-1/gerberformer,
   https://huggingface.co/datasets/pulipakav-1/gerberformer-results
 - Use: schematic generation and visual QA, KiCad generation/review, MCP-based
-  agent tooling, component placement, layout migration, geometric and RL
-  autorouting, SI simulation preprocessing, FPGA placement, FPGA CAD/fabric
+  agent tooling, deterministic KiCad/KiBot replay, component placement, layout
+  migration, geometric and RL autorouting, SI simulation preprocessing,
+  openEMS/gerber2ems electromagnetic replay, FPGA placement, FPGA CAD/fabric
   generation, schematic corpus governance, and manufacturing inspection.
 - E1 fit: target capture only. Do not generate schematics, PCB layouts, routes,
   Gerbers, package edits, pinout edits, MCP write actions, SI simulation
   claims, FPGA outputs, generated fabric collateral, corpus imports, model
-  inference, or fabrication claims until package/padframe cross-probe, KiCad
-  ERC/DRC, BOM/fab outputs, SI/PI, DFM, RF/regulatory blockers, dataset/model
-  provenance, pinned device/fabric constraints, timing-clean bitstreams, FPGA
-  bring-up, and human review exist.
+  inference, SI simulation outputs, or fabrication claims until package/
+  padframe cross-probe, KiCad/KiBot revisions, ERC/DRC, BOM/fab output hashes,
+  stackup/net/port/mesh manifests, solver logs, SI/PI, DFM, RF/regulatory
+  blockers, dataset/model provenance, pinned device/fabric constraints,
+  timing-clean bitstreams, FPGA bring-up, and human review exist.
 
 ## Placement and physical design research
 
@@ -236,6 +249,8 @@ power, and manufacturing preparation.
 - Ramulator2: https://github.com/CMU-SAFARI/ramulator2
 - DRAMsim3: https://github.com/umd-memsys/DRAMsim3
 - DRAMSys: https://github.com/tukl-msd/DRAMSys
+- gem5: https://github.com/gem5/gem5
+- Sniper: https://github.com/snipersim/snipersim
 - gem5-Aladdin: https://github.com/harvard-acc/gem5-aladdin
 - Gem5-AcceSys: https://arxiv.org/abs/2502.12273
 - MemExplorer: https://arxiv.org/abs/2605.07183
@@ -243,8 +258,9 @@ power, and manufacturing preparation.
 - DeepStack: https://arxiv.org/abs/2604.05238
 - Mess: https://pm.bsc.es/gitlab/mess/mess
 - Use: wrap memory/fabric knobs as simulator-backed DSE tasks; generate or
-  replay NoC/DRAM datasets; evaluate inverse MLP/CVAE/diffusion/GNN NoC
-  parameter predictors against BookSim; track generated NoC backends and CIM
+  replay NoC/DRAM datasets; evaluate CPU/cache/memory simulator configs and
+  stats; evaluate inverse MLP/CVAE/diffusion/GNN NoC parameter predictors
+  against BookSim; track generated NoC backends and CIM
   simulators as future review targets; study agentic NPU memory hierarchy DSE,
   LLM-guided bottleneck analysis, stacked-AI accelerator memory/interconnect
   tradeoffs, and accelerator-system memory contention.
@@ -272,14 +288,18 @@ power, and manufacturing preparation.
 - Waveform MCP: https://github.com/jiegec/waveform-mcp
 - MCP VCD: https://github.com/SeanMcLoughlin/mcp-vcd
 - VaporView: https://github.com/Lramseyer/vaporview
+- cocotb: https://github.com/cocotb/cocotb
+- cocotb-test: https://github.com/themperek/cocotb-test
+- cocotb-bus: https://github.com/cocotb/cocotb-bus
 - cocotb-coverage: https://github.com/cocotb/cocotb-coverage
 - pyuvm: https://github.com/pyuvm/pyuvm
 - cocotbext-axi: https://github.com/alexforencich/cocotbext-axi
 - Use: accelerate RTL regressions, batch simulator stimuli, enable full-system
   FPGA simulation, evaluate commercial GPU simulation, reduce cocotb
   signal-name errors with generated DUT stubs, expose scoped waveform context
-  to AI/debug agents, structure functional coverage, organize Python-UVM
-  components, and harden AXI-lite stimulus/monitoring.
+  to AI/debug agents, run pytest-wrapped cocotb regressions, reuse bus
+  drivers/monitors/scoreboards, structure functional coverage, organize
+  Python-UVM components, and harden AXI-lite stimulus/monitoring.
 - E1 fit: backend watchlist only until supported SystemVerilog subsets,
   simulator versions, generated netlist/stub hashes, waveform hashes, signal
   scope allowlists, coverage database hashes, bus-interface mappings,
@@ -352,6 +372,8 @@ power, and manufacturing preparation.
   https://huggingface.co/AS-SiliconMind/SiliconMind-V1-Qwen3-8B
 - VeriForge DeepSeek Coder:
   https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+- RTLFixer: https://github.com/NVlabs/RTLFixer
+- PyHDL-Eval: https://github.com/cornell-brg/pyhdl-eval
 - ChipSeek: https://github.com/rong-hash/chipseek
 - CircuitMind / TC-Bench: https://github.com/BUAA-CLab/CircuitMind
 - RTLSeek: https://arxiv.org/abs/2603.27630
@@ -377,16 +399,16 @@ power, and manufacturing preparation.
   https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
 - LLM_4_Verilog: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
 - Use: metadata-only candidates for RTL model evaluation, EDA-feedback RL
-  post-training, syntax-locked gate-level generation, constrained and
-  signal-aware Verilog generation, evolutionary RTL/PPA search, multi-agent PPA
-  optimization, future corpus curation, contamination checks, and held-out
-  benchmark construction.
+  post-training, syntax-repair loop review, multi-HDL evaluation harnessing,
+  syntax-locked gate-level generation, constrained and signal-aware Verilog
+  generation, evolutionary RTL/PPA search, multi-agent PPA optimization, future
+  corpus curation, contamination checks, and held-out benchmark construction.
 - E1 fit: do not download weights or datasets yet. Every external model/corpus
-  or RL/evolutionary/agentic framework needs exact revision pins, file
-  manifests, license review, quarantine paths, benchmark de-duplication,
-  model-card/base-model/reward/search-trace/RAG-trace/memory-state/prompt/output
-  hashes, local lint/sim/synth/formal/OpenLane gates, and human disposition
-  before any use.
+  or repair/RL/evolutionary/agentic framework needs exact revision pins, file
+  manifests, dependency and license review, quarantine paths, benchmark
+  de-duplication, API/privacy review where applicable, model-card/base-model/
+  reward/search-trace/RAG-trace/memory-state/prompt/output hashes, local
+  lint/sim/synth/formal/OpenLane gates, and human disposition before any use.
 
 ### Repository-Level RTL Evolution
 
@@ -564,11 +586,15 @@ power, and manufacturing preparation.
 - PerfVec: https://github.com/PerfVec/PerfVec
 - Concorde:
   https://www.catalyzex.com/paper/concorde-fast-and-accurate-cpu-performance
+- gem5: https://github.com/gem5/gem5
+- Sniper: https://github.com/snipersim/snipersim
 - ChampSim: https://champsim.github.io/ChampSim/master/
 - Use: automate or accelerate CPU architecture sweeps across branch predictors,
-  cache replacement, prefetchers, and broader microarchitecture configurations.
+  cache replacement, prefetchers, CPU/cache/memory simulator configurations,
+  and broader microarchitecture configurations.
 - E1 fit: target capture only. Any suggested BPU/cache/prefetch policy needs
-  trace provenance, simulator configs, before/after logs, RTL cost, synthesis,
+  trace provenance, pinned simulator configs, workload and stats hashes,
+  before/after logs, calibration against local baselines, RTL cost, synthesis,
   formal/cocotb, benchmark evidence, and review.
 
 ### Branch prediction
@@ -682,15 +708,21 @@ power, and manufacturing preparation.
 - FIRMHIVE: https://arxiv.org/abs/2511.18438
 - ADFEmu:
   https://www.sciencedirect.com/org/science/article/pii/S1546221825006885
+- QEMU: https://gitlab.com/qemu-project/qemu
+- Renode: https://github.com/renode/renode
+- Device Tree Compiler: https://git.kernel.org/pub/scm/utils/dtc/dtc.git
+- Buildroot: https://gitlab.com/buildroot.org/buildroot
 - OpenSBI: https://github.com/riscv-software-src/opensbi
 - U-Boot: https://github.com/u-boot/u-boot
 - Use: firmware patch validation, Linux driver co-evolution, kernel
   configuration tuning, firmware security triage, firmware fuzzing,
-  bootloader/BSP evidence capture, and simulator-guided boot debugging.
+  deterministic emulator/device-tree/rootfs replay, bootloader/BSP evidence
+  capture, and simulator-guided boot debugging.
 - E1 fit: target capture only. Do not apply firmware, DTS, driver, bootloader,
   kernel config, fuzzing harness, or generated patches until source hashes,
-  static analysis, platform-contract checks, QEMU/Renode transcripts, workload
-  logs, security replay, and reviewer disposition exist.
+  artifact hashes, static analysis, platform-contract checks, DTC warnings,
+  Buildroot build logs, QEMU/Renode transcripts, workload logs, security
+  replay, and reviewer disposition exist.
 
 ## Reliability, aging, EM, and resilience
 
@@ -946,6 +978,8 @@ power, and manufacturing preparation.
 
 - Standard: https://standards.ieee.org/ieee/1801/11890/
 - Open examples: https://opensource.ieee.org/upf
+- OpenROAD UPF backend:
+  https://openroad.readthedocs.io/en/latest/main/src/upf/README.html
 - Use: express power intent for power domains, supply sets, power states,
   isolation, retention, level shifting, and power-aware verification.
 - E1 fit: required before any real low-power/power-domain claim. Current E1
@@ -963,6 +997,17 @@ power, and manufacturing preparation.
   CDC/RDC, glitch, enable-polarity, and timing assumptions, so any output needs
   equivalence, RTL checks, formal, synthesis, DFT, CDC/RDC, STA, and measured or
   signoff power evidence before promotion.
+
+### OpenROAD clock gating
+
+- Docs: https://openroad.readthedocs.io/en/latest/main/src/cgt/README.html
+- Repo: https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/cgt
+- Use: ABC-backed flip-flop clock-gating insertion in an open physical-design
+  tool flow.
+- E1 fit: backend watchlist only. OpenROAD/ABC revisions, ICG library-cell
+  manifests, before/after netlists, equivalence, scan/DFT, CDC/RDC, STA, and
+  power reports are required before any generated gated-clock artifact can be
+  trusted.
 
 ### Lighter
 
@@ -1076,6 +1121,20 @@ power, and manufacturing preparation.
 - Use: scan insertion, scan-chain stitching, ATPG, and open DFT infrastructure.
 - E1 fit: add a future DFT evidence lane after synthesis/placement maturity.
 
+### Deterministic ATPG and test harness baselines
+
+- Atalanta: https://github.com/hsluoyz/Atalanta
+- Fault hardware testing framework: https://github.com/leonardt/fault
+- FAN_ATPG: https://github.com/NTU-LaDS-II/FAN_ATPG
+- Quaigh: https://github.com/Coloquinte/quaigh
+- Use: deterministic stuck-at ATPG/fault-simulation baselines, simulation test
+  harnesses, and equivalence/fault-analysis primitives for judging AI ATPG
+  claims.
+- E1 fit: watchlist only until exact revisions, licenses, supported netlist
+  subsets, fault-model manifests, pattern hashes, replay logs, and reviewer
+  disposition exist. These tools do not authorize scan insertion, generated
+  patterns, or fault-coverage claims by themselves.
+
 ### ML ATPG
 
 - InF-ATPG: https://arxiv.org/abs/2512.00079
@@ -1104,6 +1163,10 @@ power, and manufacturing preparation.
 
 ### RISC-V DV, RISCOF, and architectural tests
 
+- Verilator: https://github.com/verilator/verilator
+- Spike: https://github.com/riscv-software-src/riscv-isa-sim
+- Sail RISC-V: https://github.com/riscv/sail-riscv
+- riscv-formal: https://github.com/SymbioticEDA/riscv-formal
 - RISC-V DV: https://github.com/chipsalliance/riscv-dv
 - RISCOF docs: https://riscof.readthedocs.io/en/doc-dependency-fix/intro.html
 - RISC-V architectural tests: https://github.com/riscv/riscv-arch-test
@@ -1115,15 +1178,16 @@ power, and manufacturing preparation.
 - OpenXiangShan XFUZZ: https://github.com/OpenXiangShan/xfuzz
 - OpenXiangShan DiffTest: https://github.com/OpenXiangShan/difftest
 - FERIVer: https://arxiv.org/abs/2504.05284
-- Use: random instruction generation, RISC-V compatibility testing, ISS
-  comparison, ISA coverage, generative RISC-V fuzzing, coverage-guided RTL
-  fuzzing, CPU co-simulation, FPGA-assisted differential checking, and
-  compliance-oriented evidence.
+- Use: deterministic RTL simulation, ISA reference execution, formal ISA
+  semantics, RVFI-based checks, random instruction generation, RISC-V
+  compatibility testing, ISS comparison, ISA coverage, generative RISC-V
+  fuzzing, coverage-guided RTL fuzzing, CPU co-simulation, FPGA-assisted
+  differential checking, and compliance-oriented evidence.
 - E1 fit: required for future CPU/AP validation, but blocked until E1 has a
   buildable RISC-V DUT wrapper, pinned external suite revisions, ISS setup,
-  coverage/RVVI adapter evidence, DUT/reference traces, seed and generated
-  program manifests, FPGA bitstream/replay evidence where used, and executed
-  logs/signatures.
+  ISA/profile and CSR policy, coverage/RVVI adapter evidence, DUT/reference
+  traces, seed and generated program manifests, FPGA bitstream/replay evidence
+  where used, and executed logs/signatures.
 
 ### Cross-target chip tests and ML boot debug
 
@@ -1158,9 +1222,9 @@ power, and manufacturing preparation.
 6. Low-power target capture with
    `scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation`.
    Do not generate UPF, gated clocks, DVFS policy, retention/isolation logic, or
-   power-domain artifacts, and do not import clock-gating plugin outputs or
-   low-power RTL benchmark tasks, until deterministic low-power evidence gates
-   exist.
+   power-domain artifacts, and do not import OpenROAD/ABC clock-gating outputs,
+   UPF round-trip outputs, clock-gating plugin outputs, or low-power RTL
+   benchmark tasks, until deterministic low-power evidence gates exist.
 7. Verification-debug target capture with
    `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`.
    Do not generate or promote verification plans, testbenches, UVM collateral,
@@ -1232,9 +1296,9 @@ power, and manufacturing preparation.
 18. IP/register/platform-contract target capture with
     `scripts/ai_eda/capture_ip_register_contract_targets.py --run-id validation`.
     Do not import external IP, run register generators or EDA flows, edit
-    memory maps, headers, device trees, drivers, or RTL, or claim register/ABI
-    correctness without pinned revisions, license review, generated output
-    hashes, ABI diffs, deterministic local gates, and review.
+    memory maps, headers, device trees, drivers, UVM/RAL collateral, or RTL, or
+    claim register/ABI correctness without pinned revisions, license review,
+    generated output hashes, ABI diffs, deterministic local gates, and review.
 19. Memory macro/library target capture with
     `scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation`.
     Do not download PDKs or macros, import external memory collateral, run
@@ -1265,11 +1329,13 @@ power, and manufacturing preparation.
     review.
 22. Netlist equivalence and LEC target capture with
     `scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation`.
-    Do not run EQY, Yosys equivalence commands, ABC CEC, CIRCT LEC, or
-    generated LEC harnesses, and do not generate miters, waivers, proof logs,
-    RTL, netlists, scripts, or optimization patches without exact tool/solver
-    revisions, input/output hashes, black-box, memory, reset, x-propagation,
-    hierarchy, and clock assumptions, deterministic formal/simulation/
+    Do not run EQY, Yosys equivalence commands, SymbiYosys/yosys-smtbmc,
+    solver backends, ABC CEC, CIRCT LEC, or generated LEC/proof harnesses, and
+    do not generate miters, waivers, proof logs, RTL, netlists, scripts, or
+    optimization patches without exact tool/solver revisions, input/output
+    hashes, SMT input hashes where emitted, black-box, memory, reset,
+    x-propagation, hierarchy, clock assumptions, bound/depth settings,
+    witnesses, counterexample triage, deterministic formal/simulation/
     synthesis/STA/OpenLane/power gates, and review.
 23. Physical verification, DRC/LVS, and antenna target capture with
     `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`.

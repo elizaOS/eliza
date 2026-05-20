@@ -13,9 +13,9 @@
     "license_url": "https://license.coscl.org.cn/MulanPSL2/",
     "license_compatibility_with_apache_2_0": "claimed_compatible_per_openatomicfoundation_advisory_legal_review_required",
     "submodule_path": "external/xiangshan/XiangShan",
-    "pinned_release_tag": "kunminghu-v2-2025-04-23",
-    "pinned_commit": "BLOCKED_until_external_checkout_records_real_kunminghu_sha",
-    "pinned_commit_resolution_command": "git -C external/xiangshan/XiangShan rev-parse kunminghu-v2-2025-04-23"
+    "pinned_release_tag": "kunminghu-v3",
+    "pinned_commit": "09d715b21d77a76354a8a088002f2191c37a4bc7",
+    "pinned_commit_resolution_command": "git -C external/xiangshan/XiangShan rev-parse kunminghu-v3"
   },
   "fork_policy": "no_fork_yet",
   "fork_policy_reason": "Per docs/architecture-optimization/sota-2028/ooo-execution.md Section F.RTL maturity, XiangShan Kunminghu V3 lacks 3 nm signoff evidence. We pin the upstream commit and integrate via a thin wrapper rather than forking, until a tapeout-quality variant is needed.",
