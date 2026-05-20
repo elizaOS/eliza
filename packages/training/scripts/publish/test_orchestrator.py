@@ -768,6 +768,26 @@ def test_dflash_release_rejects_failed_real_validation_report(tmp_path: Path) ->
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
+def test_dflash_release_allows_structural_validation_with_native_acceptance_report(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "dflash" / "validation-real.json"
+    report = json.loads(report_path.read_text())
+    report["checks"]["acceptanceRollout"] = {
+        "pass": True,
+        "acceptanceRate": None,
+        "gate": 0.48,
+        "detail": "skipped (--skip-acceptance-rollout); native acceptance is in evals/dflash-accept.json",
+    }
+    report_path.write_text(json.dumps(report) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == 0
+
+
 # ---------------------------------------------------------------------------
 # (b) Missing license fails
 # ---------------------------------------------------------------------------

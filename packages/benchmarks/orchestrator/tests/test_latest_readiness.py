@@ -74,7 +74,7 @@ def test_latest_readiness_passes_complete_publishable_comparable_matrix(
     for agent in ("eliza", "hermes", "openclaw"):
         _write_json(latest / f"bfcl__{agent}.json", _row("bfcl", agent))
 
-    report = validate_latest_readiness(tmp_path)
+    report = validate_latest_readiness(tmp_path, check_runtime_gates=False)
 
     assert report.ok
 
@@ -85,7 +85,7 @@ def test_latest_readiness_fails_unsupported_cells_with_reason(tmp_path: Path) ->
     _write_json(latest / "terminal_bench__eliza.json", _row("terminal_bench", "eliza"))
     _write_json(latest / "terminal_bench__openclaw.json", _row("terminal_bench", "openclaw"))
 
-    report = validate_latest_readiness(tmp_path)
+    report = validate_latest_readiness(tmp_path, check_runtime_gates=False)
 
     assert not report.ok
     reasons = {finding.reason for finding in report.findings}
@@ -105,8 +105,40 @@ def test_latest_readiness_includes_publishability_and_comparability_findings(
     bad_openclaw["metrics"] = {"sample": True}
     _write_json(latest / "woobench__openclaw.json", bad_openclaw)
 
-    report = validate_latest_readiness(tmp_path, tolerance=0.08)
+    report = validate_latest_readiness(
+        tmp_path,
+        tolerance=0.08,
+        check_runtime_gates=False,
+    )
 
     reasons = {finding.reason for finding in report.findings}
     assert "truthy_non_real_flag" in reasons
     assert "score_spread_exceeds_tolerance" in reasons
+
+
+def test_latest_readiness_includes_current_runtime_gate_findings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _contract("bfcl"))
+    for agent in ("eliza", "hermes", "openclaw"):
+        _write_json(latest / f"bfcl__{agent}.json", _row("bfcl", agent))
+
+    from benchmarks.orchestrator import adapters
+
+    monkeypatch.setattr(adapters, "_has_gaia_official_dataset", lambda: False)
+    monkeypatch.setattr(adapters, "_has_hyperliquid_live_backend", lambda: True)
+    monkeypatch.setattr(adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(adapters, "_has_hermes_sandbox_backend", lambda: True)
+    monkeypatch.setattr(adapters, "_has_textvqa_real_inputs", lambda: True)
+    monkeypatch.setattr(adapters, "_has_vision_language_harness_runtime", lambda: True)
+
+    report = validate_latest_readiness(tmp_path)
+
+    assert not report.ok
+    assert any(
+        finding.scope == "runtime_gate:gaia_official_dataset"
+        and finding.reason == "runtime_gate_blocked"
+        for finding in report.findings
+    )

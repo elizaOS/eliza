@@ -54,11 +54,13 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/drafter-4b.gguf" in tier_plan.required_files
     assert "dflash/target-meta.json" in tier_plan.required_files
     assert "dflash/validation-real.json" in tier_plan.required_files
+    assert "dflash/runtime-smoke-native.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
     small_plan = build_plan()["0_8b"]
     assert "dflash/drafter-0_8b.gguf" in small_plan.required_files
     assert "dflash/target-meta.json" in small_plan.required_files
     assert "dflash/validation-real.json" in small_plan.required_files
+    assert "dflash/runtime-smoke-native.json" in small_plan.required_files
     assert "licenses/LICENSE.dflash" in small_plan.required_files
 
 
