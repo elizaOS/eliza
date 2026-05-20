@@ -714,6 +714,12 @@ def _publication_quarantine_reason(
         return "sample_task_set"
     if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
         return "demo_mode"
+    failed_scenarios = metrics.get("failed_scenarios")
+    if isinstance(failed_scenarios, (int, float)) and not isinstance(failed_scenarios, bool):
+        if failed_scenarios > 0:
+            return "failed_scenarios"
+    if metrics.get("interrupted") is True:
+        return "interrupted_run"
     return None
 
 

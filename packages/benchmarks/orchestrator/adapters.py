@@ -432,13 +432,30 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
         manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
     except Exception:
         return False
-    runtime = manifest_payload.get("runtime") if isinstance(manifest_payload, dict) else None
-    if not isinstance(runtime, dict) or "dflash" not in runtime:
+    if not isinstance(manifest_payload, dict):
+        return False
+    runtime = manifest_payload.get("runtime")
+    kernels = manifest_payload.get("kernels")
+    files = manifest_payload.get("files")
+    has_dflash_runtime = isinstance(runtime, dict) and "dflash" in runtime
+    has_dflash_kernel = (
+        isinstance(kernels, dict)
+        and isinstance(kernels.get("required"), list)
+        and "dflash" in {str(item) for item in kernels["required"]}
+    )
+    has_dflash_file = (
+        isinstance(files, dict)
+        and isinstance(files.get("dflash"), list)
+        and any(isinstance(item, dict) and item.get("path") for item in files["dflash"])
+    )
+    if not (has_dflash_runtime or has_dflash_kernel or has_dflash_file):
         return False
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [
         bundle / "text" / f"eliza-1-{slug}-64k.gguf",
         bundle / "text" / f"eliza-1-{slug}-32k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-128k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-256k.gguf",
         bundle / "text" / f"eliza-1-{slug}.gguf",
     ]
     vision = bundle / "vision" / f"mmproj-{slug}.gguf"

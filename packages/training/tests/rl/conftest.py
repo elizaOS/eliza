@@ -47,13 +47,25 @@ class _RLAliasFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path=None, target=None):
         if fullname in self._PARENTS:
             # Mirror the real `rl` package so `from src.training import X` works
-            # for symbols exported by scripts/rl/__init__.py.
+            # for symbols exported by scripts/rl/__init__.py — including those
+            # surfaced lazily via rl.__getattr__ (torch-dependent modules).
             try:
                 real_rl = importlib.import_module("rl")
             except ImportError:
                 real_rl = None
-            mod = types.ModuleType(fullname)
-            mod.__path__ = []  # mark as package
+
+            class _ProxyModule(types.ModuleType):
+                __path__: list[str] = []
+
+                def __getattr__(self, name: str):
+                    if real_rl is None:
+                        raise AttributeError(name)
+                    try:
+                        return getattr(real_rl, name)
+                    except AttributeError:
+                        raise AttributeError(name) from None
+
+            mod = _ProxyModule(fullname)
             if real_rl is not None:
                 for _attr_name, _attr_val in real_rl.__dict__.items():
                     if not _attr_name.startswith("__"):
@@ -82,7 +94,9 @@ class _RLAliasFinder(importlib.abc.MetaPathFinder):
 
 class _NullLoader(importlib.abc.Loader):
     def create_module(self, spec):  # noqa: D401
-        return None
+        # If we pre-built and stashed the proxy module in sys.modules, hand it
+        # back so Python doesn't replace it with an empty placeholder.
+        return sys.modules.get(spec.name)
 
     def exec_module(self, module):  # noqa: D401
         return None
