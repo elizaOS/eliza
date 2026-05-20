@@ -18,6 +18,19 @@ const taskCoordinatorPlugin: Plugin = {
     },
     {
       id: "task-coordinator",
+      label: "Task Coordinator XR",
+      description: "Coding agent task threads, sessions, and controls",
+      icon: "SquareTerminal",
+      path: "/task-coordinator",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CodingAgentTasksPanel",
+      tags: ["developer", "coding-agent", "tasks"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "task-coordinator",
       label: "Task Coordinator TUI",
       description: "Terminal coding agent task coordinator",
       icon: "SquareTerminal",
@@ -26,7 +39,10 @@ const taskCoordinatorPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "TaskCoordinatorTuiView",
       capabilities: [
-        { id: "list-sessions", description: "List active coding-agent sessions" },
+        {
+          id: "list-sessions",
+          description: "List active coding-agent sessions",
+        },
         {
           id: "list-task-threads",
           description: "List coding-agent task threads",

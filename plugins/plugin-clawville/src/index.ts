@@ -54,6 +54,20 @@ export function createAppClawvillePlugin(): Plugin {
       },
       {
         id: "clawville",
+        label: "ClawVille XR",
+        description:
+          "ClawVille game operator surface — agent controls and session management",
+        icon: "Gamepad2",
+        path: "/clawville",
+        viewType: "xr",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ClawvilleOperatorSurface",
+        tags: ["game", "clawville"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
+      {
+        id: "clawville",
         label: "ClawVille TUI",
         description: "Terminal ClawVille game operator surface",
         icon: "Gamepad2",

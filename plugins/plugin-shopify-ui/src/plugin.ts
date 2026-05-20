@@ -127,6 +127,20 @@ export const shopifyPlugin: Plugin = {
     },
     {
       id: "shopify",
+      label: "Shopify XR",
+      description:
+        "Shopify store management — orders, products, customers, and inventory",
+      icon: "ShoppingBag",
+      path: "/shopify",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ShopifyAppView",
+      tags: ["shopify", "ecommerce", "store"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "shopify",
       label: "Shopify TUI",
       description:
         "Terminal Shopify orders, products, customers, and inventory",
