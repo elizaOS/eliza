@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from elizaos_gaia.dataset import DatasetAccessError, GAIADataset
+from elizaos_gaia.dataset import DatasetAccessError, GAIADataset, find_cached_official_metadata
 from elizaos_gaia.types import TaskCategory, ToolType
 
 
@@ -95,3 +95,33 @@ async def test_gated_huggingface_error_is_actionable(
 
     assert exc_info.value.is_gated is True
     assert "provide a token" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_loads_cached_official_snapshot_without_token(tmp_path: Path) -> None:
+    metadata = (
+        tmp_path
+        / "datasets--gaia-benchmark--GAIA"
+        / "snapshots"
+        / "abc123"
+        / "2023"
+        / "validation"
+        / "metadata.jsonl"
+    )
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(
+        (
+            '{"task_id":"CACHE-001","Question":"What is 9 plus 1?",'
+            '"Final answer":"10","Level":"1"}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    assert find_cached_official_metadata(cache_dir=tmp_path, split="validation") == metadata
+
+    dataset = GAIADataset(cache_dir=str(tmp_path))
+    questions = await dataset.load(source="gaia", split="validation", hf_token=None)
+
+    assert len(questions) == 1
+    assert questions[0].task_id == "CACHE-001"
+    assert questions[0].final_answer == "10"

@@ -452,7 +452,11 @@ export default defineConfig(({ mode }) => {
                 name: "vendor-wallet",
                 test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
                 priority: 40,
-                maxSize: 450 * 1024,
+                // Keep this graph intact. Rolldown can split CommonJS init
+                // wrappers across wallet chunks in a way that makes wagmi call
+                // an imported wrapper before it has the right shape in the
+                // production browser bundle.
+                maxSize: 1800 * 1024,
               },
               {
                 // Chain hex/ABI codecs. These are imported by many non-wallet

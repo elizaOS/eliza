@@ -20,6 +20,23 @@ const compatibilityFiles = [
     content: "{}\n",
   },
   {
+    file: path.join(tempDistDir, "server", "app-paths-manifest.json"),
+    content: `${JSON.stringify(
+      {
+        "/api/analyze-photo/route": "app/api/analyze-photo/route.js",
+        "/_not-found/page": "app/_not-found/page.js",
+        "/api/create-character/route": "app/api/create-character/route.js",
+        "/api/generate-field/route": "app/api/generate-field/route.js",
+        "/api/generate-photo/route": "app/api/generate-photo/route.js",
+        "/api/generate-scene/route": "app/api/generate-scene/route.js",
+        "/cloning/page": "app/cloning/page.js",
+        "/page": "app/page.js",
+      },
+      null,
+      2,
+    )}\n`,
+  },
+  {
     file: path.join(
       tempDistDir,
       "server",

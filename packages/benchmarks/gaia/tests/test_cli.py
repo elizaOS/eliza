@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from elizaos_gaia.cli import get_hf_token_from_env, prepare_dataset_access
@@ -29,6 +31,32 @@ def test_official_gaia_with_token_keeps_official_dataset() -> None:
     config = GAIAConfig(dataset_source="gaia")
 
     error = prepare_dataset_access(config, quick_test=False, hf_token="present")
+
+    assert error is None
+    assert config.dataset_source == "gaia"
+
+
+def test_official_gaia_with_cached_snapshot_keeps_official_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata = (
+        tmp_path
+        / ".cache"
+        / "gaia"
+        / "datasets--gaia-benchmark--GAIA"
+        / "snapshots"
+        / "abc123"
+        / "2023"
+        / "validation"
+        / "metadata.jsonl"
+    )
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = GAIAConfig(dataset_source="gaia", split="validation")
+
+    error = prepare_dataset_access(config, quick_test=False, hf_token=None)
 
     assert error is None
     assert config.dataset_source == "gaia"

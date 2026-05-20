@@ -113,6 +113,15 @@ test.describe("live: public routes against real backend", () => {
     return c;
   }
 
+  async function expectVisibleRouteContent(page: Page) {
+    const main = page.locator("main").first();
+    if ((await main.count()) > 0) {
+      await expect(main).toBeVisible();
+      return;
+    }
+    await expect(page.locator("#root")).toBeVisible();
+  }
+
   for (const route of publicRoutes) {
     test(`live: ${route} loads clean`, async ({ page }) => {
       const captured = collect(page);
@@ -122,7 +131,7 @@ test.describe("live: public routes against real backend", () => {
 
       // Settle SSR-hydrated content
       await page.waitForTimeout(1500);
-      await expect(page.locator("body")).toBeVisible();
+      await expectVisibleRouteContent(page);
       await expect(
         page.getByRole("heading", { name: /^Page Not Found$/i }),
       ).toHaveCount(0);
@@ -159,4 +168,13 @@ test.describe("live: public routes against real backend", () => {
       }
     });
   }
+
+  test("live: /checkout redirects to elizaOS checkout", async ({ page }) => {
+    await page.goto("/checkout?collection=elizaos-hardware", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page).toHaveURL(
+      "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    );
+  });
 });

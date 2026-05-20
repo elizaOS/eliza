@@ -1494,6 +1494,70 @@ def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path)
     assert hermes_command[hermes_command.index("--providers") + 1] == "hermes"
 
 
+def test_gaia_registry_uses_env_dataset_path_as_local_jsonl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza"},
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
+
+
+def test_gaia_registry_env_dataset_path_overrides_default_gaia_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia_orchestrated"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"dataset": "gaia", "providers": ["eliza"]},
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
+
+
+def test_gaia_orchestrated_registry_forwards_dataset_path(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia_orchestrated"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {
+            "dataset": "jsonl",
+            "dataset_path": str(dataset),
+            "max_questions": 2,
+            "providers": ["eliza"],
+        },
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
+
+
 def test_gaia_and_webshop_registry_route_cross_harnesses(tmp_path: Path) -> None:
     entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
 
@@ -2427,6 +2491,35 @@ def test_woobench_orchestrator_default_is_bounded_multi_scenario_persona(tmp_pat
     assert command[command.index("--random-seed") + 1] == "1"
 
 
+def test_woobench_orchestrator_explicit_scenario_overrides_default_list(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["woobench"]
+    extra = dict(adapter.default_extra_config)
+    extra.update({"scenario": "friend_supporter_tarot_01", "evaluator": "llm"})
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("woobench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config=extra,
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert "--scenarios" not in command
+    assert command[command.index("--scenario") + 1] == "friend_supporter_tarot_01"
+    assert command[command.index("--evaluator") + 1] == "llm"
+
+
 def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Path) -> None:
     result_path = tmp_path / "woobench_smoke.json"
     result_path.write_text(
@@ -3223,9 +3316,12 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
         json.dumps(
             {
                 "id": "eliza-1-9b",
-                "runtime": {"dflash": {"enabled": True}},
                 "kernels": {"required": ["dflash"]},
-                "files": {"dflash": [{"path": "dflash/drafter-9b.gguf"}]},
+                "files": {
+                    "dflash": [{"path": "dflash/drafter-9b.gguf"}],
+                    "text": [{"path": "text/eliza-1-9b-128k.gguf"}],
+                    "vision": [{"path": "vision/mmproj-9b.gguf"}],
+                },
             }
         ),
         encoding="utf-8",

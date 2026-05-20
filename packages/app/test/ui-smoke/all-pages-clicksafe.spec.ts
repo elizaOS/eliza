@@ -159,13 +159,8 @@ const MOBILE_PROBE: ViewportProbe = {
   size: { width: 390, height: 844 },
   routes: [
     MOBILE_CHAT_ROUTE_PROBE,
-    CORE_ROUTE_PROBES[1],
-    CORE_ROUTE_PROBES[2],
-    CORE_ROUTE_PROBES[3],
-    CORE_ROUTE_PROBES[6],
-    ...APP_TOOL_ROUTE_PROBES.filter((route) =>
-      new Set<string>().has(route.path),
-    ),
+    ...CORE_ROUTE_PROBES.slice(1),
+    ...APP_TOOL_ROUTE_PROBES,
   ],
 };
 
@@ -1204,7 +1199,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
     return;
   }
   if (route.path === "/apps/companion") {
-    await expect(page.getByTestId("companion-root")).toBeVisible({
+    await expect(page.getByTestId("companion-root").first()).toBeVisible({
       timeout: route.timeoutMs,
     });
     return;

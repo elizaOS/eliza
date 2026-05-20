@@ -201,6 +201,14 @@ const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
   ["/dashboard/voices", /\/dashboard\/api-explorer$/],
 ];
 
+const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [
+  [
+    "/checkout?collection=elizaos-hardware",
+    "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    "elizaOS checkout",
+  ],
+];
+
 async function installApiMocks(page: Page) {
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
@@ -685,6 +693,21 @@ for (const [from, toPattern] of dashboardRedirects) {
     await setTestAuth(page);
     await page.goto(from);
     await expect(page).toHaveURL(toPattern);
+  });
+}
+
+for (const [from, to, bodyText] of publicRedirects) {
+  test(`public redirect route: ${from}`, async ({ page }) => {
+    await page.route("https://elizaos.ai/**", (route) =>
+      route.fulfill({
+        body: `<html><body>${bodyText}</body></html>`,
+        contentType: "text/html",
+      }),
+    );
+
+    await page.goto(from);
+    await expect(page).toHaveURL(to);
+    await expect(page.getByText(bodyText)).toBeVisible();
   });
 }
 

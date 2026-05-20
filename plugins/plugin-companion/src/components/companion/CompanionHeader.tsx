@@ -110,7 +110,7 @@ export const CompanionHeader = memo(function CompanionHeader(
 
   return (
     <header
-      className="absolute inset-x-0 top-0 z-10 overflow-visible"
+      className="absolute inset-x-0 top-0 z-30 overflow-visible"
       data-no-camera-drag="true"
     >
       <div className="px-2 py-1">

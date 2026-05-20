@@ -11,35 +11,19 @@ require external accounts, cloud projects, desktop apps, hardware, or credential
 Run these from the repository root after `bun install`:
 
 ```bash
-# Typecheck every example package that exposes a typecheck script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.typecheck ? 0 : 1)"; then
-        bun run --cwd "$dir" typecheck
-      fi
-    done
+# List all example packages and scripts.
+node packages/examples/scripts/verify-examples.mjs --mode list
 
-# Test every example package that exposes a test script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.test ? 0 : 1)"; then
-        bun run --cwd "$dir" test
-      fi
-    done
+# Check every example package has direct README coverage and top-level docs.
+node packages/examples/scripts/verify-examples.mjs --mode docs
 
-# Build every example package that exposes a build script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.build ? 0 : 1)"; then
-        bun run --cwd "$dir" build
-      fi
-    done
+# Run local validation sweeps. These execute every package script of that kind.
+node packages/examples/scripts/verify-examples.mjs --mode typecheck
+node packages/examples/scripts/verify-examples.mjs --mode test
+node packages/examples/scripts/verify-examples.mjs --mode build
+
+# Optional full run with a machine-readable report.
+node packages/examples/scripts/verify-examples.mjs --mode all --json packages/examples/verification-report.json
 ```
 
 ## Current Local Evidence
@@ -49,10 +33,10 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Scope | Evidence |
 | --- | --- |
 | Dependency install | `bun install` completed. |
-| Package typechecks | All `packages/examples/**/package.json` packages with a `typecheck` script completed after fixes. |
-| Package tests | All packages with a `test` script completed. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
-| Package builds | All packages with a `build` script completed. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `bun run --cwd packages/examples/agent-console typecheck`, `bun run --cwd packages/examples/convex build`, and `bun run --cwd packages/examples/trader build` passed after the last example fixes. |
+| Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
+| Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
+| Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, and `cloud/clone-ur-crush` passed targeted reruns after the last fixes. |
 | Static docs | `packages/examples/setup-guide.html` is linked from `packages/examples/README.md` and covers Roblox, Minecraft, cloud, social, hardware, and wallet setup links. |
 
 ## Example Matrix
