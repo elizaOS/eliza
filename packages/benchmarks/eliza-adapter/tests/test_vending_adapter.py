@@ -129,3 +129,20 @@ def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     response, _tokens = asyncio.run(provider.generate("", "What next?"))
 
     assert response == "I am not sure."
+
+
+def test_vending_provider_preserves_empty_structured_response() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text="",
+            thought=None,
+            actions=[],
+            params={},
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+
+    assert response == ""

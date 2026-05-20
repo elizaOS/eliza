@@ -1007,6 +1007,61 @@ function buildLifeOpsBenchmarkContext(
   };
 }
 
+function buildLifeOpsActionCallingMessages(params: {
+  userText: string;
+  lifeopsContext: Record<string, unknown>;
+}): Array<Record<string, unknown>> {
+  const contextJson = JSON.stringify(params.lifeopsContext, null, 2);
+  return [
+    {
+      role: "system",
+      content:
+        "You are running LifeOpsBench through the Eliza benchmark server. " +
+        "Use native tool calls for calendar, mail, message, task, and related LifeOps operations. " +
+        "For free/busy or availability questions, call CALENDAR with action and subaction exactly " +
+        "check_availability and provide top-level startAt/endAt ISO timestamps; do not use search_events. " +
+        "Do not serialize tool calls in text, XML, markdown, or JSON. " +
+        "After a tool call, the benchmark backend will execute it and feed back the result on the next turn. " +
+        "Return assistant text only when no tool call is needed.\n\n" +
+        `LifeOps benchmark context:\n${contextJson}`,
+    },
+    {
+      role: "user",
+      content: params.userText,
+    },
+  ];
+}
+
+function lifeOpsToolCallsFromNativeToolCalls(
+  toolCalls: Array<{
+    id: string;
+    function: { name: string; arguments: string };
+  }>,
+): Array<{
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}> {
+  return toolCalls.map((call, index) => {
+    let parsedArgs: unknown = {};
+    try {
+      parsedArgs = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      parsedArgs = {};
+    }
+    return {
+      id: call.id || `call_${index}`,
+      name: call.function.name,
+      arguments:
+        parsedArgs &&
+        typeof parsedArgs === "object" &&
+        !Array.isArray(parsedArgs)
+          ? (parsedArgs as Record<string, unknown>)
+          : {},
+    };
+  });
+}
+
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
   try {
@@ -1935,12 +1990,47 @@ export async function startBenchmarkServer() {
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
 
+      const lifeopsContext = buildLifeOpsBenchmarkContext(
+        backend,
+        previousTurns,
+      );
       const benchmarkContext = normalizeBenchmarkContext(session, {
         benchmark: "lifeops_bench",
         task_id: taskId,
         ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
-        lifeops: buildLifeOpsBenchmarkContext(backend, previousTurns),
+        lifeops: lifeopsContext,
       });
+
+      if (Array.isArray(toolManifest) && toolManifest.length > 0) {
+        const directUsageBuffer: BenchmarkLlmCallUsage[] = [];
+        activeUsageBuffer = directUsageBuffer;
+        try {
+          const directResult = await callOpenAiCompatibleActionCalling({
+            messages: buildLifeOpsActionCallingMessages({
+              userText,
+              lifeopsContext,
+            }),
+            tools: toolManifest,
+            toolChoice: "required",
+            maxTokens: 1024,
+            temperature: 0,
+          });
+          if (directResult) {
+            if (directResult.usage) {
+              directUsageBuffer.push(directResult.usage);
+            }
+            const toolCalls = lifeOpsToolCallsFromNativeToolCalls(
+              directResult.toolCalls,
+            );
+            if (toolCalls.length > 0) {
+              const usage = summarizeBenchmarkTurnUsage(directUsageBuffer);
+              return { text: directResult.text, toolCalls, usage };
+            }
+          }
+        } finally {
+          activeUsageBuffer = null;
+        }
+      }
 
       // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
       // world snapshot, tool manifest, and previous tool results. Duplicating
