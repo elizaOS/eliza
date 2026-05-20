@@ -323,11 +323,17 @@ def synthetic_recursive_call_return(depth: int = 32, repeats: int = 8) -> Iterat
     return_base = 0x8000_5000
     for _ in range(repeats):
         for i in range(depth):
+            call_pc = call_base + i * 0x40
             yield BranchEvent(
-                pc=call_base + i * 0x40,
+                pc=call_pc,
                 target=call_base + (i + 1) * 0x40,
                 taken=True,
                 kind=BR_CALL,
+                # Match the return target stored by the corresponding RET
+                # below so the RAS push and pop are consistent. The synthetic
+                # uses a 0x20 stride between call and return-target to mirror
+                # a 32-byte fetch block, not the per-instruction CBP-5 layout.
+                call_return_pc=call_pc + 0x20,
             )
         for i in range(depth - 1, -1, -1):
             yield BranchEvent(
@@ -342,11 +348,13 @@ def synthetic_irregular_calls(depth: int = 96, repeats: int = 4) -> Iterator[Bra
     """Push more than RAS_SPEC_ENTRIES to exercise overflow logic."""
     for _ in range(repeats):
         for i in range(depth):
+            call_pc = 0x8000_6000 + i * 0x40
             yield BranchEvent(
-                pc=0x8000_6000 + i * 0x40,
+                pc=call_pc,
                 target=0x8000_7000 + i * 0x40,
                 taken=True,
                 kind=BR_CALL,
+                call_return_pc=call_pc + 0x20,
             )
         for i in range(depth):
             yield BranchEvent(
@@ -391,6 +399,7 @@ def synthetic_mixed_workload(rounds: int = 64) -> Iterator[BranchEvent]:
             target=base_call + 0x200,
             taken=True,
             kind=BR_CALL,
+            call_return_pc=base_call + 0x40,
         )
         yield BranchEvent(
             pc=base_call + 0x208,
@@ -402,7 +411,8 @@ def synthetic_mixed_workload(rounds: int = 64) -> Iterator[BranchEvent]:
             pc=base_ind,
             target=base_ind + 0x100 * (r % 3),
             taken=True,
-            kind=BR_CALL,
+            kind=BR_IND,
+            call_return_pc=base_ind + 4,
         )
 
 

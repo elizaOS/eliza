@@ -18,12 +18,15 @@ SPEC2017, AOSP, or JS-engine MPKI claims.
   framework. Reference per-trace MPKI is parsed from
   `reference_results_training_set.csv`.
 
-## Per-trace MPKI (model + RTL backends)
+## Per-trace MPKI (model + RTL backends), R7 post-fix
 
 | trace | branches | instructions | model MPKI | RTL MPKI | CBP-5 64KB TAGE-SC-L ref MPKI | model gap | RTL gap |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample_fp_trace  | 148 723 |  997 741 | 3.078 | 52.554 | 0.5736 (fp_0_trace full) | +2.504 | +51.980 |
-| sample_int_trace | 181 877 |  997 301 | 2.214 | 59.737 | 5.1327 (int_0_trace full) | -2.919 | +54.605 |
+| sample_fp_trace  | 148 723 |  997 741 | 3.078 | 4.221 | 0.5736 (fp_0_trace full) | +2.504 | +3.647 |
+| sample_int_trace | 181 877 |  997 301 | 2.214 | 9.666 | 5.1327 (int_0_trace full) | -2.919 | +4.533 |
+
+R6 baseline (pre-fix): RTL `sample_fp_trace = 52.554`, `sample_int_trace = 59.737`.
+R7 post-fix: 12.4 × reduction on fp, 6.2 × reduction on int.
 
 Model values: `docs/evidence/cpu_ap/mpki_results_cbp5.json`
 (`schema=eliza.bpu_mpki.v1`, `harness=behavioural-bpu-model`).
@@ -50,42 +53,78 @@ python3 benchmarks/cpu/branch/run_mpki.py --backend rtl
 # (the cocotb harness auto-discovers external/cbp5-traces/*.gz).
 ```
 
-## Gap analysis (calibration finding)
+## R7 fixes (committed)
 
-The two backends diverge by **17 - 27 x** on the same traces. The RTL
-result is dominated by two architecturally explicit gaps:
+The R6 RTL/model divergence was driven by four concrete RTL design
+gaps, all addressed in R7:
 
-1. **No distinct indirect-jump kind in `bpu_pkg.sv`.** `br_kind_e` is 2
-   bits with values `{BR_NONE, BR_COND, BR_CALL, BR_RET}`. There is no
-   way to express "indirect jump that does not push the RAS". The CBP-5
-   training mix has substantial uncondIndBr traffic (e.g. switch
-   dispatch, PLT, vtable): 6 235 in `sample_int_trace` and 1 in
-   `sample_fp_trace`. The cocotb harness collapses model-side `BR_IND`
-   into `BR_CALL` (`_rtl_kind_for` in
-   `verify/cocotb/bpu/test_bpu_mpki.py`) because the RTL has no other
-   slot. Every spurious push then desynchronises the RAS:
-   `pmu_counters_delta.ras_overflow = 18 508` on `sample_int_trace`.
-2. **Cond mispredict rate is high (24 - 27 %) on real traces.** The
-   behavioural model gets 1.3 - 2.4 % on the same traces with the same
-   TAGE geometry. The RTL TAGE-SC-L mix is wired to take *every* taken
-   branch into the global history; with thousands of taken
-   uncond/call/ret events between cond updates, the active history
-   bucket collapses to a near-constant pattern that prevents
-   per-PC tag separation.
+1. **`br_kind_e` widened to 3 bits.** Added `BR_IND = 4` so the RTL can
+   express "indirect jump that does not push the RAS" (switch dispatch,
+   PLT, vtable). The cocotb harness no longer collapses `BR_IND ->
+   BR_CALL`; on `sample_int_trace` the RAS overflow counter dropped from
+   18 508 to 0 because spurious indirect pushes are gone. Consumers
+   updated: `rtl/cpu/bpu/bpu_top.sv` arbitration and PMU strobes,
+   `rtl/cpu/bpu/ittage.sv` training gate (now `CALL || IND`, was
+   `CALL || RET`), `verify/cocotb/bpu/*.sv` flat-port widths.
+2. **TAGE/SC global-history update filtered to `BR_COND`.** The
+   `bpu_top.sv` `ghist_spec_q` / `ghist_arch_q` update path now
+   advances only on conditional resolves, matching the behavioural
+   model and the Seznec TAGE/SC reference. Unconditional taken
+   branches no longer corrupt the global history bucket.
+3. **Explicit `actual_call_return_pc` carried through `bpu_resolve_t`
+   and the FTB entry.** The RAS used to push `lkp_pc +
+   FETCH_BLOCK_BYTES` (32 B), which is correct only when the call is
+   the last instruction in a 32 B fetch block. CBP-5 / ARM64 / RV64
+   instruction-grained traces push `pc + 4`. The FTB now stores a
+   per-entry `fall_through_pc` and the resolver passes it on commit;
+   the cocotb harness drives `resolve_call_return_pc`. RTL ret_misp on
+   `sample_int_trace` dropped from 12 902 to 7 849.
+4. **FTB / uFTB indexed at instruction granularity (drop bit 0
+   instead of bits 4:0).** The original block-aligned index collapsed
+   every branch in a 32 B fetch block into a single FTB entry. For
+   per-instruction CBP-5 trace replay that aliases the COND/CALL/RET
+   in the same block into one slot, so half the branches read the
+   wrong stored kind. Switching to instruction-aligned indexing is a
+   strict refinement (the block index is implied by the upper bits)
+   and matches how XiangShan KMH and Apple A18 BPUs hash per-branch
+   when the block contains multiple branches. RTL cond_misp on
+   `sample_int_trace` dropped from 32 299 to 9 666.
 
-Both gaps are RTL design issues exposed by the first real-trace run,
-not measurement artifacts. Followup tickets:
+The bimodal seed was also flipped from weakly-not-taken to weakly-taken
+to match the model and the canonical Seznec convention.
 
-- Widen `br_kind_e` (or add an `is_call` predicate decoded separately
-  from `kind`) so the RTL can express indirect-jump-without-RAS-push.
-- Audit the history-update path in `tage.sv` / `sc.sv`: filter the
-  global history to conditional branches only, mirroring the
-  behavioural model.
+## Residual gap (post-R7)
 
-The model-side numbers are the better calibrated of the two and are
-within 0.6 - 5x of the CBP-5 reference, which is consistent with running
-the geometry on a 1 M-instruction prefix versus the full 40 M+
-reference trace.
+After the R7 fixes the RTL stays within **1.4 ×** of the model on
+`sample_fp_trace` (4.22 vs 3.08 MPKI) and **4.4 ×** on
+`sample_int_trace` (9.67 vs 2.21 MPKI).
+
+Per-class residual on `sample_int_trace` (the harder workload):
+
+- `br_ind_misp = 5 994` (was 14 354 in R6) — dominant residue. ITTAGE
+  has 14 255 indirect branches in the trace and converges much slower
+  than the model. The R7 fix changed the wrong-class training gate
+  (now `CALL || IND`, was `CALL || RET`) and the harness now drives
+  the correct 3-bit kind, but the per-table allocation policy and the
+  bimodal-like cold-target eviction are different in shape from the
+  Python model and need a focused convergence audit.
+- `br_cond_misp = 3 566` (was 32 299 in R6) — within 2 × of the
+  model. The remaining cond gap is driven by FTB cold misses
+  (`ftb_miss = 7 985`); the per-PC FTB index helped but the 2 048
+  entry capacity is still under-provisioned for the int trace's
+  branch footprint.
+- `br_ret_misp = 80` (was 12 902 in R6) — essentially closed by the
+  fall-through-PC fix; the residual 80 are cold-start lookups where
+  the FTB had not yet learnt the call.
+- `ras_overflow = 0` (was 18 508) — fully resolved by the BR_IND /
+  BR_CALL split.
+
+The next planned step is an ITTAGE convergence-rate audit (Seznec's
+2008 ITTAGE allocation policy vs the Kunminghu-class allocator we
+have today). Both gaps are RTL design issues exposed by real-trace
+ingest, not measurement artifacts. The model-side numbers stay within
+0.6 - 5 × of the CBP-5 reference, consistent with running the geometry
+on a 1 M-instruction prefix versus the full 40 M+ reference trace.
 
 ## CBP2016 64KB TAGE-SC-L reference summary (workload-class averages)
 

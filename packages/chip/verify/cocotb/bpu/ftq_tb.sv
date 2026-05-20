@@ -17,7 +17,7 @@ module ftq_tb (
     input  logic [VADDR_W-1:0]  push_end_pc,
     input  logic [VADDR_W-1:0]  push_target_pc,
     input  logic                push_taken,
-    input  logic [1:0]          push_kind,
+    input  logic [2:0]          push_kind,
     output logic                push_ready,
 
     input  logic                pop_ready,
@@ -25,7 +25,7 @@ module ftq_tb (
     output logic [VADDR_W-1:0]  pop_start_pc,
     output logic [VADDR_W-1:0]  pop_target_pc,
     output logic                pop_taken,
-    output logic [1:0]          pop_kind,
+    output logic [2:0]          pop_kind,
     output logic [FTQ_IDX_W-1:0] pop_ftq_idx,
 
     input  logic                flush_valid,

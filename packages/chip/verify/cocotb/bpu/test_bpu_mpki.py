@@ -100,6 +100,7 @@ async def _reset(dut):
     dut.resolve_misp.value = 0
     dut.resolve_pc.value = 0
     dut.resolve_target.value = 0
+    dut.resolve_call_return_pc.value = 0
     dut.resolve_taken.value = 0
     dut.resolve_kind.value = 0
     dut.resolve_ftq_idx.value = 0
@@ -146,15 +147,23 @@ async def _drive_event(dut, event: BranchEvent) -> bool:
         misp = (
             (pred_taken != actual_taken)
             or (actual_taken and not target_check)
-            or (not kind_check and event.kind in (BR_CALL, BR_RET))
+            or (not kind_check and event.kind in (BR_CALL, BR_RET, BR_IND))
         )
     else:
         misp = True
+
+    # call_return_pc carries the architectural fall-through PC of the call
+    # so the BPU's RAS pushes the correct return address. For non-call
+    # events the BPU ignores this field; pass through whatever the trace
+    # provides (defaulting to pc + 4 — the RV64 / ARM64 instruction stride
+    # used by the CBP-5 readers).
+    return_pc = event.call_return_pc if event.call_return_pc is not None else int(event.pc) + 4
 
     dut.resolve_valid.value = 1
     dut.resolve_misp.value = 1 if misp else 0
     dut.resolve_pc.value = event.pc
     dut.resolve_target.value = actual_target
+    dut.resolve_call_return_pc.value = return_pc
     dut.resolve_taken.value = 1 if actual_taken else 0
     dut.resolve_kind.value = event.kind
     dut.resolve_ftq_idx.value = 0
@@ -258,35 +267,20 @@ def _resolve_output_path() -> Path:
     return _REPO_ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
 
 
-# BR_IND is a model-side distinction (indirect jump without RAS push). The
-# RTL only knows BR_NONE/BR_COND/BR_CALL/BR_RET so when driving real traces
-# we collapse BR_IND -> BR_CALL. The resulting RAS corruption is documented
-# as a calibration finding in
-# docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
-def _rtl_kind_for(model_kind: int) -> int:
-    if model_kind == BR_IND:
-        return BR_CALL
-    return model_kind
-
-
-async def _drive_event_rtl(dut, event: BranchEvent) -> bool:
-    """Drive a model-side event with kind collapsed for RTL consumption."""
-    rtl_event = BranchEvent(
-        pc=int(event.pc),
-        target=int(event.target),
-        taken=bool(event.taken),
-        kind=int(_rtl_kind_for(event.kind)),
-        call_return_pc=event.call_return_pc,
-    )
-    return await _drive_event(dut, rtl_event)
-
-
 async def _run_cbp5_workload(
     dut, name: str, branches: list[BranchEvent], instruction_count: int
 ) -> dict:
     """Replay a CBP-5 trace through the RTL BPU. ``instruction_count`` is
     the true retired-instruction count from the .gz stream; MPKI is
-    computed against it (not against branches*5)."""
+    computed against it (not against branches*5).
+
+    ``BR_IND`` (indirect-no-RAS) is driven through to the RTL using the
+    3-bit ``br_kind_e`` encoding so the RAS only sees real calls and
+    returns. Previous revisions of this harness collapsed ``BR_IND`` into
+    ``BR_CALL`` because the RTL only had a 2-bit kind; that bug was the
+    root cause of the 17-27x RTL/model MPKI divergence reported in
+    ``docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md``.
+    """
     await _reset(dut)
     before = await _snapshot_counters(dut)
 
@@ -295,7 +289,7 @@ async def _run_cbp5_workload(
     misp_ret = 0
     taken_count = 0
     for event in branches:
-        misp = await _drive_event_rtl(dut, event)
+        misp = await _drive_event(dut, event)
         if event.taken:
             taken_count += 1
         if misp:
@@ -362,7 +356,13 @@ async def bpu_mpki_synthetic_8_workload_sweep(dut):
 
     for name in expected:
         events = [
-            BranchEvent(pc=int(e.pc), target=int(e.target), taken=bool(e.taken), kind=int(e.kind))
+            BranchEvent(
+                pc=int(e.pc),
+                target=int(e.target),
+                taken=bool(e.taken),
+                kind=int(e.kind),
+                call_return_pc=e.call_return_pc,
+            )
             for e in SYNTHETIC_GENERATORS[name]()
         ]
         results[name] = await _run_workload(dut, name, events)

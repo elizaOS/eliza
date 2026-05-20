@@ -38,12 +38,15 @@ module uftb
     logic [$clog2(UFTB_WAYS)-1:0] rr_ptr_q [UFTB_SETS];
 
     /* verilator lint_off UNUSEDSIGNAL */
+    // See the matching note in rtl/cpu/bpu/ftb.sv: the index drops only the
+    // RV instruction-alignment bit so per-instruction trace replay does not
+    // alias every branch in a 32 B block into one uFTB entry.
     function automatic logic [UFTB_IDX_W-1:0] uftb_idx(input logic [VADDR_W-1:0] pc);
-        uftb_idx = pc[5 +: UFTB_IDX_W];
+        uftb_idx = pc[1 +: UFTB_IDX_W];
     endfunction
 
     function automatic logic [UFTB_TAG_W-1:0] uftb_tag(input logic [VADDR_W-1:0] pc);
-        uftb_tag = pc[5 + UFTB_IDX_W +: UFTB_TAG_W];
+        uftb_tag = pc[1 + UFTB_IDX_W +: UFTB_TAG_W];
     endfunction
     /* verilator lint_on UNUSEDSIGNAL */
 

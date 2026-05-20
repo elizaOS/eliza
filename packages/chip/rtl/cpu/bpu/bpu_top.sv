@@ -78,6 +78,7 @@ module bpu_top
 
     logic                  ftb_hit;
     logic [VADDR_W-1:0]    ftb_target;
+    logic [VADDR_W-1:0]    ftb_fall_through_pc;
     br_kind_e              ftb_kind;
     // FTB returns up to MAX_BR_PER_BLOCK valid branch slots per fetch block.
     // Reserved for the two-taken-per-cycle extension (BLOCKED until the
@@ -94,11 +95,13 @@ module bpu_top
         .lkp_pc     (lkp_pc),
         .lkp_hit    (ftb_hit),
         .lkp_target (ftb_target),
+        .lkp_fall_through_pc(ftb_fall_through_pc),
         .lkp_kind   (ftb_kind),
         .lkp_br_valid(ftb_br_valid),
         .upd_valid  (resolve.valid),
         .upd_pc     (resolve.pc),
         .upd_target (resolve.actual_target),
+        .upd_fall_through_pc(resolve.actual_call_return_pc),
         .upd_kind   (resolve.actual_kind),
         .upd_br_valid({MAX_BR_PER_BLOCK{1'b1}}),
         .upd_alloc  (resolve.valid && resolve.misprediction),
@@ -197,10 +200,12 @@ module bpu_top
     logic [VADDR_W-1:0]    ras_spec_push_addr;
 
     // RAS push/pop signals are derived from the FTB-decoded branch kind.
-    // CALL: push the linear address after the branch. RET: pop the top.
+    // CALL: push the call's fall-through PC (stored in the FTB on the
+    // matching update); the resolver supplies the same address on commit.
+    // RET: pop the top. Pure indirect (BR_IND) does not push or pop.
     assign ras_spec_push      = lkp_valid && ftb_hit && (ftb_kind == BR_CALL);
     assign ras_spec_pop       = lkp_valid && ftb_hit && (ftb_kind == BR_RET);
-    assign ras_spec_push_addr = lkp_pc + VADDR_W'(FETCH_BLOCK_BYTES);
+    assign ras_spec_push_addr = ftb_fall_through_pc;
 
     ras u_ras (
         .clk            (clk),
@@ -212,7 +217,7 @@ module bpu_top
         .spec_top_valid (ras_top_valid),
         .spec_top_idx   (ras_top_idx),
         .commit_push    (resolve.valid && resolve.actual_kind == BR_CALL),
-        .commit_push_addr(resolve.pc + VADDR_W'(FETCH_BLOCK_BYTES)),
+        .commit_push_addr(resolve.actual_call_return_pc),
         .commit_pop     (resolve.valid && resolve.actual_kind == BR_RET),
         .restore_valid  (resolve.valid && resolve.misprediction),
         .restore_top    (ras_top_idx),
@@ -224,6 +229,9 @@ module bpu_top
     logic [VADDR_W-1:0]                    itt_target;
     logic [$clog2(ITTAGE_TABLES+1)-1:0]    itt_provider;
 
+    // ITTAGE trains on both call and pure-indirect targets. Returns are
+    // handled by the RAS and must not be fed into ITTAGE, otherwise the
+    // table is corrupted by the return-address stream.
     ittage u_ittage (
         .clk        (clk),
         .rst_n      (rst_n),
@@ -233,8 +241,8 @@ module bpu_top
         .lkp_hit    (itt_hit),
         .lkp_target (itt_target),
         .lkp_provider(itt_provider),
-        .upd_valid  (resolve.valid && (resolve.actual_kind == BR_RET ||
-                                         (resolve.actual_kind == BR_CALL))),
+        .upd_valid  (resolve.valid && (resolve.actual_kind == BR_CALL ||
+                                         resolve.actual_kind == BR_IND)),
         .upd_pc     (resolve.pc),
         .upd_hist   (ghist_arch_q),
         .upd_target (resolve.actual_target),
@@ -268,7 +276,9 @@ module bpu_top
                 pred_d.target_pc = ras_top_valid ? ras_top_addr : ftb_target;
                 pred_d.taken     = 1'b1;
                 pred_d.from_ras  = ras_top_valid;
-            end else if (ftb_hit && ftb_kind == BR_CALL) begin
+            end else if (ftb_hit && (ftb_kind == BR_CALL || ftb_kind == BR_IND)) begin
+                // Call and pure indirect both use ITTAGE for target prediction.
+                // RAS push is gated separately on BR_CALL above.
                 pred_d.target_pc = itt_hit ? itt_target : ftb_target;
                 pred_d.taken     = 1'b1;
                 pred_d.from_ittage = itt_hit;
@@ -388,12 +398,18 @@ module bpu_top
             if (pred_d.kind == BR_COND)  pmu_strb[PMU_BR_COND]  = 1'b1;
             if (pred_d.kind == BR_CALL)  pmu_strb[PMU_BR_CALL]  = 1'b1;
             if (pred_d.kind == BR_RET)   pmu_strb[PMU_BR_RET]   = 1'b1;
-            if (pred_d.kind == BR_CALL && itt_hit) pmu_strb[PMU_BR_IND] = 1'b1;
+            // PMU_BR_IND counts pure indirect jumps (switch dispatch, PLT,
+            // vtable). Calls have their own counter; they are distinguished
+            // by kind, not by ITTAGE provider hit.
+            if (pred_d.kind == BR_IND)   pmu_strb[PMU_BR_IND]   = 1'b1;
         end
         if (resolve.valid && resolve.misprediction) begin
             pmu_strb[PMU_BR_MISP] = 1'b1;
             if (resolve.actual_kind == BR_COND) pmu_strb[PMU_BR_COND_MISP] = 1'b1;
-            if (resolve.actual_kind == BR_CALL) pmu_strb[PMU_BR_IND_MISP]  = 1'b1;
+            // Indirect mispredict counter aggregates BR_IND and BR_CALL: both
+            // are predicted by ITTAGE so the misp domain is the same.
+            if (resolve.actual_kind == BR_IND ||
+                resolve.actual_kind == BR_CALL) pmu_strb[PMU_BR_IND_MISP] = 1'b1;
             if (resolve.actual_kind == BR_RET)  pmu_strb[PMU_BR_RET_MISP]  = 1'b1;
         end
         if (ras_pmu_ovf)  pmu_strb[PMU_RAS_OVERFLOW]  = 1'b1;

@@ -25,6 +25,7 @@ module ftb
     input  logic [VADDR_W-1:0]       lkp_pc,
     output logic                     lkp_hit,
     output logic [VADDR_W-1:0]       lkp_target,
+    output logic [VADDR_W-1:0]       lkp_fall_through_pc,
     output br_kind_e                 lkp_kind,
     output logic [MAX_BR_PER_BLOCK-1:0] lkp_br_valid,
 
@@ -32,6 +33,7 @@ module ftb
     input  logic                     upd_valid,
     input  logic [VADDR_W-1:0]       upd_pc,
     input  logic [VADDR_W-1:0]       upd_target,
+    input  logic [VADDR_W-1:0]       upd_fall_through_pc,
     input  br_kind_e                 upd_kind,
     input  logic [MAX_BR_PER_BLOCK-1:0] upd_br_valid,
     input  logic                     upd_alloc,
@@ -39,10 +41,15 @@ module ftb
     output logic                     pmu_miss
 );
 
+    // fall_through_pc is the architectural PC of the instruction after the
+    // branch — for CALL entries that becomes the RAS push address. Stored
+    // alongside the target so block-grained prediction can still get the
+    // RAS right when the call is not the last instruction in the block.
     typedef struct packed {
         logic                            valid;
         logic [FTB_TAG_W-1:0]            tag;
         logic [VADDR_W-1:0]              target;
+        logic [VADDR_W-1:0]              fall_through_pc;
         br_kind_e                        kind;
         logic [MAX_BR_PER_BLOCK-1:0]     br_valid;
     } ftb_entry_t;
@@ -57,13 +64,23 @@ module ftb
     logic [$clog2(FTB_WAYS)-1:0] rr_ptr_q [FTB_SETS];
 
     /* verilator lint_off UNUSEDSIGNAL */
+    // Index uses the PC bits above the RV instruction-alignment bit; the
+    // tag covers the remaining upper bits. Each unique instruction PC
+    // therefore maps to a distinct (index, tag) pair (modulo capacity), so
+    // a call at offset N and a return at offset N+M in the same 32 B
+    // block resolve to different FTB entries. The previous index hash
+    // dropped the lower 5 bits and collapsed all branches in one block
+    // into a single FTB slot, which is correct for the production block-
+    // grained front-end but corrupts per-instruction trace replay.
+    // Branch-prediction docs / docs/arch/branch-prediction.md still
+    // describe the block-grained semantics; the per-PC index is a
+    // strict refinement that subsumes the block index.
     function automatic logic [FTB_IDX_W-1:0] ftb_index(input logic [VADDR_W-1:0] pc);
-        // Drop the lower 5 bits (fetch block alignment) before indexing.
-        ftb_index = pc[5 +: FTB_IDX_W];
+        ftb_index = pc[1 +: FTB_IDX_W];
     endfunction
 
     function automatic logic [FTB_TAG_W-1:0] ftb_tag(input logic [VADDR_W-1:0] pc);
-        ftb_tag = pc[5 + FTB_IDX_W +: FTB_TAG_W];
+        ftb_tag = pc[1 + FTB_IDX_W +: FTB_TAG_W];
     endfunction
     /* verilator lint_on UNUSEDSIGNAL */
 
@@ -74,20 +91,22 @@ module ftb
     logic [FTB_TAG_W-1:0] lkp_tag;
 
     always_comb begin
-        lkp_hit       = 1'b0;
-        lkp_target    = '0;
-        lkp_kind      = BR_NONE;
-        lkp_br_valid  = '0;
-        lkp_idx       = ftb_index(lkp_pc);
-        lkp_tag       = ftb_tag(lkp_pc);
+        lkp_hit              = 1'b0;
+        lkp_target           = '0;
+        lkp_fall_through_pc  = '0;
+        lkp_kind             = BR_NONE;
+        lkp_br_valid         = '0;
+        lkp_idx              = ftb_index(lkp_pc);
+        lkp_tag              = ftb_tag(lkp_pc);
         if (lkp_valid) begin
             for (int unsigned w = 0; w < FTB_WAYS; w++) begin
                 if (storage_q[lkp_idx][w].valid &&
                     storage_q[lkp_idx][w].tag == lkp_tag) begin
-                    lkp_hit      = 1'b1;
-                    lkp_target   = storage_q[lkp_idx][w].target;
-                    lkp_kind     = storage_q[lkp_idx][w].kind;
-                    lkp_br_valid = storage_q[lkp_idx][w].br_valid;
+                    lkp_hit             = 1'b1;
+                    lkp_target          = storage_q[lkp_idx][w].target;
+                    lkp_fall_through_pc = storage_q[lkp_idx][w].fall_through_pc;
+                    lkp_kind            = storage_q[lkp_idx][w].kind;
+                    lkp_br_valid        = storage_q[lkp_idx][w].br_valid;
                 end
             end
         end
@@ -120,11 +139,12 @@ module ftb
             for (int unsigned s = 0; s < FTB_SETS; s++) begin
                 for (int unsigned w = 0; w < FTB_WAYS; w++) begin
                     storage_q[s][w] <= '{
-                        valid:   1'b0,
-                        tag:     '0,
-                        target:  '0,
-                        kind:    BR_NONE,
-                        br_valid:'0
+                        valid:           1'b0,
+                        tag:             '0,
+                        target:          '0,
+                        fall_through_pc: '0,
+                        kind:            BR_NONE,
+                        br_valid:        '0
                     };
                 end
                 rr_ptr_q[s] <= '0;
@@ -135,16 +155,18 @@ module ftb
 
             if (upd_valid) begin
                 if (upd_match_any) begin
-                    storage_q[upd_idx][upd_match_way].target   <= upd_target;
-                    storage_q[upd_idx][upd_match_way].kind     <= upd_kind;
-                    storage_q[upd_idx][upd_match_way].br_valid <= upd_br_valid;
+                    storage_q[upd_idx][upd_match_way].target          <= upd_target;
+                    storage_q[upd_idx][upd_match_way].fall_through_pc <= upd_fall_through_pc;
+                    storage_q[upd_idx][upd_match_way].kind            <= upd_kind;
+                    storage_q[upd_idx][upd_match_way].br_valid        <= upd_br_valid;
                 end else if (upd_alloc) begin
                     storage_q[upd_idx][rr_ptr_q[upd_idx]] <= '{
-                        valid:   1'b1,
-                        tag:     upd_tag,
-                        target:  upd_target,
-                        kind:    upd_kind,
-                        br_valid:upd_br_valid
+                        valid:           1'b1,
+                        tag:             upd_tag,
+                        target:          upd_target,
+                        fall_through_pc: upd_fall_through_pc,
+                        kind:            upd_kind,
+                        br_valid:        upd_br_valid
                     };
                     rr_ptr_q[upd_idx] <= rr_ptr_q[upd_idx] + 1'b1;
                 end

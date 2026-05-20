@@ -295,11 +295,19 @@ package bpu_pkg;
 
     // Resolver feedback from the back-end. Drives BPU state update and
     // redirect on misprediction.
+    //
+    // `actual_call_return_pc` is the architectural fall-through address of
+    // a call instruction (the PC the matching RET is expected to target).
+    // For RV64 / ARM64 traces this is `pc + 4`; for RVC it is `pc + 2`.
+    // Block-grained predictors cannot derive this from the block start_pc
+    // alone because the call may not be the last instruction in the block.
+    // Only consumed when `actual_kind == BR_CALL`.
     typedef struct packed {
         logic                 valid;
         logic                 misprediction;
         logic [VADDR_W-1:0]   pc;
         logic [VADDR_W-1:0]   actual_target;
+        logic [VADDR_W-1:0]   actual_call_return_pc;
         logic                 actual_taken;
         br_kind_e             actual_kind;
         logic [FTQ_IDX_W-1:0] ftq_idx;
