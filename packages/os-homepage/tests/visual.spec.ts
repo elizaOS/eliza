@@ -29,6 +29,7 @@ async function prepare(page: Page) {
 
 function dynamicMask(page: Page) {
   return [
+    page.locator(".cloud-background img"),
     page.locator("video"),
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
