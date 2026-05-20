@@ -9,6 +9,9 @@ under packages/training/scripts/rl/. This conftest:
    the package `rl` (relative imports inside it work).
 2. Installs sys.meta_path aliases mapping `src` and `src.training` prefixes
    onto `rl`, so legacy test imports keep working without edits.
+3. Skips tests whose imported module needs an optional ML dep (torch,
+   transformers, atroposlib, …) that isn't installed in the unit-test env.
+   Those tests are still runnable when the `[train]` extras are installed.
 """
 
 from __future__ import annotations
@@ -19,6 +22,8 @@ import importlib.machinery
 import sys
 import types
 from pathlib import Path
+
+import pytest
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 _RL_DIR = _SCRIPTS_DIR / "rl"
@@ -55,8 +60,11 @@ class _RLAliasFinder(importlib.abc.MetaPathFinder):
                 target_name = f"rl.{leaf}"
                 try:
                     real = importlib.import_module(target_name)
-                except ImportError:
-                    return None
+                except ImportError as exc:
+                    pytest.skip(
+                        f"optional ML dep missing for {fullname}: {exc}",
+                        allow_module_level=True,
+                    )
                 sys.modules[fullname] = real
                 return real.__spec__
         return None
@@ -71,3 +79,20 @@ class _NullLoader(importlib.abc.Loader):
 
 
 sys.meta_path.insert(0, _RLAliasFinder())
+
+
+# Some tests `import torch` (or other heavy deps) at module-top, before any
+# alias-finder logic runs. Skip them at collection time when the dep is
+# missing so the unit suite stays green without `[train]` extras.
+_HEAVY_DEP_TESTS = {
+    "test_local_inference.py": "transformers",
+    "test_continuous_rl.py": "transformers",
+    "test_lr_scheduler.py": "transformers",
+}
+
+collect_ignore: list[str] = []
+for _file, _dep in _HEAVY_DEP_TESTS.items():
+    try:
+        importlib.import_module(_dep)
+    except ImportError:
+        collect_ignore.append(_file)

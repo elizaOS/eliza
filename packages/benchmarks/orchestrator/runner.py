@@ -1716,11 +1716,19 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
             [
                 payload.get("score"),
                 payload.get("accuracy"),
+                payload.get("pass_at_1"),
+                payload.get("transcriptionNormalizedAccuracy"),
                 (payload.get("summary") or {}).get("accuracy")
                 if isinstance(payload.get("summary"), dict)
                 else None,
             ]
         )
+        summary = payload.get("summary")
+        if isinstance(summary, dict):
+            for mode_summary in summary.values():
+                if not isinstance(mode_summary, dict):
+                    continue
+                candidates.append(mode_summary.get("transcriptionNormalizedAccuracy"))
         payload_metrics = payload.get("metrics")
         if isinstance(payload_metrics, dict):
             candidates.extend(
@@ -1729,6 +1737,8 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
                     payload_metrics.get("accuracy"),
                     payload_metrics.get("pass_rate"),
                     payload_metrics.get("eval/pass_rate"),
+                    payload_metrics.get("pass_at_1"),
+                    payload_metrics.get("transcriptionNormalizedAccuracy"),
                 ]
             )
     candidates.extend(
@@ -1737,6 +1747,8 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
             metrics.get("accuracy"),
             metrics.get("pass_rate"),
             metrics.get("eval/pass_rate"),
+            metrics.get("pass_at_1"),
+            metrics.get("transcriptionNormalizedAccuracy"),
         ]
     )
     for candidate in candidates:
