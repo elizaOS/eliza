@@ -44,17 +44,6 @@ const allowedSatelliteMentions = new Map<string, RegExp[]>([
       /The old satellite-specific names/,
     ],
   ],
-  [
-    "packages/agent/src/services/remote-capability-router.ts",
-    [/ELIZA_SATELLITE_RUNNER_URL/, /ELIZA_SATELLITE_RUNNER_TOKEN/],
-  ],
-  [
-    "packages/agent/src/services/remote-capability-router.test.ts",
-    [
-      /resolves canonical env names before legacy satellite aliases/,
-      /ELIZA_SATELLITE_RUNNER_URL/,
-    ],
-  ],
 ]);
 
 const satellitePattern = /satellite/i;

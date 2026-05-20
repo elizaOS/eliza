@@ -22,14 +22,13 @@ describe("remote capability router", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("resolves canonical env names before legacy satellite aliases", () => {
+  it("resolves canonical env names", () => {
     const config = resolveRemoteCapabilityRouterConfig(
       makeRuntime({
         ELIZA_CAPABILITY_ROUTER_URL: "https://capability.example/",
         ELIZA_CAPABILITY_ROUTER_TOKEN: "cap-token",
         ELIZA_CAPABILITY_ROUTER_ENVIRONMENT: "mobile",
         ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS: "1234",
-        ELIZA_SATELLITE_RUNNER_URL: "https://legacy.example",
       }),
     );
 

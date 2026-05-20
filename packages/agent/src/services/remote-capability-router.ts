@@ -353,8 +353,7 @@ export function resolveRemoteCapabilityRouterConfig(
   };
   const baseUrl =
     get("ELIZA_CAPABILITY_ROUTER_URL") ??
-    get("ELIZA_REMOTE_CAPABILITY_URL") ??
-    get("ELIZA_SATELLITE_RUNNER_URL");
+    get("ELIZA_REMOTE_CAPABILITY_URL");
   const endpoints = parseEndpointList(
     get("ELIZA_CAPABILITY_ROUTER_URLS"),
     get("ELIZA_CAPABILITY_ROUTER_TOKEN"),
@@ -368,8 +367,7 @@ export function resolveRemoteCapabilityRouterConfig(
     baseUrl: baseUrl ? stripTrailingSlash(baseUrl) : undefined,
     token:
       get("ELIZA_CAPABILITY_ROUTER_TOKEN") ??
-      get("ELIZA_REMOTE_CAPABILITY_TOKEN") ??
-      get("ELIZA_SATELLITE_RUNNER_TOKEN"),
+      get("ELIZA_REMOTE_CAPABILITY_TOKEN"),
     ...(endpoints.length === 0 ? {} : { endpoints }),
     environment:
       parseEnvironment(get("ELIZA_CAPABILITY_ROUTER_ENVIRONMENT")) ?? "server",
