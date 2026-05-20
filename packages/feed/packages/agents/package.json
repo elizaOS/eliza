@@ -34,7 +34,6 @@
     "@feed/db": "workspace:*",
     "@feed/engine": "workspace:*",
     "@feed/shared": "workspace:*",
-    "@feed/training": "workspace:*",
     "@elizaos/core": "2.0.0-alpha.109",
     "@elizaos/plugin-anthropic": "2.0.0-alpha.11",
     "@elizaos/plugin-openai": "2.0.0-alpha.15",

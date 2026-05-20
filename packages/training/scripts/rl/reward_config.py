@@ -13,7 +13,7 @@ import yaml
 
 # Find the config directory relative to this file
 _CURRENT_DIR = Path(__file__).parent
-_CONFIG_DIR = _CURRENT_DIR.parent.parent.parent / "config"
+_CONFIG_DIR = _CURRENT_DIR.parent.parent / "config"
 _WEIGHTS_FILE = _CONFIG_DIR / "reward_weights.yaml"
 
 
