@@ -54,43 +54,46 @@ export const xrOpenViewAction: Action = {
 
   validate: async (runtime): Promise<boolean> => {
     const svc = getService(runtime);
-    return svc?.hasActiveConnections();
+    return svc?.hasActiveConnections() ?? false;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    options: Record<string, unknown>,
+    options: Record<string, unknown> | undefined,
     callback?: HandlerCallback,
   ) => {
     const svc = getService(runtime);
     if (!svc) {
-      await callback?.({ text: "No XR session service available." });
-      return false;
+      const text = "No XR session service available.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
     const viewId =
-      (options.viewId as string | undefined) ??
+      (options?.viewId as string | undefined) ??
       extractViewId(message.content.text ?? "");
     if (!viewId) {
-      await callback?.({
-        text: "Please specify which view to open. Try XR_LIST_VIEWS to see available views.",
-      });
-      return false;
+      const text =
+        "Please specify which view to open. Try XR_LIST_VIEWS to see available views.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
     const connId = firstConnectionId(svc);
     if (!connId) {
-      await callback?.({ text: "No XR device is connected." });
-      return false;
+      const text = "No XR device is connected.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
     const base = agentBaseUrl(runtime);
-    const scale = (options.scale as number | undefined) ?? 1.0;
+    const scale = (options?.scale as number | undefined) ?? 1.0;
     svc.openView(connId, viewId, base, { scale, followMode: "billboard" });
-    await callback?.({ text: `Opening ${viewId} view on your headset.` });
-    return true;
+    const text = `Opening ${viewId} view on your headset.`;
+    await callback?.({ text });
+    return { success: true, text };
   },
 };
 
@@ -112,28 +115,32 @@ export const xrCloseViewAction: Action = {
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc?.hasActiveConnections();
+    return svc?.hasActiveConnections() ?? false;
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
-      await callback?.({ text: "No XR service." });
-      return false;
+      const text = "No XR service.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
     const viewId =
-      (options.viewId as string | undefined) ??
+      (options?.viewId as string | undefined) ??
       extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId) {
-      await callback?.({ text: "No XR device connected." });
-      return false;
+      const text = "No XR device connected.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
+    let text: string;
     if (viewId) {
       svc.closeView(connId, viewId);
-      await callback?.({ text: `Closed ${viewId}.` });
+      text = `Closed ${viewId}.`;
+      await callback?.({ text });
     } else {
       // Close all
       for (const view of [
@@ -145,9 +152,10 @@ export const xrCloseViewAction: Action = {
       ]) {
         svc.closeView(connId, view);
       }
-      await callback?.({ text: "Closed all XR panels." });
+      text = "Closed all XR panels.";
+      await callback?.({ text });
     }
-    return true;
+    return { success: true, text };
   },
 };
 
@@ -173,26 +181,29 @@ export const xrSwitchViewAction: Action = {
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc?.hasActiveConnections();
+    return svc?.hasActiveConnections() ?? false;
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
-      await callback?.({ text: "No XR service." });
-      return false;
+      const text = "No XR service.";
+      await callback?.({ text });
+      return { success: false, text };
     }
     const viewId =
-      (options.viewId as string | undefined) ??
+      (options?.viewId as string | undefined) ??
       extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId || !viewId) {
-      await callback?.({ text: "Specify a view id." });
-      return false;
+      const text = "Specify a view id.";
+      await callback?.({ text });
+      return { success: false, text };
     }
     svc.switchView(connId, viewId);
-    await callback?.({ text: `Switched to ${viewId}.` });
-    return true;
+    const text = `Switched to ${viewId}.`;
+    await callback?.({ text });
+    return { success: true, text };
   },
 };
 
@@ -224,28 +235,29 @@ export const xrListViewsAction: Action = {
   handler: async (runtime, _message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
-      await callback?.({ text: "No XR service." });
-      return false;
+      const text = "No XR service.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
     // Collect XR view declarations from all registered plugins
     const xrViews = collectXRViews(runtime);
 
     const connId = firstConnectionId(svc);
-    if (connId && (options.sendCatalog as boolean | undefined) !== false) {
+    if (connId && (options?.sendCatalog as boolean | undefined) !== false) {
       svc.sendViewsCatalog(connId, xrViews);
     }
 
     if (xrViews.length === 0) {
-      await callback?.({ text: "No XR views are currently registered." });
-      return true;
+      const text = "No XR views are currently registered.";
+      await callback?.({ text });
+      return { success: true, text };
     }
 
     const list = xrViews.map((v) => `• ${v.label} (id: ${v.id})`).join("\n");
-    await callback?.({
-      text: `Available XR views:\n${list}\n\nSay "open [view name]" to launch one.`,
-    });
-    return true;
+    const text = `Available XR views:\n${list}\n\nSay "open [view name]" to launch one.`;
+    await callback?.({ text });
+    return { success: true, text };
   },
 };
 
@@ -278,49 +290,55 @@ export const xrResizeViewAction: Action = {
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc?.hasActiveConnections();
+    return svc?.hasActiveConnections() ?? false;
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
-      await callback?.({ text: "No XR service." });
-      return false;
+      const text = "No XR service.";
+      await callback?.({ text });
+      return { success: false, text };
     }
     const connId = firstConnectionId(svc);
     if (!connId) {
-      await callback?.({ text: "No XR device connected." });
-      return false;
+      const text = "No XR device connected.";
+      await callback?.({ text });
+      return { success: false, text };
     }
 
-    const text = message.content.text?.toLowerCase() ?? "";
-    let scale = (options.scale as number | undefined) ?? 1.0;
-    let distance = (options.distance as number | undefined) ?? 1.5;
+    const inputText = message.content.text?.toLowerCase() ?? "";
+    let scale = (options?.scale as number | undefined) ?? 1.0;
+    let distance = (options?.distance as number | undefined) ?? 1.5;
 
     if (
-      text.includes("bigger") ||
-      text.includes("larger") ||
-      text.includes("bigger")
+      inputText.includes("bigger") ||
+      inputText.includes("larger") ||
+      inputText.includes("bigger")
     )
       scale = 1.5;
-    if (text.includes("smaller") || text.includes("tiny")) scale = 0.6;
-    if (text.includes("closer") || text.includes("nearer")) distance = 0.8;
+    if (inputText.includes("smaller") || inputText.includes("tiny"))
+      scale = 0.6;
+    if (inputText.includes("closer") || inputText.includes("nearer"))
+      distance = 0.8;
     if (
-      text.includes("farther") ||
-      text.includes("further") ||
-      text.includes("away")
+      inputText.includes("farther") ||
+      inputText.includes("further") ||
+      inputText.includes("away")
     )
       distance = 2.5;
-    if (text.includes("fullscreen") || text.includes("full screen")) {
+    if (inputText.includes("fullscreen") || inputText.includes("full screen")) {
       svc.resizeView(connId, "", { scale: 2.0, fullscreen: true });
-      await callback?.({ text: "Panel fullscreened." });
-      return true;
+      const text = "Panel fullscreened.";
+      await callback?.({ text });
+      return { success: true, text };
     }
 
-    const viewId = (options.viewId as string | undefined) ?? "";
+    const viewId = (options?.viewId as string | undefined) ?? "";
     svc.resizeView(connId, viewId, { scale, distance });
-    await callback?.({ text: `Panel resized to ${scale}× at ${distance}m.` });
-    return true;
+    const text = `Panel resized to ${scale}× at ${distance}m.`;
+    await callback?.({ text });
+    return { success: true, text };
   },
 };
 
