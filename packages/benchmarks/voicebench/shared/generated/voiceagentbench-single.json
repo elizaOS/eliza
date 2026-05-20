@@ -1,0 +1,10 @@
+{
+  "datasetName": "voiceagentbench-single-real",
+  "samples": [
+    {
+      "id": "single_tool_1",
+      "audioPath": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/voicebench/shared/generated/single_tool_1.wav",
+      "expectedText": "Show me 5 good South Indian restaurants in Bandra,Mumbai."
+    }
+  ]
+}

@@ -141,11 +141,12 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+    if benchmark_id == "hermes_swe_env":
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     }:
         return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":

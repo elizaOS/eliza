@@ -252,6 +252,67 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path === "/api/v1/redemptions/balance") {
+        return route.fulfill({
+          json: {
+            balance: {
+              totalEarned: 250,
+              availableBalance: 125,
+              pendingBalance: 25,
+              totalRedeemed: 100,
+              totalPending: 25,
+              totalConvertedToCredits: 0,
+            },
+            bySource: [
+              { source: "agent", totalEarned: 150, count: 3 },
+              { source: "miniapp", totalEarned: 100, count: 2 },
+            ],
+            recentEarnings: [
+              {
+                id: "earning_1",
+                source: "agent",
+                sourceId: "agent_1",
+                amount: 25,
+                description: "Test agent usage",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            limits: {
+              minRedemptionUsd: 10,
+              maxSingleRedemptionUsd: 1000,
+              userDailyLimitUsd: 1000,
+              userHourlyLimitUsd: 250,
+            },
+            eligibility: {
+              canRedeem: true,
+              dailyLimitRemaining: 1000,
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions/status") {
+        return route.fulfill({
+          json: {
+            operational: true,
+            networks: {
+              base: { available: true },
+              solana: { available: true },
+              ethereum: { available: true },
+              bnb: { available: true },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions") {
+        return route.fulfill({
+          json: {
+            redemptions: [],
+          },
+        });
+      }
+
       if (path.endsWith("/models/status")) {
         return route.fulfill({
           json: {
@@ -277,6 +338,119 @@ async function installApiMocks(page: Page) {
                 type: "text",
               },
             ],
+          },
+        });
+      }
+
+      if (path === "/api/analytics/breakdown") {
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              filters: {
+                startDate: startDate.toISOString(),
+                endDate: now.toISOString(),
+                granularity: "day",
+                timeRange: "weekly",
+              },
+              overallStats: {
+                totalRequests: 12,
+                totalInputTokens: 1200,
+                totalOutputTokens: 800,
+                totalCost: 0.42,
+                successRate: 0.98,
+              },
+              timeSeriesData: [
+                {
+                  timestamp: startDate.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              costTrending: {
+                currentDailyBurn: 0.06,
+                previousDailyBurn: 0.04,
+                burnChangePercent: 50,
+                projectedMonthlyBurn: 1.8,
+                daysUntilBalanceZero: null,
+                monthlyBurnPercent: 2,
+                monthlyBurnPercentClamped: 2,
+                burnAlertThresholdExceeded: false,
+              },
+              providerBreakdown: [
+                {
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  successRate: 0.98,
+                  percentage: 100,
+                },
+              ],
+              modelBreakdown: [
+                {
+                  model: "gpt-4.1-mini",
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  avgCostPerToken: 0.00021,
+                  successRate: 0.98,
+                },
+              ],
+              trends: {
+                requestsChange: 10,
+                costChange: 5,
+                tokensChange: 8,
+                successRateChange: 1,
+                period: "previous week",
+              },
+              organization: {
+                creditBalance: "100.00",
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/analytics/projections") {
+        const now = new Date();
+        const next = new Date(now);
+        next.setDate(now.getDate() + 1);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              historicalData: [
+                {
+                  timestamp: now.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              projections: [
+                {
+                  timestamp: next.toISOString(),
+                  projectedCost: 0.5,
+                  projectedRequests: 14,
+                  confidenceLower: 0.35,
+                  confidenceUpper: 0.7,
+                },
+              ],
+              alerts: [],
+              creditBalance: 100,
+            },
           },
         });
       }
