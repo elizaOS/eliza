@@ -64,7 +64,12 @@
     "synth-67f61a80": 3,
     "synth-88bebab4": 1,
     "synth-259c8d3c": 1,
-    "synth-26df308e": 1
+    "synth-26df308e": 1,
+    "synth-0909a501": 3,
+    "synth-346eec6c": 3,
+    "synth-e772ae68": 1,
+    "synth-6566db2a": 1,
+    "synth-7893eeb5": 1
   },
   "scores": {
     "synth-871fc8d4": [
@@ -313,35 +318,56 @@
     ],
     "synth-26df308e": [
       0.9
+    ],
+    "synth-0909a501": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-346eec6c": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-e772ae68": [
+      0.5
+    ],
+    "synth-6566db2a": [
+      0.7
+    ],
+    "synth-7893eeb5": [
+      0.9
     ]
   },
   "solved": [
-    "synth-5d4e07bc",
-    "synth-4ef1ca8f",
-    "synth-808575e8",
-    "synth-2fdb5a5c",
-    "synth-215e5aca",
-    "synth-7be2922d",
-    "synth-43c4906f",
-    "synth-c5ff1314",
-    "synth-06eb2699",
-    "synth-10043ebf",
-    "synth-111403d8",
-    "synth-871fc8d4",
     "synth-3570ed6f",
-    "synth-67f61a80",
-    "synth-46111142",
-    "synth-9b83cfc8",
-    "synth-ea1adeb6",
-    "synth-22309d43",
-    "synth-114dabcb",
     "synth-2bdf09a1",
-    "synth-36ceaf32",
-    "synth-147a7802",
-    "synth-e82700bb",
+    "synth-67f61a80",
     "synth-10466b18",
+    "synth-22309d43",
+    "synth-808575e8",
+    "synth-43c4906f",
+    "synth-215e5aca",
+    "synth-06eb2699",
+    "synth-c5ff1314",
+    "synth-9b83cfc8",
+    "synth-2fdb5a5c",
+    "synth-46111142",
+    "synth-10043ebf",
+    "synth-e82700bb",
+    "synth-4ef1ca8f",
+    "synth-0909a501",
+    "synth-7be2922d",
+    "synth-93db52f4",
+    "synth-5d4e07bc",
     "synth-63d72ad4",
-    "synth-93db52f4"
+    "synth-871fc8d4",
+    "synth-111403d8",
+    "synth-114dabcb",
+    "synth-147a7802",
+    "synth-346eec6c",
+    "synth-36ceaf32",
+    "synth-ea1adeb6"
   ],
-  "last_updated": "2026-05-20T05:17:08.876242+00:00"
+  "last_updated": "2026-05-20T05:17:37.940076+00:00"
 }
