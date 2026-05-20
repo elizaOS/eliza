@@ -304,7 +304,10 @@ def main(argv: list[str]) -> int:
         for error in report["errors"]:
             print(f"  - ERROR: {error}")
         for blocker in report["blockers"]:
-            print(f"  - BLOCKED: {blocker}")
+            if report["status"] == "fail":
+                print(f"  - EVIDENCE-GAP: {blocker}")
+            else:
+                print(f"  - BLOCKED: {blocker}")
     return rc
 
 

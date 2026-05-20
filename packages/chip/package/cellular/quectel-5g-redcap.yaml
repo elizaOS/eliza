@@ -53,6 +53,29 @@ host_interfaces:
     minimum_first_board: [cellular_main, cellular_diversity, gnss_optional]
     production_target: [cellular_main, cellular_diversity, cellular_mimo_0, cellular_mimo_1, gnss]
 
+layout_requirements:
+  module_placement:
+    - Keep the RedCap module on the top RF island near cellular matching networks and away from the USB-C
+      bottom-edge shell current path.
+    - Preserve a grounded shield perimeter around the module while leaving top-edge antenna plastic clear of
+      midframe metal.
+    - Route USB2 and PCIe to the SoC with continuous ground reference and no crossing through display/camera
+      FPC bend keepouts.
+  antenna_plan:
+    cellular_main: top_or_bottom_plastic_edge_after_vendor_review
+    cellular_diversity: opposite_plastic_edge_or_side_slot_after_vendor_review
+    gnss_optional: top_edge_or_dedicated_LNA_path_if_desense_allows
+    matching_required: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF]
+    conducted_access_required_before_matching_network: true
+  sim_esim_layout:
+    - USIM/ESIM lines require ESD and short routing away from cellular RF feeds.
+    - Region SKU, band matrix, and SIM/eSIM certification path must be locked before EVT1 routing release.
+  coexistence_requirements:
+    - Reserve modem W_DISABLE_N and AP/module wake lines for airplane mode, suspend, and regulatory testing.
+    - Capture cellular transmit-current burst profile before RF_VBAT copper/via signoff.
+    - Run conducted coexistence checks against Wi-Fi 2.4/5/6 GHz, Bluetooth, GNSS, display bias, and USB-C
+      charging states.
+
 power_sequence:
   status: required_not_implemented
   rails:

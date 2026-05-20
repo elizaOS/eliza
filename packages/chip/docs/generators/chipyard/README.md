@@ -3,8 +3,9 @@
 This directory records the selected real CPU/AP integration path. It is not
 Linux boot evidence by itself.
 
-The pinned path is Chipyard `1.13.0` at commit
-`69eba860a352343e4ac6b6df0f3638a79a86ec78`, using a single Rocket RV64GC hart
+The pinned path is Chipyard `main-2026-05-20` at commit
+`48f904aefbb3903dce6efa7901982642853ae6a7` (previous pin: `1.13.0` /
+`69eba860a352343e4ac6b6df0f3638a79a86ec78`), using a single Rocket RV64GC hart
 in a project config named `ElizaRocketConfig`.
 
 The repo-local config source is:

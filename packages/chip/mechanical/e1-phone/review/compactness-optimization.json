@@ -1,0 +1,104 @@
+{
+  "claim_boundary": "CAD compactness optimization audit from selected off-the-shelf module envelopes; not proof that supplier final STEP or routed PCB cannot reduce size further.",
+  "status": "cad_compactness_optimized",
+  "current_envelope_mm": [
+    78.0,
+    153.6,
+    9.6
+  ],
+  "physical_span_with_external_features_mm": [
+    81.1,
+    153.6,
+    9.6
+  ],
+  "lower_bounds": {
+    "display_touch_panel_mm": [
+      77.7,
+      152.37
+    ],
+    "pcb_edge_clearance_mm": [
+      69.0,
+      137.0
+    ],
+    "battery_with_wall_mm": [
+      66.3,
+      89.3
+    ]
+  },
+  "width_excess_over_bound_mm": 0.3,
+  "height_excess_over_bound_mm": 1.23,
+  "area_excess_over_bound_mm2": 141.7,
+  "cases": [
+    {
+      "id": "display_driven_width",
+      "actual": {
+        "current_width_mm": 78.0,
+        "derived_min_width_mm": 77.7,
+        "excess_width_mm": 0.3,
+        "limiting_bound": "display_touch_panel_mm"
+      },
+      "target": "<=1.0 mm width excess over selected CTP plus screen allowance",
+      "pass": true
+    },
+    {
+      "id": "display_driven_height",
+      "actual": {
+        "current_height_mm": 153.6,
+        "derived_min_height_mm": 152.37,
+        "excess_height_mm": 1.23,
+        "limiting_bound": "display_touch_panel_mm"
+      },
+      "target": "<=1.5 mm height excess over selected CTP plus screen allowance",
+      "pass": true
+    },
+    {
+      "id": "sub_10mm_molded_depth",
+      "actual": {
+        "molded_envelope_depth_mm": 9.6,
+        "physical_span_with_external_features_mm": 9.6,
+        "rear_solid_protrusion_mm": 0.0,
+        "front_solid_protrusion_mm": 0.0,
+        "depth_outliers": []
+      },
+      "target": "molded slab depth <=10 mm with no solid package protruding outside the enclosure datum",
+      "pass": true
+    },
+    {
+      "id": "side_controls_do_not_resize_molded_body",
+      "actual": {
+        "physical_width_with_buttons_mm": 81.1,
+        "molded_envelope_width_mm": 78.0,
+        "side_button_total_protrusion_mm": 3.1
+      },
+      "target": "side buttons may protrude locally but keep molded orange body at the display-driven width",
+      "pass": true
+    },
+    {
+      "id": "pcb_battery_do_not_drive_outer_envelope",
+      "actual": {
+        "pcb_bound_mm": [
+          69.0,
+          137.0
+        ],
+        "battery_bound_mm": [
+          66.3,
+          89.3
+        ],
+        "current_envelope_mm": [
+          78.0,
+          153.6,
+          9.6
+        ]
+      },
+      "target": "selected display, not PCB or battery, remains the outer-envelope driver",
+      "pass": true
+    }
+  ],
+  "decision": "Keep 78.0 x 153.6 x 9.6 mm molded orange body: width is within 0.3 mm of the display-driven lower bound, height preserves only 1.23 mm over the display lower bound for rails, adhesive tolerance, corner radius, and assembly handling.",
+  "next_reduction_options": [
+    "A shorter display/CTP supplier module is the only meaningful path to reduce outer height.",
+    "A flush or smaller rear camera window would reduce external Z protrusion, but the selected AF module still needs supplier lens-stack confirmation.",
+    "Side button cap protrusion can be reduced by supplier switch/cap tooling, but the molded orange body is already display-limited.",
+    "Routed KiCad board and supplier STEP may permit local internal improvements, not a major envelope reduction with the current display."
+  ]
+}

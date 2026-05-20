@@ -41,7 +41,7 @@
     },
     {
       "id": "battery_window",
-      "action": "Keep the 55 x 92 x 4.1 mm battery window clear and do not route rigid PCB under the modeled pouch.",
+      "action": "Keep the 64 x 87 x 4.4 mm full-width battery cavity clear and do not route rigid PCB under the modeled pouch.",
       "why": "CAD non-overlap check uses segmented rigid board islands around this window."
     },
     {
@@ -53,10 +53,16 @@
       "id": "speaker_mic_ports",
       "action": "Keep bottom speaker and MEMS microphone acoustic paths aligned to molded ports; avoid placing tall components under grille slots.",
       "why": "CAD now includes five speaker grille slots and two microphone ports."
+    },
+    {
+      "id": "mechanical_overlay",
+      "action": "Keep board/kicad/e1-phone/mechanical-overlay.yaml and the Dwgs.User MECH_KEEP_* rectangles in the concept PCB synchronized with CAD keepouts.",
+      "why": "The board package checker now verifies display FPC, RF antenna, haptic, SIM/service, camera/earpiece, USB, button, and battery keepouts projected into KiCad."
     }
   ],
   "next_kicad_edits": [
     "Replace concept rectangles with real footprints for USB4105, display FPC, camera FPCs, side tactile switches, speaker spring pads, MEMS microphones, and RG255C/alternate modem.",
+    "Promote mechanical-overlay.yaml keepouts into real KiCad keepout/courtyard objects once footprints replace concept rectangles.",
     "Generate a board STEP with component 3D models and feed it back into mechanical/e1-phone instead of the current concept PCB mesh.",
     "Add courtyard/height metadata for all edge-facing connectors so enclosure collision checks can consume them automatically."
   ]

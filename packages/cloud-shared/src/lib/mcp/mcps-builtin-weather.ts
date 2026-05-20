@@ -4,8 +4,8 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v3";
-import { registerTypedTool } from "./register-typed-tool";
 import { logger } from "../utils/logger";
+import { registerTypedTool } from "./register-typed-tool";
 
 interface GeocodeItem {
   readonly id: number;

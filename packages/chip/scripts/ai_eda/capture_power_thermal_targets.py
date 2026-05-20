@@ -114,6 +114,8 @@ def main() -> int:
             "thermal-generative-ai",
             "commercial-thermal-map-dataset",
             "hotgauge",
+            "mcpat",
+            "hotspot-thermal-simulator",
             "thermedge-iredge",
             "waca-unet-ir-drop",
             "lmm-ir-static-ir-drop",
@@ -126,6 +128,9 @@ def main() -> int:
             "openpdn",
             "aieda",
             "rtlmul",
+            "opensta-power-analysis",
+            "ieda-ipower",
+            "trace2power",
             "archpower",
             "autopower",
             "atompower-rtl-power",
@@ -192,7 +197,7 @@ def main() -> int:
             {
                 "id": "thermal-hotspot-surrogate-watch",
                 "status": "CAPTURED_NOT_PREDICTED",
-                "target": "future thermal surrogate screening after power maps, package model, and measured traces exist",
+                "target": "future thermal surrogate or HotSpot-style deterministic thermal screening after power maps, package model, floorplan mapping, and measured traces exist",
                 "acceptance_gates": [
                     "make power-thermal-evidence-check",
                     "make board-package-evidence-check",
@@ -201,7 +206,7 @@ def main() -> int:
             {
                 "id": "external-thermal-dataset-framework-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future commercial thermal-map datasets or HotGauge-style thermal frameworks require exact revisions, licenses, device/workload provenance, dependency manifests, package/floorplan mapping, calibration traces, split review, and held-out E1 thermal evidence before any import or run",
+                "target": "future commercial thermal-map datasets, HotGauge, McPAT, or HotSpot-style thermal/power frameworks require exact revisions, licenses, device/workload provenance, dependency manifests, package/floorplan mapping, calibration traces, split review, and held-out E1 thermal evidence before any import or run",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
                     "make power-thermal-evidence-check",
@@ -223,16 +228,26 @@ def main() -> int:
             {
                 "id": "rtl-ppa-power-advisory-join",
                 "status": "CAPTURED_NOT_EXECUTED",
-                "target": "join RTLMUL or AtomPower-style RTL power priors with local post-route, per-cycle activity, and measured power labels only after calibration",
+                "target": "join RTLMUL, OpenSTA/iPower/trace2power activity analysis, or AtomPower-style RTL power priors with local post-route, per-cycle activity, and measured power labels only after calibration",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/run_rtlmul_ppa_advisory.py --run-id validation",
                     "make synth",
                 ],
             },
             {
+                "id": "activity-annotated-power-analysis-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future OpenSTA, iEDA iPower, or trace2power-style power/activity analysis requires pinned tool revisions, Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, and cross-tool correlation",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "architecture-power-model-intake-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future ArchPower or AutoPower-style CPU/AP power models require pinned datasets, feature mappings, local calibration labels, train/test splits, and error analysis before any E1 simulator or power claim",
+                "target": "future ArchPower, AutoPower, or McPAT-style CPU/AP power models require pinned datasets/configs, feature mappings, local calibration labels, train/test splits, and error analysis before any E1 simulator or power claim",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "make cpu-npu-burst-sustained-policy",
@@ -244,10 +259,12 @@ def main() -> int:
             "no calibrated E1 rail power trace, thermal trace, frequency trace, or workload transcript",
             "no package, board, airflow, heatsink, or phone skin thermal model calibrated to E1",
             "no license-reviewed external thermal-map dataset or HotGauge-style thermal framework with exact revision, dependency manifest, package/floorplan mapping, and local calibration",
+            "no pinned McPAT or HotSpot revision, technology/config manifest, activity/power-map inputs, package/floorplan mapping, sensitivity analysis, or local calibration",
             "no local OpenROAD/PDNSim IR-drop label corpus across repeated runs",
             "no approved multimodal static IR-drop feature schema with netlist/layout hashes, signoff labels, contamination review, and held-out E1 error analysis",
             "no dynamic IR-drop label corpus with vector/activity provenance, PDN graph extraction, held-out E1 splits, or temporal error analysis",
             "no activity-aligned power map or vector-based post-route power evidence",
+            "no pinned OpenSTA, iEDA iPower, or trace2power revision with Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, or cross-tool correlation",
             "no per-cycle RTL activity and power-label corpus for AtomPower-style RTL power estimates",
             "no approved TCAD/DTCO deck, device model, simulator, calibration corpus, or process authority for E1 device-level power and thermal assumptions",
             "no approved ArchPower dataset intake, AutoPower code revision, E1 CPU/AP feature mapping, or held-out local calibration labels",

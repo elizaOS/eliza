@@ -29,9 +29,9 @@ pcb:
   edge_clearance_mm: 2.5
 
 battery:
-  candidate: commodity 3900-4500 mAh flat LiPo pouch
-  envelope_mm: [55.0, 92.0, 4.1]
-  z_center_mm: -3.45
+  candidate: LiPol LP446487 class 3.85 V 4500 mAh 17.33 Wh pouch
+  envelope_mm: [64.0, 87.0, 4.4]
+  z_center_mm: -2.5
 
 components:
   usb_c:
@@ -54,9 +54,9 @@ components:
     candidate: noise-cancel MEMS microphone
     envelope_mm: [3.5, 2.65, 1.0]
   haptic:
-    candidate: 0820 X-axis linear resonant actuator
-    envelope_mm: [8.0, 20.0, 3.2]
-    source_note: commodity Shenzhen LRA class; exact vendor drawing required
+    candidate: compact 0612 X-axis linear resonant actuator
+    envelope_mm: [6.0, 12.0, 2.5]
+    source_note: commodity Shenzhen compact LRA class; exact vendor drawing required
   sim_tray:
     candidate: nano-SIM service tray or eSIM-only blocker placeholder
     envelope_mm: [12.3, 18.0, 1.2]
@@ -117,3 +117,17 @@ manufacturing:
   cooling_channel_diameter_mm: 4.0
   cooling_channel_clearance_mm: 8.0
   parting_line: mid-plane around orange back shell perimeter
+
+validation:
+  tolerance:
+    screen_xy_allowance_mm: 0.3
+    pcb_edge_clearance_mm: 2.5
+    usb_shell_to_aperture_clearance_mm: 0.15
+    battery_to_pcb_gap_mm: 0.5
+    button_pressure_limit_n_per_mm2: 0.2
+  environmental_targets:
+    drop_height_m: 1.0
+    ingress_target: IP54 design intent only
+    max_skin_temp_c: 43
+    acoustic_leakage_status: requires sample test
+    rf_pre_scan_status: requires antenna simulation and chamber pre-scan

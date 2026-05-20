@@ -48,6 +48,11 @@ impedance_classes:
     impedance_ohm: 50
     tolerance_pct: 15
     applies_to: [WIFI_SDIO]
+  nfc_loop:
+    impedance_ohm: supplier_tuned_loop
+    tolerance_pct: supplier_tuned
+    applies_to: [NFC_RF_P, NFC_RF_N]
+    reference_plane: enclosure_dependent_keepout
 
 differential_pairs:
   - {name: USB_DP_DN, nets: [USB_DP, USB_DN], class: usb2_diff, max_length_mm: 90, intra_pair_skew_mm_max: 0.5, region: bottom_usb_to_soc}
@@ -63,12 +68,24 @@ differential_pairs:
   - {name: WIFI_PCIE_RX, nets: [WIFI_PCIE_RX_P, WIFI_PCIE_RX_N], class: pcie_diff, max_length_mm: 35, intra_pair_skew_mm_max: 0.15, region: wifi_to_soc}
   - {name: CELL_PCIE_TX, nets: [CELL_PCIE_TX_P, CELL_PCIE_TX_N], class: pcie_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.15, region: cellular_to_soc}
   - {name: CELL_PCIE_RX, nets: [CELL_PCIE_RX_P, CELL_PCIE_RX_N], class: pcie_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.15, region: cellular_to_soc}
+  - {name: LPDDR_CK, nets: [LPDDR_CK_P, LPDDR_CK_N], class: memory_diff, max_length_mm: 18, intra_pair_skew_mm_max: 0.05, region: soc_to_lpddr}
+  - {name: LPDDR_DQS, nets: [LPDDR_DQS_P, LPDDR_DQS_N], class: memory_diff, max_length_mm: 18, intra_pair_skew_mm_max: 0.05, region: soc_to_lpddr}
+  - {name: UFS_REFCLK, nets: [UFS_REFCLK_P, UFS_REFCLK_N], class: ufs_diff, max_length_mm: 28, intra_pair_skew_mm_max: 0.10, region: soc_to_ufs}
+  - {name: UFS_TX, nets: [UFS_TX_P, UFS_TX_N], class: ufs_diff, max_length_mm: 28, intra_pair_skew_mm_max: 0.10, region: soc_to_ufs}
+  - {name: UFS_RX, nets: [UFS_RX_P, UFS_RX_N], class: ufs_diff, max_length_mm: 28, intra_pair_skew_mm_max: 0.10, region: soc_to_ufs}
 
 single_ended_buses:
   - {name: WIFI_SDIO, nets: [WIFI_SDIO_CLK, WIFI_SDIO_CMD, WIFI_SDIO_D0, WIFI_SDIO_D1, WIFI_SDIO_D2, WIFI_SDIO_D3], max_length_mm: 35, group_skew_mm_max: 1.0}
   - {name: SIDE_KEYS, nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N], max_length_mm: 80, debounce_required: true, aon_domain: true}
   - {name: TOUCH_I2C, nets: [TOUCH_I2C_SCL, TOUCH_I2C_SDA], max_length_mm: 70, pullups_to: IO_1V8}
   - {name: CAMERA_I2C, nets: [CAM0_I2C_SCL, CAM0_I2C_SDA, CAM1_I2C_SCL, CAM1_I2C_SDA], max_length_mm: 70, pullups_to: IO_1V8}
+  - {name: AUDIO_I2S_PDM, nets: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT], max_length_mm: 85, group_skew_mm_max: 2.0, keepaway: usb_c_and_rf_feeds}
+  - {name: AUDIO_I2C_IRQ, nets: [AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT], max_length_mm: 85, pullups_to: IO_1V8}
+  - {name: LPDDR_CA, nets: [LPDDR_CA0, LPDDR_CA1, LPDDR_CA2, LPDDR_CA3, LPDDR_RESET_N, LPDDR_ZQ], max_length_mm: 18, group_skew_mm_max: 0.10, keepaway: rf_and_usb_c}
+  - {name: DEBUG_BOOT, nets: [JTAG_TCK, JTAG_TMS, JTAG_TDI, JTAG_TDO, JTAG_TRST_N, BOOT_MODE0, BOOT_MODE1, BOOT_MODE2, SOC_RESET_N], max_length_mm: 45, pullups_to: IO_1V8}
+  - {name: USIM_ESIM, nets: [USIM_VCC, USIM_CLK, USIM_RST, USIM_IO, USIM_DET, ESIM_VCC, ESIM_CLK, ESIM_RST, ESIM_IO], max_length_mm: 35, esd_required: true, keepaway: cellular_rf_feeds}
+  - {name: NFC_CONTROL, nets: [NFC_I2C_SCL, NFC_I2C_SDA, NFC_IRQ_N, NFC_EN], max_length_mm: 70, pullups_to: IO_1V8}
+  - {name: SENSOR_I2C_IRQ, nets: [SENSOR_I2C_SCL, SENSOR_I2C_SDA, IMU_INT, ALS_PROX_INT, BARO_INT, MAG_INT], max_length_mm: 70, pullups_to: IO_1V8}
 
 rf_layout:
   antenna_keepouts:
@@ -93,7 +110,12 @@ power_integrity:
   test_points_required: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
 
 mechanical_keepouts:
-  battery_window: {x: 14.0, y: 48.0, width: 45.0, height: 72.0, rule: no_components_or_copper_intrusions_without_me_review}
+  battery_window: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, rule: no_components_or_copper_intrusions_without_me_review_top_bottom_islands_required}
   usb_c_shell: {x: 26.0, y: 124.0, width: 16.0, height: 6.0, rule: enclosure_captured_connector}
   side_buttons: {x: 4.0, y: 50.0, width: 7.0, height: 46.0, rule: switch_load_path_to_enclosure_rib}
   rear_camera: {x: 47.0, y: 8.0, width: 15.0, height: 24.0, rule: lens_axis_and_z_height_datums_required}
+  display_fpc_bend: {x: 42.0, y: 33.0, width: 20.0, height: 11.0, rule: preserve_bend_radius_to_cover_glass_display_stack}
+  front_camera_earpiece: {x: 2.0, y: 3.0, width: 22.0, height: 12.0, rule: camera_and_receiver_under_glass_acoustic_keepout}
+  haptic_lra: {x: 55.0, y: 88.0, width: 8.0, height: 20.0, rule: no_tall_parts_or_screw_bosses_under_haptic_mass}
+  loudspeaker_mic_ports: {x: 5.0, y: 104.0, width: 57.0, height: 10.0, rule: preserve speaker chamber, microphone acoustic ports, and gasket compression}
+  sim_tray: {x: 56.0, y: 48.0, width: 8.0, height: 24.0, rule: keep_side_service_tray_clear_or_convert_to_esim_blocker}

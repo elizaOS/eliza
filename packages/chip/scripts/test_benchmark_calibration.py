@@ -132,7 +132,7 @@ def test_uncalibrated_simulator_metrics_fail_instead_of_passing() -> None:
                 {
                     "software": {
                         "os": "target-linux",
-                        "kernel": "6.8",
+                        "kernel": "6.12",
                         "firmware": "opensbi",
                         "runtime": "simulator",
                         "build_id": "test-build",
@@ -219,7 +219,7 @@ def test_calibrated_result_requires_utc_timestamp_and_sha256_assets() -> None:
                 {
                     "software": {
                         "os": "target-linux",
-                        "kernel": "6.8",
+                        "kernel": "6.12",
                         "firmware": "opensbi",
                         "runtime": "bare",
                         "build_id": "test-build",

@@ -43,6 +43,7 @@ OPTIONAL_COMMANDS = (
     "verilator",
     "sby",
     "openroad",
+    "autombist",
 )
 
 OPTIONAL_PYTHON_MODULES = (
@@ -113,6 +114,9 @@ def main() -> int:
             "fault-ucb-hw-testing",
             "verirag-llm4dft",
             "deeptpi",
+            "hightpi",
+            "xai-gnn-tpi",
+            "xsource-gnn-testability",
             "deft-atpg",
             "inf-atpg",
             "lite-scan-instrumentation",
@@ -122,6 +126,10 @@ def main() -> int:
             "fan-atpg",
             "quaigh-atpg-equivalence",
             "nn-for-atpg",
+            "logic-bist-mbist-repair",
+            "aawo-configurable-mbist",
+            "aawo-sram-fault-model",
+            "autombist-wrapper-generator",
         ],
         "policy": {
             "inserts_scan": False,
@@ -180,10 +188,20 @@ def main() -> int:
             {
                 "id": "ai-testability-ranking-watch",
                 "status": "CAPTURED_NOT_MODELED",
-                "target": "future ML ranking of hard-to-test nodes, test points, or partial ATPG seeds",
+                "target": "future ML ranking of hard-to-test nodes, X-source-sensitive regions, saliency-ranked test points, or partial ATPG seeds",
                 "acceptance_gates": [
                     "make formal",
                     "make cocotb-contract",
+                ],
+            },
+            {
+                "id": "gnn-test-point-insertion-quarantine-watch",
+                "status": "CAPTURED_NOT_INSERTED",
+                "target": "future HighTPI/XAI-GNN-style test-point candidates require masked-I/O policy, feature manifests, saliency artifacts, insertion-diff quarantine, ATPG replay, and downstream signoff evidence",
+                "acceptance_gates": [
+                    "make synth",
+                    "make manufacturing-artifacts-check",
+                    "python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation",
                 ],
             },
             {
@@ -206,6 +224,18 @@ def main() -> int:
                     "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
                 ],
             },
+            {
+                "id": "memory-bist-fault-model-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future MBIST/BISR, SRAM fault-model, or AutoMBIST-style wrapper generation requires memory-interface manifests, March algorithm selections, fault taxonomy, generated RTL hashes, repair/fuse policy, simulator/formal logs, synthesis/STA/DFT replay, and reviewer disposition",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make rtl-check",
+                    "make formal",
+                    "make manufacturing-artifacts-check",
+                    "python3 scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation",
+                ],
+            },
         ],
         "blocked_by": [
             "no E1 scan architecture or scan IO contract",
@@ -213,7 +243,9 @@ def main() -> int:
             "no ATPG backend selected, pinned, or license-reviewed",
             "OpenROAD DFT, Atalanta, FAN_ATPG, Quaigh, and Fault hardware-testing backends are watchlist-only until exact revisions, formats, build logs, fault models, and replay contracts are reviewed",
             "no license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow",
+            "no approved HighTPI/XAI-GNN/X-source testability implementation/assets, feature manifest, masked-I/O policy, saliency artifacts, generated test-point quarantine, or replay oracle",
             "no approved InF-ATPG implementation/assets, FFR feature manifest, RL training log, generated-pattern quarantine, or deterministic replay oracle",
+            "no approved MBIST/BISR controller or wrapper-generator revision, memory-interface mapping, SRAM fault model, March-test manifest, generated-collateral quarantine, memory-repair policy, or deterministic memory-test replay oracle",
             "Fault may bundle proprietary/noncommercial ATPG engines that cannot be assumed release-safe",
             "no fault model, pattern format, coverage target, or tester interface contract",
             "no before/after timing, area, power, or signoff evidence for scan/test-point insertion",

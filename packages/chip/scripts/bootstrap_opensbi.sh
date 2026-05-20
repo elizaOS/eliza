@@ -7,7 +7,7 @@
 #
 # Usage:
 #   scripts/bootstrap_opensbi.sh                  # uses manifest tag
-#   OPENSBI_TAG=v1.5 scripts/bootstrap_opensbi.sh # override tag
+#   OPENSBI_TAG=v1.8.1 scripts/bootstrap_opensbi.sh # override tag
 #   OPENSBI_DRY_RUN=1 scripts/bootstrap_opensbi.sh
 set -eu
 

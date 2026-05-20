@@ -1,0 +1,90 @@
+schema: eliza.e1_phone_battery_pack_binding.v1
+as_of: 2026-05-20
+status: planning_binding_pack_class_selected_no_safety_docs
+claim_boundary: >
+  Planning binding only. A public 3.85 V 4500 mAh pack class has been selected
+  as the first mechanical and electrical target, but no lithium pack sample,
+  quote, connector, shipping document, or enclosure compression stack has been
+  approved. Promotion requires supplier drawings, UN38.3/MSDS, pack PCM data,
+  thermistor curve, connector pinout, and charge/discharge validation.
+
+target_pack:
+  primary_candidate: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+  energy_wh_target: 17.3
+  nominal_voltage_v: 3.85
+  chemistry: single_cell_lithium_polymer_high_voltage
+  approximate_capacity_mah_at_nominal: 4500
+  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  current_board_battery_window_mm: {width: 64.0, height: 87.0}
+  fit_status: concept_split_island_cavity_matches_public_64x87_pack_outline_pending_supplier_swelling_pcm_tail_and_tolerance_stack
+  max_thickness_budget_mm: 4.7
+  design_action: >
+    The sourced LP446487 class proves a realistic 17.3 Wh phone pack exists.
+    The EVT0 split-island board concept now reserves a 64 x 87 mm full-width
+    battery cavity matching the public outline. Release still requires the
+    supplier drawing, swelling allowance, PCM/tail location, NTC curve,
+    connector pinout, and tolerance-stack signoff before enclosure release.
+
+public_sourcing_evidence:
+  - supplier: LiPol_Battery
+    candidate: LP446487_high_voltage_lithium_polymer_battery
+    url: https://www.lithium-polymer-battery.net/high-voltage-lithium-polymer-battery-3-85v-lp446487-4500mah-17-33wh-with-pcm-and-ntc-and-jst-shr-03v-s-b/
+    observed_public_specs:
+      - 3.85 V nominal
+      - 4500 mAh
+      - 17.33 Wh
+      - PCM and NTC
+      - JST SHR-03V-S-B connector
+      - 4.4 x 64 x 87 mm class package
+    procurement_role: primary_energy_reference_not_mechanically_closed
+  - supplier: Made_in_China_listing_family
+    candidate: 736072_4500mAh_3p7V_lithium_polymer_battery
+    url: https://www.made-in-china.com/showroom/jasonlai1989/product-detailcmbRXrtjYVka/China-Lithium-Polymer-Battery-4500mAh.html
+    observed_public_specs:
+      - 4500 mAh lithium polymer battery
+      - China OEM/ODM manufacturer listing
+      - 736072 size-class evidence for alternate capacity sourcing
+    procurement_role: alternate_supplier_family_requires_3p85V_and_connector_confirmation
+  - supplier: Alibaba_marketplace_listing_family
+    candidate: 3p7V_to_3p85V_4500mAh_lithium_polymer_pack_family
+    url: https://www.alibaba.com/showroom/li-polymer-battery-3.7v-4500mah.html
+    observed_public_specs:
+      - 4500 mAh lithium-polymer marketplace family
+      - NTC and connector variants listed across pack families
+      - custom rechargeable pack supplier pool
+    procurement_role: marketplace_quote_pool_for_custom_narrow_pack
+
+connector_requirements:
+  preferred_pin_count: 4
+  required_signals:
+    - {contract: VBAT, module_role: pack_positive, direction_at_board: input_power}
+    - {contract: GND, module_role: pack_negative, direction_at_board: return}
+    - {contract: BAT_NTC, module_role: thermistor, direction_at_board: analog_input}
+    - {contract: BAT_ID, module_role: pack_identifier, direction_at_board: analog_input}
+  alternate_signals:
+    - PACK_PRES_N
+    - PCM_ALERT_N
+
+power_safety_requirements:
+  - pack_pcm_over_voltage_under_voltage_over_current_short_circuit
+  - charger_ntc_curve_matches_supplier_pack
+  - battery_id_resistor_or_1wire_policy_selected
+  - cell_swelling_clearance_and_compression_pad_defined
+  - charge_current_limited_by_pack_vendor_rating_and_thermal_soak
+  - ship_mode_and_service_disconnect_policy_defined
+
+supplier_evidence_required:
+  - dimensioned_pack_drawing
+  - connector_pinout_and_mating_part
+  - ntc_beta_or_resistance_temperature_table
+  - pcm_protection_spec
+  - max_charge_discharge_current
+  - UN38_3_test_summary
+  - MSDS
+  - IEC62133_or_equivalent_cell_safety_evidence
+
+forbidden_claims:
+  - battery_pack_ready
+  - charging_ready
+  - runtime_validated
+  - safety_certified

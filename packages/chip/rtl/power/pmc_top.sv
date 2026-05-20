@@ -76,34 +76,41 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] reg_rx_head_q;
     logic [PMC_MBOX_DW-1:0] reg_rx_data_q;
 
-    // OpenSBI RPMI shared-memory region. The mailbox aperture's upper half
-    // (offsets 0x800..0xFFF) maps to a dedicated 2 KiB dual-port SRAM that
-    // both the host-side MMIO (OpenSBI's `fdt_mailbox_rpmi_shmem` driver)
-    // and the Ibex data port can access.  Layout (4 queues + a2p-doorbell)
-    // is fixed in `fw/pmc/include/rpmi_shmem_layout.h` and described to
-    // OpenSBI by `dts/eliza-rocket-pmc.dtsi`.
+    // OpenSBI RPMI shared-memory region. The upper half of the 4 KiB
+    // mailbox aperture (offsets 0x800..0xFFF) carries the four RPMI v1.0
+    // queues + a2p-doorbell described to OpenSBI by
+    // `dts/eliza-rocket-pmc.dtsi` and laid out in
+    // `fw/pmc/include/rpmi_shmem_layout.h`.  The MMIO decode below selects
+    // this region with `mbox_addr_i[11] == 1'b1` and routes the access
+    // into the AON SRAM (`aon_sram_q`) that the Ibex data port also
+    // reaches — so OpenSBI and the AON Ibex see one consistent copy.
     //
-    // The MMIO port decodes via `mbox_addr_i[11] == 1'b1`; the Ibex data
-    // port reaches the same words because the SoC fabric routes any
-    // 0x1005_0800..0x1005_0FFF access into this region through the same
-    // pmc_top mailbox interface (in the +define+PMC_INSTANTIATE_IBEX build,
-    // the Ibex data port also flows through here via a direct connect; see
-    // the `gen_ibex_shmem_port` block below).
+    // The default-off build (no PMC_INSTANTIATE_IBEX) lacks `aon_sram_q`
+    // because it never instantiates the Ibex; instead it falls back to a
+    // private 2 KiB scratch (`shmem_q`) so pre-firmware cocotb tests can
+    // still exercise the shared-memory surface without dragging in the
+    // Ibex.  The cocotb roundtrip test that depends on Ibex execution
+    // (`test_opensbi_mpxy_to_pmc_rpmi.py`) gates on PMC_INSTANTIATE_IBEX=1.
     localparam logic [PMC_MBOX_AW-1:0] PMC_REG_SHMEM_BASE  = 12'h800;
     localparam int unsigned            PMC_SHMEM_WORDS     = 512;     // 2 KiB
     localparam int unsigned            PMC_SHMEM_AW        = $clog2(PMC_SHMEM_WORDS);
-    logic [PMC_MBOX_DW-1:0] shmem_q [PMC_SHMEM_WORDS];
 
     logic                    shmem_sel;
     logic [PMC_SHMEM_AW-1:0] shmem_word_idx;
     assign shmem_sel      = mbox_valid_i && (mbox_addr_i[PMC_MBOX_AW-1] == 1'b1);
     assign shmem_word_idx = mbox_addr_i[PMC_SHMEM_AW+2-1:2];
 
+`ifndef PMC_INSTANTIATE_IBEX
+    // Default-off shadow scratch.  Lives inside the same address space the
+    // OpenSBI driver expects so the baseline integration suite still
+    // round-trips a write/read pair through the shmem aperture.
+    logic [PMC_MBOX_DW-1:0] shmem_q [PMC_SHMEM_WORDS];
     initial begin : pmc_shmem_init
         for (int unsigned w = 0; w < PMC_SHMEM_WORDS; w++) begin
             shmem_q[w] = 32'h0;
         end
     end
+`endif
 
     // Aggregate droop telemetry. `droop_total_q` is the present-cycle sum
     // across all rails (combinational behavior across sample periods).
@@ -192,7 +199,13 @@ module pmc_top
             if (mbox_valid_i) begin
                 if (mbox_write_i) begin
                     if (shmem_sel) begin
+`ifdef PMC_INSTANTIATE_IBEX
+                        // Write into the AON SRAM at the matching byte
+                        // offset so the Ibex data port sees the same words.
+                        aon_sram_q[(AON_SRAM_AW)'(PMC_SHMEM_WORDS) + (AON_SRAM_AW)'(shmem_word_idx)] <= mbox_wdata_i;
+`else
                         shmem_q[shmem_word_idx] <= mbox_wdata_i;
+`endif
                     end else begin
                         case (mbox_addr_i)
                             PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
@@ -221,7 +234,11 @@ module pmc_top
                     end
                 end else begin
                     if (shmem_sel) begin
+`ifdef PMC_INSTANTIATE_IBEX
+                        rdata_q <= aon_sram_q[(AON_SRAM_AW)'(PMC_SHMEM_WORDS) + (AON_SRAM_AW)'(shmem_word_idx)];
+`else
                         rdata_q <= shmem_q[shmem_word_idx];
+`endif
                     end else begin
                         case (mbox_addr_i)
                             PMC_REG_STATUS:       rdata_q <= reg_status_q;

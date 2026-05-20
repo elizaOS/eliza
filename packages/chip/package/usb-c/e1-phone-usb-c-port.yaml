@@ -63,6 +63,21 @@ electrical_topology:
       - Requires high-speed mux/orientation handling if routed to USB3 PHY.
       - Requires SI simulation and connector footprint escape review.
 
+layout_closure_requirements:
+  connector_escape:
+    - Keep USB_DP/USB_DN as a 90 ohm differential pair from receptacle to ESD and across the split-board
+      interconnect.
+    - Place USB2 ESD on the bottom island before the flex transition; no stubs longer than the selected
+      ESD package escape permits.
+    - Place CC ESD and PD-controller CC path close enough to avoid an exposed side-rail flex antenna.
+  power_path:
+    - VBUS copper and vias must be sized for 5 A connector rating even when EVT0 charge policy limits lower.
+    - VBUS TVS/surge part must sit between connector and charger/PD power-path entry.
+    - SHIELD_GND must have a defined chassis/logic ground network before enclosure ESD testing.
+  bringup_test_access:
+    - bottom-island test pads: VBUS, USB_CC1, USB_CC2, USB_DP, USB_DN, SHIELD_GND
+    - fixture access must remain reachable after the orange back shell is removed
+
 manufacturing_requirements:
   - Use through-hole shell stakes or enclosure-captured connector for plug loads.
   - Add paste aperture and reflow profile review for mid-mount connector.

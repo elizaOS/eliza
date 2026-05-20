@@ -28,37 +28,35 @@
 
   <rect width="1200" height="1400" fill="#f8fafc"/>
   <text x="70" y="72" class="title">E1 Phone Enclosure Fit Preview</text>
-  <text x="70" y="108" class="sub">5.5 inch FHD display anchor, 64 x 132 mm board, USB-C and side buttons constrained for enclosure review</text>
+  <text x="70" y="108" class="sub">5.5 inch FHD display anchor, 64 x 132 mm split-island board, USB-C and side-key flex constrained for enclosure review</text>
 
   <g transform="translate(115 170) scale(6)">
-    <rect x="0" y="0" width="72" height="148" rx="7" class="device"/>
-    <rect x="-2.55" y="-1.9" width="77.1" height="151.77" rx="7.5" fill="none" stroke="#64748b" stroke-width="0.35" stroke-dasharray="1.4 1"/>
-    <rect x="0.95" y="9.4" width="70.78" height="129.17" rx="2" class="display"/>
-    <rect x="1.98" y="13.5" width="68.04" height="120.96" rx="1" class="active"/>
-    <rect x="4" y="8" width="64" height="132" rx="2.5" class="board" opacity="0.82"/>
-    <rect x="18" y="56" width="45" height="72" class="battery"/>
+    <rect x="0" y="0" width="78.0" height="153.6" rx="7" class="device"/>
+    <rect x="0.45" y="0.915" width="77.1" height="151.77" rx="7.5" fill="none" stroke="#64748b" stroke-width="0.35" stroke-dasharray="1.4 1"/>
+    <rect x="4.16" y="13.3" width="70.78" height="129.17" rx="2" class="display"/>
+    <rect x="5.53" y="17.4" width="68.04" height="120.96" rx="1" class="active"/>
+    <rect x="7.55" y="10" width="64" height="30" rx="2.5" class="board" opacity="0.82"/>
+    <rect x="7.55" y="127" width="64" height="15" rx="2.0" class="board" opacity="0.82"/>
+    <rect x="7.55" y="40" width="64" height="87" class="battery"/>
     <rect x="6" y="8" width="60" height="5" class="antenna"/>
     <rect x="6" y="132" width="60" height="5" class="antenna"/>
     <rect x="53" y="13" width="12" height="18" class="camera"/>
-    <rect x="26" y="132" width="16" height="6" class="usb"/>
-    <rect x="4.2" y="58" width="6.8" height="6" class="button"/>
-    <rect x="4.2" y="67" width="6.8" height="6" class="button"/>
-    <rect x="4.2" y="76" width="6.8" height="8" class="button"/>
+    <rect x="26" y="136" width="16" height="6" class="usb"/>
+    <rect x="4.2" y="37" width="17" height="4" class="button"/>
 
     <text x="18" y="-5" class="micro">touch/lens ref 77.1 x 151.77 mm</text>
     <text x="8" y="19" class="micro">5.5 in FHD active area</text>
-    <text x="22" y="48" class="mmtext">64 x 132 mm board</text>
-    <text x="28" y="94" class="mmtext">45 x 72 mm</text>
+    <text x="22" y="36" class="mmtext">top island</text>
+    <text x="25" y="86" class="mmtext">64 x 87 mm</text>
+    <text x="22" y="135" class="mmtext">bottom island</text>
     <text x="53.5" y="23" class="micro">camera</text>
-    <text x="28" y="136.5" class="micro">USB-C</text>
-    <text x="4.7" y="62.2" class="micro">V+</text>
-    <text x="4.7" y="71.2" class="micro">V-</text>
-    <text x="4.7" y="81" class="micro">P</text>
+    <text x="28" y="140.5" class="micro">USB-C</text>
+    <text x="4.7" y="40" class="micro">side key flex</text>
 
-    <line x1="0" y1="156" x2="72" y2="156" class="dim"/>
-    <text x="22" y="162" class="micro">72 mm device target</text>
-    <line x1="82" y1="0" x2="82" y2="148" class="dim"/>
-    <text x="86" y="82" class="micro" transform="rotate(90 86 82)">148 mm device target</text>
+    <line x1="0" y1="164" x2="78.0" y2="164" class="dim"/>
+    <text x="20" y="170" class="micro">78.0 mm device target</text>
+    <line x1="89" y1="0" x2="89" y2="153.6" class="dim"/>
+    <text x="93" y="82" class="micro" transform="rotate(90 93 82)">153.6 mm device target</text>
   </g>
 
   <g transform="translate(690 190)">

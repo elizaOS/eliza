@@ -54,6 +54,27 @@ A future `stage 3` may apply AutoFDO+Propeller+BOLT to the LLVM build itself,
 landing 10-15% compile-time wins (per published Google data); this is not yet
 in the pinned recipe.
 
+**Stage 3 unblock — pending patch on disk.** Propeller currently has no
+RISC-V support in upstream `main`. The blocking change is
+[llvm/llvm-project#170992 "[RISCV] Add Propeller support for RISC-V"](https://github.com/llvm/llvm-project/pull/170992),
+which has two APPROVED reviews (wangpc-pp, topperc), CI green, but has been
+stale since 2026-03-26. The patch was rebased onto our pinned trunk SHA
+(`de3ee84346d6dcf77ac20fe5c8acc95594886cbc`) and saved at
+[`compiler/llvm-build/patches/001-riscv-propeller.patch`](../../compiler/llvm-build/patches/001-riscv-propeller.patch),
+listed under `pending_patches` in `llvm-pin.json`. It is small (94 lines,
+5 files: `clang/lib/Driver/ToolChains/Clang.cpp`, two clang driver tests,
+`RISCVInstrInfo.{h,cpp}`) and exposes:
+
+- `-fbasic-block-address-map` for `riscv64-*-elf` targets in the clang driver
+- `-fbasic-block-sections=labels|none|list=...` for `riscv64-*-elf`
+- `RISCVInstrInfo::insertNoop` (compressed `c.nop` if Zca, otherwise
+  `addi x0, x0, 0`) — required by Propeller's basic-block reordering pass
+
+The `release_flags_default` already contains `-fbasic-block-sections=labels`,
+so once this patch is applied the existing flag becomes a no-error on RISC-V
+and the stage-3 recipe can attach `--symbol-ordering-file` from a Propeller
+profile (see `release_flags_propeller_attach`).
+
 ## RVA23 patches
 
 The pin file's `rva23_patches.active` is empty by intent: the current trunk
@@ -63,6 +84,18 @@ must:
 1. Add the patch file under `compiler/llvm-build/patches/<NNN>-<topic>.patch`.
 2. List it in `rva23_patches.active` with `upstream_review_url` and `rationale`.
 3. Update this section with the patch summary and the gate that consumes it.
+
+## Pending (non-RVA23) patches
+
+`pending_patches` in `llvm-pin.json` tracks out-of-tree patches that are
+not RVA23-mandatory but unblock a specific downstream recipe. Each entry
+must record the upstream PR URL, its head SHA, the SHA the patch was
+rebased onto, the files it touches, and the `remove_when` condition (the
+upstream merge commit our pin must pass before the patch is dropped).
+
+Currently pending:
+
+- `001-riscv-propeller.patch` — see the **Stage 3 unblock** note above.
 
 ## Default target flags
 

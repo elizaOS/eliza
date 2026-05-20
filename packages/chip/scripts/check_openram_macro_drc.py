@@ -35,7 +35,7 @@ PDK_PATH = (
     / "volare"
     / "sky130"
     / "versions"
-    / "0fe599b2afb6708d281543108caf8310912f54af"
+    / "c6d73a35f524070e85faff4a6a9eef49553ebc2b"
 )
 
 

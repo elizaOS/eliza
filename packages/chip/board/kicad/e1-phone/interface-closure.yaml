@@ -1,0 +1,409 @@
+schema: eliza.e1_phone_interface_closure.v1
+status: planning_interfaces_cross_checked_not_fabrication_ready
+claim_boundary: Cross-checks enclosure-facing interface plans against package bindings,
+  placement regions, and logical block nets. This is not a supplier pinout, KiCad
+  schematic, ERC/DRC result, or fabricated-board proof.
+source_files:
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/human-interface/side-buttons.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/interconnect/e1-phone-top-bottom-flex.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+device_envelope_mm:
+  width: 78.0
+  height: 153.6
+  max_thickness: 9.6
+board_bbox_mm:
+  width: 64.0
+  height: 132.0
+interfaces:
+  - name: single_bottom_usb_c_charge_data_debug
+    status: planning_complete_for_evt0_usb2_pd_not_placed
+    placement_refdes_group: J_USB_C
+    region_mm:
+      x: 26.0
+      y: 124.0
+      width: 16.0
+      height: 6.0
+    side: bottom_edge
+    binding_paths:
+      - package/usb-c/e1-phone-usb-c-port.yaml
+    block_ids:
+      - J_USB_C
+      - U_USB_PD
+      - U_CHARGER
+      - U_SOC
+    required_nets:
+      - GND
+      - SHIELD_GND
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    nets_present_in_block_or_matrix:
+      - GND
+      - SHIELD_GND
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    missing_required_nets: []
+    required_constraints:
+      - 90ohm_usb2_diff
+      - esd_near_connector
+      - mechanical_capture
+    constraints_present:
+      - 90ohm_usb2_diff
+      - esd_near_connector
+      - mechanical_capture
+    missing_required_constraints: []
+    mechanical_closure_requirements:
+      - connector_shell_captured_by_enclosure_not_only_solder_joints
+      - chamfered_or_radiused_port_opening
+      - minimum_plug_keepout_verified_with_cable_overmold
+      - local_ground_stitching_and_chassis_ground_policy
+      - Use through-hole shell stakes or enclosure-captured connector for plug loads.
+      - Add paste aperture and reflow profile review for mid-mount connector.
+      - Add test pads for VBUS, CC1, CC2, USB_DP, USB_DN before first article.
+      - Verify cable insertion/removal clearance in STEP with plug overmold.
+    layout_closure_requirements:
+      connector_escape:
+        - Keep USB_DP/USB_DN as a 90 ohm differential pair from receptacle to ESD
+          and across the split-board interconnect.
+        - Place USB2 ESD on the bottom island before the flex transition; no stubs
+          longer than the selected ESD package escape permits.
+        - Place CC ESD and PD-controller CC path close enough to avoid an exposed
+          side-rail flex antenna.
+      power_path:
+        - VBUS copper and vias must be sized for 5 A connector rating even when EVT0
+          charge policy limits lower.
+        - VBUS TVS/surge part must sit between connector and charger/PD power-path
+          entry.
+        - SHIELD_GND must have a defined chassis/logic ground network before enclosure
+          ESD testing.
+      bringup_test_access:
+        - bottom-island test pads: VBUS, USB_CC1, USB_CC2, USB_DP, USB_DN, SHIELD_GND
+        - fixture access must remain reachable after the orange back shell is removed
+    passes_planning_gate: true
+  - name: left_edge_power_volume_buttons
+    status: planning_complete_no_wake_validation
+    placement_refdes_group: SW_POWER_VOL
+    region_mm:
+      x: 2.0
+      y: 26.0
+      width: 16.0
+      height: 3.0
+    side: top_island_left_edge_to_side_key_flex
+    binding_paths:
+      - package/human-interface/side-buttons.yaml
+    block_ids:
+      - SW_SIDE_KEYS
+      - U_SOC
+      - U_PMIC
+    required_nets:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    nets_present_in_block_or_matrix:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    missing_required_nets: []
+    required_constraints:
+      - enclosure_actuator_rib
+      - recovery_key_combo
+      - wake_capable_power_key
+    constraints_present:
+      - enclosure_actuator_rib
+      - recovery_key_combo
+      - wake_capable_power_key
+    missing_required_constraints: []
+    mechanical_closure_requirements:
+      - one_power_button_oriented_for_index_finger_reach
+      - two_volume_buttons_or_rocker_above_power_button
+      - elastomer_or_plastic_actuator_between_external_button_and_side_push_switch
+      - local stiffener or enclosure rib to prevent switch solder joint loading
+      - small_side_key_flex_with_board_to_board_or_fpc_connector
+      - switches_directly_on_mainboard_edge
+    layout_closure_requirements:
+      side_key_flex_pin_budget:
+        required_nets:
+          - PWR_KEY_N
+          - VOL_UP_N
+          - VOL_DOWN_N
+          - AON_1V8
+          - GND
+        recommended_min_contacts: 8
+        rationale: 'Keep one ground beside each wake/recovery signal and leave spare
+          contacts for shield, ID, or a future camera/antenna coexistence sensor if
+          the side key flex becomes a small subassembly.
+
+          '
+      actuator_stack:
+        - External caps must push an enclosure rib or elastomer, not the solder joints
+          directly.
+        - Switch centerlines must align to the molded side-button caps within the
+          tolerance stack.
+        - Side-key flex stiffener must avoid the battery cavity and the top/bottom
+          interconnect service loop.
+      bringup_test_access:
+        - PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, and GND must have pogo or exposed-pad
+          access before first-article firmware recovery testing.
+    passes_planning_gate: true
+  - name: top_right_display_touch_fpc
+    status: planning_complete_pinout_supplier_request_required
+    placement_refdes_group: J_DISPLAY_TOUCH
+    region_mm:
+      x: 49.0
+      y: 8.0
+      width: 13.0
+      height: 19.0
+    side: top_right
+    binding_paths:
+      - package/display/v0-dsi-720x1280.yaml
+    block_ids:
+      - J_DISPLAY_TOUCH
+      - U_SOC
+    required_nets:
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    nets_present_in_block_or_matrix:
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    missing_required_nets: []
+    required_constraints:
+      - 100ohm_mipi_dphy
+      - fpc_bend_radius
+      - panel_bias_rails
+    constraints_present:
+      - 100ohm_mipi_dphy
+      - fpc_bend_radius
+      - panel_bias_rails
+    missing_required_constraints: []
+    mechanical_closure_requirements:
+      - selected panel outline must match board/kicad/e1-phone/display-fit.yaml
+      - FPC exit datum and connector pinout required before schematic freeze
+      - backlight bias rails and touch reset/IRQ must be assigned in real schematic
+    layout_closure_requirements: {}
+    passes_planning_gate: true
+  - name: top_right_front_rear_camera_fpcs
+    status: planning_complete_pinout_supplier_request_required
+    placement_refdes_group: J_CAM0_CAM1
+    region_mm:
+      x: 45.0
+      y: 3.0
+      width: 17.0
+      height: 24.0
+    side: top_right_camera_bump
+    binding_paths:
+      - package/camera/oem-mipi-csi-modules.yaml
+    block_ids:
+      - J_CAM0
+      - J_CAM1
+      - U_SOC
+    required_nets:
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - IO_1V8
+    nets_present_in_block_or_matrix:
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - IO_1V8
+    missing_required_nets: []
+    required_constraints:
+      - 100ohm_mipi_dphy
+      - af_vcm_supply
+      - camera_z_height
+      - lens_axis_datum
+    constraints_present:
+      - 100ohm_mipi_dphy
+      - af_vcm_supply
+      - camera_z_height
+      - lens_axis_datum
+    missing_required_constraints: []
+    mechanical_closure_requirements:
+      - rear AF module lens z-height and axis datum required before ID freeze
+      - front camera module selected by cover glass and bezel clearance
+      - supplier FPC pinouts required before schematic symbol creation
+    layout_closure_requirements: {}
+    passes_planning_gate: true
+  - name: top_bottom_split_board_interconnect
+    status: planning_complete_connector_pair_not_selected
+    placement_refdes_group:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    region_mm:
+      top_mate:
+        x: 46.0
+        y: 27.0
+        width: 16.0
+        height: 3.0
+      bottom_mate:
+        x: 46.0
+        y: 117.0
+        width: 16.0
+        height: 3.0
+    side:
+      top_mate: top_island_bottom_edge
+      bottom_mate: bottom_island_top_edge
+    binding_paths:
+      - package/interconnect/e1-phone-top-bottom-flex.yaml
+    block_ids:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    required_nets:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - GND
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - IO_1V8
+      - PDM_CLK
+      - PDM_DAT
+      - RF_VBAT
+      - SHIELD_GND
+      - SYS
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    nets_present_in_block_or_matrix:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - GND
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - IO_1V8
+      - PDM_CLK
+      - PDM_DAT
+      - RF_VBAT
+      - SHIELD_GND
+      - SYS
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    missing_required_nets: []
+    required_constraints:
+      - audio_keepaway
+      - power_return_interleave
+      - split_board_interconnect
+      - usb2_90ohm_across_flex
+    constraints_present:
+      - audio_keepaway
+      - power_return_interleave
+      - split_board_interconnect
+      - usb2_90ohm_across_flex
+    missing_required_constraints: []
+    mechanical_closure_requirements:
+      - exact_connector_part_numbers_and_mating_pairs
+      - connector_land_patterns_and_step_models
+      - flex_length_bend_radius_stackup_and_stiffener_drawing
+      - USB2_and_audio_signal_integrity_review
+      - power_contact_current_temperature_rise_review
+      - assembly_sequence_and_rework_plan
+      - 2_layer_or_4_layer_controlled_impedance_fpc
+      - enclosure_clamp_or_adhesive_under_battery_edge_required
+    assembly_closure_requirements:
+      - battery must insert without overstressing the mated top/bottom flex
+      - connector mated height and stiffener stack must clear the 9.6 mm enclosure
+      - strain relief or clamp must be defined before drop/torsion testing
+      - bottom island service order must be documented before first article assembly
+    passes_planning_gate: true
+routing_classes_referenced:
+  differential_pair_count: 18
+  single_ended_bus_count: 11
+display_supplier_state: supplier_request_required
+camera_supplier_state: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+release_blockers:
+  - exact supplier connector pinouts for USB-C footprint, display/touch FPC, rear
+    camera, front camera, and side-key flex
+  - exact top/bottom interconnect mating connector part numbers, flex stackup, and
+    strain relief
+  - real KiCad symbols and footprints with ERC-clean connectivity
+  - routed DRC-clean USB2, MIPI DSI, MIPI CSI, button wake, split-board interconnect,
+    and power nets
+  - STEP fit proving USB-C port, side button actuators, display FPC, camera z-stack,
+    and split-board flex service path

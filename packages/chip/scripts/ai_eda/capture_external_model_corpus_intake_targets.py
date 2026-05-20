@@ -110,6 +110,10 @@ def main() -> int:
             "deepcircuitx",
             "metrex",
             "circuitnet-3",
+            "verigen-codegen-verilog",
+            "origen-verilog",
+            "verireason-rtl-grpo",
+            "deepv-verilog-rag",
             "veriforge-deepseek-coder",
             "llm-eda-opencores",
             "hardware-verilogeval-v2-hf",
@@ -159,7 +163,7 @@ def main() -> int:
             {
                 "id": "hf-rtl-model-candidate-watch",
                 "status": "CAPTURED_NOT_DOWNLOADED",
-                "target": "future SiliconMind, ChipCraftX, ChipSeek, CircuitMind/TC-Bench, RTLFixer, PyHDL-Eval, RTLSeek, QiMeng-CRUX/SALV, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, base-model and reward metadata where applicable, prompts, outputs, benchmark overlap, and evaluator logs",
+                "target": "future VeriGen, OriGen, VeriReason, DeepV, SiliconMind, ChipCraftX, ChipSeek, CircuitMind/TC-Bench, RTLFixer, PyHDL-Eval, RTLSeek, QiMeng-CRUX/SALV, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, base-model, retrieval corpus, hosted-service data handling, and reward metadata where applicable, prompts, outputs, benchmark overlap, and evaluator logs",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
@@ -170,7 +174,7 @@ def main() -> int:
             {
                 "id": "rtl-corpus-license-contamination-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future OpenRTLSet, MG-Verilog, DeepCircuitX, OpenCores, VerilogEval, RTLFixer, CVDP, PyHDL-Eval, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
+                "target": "future OpenRTLSet, MG-Verilog, DeepCircuitX, OpenCores, VerilogEval, VeriGen, OriGen, RTLFixer, CVDP, PyHDL-Eval, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
@@ -205,6 +209,7 @@ def main() -> int:
             "no approved external model or corpus license review for release use",
             "no pinned HuggingFace dataset/model revisions, file manifests, or storage quarantine policy",
             "no contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts",
+            "no VeriGen, OriGen, VeriReason, or DeepV revision, model-card, base-model, dataset, reward/testbench, retrieval-corpus, hosted-space data-handling, license, or contamination review",
             "no DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1",
             "no ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report",
             "no CircuitMind/TC-Bench revision, model/data manifest, RAG trace, benchmark-overlap review, or local gate-level metric replay",

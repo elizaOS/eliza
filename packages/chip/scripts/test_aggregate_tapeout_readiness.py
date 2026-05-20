@@ -203,6 +203,80 @@ class GateInventoryTests(unittest.TestCase):
         self.assertIn("os-rv64-release-check", names)
         self.assertIn("os-rv64-qemu-virt-boot-test", names)
 
+    def test_android_release_readiness_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-release-readiness-contract-check", names)
+
+    def test_phone_runtime_readiness_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("phone-runtime-readiness-contract-check", names)
+
+    def test_chipyard_ap_abi_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chipyard-ap-abi-contract-check", names)
+
+    def test_chipyard_generated_linux_contract_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("chipyard-generated-linux-contract-check", specs)
+        self.assertEqual(
+            specs["chipyard-generated-linux-contract-check"].args,
+            ("--require-boot-evidence",),
+        )
+
+    def test_boot_security_chain_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("boot-security-chain-contract-check", names)
+
+    def test_linux_bsp_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-bsp-contract-check", names)
+
+    def test_linux_boot_artifacts_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("linux-boot-artifacts-check", specs)
+        self.assertEqual(specs["linux-boot-artifacts-check"].args, ("--require-pass",))
+
+    def test_linux_firmware_boot_chain_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-firmware-boot-chain-contract-check", names)
+
+    def test_linux_memory_platform_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-memory-platform-contract-check", names)
+
+    def test_chipyard_verilator_linux_smoke_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chipyard-verilator-linux-smoke-check", names)
+
+    def test_aosp_hal_service_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("aosp-hal-service-contract-check", names)
+
+    def test_aosp_linux_handoff_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("aosp-linux-handoff-contract-check", names)
+
+    def test_android_evidence_capture_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-evidence-capture-contract-check", names)
+
+    def test_android_simulated_peripheral_evidence_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-simulated-peripheral-evidence-check", names)
+
+    def test_cross_fork_agent_payload_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("cross-fork-agent-payload-contract-check", names)
+
+    def test_chip_os_bringup_workflow_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chip-os-bringup-workflow-contract-check", names)
+
+    def test_host_local_paths_are_not_hardcoded(self) -> None:
+        for spec in agg.GATES:
+            with self.subTest(gate=spec.name):
+                self.assertNotIn("/home/shaw/", spec.script)
+
 
 class MainExitCodeTests(unittest.TestCase):
     def test_main_returns_zero_when_no_fail(self) -> None:
@@ -304,6 +378,27 @@ class MainExitCodeTests(unittest.TestCase):
         ):
             rc = agg.main(["--strict", "--json-only"])
         self.assertEqual(rc, 0)
+
+
+class PrintSummaryTests(unittest.TestCase):
+    def test_strict_summary_marks_blocked_as_effective_release_blocker(self) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="ext-dep",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED ext",
+                    subsystem="pd",
+                    tier="pd",
+                )
+            ]
+        )
+        with mock.patch("sys.stdout") as stdout:
+            agg.print_summary(report, strict=True)
+        printed = "".join(call.args[0] + "\n" for call in stdout.write.call_args_list)
+        self.assertIn("release_blocker=False", printed)
+        self.assertIn("effective_release_blocker=True", printed)
+        self.assertIn("strict=True", printed)
 
 
 class ReportFileTests(unittest.TestCase):

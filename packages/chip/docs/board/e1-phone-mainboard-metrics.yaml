@@ -7,12 +7,18 @@ claim_boundary: >
 
 industrial_design_assumptions:
   device_class: handheld_phone
-  device_envelope_mm: {width: 72.0, height: 148.0, max_thickness: 9.5}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
   display_class: 5.5_in_fhd_1080x1920_mipi_oem_module
   display_active_area_mm: {width: 68.04, height: 120.96}
   display_reference_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
   touch_lens_reference_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
-  battery_pack_keepout_mm: {width: 45.0, height: 72.0, thickness_target: 4.7}
+  battery_pack_keepout_mm: {width: 64.0, height: 87.0, thickness_target: 4.7}
+  selected_battery_reference_pack_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  selected_battery_reference_fit: >
+    The LiPol LP446487 3.85 V 4500 mAh public pack class matches the 17.3 Wh
+    energy target and now matches the CAD 64 x 87 x 4.4 mm cavity. The next
+    layout pass must turn the concept keepout into a routed top/bottom island
+    or rigid-flex implementation before release.
   camera_bump_keepout_mm: {width: 26.0, height: 22.0, z_stack_requires_me_review: true}
   speaker_boxes:
     earpiece_top_mm: {width: 26.0, height: 4.5}
@@ -30,20 +36,21 @@ industrial_design_assumptions:
   enclosure_interface_source: docs/board/e1-phone-enclosure-interface.yaml
 
 mainboard_outline_concept:
-  architecture: single_rigid_mainboard_with_battery_window
+  architecture: top_bottom_rigid_islands_with_full_width_battery_cavity
   display_fit_strategy: >
     Board width is held to 64 mm so the rigid PCB fits behind common 5.5 inch
     1080x1920 MIPI LCMs whose active area is about 68.04 x 120.96 mm and whose
-    TFT outline is about 70-71 mm wide. Enclosure width remains driven by the
-    touch lens/cover stack, side keys, and antenna clearances.
+    TFT outline is about 70-71 mm wide. The current CAD envelope is held to
+    78.0 x 153.6 mm because the easy-to-source Chenghao-class CTP module
+    outline is 77.1 x 151.77 mm and the orange rails are intentionally tight
+    for the compact hard-plastic industrial design.
   bounding_box_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
   copper_regions:
-    - {name: top_logic_rf, x_mm: 2.0, y_mm: 4.0, width_mm: 60.0, height_mm: 42.0, area_mm2: 2520.0}
-    - {name: left_spine_flex_power, x_mm: 2.0, y_mm: 48.0, width_mm: 11.0, height_mm: 50.0, area_mm2: 550.0}
-    - {name: bottom_io_audio, x_mm: 2.0, y_mm: 100.0, width_mm: 60.0, height_mm: 32.0, area_mm2: 1920.0}
-  estimated_board_area_mm2: 4990.0
-  battery_window_or_non_pcb_area_mm2: 3458.0
-  pcb_area_utilization_of_bounding_box_pct: 59.1
+    - {name: top_logic_rf, x_mm: 0.0, y_mm: 0.0, width_mm: 64.0, height_mm: 29.0, area_mm2: 1856.0}
+    - {name: bottom_io_audio, x_mm: 0.0, y_mm: 117.0, width_mm: 64.0, height_mm: 15.0, area_mm2: 960.0}
+  estimated_board_area_mm2: 2816.0
+  battery_window_or_non_pcb_area_mm2: 5568.0
+  pcb_area_utilization_of_bounding_box_pct: 33.3
   recommended_layer_stackup: 10_layer_0p8_mm_hdi
   minimum_stackup_for_first_proto: 8_layer_0p8_mm_hdi
   target_trace_classes:
@@ -54,7 +61,7 @@ mainboard_outline_concept:
     sdio_single_ended_ohm: 50
 
 placement_area_budget:
-  estimated_board_area_mm2: 4990.0
+  estimated_board_area_mm2: 2816.0
   reserved_functional_area_mm2:
     soc_lpddr_pmic_storage_cluster: 930.0
     cellular_module_or_modem_rf: 850.0
@@ -64,25 +71,44 @@ placement_area_budget:
     speakers_mics_haptics_buttons_connectors: 420.0
     testpoints_fiducials_shields_keepouts: 640.0
   estimated_reserved_total_mm2: 4440.0
-  estimated_unallocated_or_wasted_area_mm2: 550.0
-  estimated_unallocated_or_wasted_pct_of_board: 11.0
-  target_unallocated_pct_after_layout: {min_pct: 8.0, max_pct: 12.0}
+  estimated_unallocated_or_wasted_area_mm2: 298.5
+  estimated_unallocated_or_wasted_pct_of_board: 10.6
+  target_unallocated_pct_after_layout: {min_pct: 10.0, max_pct: 18.0}
   note: >
     This treats shield-can courtyards, RF keepouts, and manufacturing access as
     useful reserved area. True wasted space must be recomputed from the KiCad
     board polygon, component courtyard polygons, antenna keepouts, and no-route
     zones after placement.
 
+derived_concept_geometry:
+  source: board/kicad/e1-phone/layout-utilization.yaml
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  battery_window_mm: {width: 64.0, height: 87.0}
+  physical_pcb_area_after_battery_window_mm2: 2816.0
+  antenna_keepout_area_mm2: 844.0
+  placement_area_after_battery_and_antenna_keepouts_mm2: 1972.0
+  f_fab_region_total_area_mm2: 1763.0
+  route_shield_test_reserve_pct_of_placement_area: 10.6
+  note: >
+    These numbers are generated from gr_rect geometry in the concept KiCad PCB.
+    The 64 x 87 mm battery cavity leaves only top and bottom PCB islands with a
+    narrow concept reserve. This is still placeholder floorplanning, not routed
+    board evidence; side-key, service, and other placeholders must move to
+    supplier footprints, courtyards, flex/interconnect, and DRC-clean geometry
+    before layout closure can be claimed.
+
 power_efficiency_targets:
   battery:
     chemistry: 1s_li_ion_polymer
+    selected_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
     target_capacity_mah: 4500
     nominal_voltage_v: 3.85
     nominal_energy_wh: 17.3
     required_missing_parts:
-      - selected_cell_pack_with_protection
+      - supplier_quote_and_sample_for_selected_pack_class
       - fuel_gauge_schematic_and_layout
       - battery_ntc_and_pack_id
+      - battery_cavity_resize_or_custom_pack_decision
       - safety_shipping_certification
     usb_c:
       ports: 1

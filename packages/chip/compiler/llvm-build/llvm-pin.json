@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schema": "eliza.llvm_toolchain_pin.v1",
   "as_of": "2026-05-19",
+  "last_audited": "2026-05-20",
   "claim_boundary": "pinned_build_recipe_only_not_executable_evidence_of_a_built_toolchain",
   "blocked_until_built": true,
   "blocked_reason": "host is macOS arm64 per docs/toolchain/riscv64-cross-host.md; LLVM RISC-V toolchain MUST be built inside the canonical Linux container described in docs/toolchain/iree-eliza-npu.md before any pinned-build evidence is accepted",
@@ -74,6 +75,31 @@
     "policy": "no out-of-tree patches required for the pinned SHA; if a patch becomes necessary, archive it under compiler/llvm-build/patches/<NNN>-<topic>.patch and list each here with upstream review URL plus rationale",
     "active": []
   },
+  "pending_patches": [
+    {
+      "id": "001-riscv-propeller",
+      "path": "compiler/llvm-build/patches/001-riscv-propeller.patch",
+      "source_pr": "https://github.com/llvm/llvm-project/pull/170992",
+      "title": "[RISCV] Add Propeller support for RISC-V",
+      "pr_head_sha": "e799179ff829128b921eedd83cd61adc6d5e336e",
+      "pr_state": "OPEN",
+      "pr_last_updated": "2026-03-26",
+      "pr_reviews": "APPROVED x2 (wangpc-pp, topperc); libcxx-ci SUCCESS; Graphite mergeability_check SUCCESS",
+      "rebased_against": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+      "rebase_notes": "Trunk landed COFF/x86 support for -fbasic-block-address-map between PR base and our pin; the RISC-V additions were merged into the new ELF triple guard. PR head applies cleanly except for that orthogonal change, which is reflected in the saved patch.",
+      "files_touched": [
+        "clang/lib/Driver/ToolChains/Clang.cpp",
+        "clang/test/Driver/basic-block-address-map.c",
+        "clang/test/Driver/fbasic-block-sections.c",
+        "llvm/lib/Target/RISCV/RISCVInstrInfo.cpp",
+        "llvm/lib/Target/RISCV/RISCVInstrInfo.h"
+      ],
+      "patch_size_lines": 94,
+      "apply_verified": "git apply --check on 2026-05-20 against pinned SHA — clean",
+      "rationale": "Unblocks the future stage-3 PGO+Propeller+BOLT recipe documented in docs/toolchain/llvm-trunk-pin.md by enabling -fbasic-block-sections=labels|list= and -fbasic-block-address-map for riscv64-*-elf targets and providing the RISCVInstrInfo::insertNoop override Propeller requires.",
+      "remove_when": "PR #170992 merges into trunk and our pin advances past the merge commit"
+    }
+  ],
   "default_target_triple": "riscv64-unknown-linux-gnu",
   "march": "rva23u64",
   "mcpu": "eliza-e1",
@@ -148,5 +174,12 @@
     "scripts/build_llvm_riscv.sh --verify",
     "scripts/check_rva23_compliance.py --toolchain build/llvm-stage2",
     "scripts/check_compiler_versions.py"
-  ]
+  ],
+  "related_rebuild_plans": {
+    "openroad_deps": {
+      "plan_file": "compiler/openroad-deps-refresh-plan.json",
+      "scope": "version-refresh plan for external/openroad-deps; consumed on the next OpenROAD rebuild, not on LLVM rebuilds",
+      "last_audited": "2026-05-20"
+    }
+  }
 }

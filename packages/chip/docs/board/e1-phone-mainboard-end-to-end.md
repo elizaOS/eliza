@@ -10,10 +10,11 @@ speakers, microphones, front and rear cameras, display/touch, Wi-Fi,
 Bluetooth, GNSS, NFC, and cellular. The first board should use module
 boundaries for high-risk radios wherever possible, especially cellular.
 
-The current `board/kicad/e1-phone/` directory is only a KiCad skeleton. It
-needs a real schematic, board layout, local libraries, fabrication outputs,
-STEP model, BOM, pick-and-place, SI/PI reports, RF reports, thermal evidence,
-and first-article logs before any release claim.
+The current `board/kicad/e1-phone/` directory is a concept package with a
+schematic scaffold, concept PCB, fit reports, and previews. It still needs a
+real schematic, routed board layout, local libraries, fabrication outputs, STEP
+model, BOM, pick-and-place, SI/PI reports, RF reports, thermal evidence, and
+first-article logs before any release claim.
 
 ## Proposed Board Metrics
 
@@ -24,7 +25,10 @@ The mechanical anchor is a 68.04 x 120.96 mm active area and roughly 70-71 mm
 TFT outline, with the phone enclosure driven by the touch lens and side-key
 stack.
 
-- Device envelope: 72 x 148 x 9.5 mm, before enclosure ME tolerance stack.
+- Device envelope: 78.0 x 153.6 x 9.6 mm, before enclosure ME tolerance
+  stack. This is driven by the selected 77.1 x 151.77 mm commodity CTP module
+  plus minimum enclosure margin; a 72 x 148 mm envelope does not contain that
+  display assembly.
 - Display anchor: 5.5 inch FHD 1080 x 1920 MIPI-DSI, 68.04 x 120.96 mm active
   area.
 - Mainboard bounding box: 64 x 132 mm, 8,448 mm2.
@@ -37,10 +41,11 @@ stack.
 - Preferred production stackup: 10L 0.8 mm HDI.
 
 The metric source of truth is
-`docs/board/e1-phone-mainboard-metrics.yaml`. After KiCad placement exists,
-replace these estimates with computed geometry from the board polygon,
-component courtyards, antenna keepouts, no-route zones, and shield-can
-outlines.
+`docs/board/e1-phone-mainboard-metrics.yaml`, with 2D display fit generated in
+`board/kicad/e1-phone/display-fit.yaml` and concept PCB utilization generated
+in `board/kicad/e1-phone/layout-utilization.yaml`. After KiCad placement
+exists, replace estimates with computed geometry from the board polygon,
+component courtyards, antenna keepouts, no-route zones, and shield-can outlines.
 
 ## CAD Preview
 
@@ -178,13 +183,15 @@ The current enclosure/PCB interface source of truth is
 
 Critical constraints captured there:
 
-- 64 x 132 mm rigid board behind a 5.5 inch FHD display stack.
-- 45 x 72 mm central battery window.
+- 64 x 132 mm rigid board behind a 5.5 inch FHD display stack and a
+  78.0 x 153.6 mm device envelope.
+- 64 x 87 mm full-width battery cavity between top and bottom PCB islands.
 - Bottom-center USB-C zone at x=26-42 mm, y=124-130 mm.
-- Left-edge side-key zone at x=4-11 mm, y=50-96 mm.
+- Top-island side-key flex connector that must reach the molded side buttons
+  without intruding into the full-width battery cavity.
 - Top/bottom antenna keepouts that must remain plastic/low-metal unless an RF
   vendor signs off the enclosure stack.
-- A 9.5 mm thickness target that still requires STEP and tolerance-stack
+- A 9.6 mm thickness target that still requires STEP and tolerance-stack
   closure before any enclosure-fit claim.
 
 ## Required Analyses Before Layout Release

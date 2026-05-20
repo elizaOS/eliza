@@ -19,9 +19,9 @@
     0.8
   ],
   "battery_envelope_mm": [
-    55.0,
-    92.0,
-    4.1
+    64.0,
+    87.0,
+    4.4
   ],
   "manufacturing": {
     "draft_deg": 2.0,

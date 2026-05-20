@@ -7,6 +7,7 @@ extend-exclude = [
   "build",
   "external",
   "tools",
+  ".tools",
   ".claude",
 ]
 
@@ -41,6 +42,7 @@ exclude = [
   "^build/",
   "^external/",
   "^tools/",
+  "^\\.tools/",
   "^\\.venv/",
   "^\\.claude/",
 ]

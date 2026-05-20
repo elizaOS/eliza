@@ -96,7 +96,7 @@ def check_scaffold(errors: list[str]) -> None:
     )
     require(
         chipyard.get("tag") == EXPECTED_CHIPYARD["tag"],
-        "Chipyard AP path must remain pinned to tag 1.13.0",
+        "Chipyard AP path must remain pinned to tag main-2026-05-20",
         errors,
     )
     require(

@@ -283,8 +283,9 @@ def write_bookshelf(
         fh.write("UCLA wts 1.0\n\n")
 
     # Bookshelf requires row_height == every movable cell's height. The
-    # esonghori CT-bridge sidesteps this by feeding PlaceDB in-process, but
-    # stock DREAMPlace's Bookshelf legalizer asserts uniform row height. We
+    # Circuit-Training bridge in limbo018/DREAMPlace sidesteps this by feeding
+    # PlaceDB in-process, but stock DREAMPlace's Bookshelf legalizer asserts
+    # uniform row height. We
     # set row_height = 1 site_h unit and rewrite cell heights to integer
     # multiples; the proxy of interest here is HPWL after global placement,
     # which is invariant under uniform y-scaling.

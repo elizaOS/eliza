@@ -60,7 +60,7 @@ AsmDB (ISCA '19) shows datacenter and large mobile workloads spend a substantial
 
 1. **Tiny CPU stub** at `rtl/cpu/e1_cpu_subsystem_stub.sv` — no branch predictor of any kind. Every branch resolved by sequential FSM.
 2. **CVA6 integration wrapper** at `rtl/cpu/e1_cva6_wrapper.sv`, gated by `E1_HAVE_CVA6`. Brings the toy default predictor: 32-entry BTB, 128-entry 2-bit bimodal BHT, 2-entry RAS.
-3. **Selected AP path**: Chipyard 1.13.0 `ElizaRocketConfig`. Rocket's BPU is similarly minimal.
+3. **Selected AP path**: Chipyard `main-2026-05-20` `ElizaRocketConfig`. Rocket's BPU is similarly minimal.
 4. **Architecture planning** does not enumerate branch prediction as a workstream.
 5. **Modeled MPKI** in `benchmarks/results/simulator-arch-metrics-sota.json` is a static input to the perf/W model, not driven by any predictor structure.
 

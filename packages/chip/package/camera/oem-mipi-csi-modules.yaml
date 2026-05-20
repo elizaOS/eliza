@@ -32,7 +32,24 @@ rear_camera_primary:
 
 front_camera_primary:
   class: 5MP_to_8MP_fixed_focus_MIPI_CSI_module
-  status: select_after_display_and_enclosure_z_stack
+  status: shortlist_selected_pending_supplier_drawing_and_z_stack
+  candidate_parts:
+    - vendor: Sincere First
+      module: SF-G5035S60FY
+      sensor: GC5035
+      resolution_px: 2592x1944
+      interface: MIPI_CSI_2_lane
+      pin_count: 30
+      focus: fixed_focus
+      sourcing_url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+    - vendor: Shenzhen Junde Electronics
+      module: JDT-HPLCC-8MP-120
+      sensor: IMX219
+      resolution_px: 3280x2464
+      interface: MIPI_CSI
+      module_size_mm: {width: 25, height: 24}
+      focus: fixed_focus
+      sourcing_url: https://www.alibaba.com/product-detail/IMX219-8MP-120-Degree-Wide-Angle_1601568412012.html
   requirements:
     - module_height_must_clear_cover_glass_and_bezel
     - fixed_focus_preferred_for_first_board

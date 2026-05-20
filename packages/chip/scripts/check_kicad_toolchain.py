@@ -55,7 +55,30 @@ def main() -> int:
     if host:
         code, out = run(["kicad-cli", "version"])
         print(f"host kicad-cli: {out if code == 0 else 'FAILED'}")
-        return code
+        if code != 0:
+            return code
+        rsvg = shutil.which("rsvg-convert")
+        if rsvg:
+            code, out = run(["rsvg-convert", "--version"])
+            if code != 0:
+                print(f"FAIL: host rsvg-convert failed\n{out}", file=sys.stderr)
+                return code
+            print(out.splitlines()[0])
+            print("KiCad toolchain ok via host tools")
+            return 0
+        if (LOCAL / "usr/bin" / "rsvg-convert").is_file():
+            code, out = run_local("rsvg-convert", "--version")
+            if code != 0:
+                print(f"FAIL: local rsvg-convert failed\n{out}", file=sys.stderr)
+                return code
+            print(out.splitlines()[0])
+            print("KiCad toolchain ok via host kicad-cli plus local render tools")
+            return 0
+        print(
+            "FAIL: kicad-cli is installed but rsvg-convert is missing. Run `make kicad-setup`.",
+            file=sys.stderr,
+        )
+        return 1
 
     local = LOCAL / "usr/bin" / "kicad-cli"
     if local.is_file():
@@ -87,11 +110,11 @@ def main() -> int:
         return 1
 
     docker_checks: list[list[str]] = [
-        ["scripts/kicad_run.sh", "kicad-cli", "version"],
-        ["scripts/kicad_run.sh", "kibot", "--version"],
-        ["scripts/kicad_run.sh", "pcbdraw", "--version"],
+        ["scripts/kicad_docker.sh", "kicad-cli", "version"],
+        ["scripts/kicad_docker.sh", "kibot", "--version"],
+        ["scripts/kicad_docker.sh", "pcbdraw", "--version"],
         [
-            "scripts/kicad_run.sh",
+            "scripts/kicad_docker.sh",
             "python3",
             "-c",
             "import PIL, yaml, wx; print('python deps ok')",

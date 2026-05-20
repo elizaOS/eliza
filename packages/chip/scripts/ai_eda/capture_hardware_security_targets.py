@@ -43,6 +43,9 @@ OPTIONAL_COMMANDS = (
     "sby",
     "semgrep",
     "iverilog",
+    "hal",
+    "netlist-paths",
+    "naja",
 )
 
 OPTIONAL_PYTHON_MODULES = (
@@ -52,6 +55,8 @@ OPTIONAL_PYTHON_MODULES = (
     "torch_geometric",
     "pyverilog",
     "sklearn",
+    "spydrnet",
+    "najaeda",
 )
 
 
@@ -137,6 +142,10 @@ def main() -> int:
             "veriloglavd",
             "hardsecbench",
             "pearl-trojan-llm",
+            "hal-netlist-analysis",
+            "spydrnet-netlist-framework",
+            "netlist-paths-query-tool",
+            "naja-snl-netlist-framework",
             "trojansaint",
             "gnn-mff",
             "securerag-rtl",
@@ -154,6 +163,9 @@ def main() -> int:
             "trojanloc",
             "harmchip",
             "trojan-xai-comparison",
+            "goldenfuzz",
+            "mabfuzz-processor",
+            "fuzzilicon",
         ],
         "policy": {
             "changes_rtl": False,
@@ -215,6 +227,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "deterministic-netlist-security-query-watch",
+                "status": "CAPTURED_NOT_QUERIED",
+                "target": "future HAL, SpyDrNet, Netlist Paths, or Naja-style netlist security triage must pin synthesized netlist and library hashes, import/query command logs, output hashes, RTL/spec cross-references, deterministic follow-up checks, and reviewer disposition before any finding is trusted",
+                "acceptance_gates": [
+                    "make synth",
+                    "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "security-rag-triage-watch",
                 "status": "CAPTURED_NOT_CLASSIFIED",
                 "target": "future cited RAG triage for RTL security findings after local rules and reviewer workflow exist",
@@ -255,6 +277,16 @@ def main() -> int:
                     "make no-hardware-action-check",
                 ],
             },
+            {
+                "id": "processor-fuzzing-security-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future GoldenFuzz, MABFuzz, Fuzzilicon, Cascade, or DifuzzRTL-style processor fuzzing for security triage must pin generator policy, fuzzer backend, DUT/reference revisions, ISA/profile scope, generated program hashes, coverage logs, mismatch or vulnerability replay, disclosure policy, and security reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no local known-good/known-bad E1 RTL security label set",
@@ -266,11 +298,13 @@ def main() -> int:
             "no poisoning-screening workflow for external RTL fine-tuning corpora",
             "no line-level Trojan-localization acceptance workflow tied to E1 RTL and formal/simulation evidence",
             "no dual-use approval, sandbox, or no-source-import boundary for NETLAM/TrojanGYM-style adversarial Trojan-generation frameworks",
+            "no approved HAL, SpyDrNet, Netlist Paths, or Naja workflow with exact revisions, netlist/library hashes, import/query logs, output hashes, equivalence or deterministic follow-up checks, and reviewer disposition",
             "no license-reviewed hardware vulnerability prompt dataset with taxonomy, split manifest, and prompt privacy review",
             "no approved model-card, training-corpus, embedding-model, or line-label review workflow for model-based Verilog CWE triage",
             "no approved static-analysis fusion workflow with analyzer revisions, parser compatibility, rule hashes, alert logs, false-positive review, and deterministic replay",
             "no acceptance contract for AI security findings, suppressions, or reviewer signoff",
             "no before/after deterministic regression gate for acting on AI security output",
+            "no approved processor-fuzzing security workflow with generator/fuzzer revisions, DUT/reference mapping, generated program hashes, coverage/mismatch replay, disclosure handling, and security reviewer disposition",
             "external Trojan insertion benchmarks are adversarial test data, not design inputs",
         ],
     }

@@ -10,7 +10,7 @@ major_items:
   - function: display_touch
     qty: 1
     primary: Chenghao_CH550FH01A_CT_or_pin_compatible_5p5_FHD_MIPI_CTP
-    alternates: [META_055WU01_class, 5p5_AMOLED_RM67191_class]
+    alternates: [META_055WU01_class, 5p5_ILI7807D_1200nit_MIPI_40pin_class, 5p5_AMOLED_RM67191_class]
     sourcing: docs/board/e1-phone-oem-sourcing.md
     pcb_dependency: 40pin_or_supplier_defined_display_fpc_connector
     freeze_blockers: [exact_pinout, fpc_drawing, init_sequence, touch_controller]
@@ -25,10 +25,11 @@ major_items:
 
   - function: front_camera
     qty: 1
-    primary: 5MP_to_8MP_fixed_focus_MIPI_module_TBD
+    primary: Sincere_First_SF_G5035S60FY_GC5035_5MP_FF_MIPI
+    alternates: [Junde_IMX219_8MP_fixed_focus_MIPI_lab_or_front_alternate]
     sourcing: package/camera/oem-mipi-csi-modules.yaml
     pcb_dependency: small_camera_fpc_connector
-    freeze_blockers: [supplier_selection, exact_pinout, enclosure_z_stack]
+    freeze_blockers: [exact_pinout, lens_z_height, enclosure_z_stack, driver_support]
 
   - function: cellular
     qty: 1
@@ -76,6 +77,14 @@ major_items:
     pcb_dependency: vbus_battery_sys_power_path_thermal_copper
     freeze_blockers: [battery_pack, charge_current, thermistor_policy]
 
+  - function: battery_pack
+    qty: 1
+    primary: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [Made_in_China_736072_4500mAh_LiPo_family, Alibaba_custom_3p85V_4500mAh_pack_quote_pool]
+    sourcing: package/battery/e1-phone-17p3wh-pack.yaml
+    pcb_dependency: 4pin_battery_connector_or_soldered_pack_variant
+    freeze_blockers: [pack_supplier_quote, connector_pinout, ntc_curve, pcm_limits, safety_docs, battery_cavity_resize_or_custom_pack]
+
   - function: pmic
     qty: 1
     primary: DA9063_class
@@ -89,6 +98,14 @@ major_items:
     sourcing: package/audio/v0-codec.yaml
     pcb_dependency: bottom_audio_region_speaker_mic_flexes
     freeze_blockers: [speaker_box, mic_port_locations, acoustic_gaskets]
+
+  - function: top_bottom_interconnect
+    qty: 1
+    primary: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    alternates: [Hirose_FH58_signal_flex_plus_power_tabs, Molex_SlimStack_ACB6_Plus_or_equivalent]
+    sourcing: package/interconnect/e1-phone-top-bottom-flex.yaml
+    pcb_dependency: top_and_bottom_mating_land_patterns_plus_controlled_impedance_fpc
+    freeze_blockers: [exact_mating_part_numbers, circuit_count, flex_stackup, usb2_si, current_temperature_rise, assembly_sequence]
 
 production_bom_requirements:
   - every_item_has_manufacturer_part_number_and_supplier_part_number

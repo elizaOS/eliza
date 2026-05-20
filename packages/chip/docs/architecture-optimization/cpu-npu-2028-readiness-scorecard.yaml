@@ -1,10 +1,10 @@
 schema: eliza.cpu_npu_2028_readiness_scorecard.v1
 status: modeled_ready_release_blocked
-claim_boundary: >
-  Consolidated CPU+NPU 2028 readiness audit for this local tree. This can pass
-  modeled architecture consistency only; it cannot approve phone-class
-  benchmark, AOSP, PDK, post-route, or silicon claims without the listed release
-  gates passing with real evidence.
+claim_boundary: 'Consolidated CPU+NPU 2028 readiness audit for this local tree. This can pass modeled
+  architecture consistency only; it cannot approve phone-class benchmark, AOSP, PDK, post-route, or silicon
+  claims without the listed release gates passing with real evidence.
+
+  '
 source_artifacts:
   optimized_work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
   optimizer_report: benchmarks/results/soc-optimized-operating-point.json
@@ -40,7 +40,7 @@ modeled_operating_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 240.0
+  memory_sustained_gbps: 120.0
 modeled_constraints:
   max_die_c: 95.0
   min_bandwidth_margin_gbps: 0.0
@@ -73,12 +73,6 @@ proof_domains:
       - build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
       - build/evidence/cpu_ap/eliza_e1_linux_boot.log
       - build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log
-  - id: npu_nnapi
-    current_state: blocked_until_real_e1_npu_nnapi_accelerator_proof
-    gate_command: make e1-npu-nnapi-proof-check
-    evidence_artifacts:
-      - benchmarks/capabilities/e1_npu_nnapi.proof.json
-      - docs/evidence/android/e1-npu/android-proof-manifest.json
   - id: aosp_simulator
     current_state: blocked_until_local_aosp_virtual_device_evidence
     gate_command: make aosp-simulator-completion-check

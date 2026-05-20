@@ -10,7 +10,7 @@ coordinate_system:
   origin: top_left_of_rigid_mainboard_front_view
   units: mm
   board_bbox: {x: 0.0, y: 0.0, width: 64.0, height: 132.0}
-  device_envelope: {width: 72.0, height: 148.0, max_thickness: 9.5}
+  device_envelope: {width: 78.0, height: 153.6, max_thickness: 9.6}
   display_active_area: {width: 68.04, height: 120.96}
   display_tft_outline_target: {width: 70.78, height: 129.17, thickness: 1.7}
   touch_lens_outline_reference: {width: 77.1, height: 151.77, thickness: 3.39}
@@ -26,7 +26,7 @@ z_stack_target:
     - {name: graphite_thermal_spreader_and_gap_pad, thickness_mm: 0.2_to_0.6, status: estimate}
     - {name: rear_cover_or_midframe_allowance, thickness_mm: 0.7_to_1.2, status: estimate}
   risk: >
-    The stack can exceed 9.5 mm unless shield can heights, battery thickness,
+    The stack can exceed 9.6 mm unless shield can heights, battery thickness,
     camera z-height, and rear cover design are locked together. A STEP
     tolerance stack is mandatory before claiming enclosure fit.
 
@@ -50,7 +50,7 @@ edge_interfaces:
     x_range: [0.0, 12.0]
     constraints:
       - volume_up_volume_down_and_power_key_use_side_push_tactiles_or_flex_assembly
-      - side_key_flex_connector_must_not_intrude_into_battery_window
+      - side_key_flex_connector_must_route_outside_full_width_battery_cavity
       - external_button_plungers_must_load_enclosure_rib_not_switch_solder_joints
   right_edge:
     interface: reserved_for_enclosure_rail_or_optional_sim_tray
@@ -59,9 +59,10 @@ edge_interfaces:
 
 component_keepouts:
   battery_window:
-    rect: {x: 14.0, y: 48.0, width: 45.0, height: 72.0}
+    rect: {x: 0.0, y: 29.5, width: 64.0, height: 87.0}
     requirements:
       - no_components_on_rigid_pcb_inside_window
+      - top_bottom_rigid_islands_or_flex_required_for_pack_clearance
       - adhesive_and_pull_tab_clearance_to_be_defined_by_battery_vendor
       - battery_ntc_and_pack_id_connector_must_remain_serviceable
   rear_camera_bump:
@@ -83,7 +84,7 @@ component_keepouts:
 next_me_artifacts_required:
   - STEP_model_for_board_display_battery_camera_usb_c_and_buttons
   - 2D_drawing_with_datums_for_display_lens_camera_usb_c_and_side_buttons
-  - tolerance_stack_for_9p5_mm_thickness_target
+  - tolerance_stack_for_9p6_mm_thickness_target
   - antenna_plastic_and_metal_keepout_model
   - acoustic_chamber_model_for_speaker_mics_and_earpiece
   - drop_and_connector_insertion_load_review

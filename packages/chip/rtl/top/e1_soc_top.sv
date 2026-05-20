@@ -319,6 +319,10 @@ module e1_soc_top (
     logic [1:0]  cpu_axi_aw_burst;
     logic        cpu_axi_aw_lock;
     logic [3:0]  cpu_axi_aw_cache;
+    logic [2:0]  cpu_axi_aw_prot;
+    logic [3:0]  cpu_axi_aw_qos;
+    logic [3:0]  cpu_axi_aw_region;
+    logic [5:0]  cpu_axi_aw_atop;
     logic        cpu_axi_aw_user;
     logic        cpu_axi_aw_valid;
     logic        cpu_axi_aw_ready;
@@ -359,7 +363,15 @@ module e1_soc_top (
     /* verilator lint_off UNUSEDSIGNAL */
     logic [63:0] cpu_dbg_pc;
     logic        cpu_dbg_valid;
+    logic [2:0]  cpu_axi_aw_prot_unused;
+    logic [3:0]  cpu_axi_aw_qos_unused;
+    logic [3:0]  cpu_axi_aw_region_unused;
+    logic [5:0]  cpu_axi_aw_atop_unused;
     /* verilator lint_on UNUSEDSIGNAL */
+    assign cpu_axi_aw_prot_unused   = cpu_axi_aw_prot;
+    assign cpu_axi_aw_qos_unused    = cpu_axi_aw_qos;
+    assign cpu_axi_aw_region_unused = cpu_axi_aw_region;
+    assign cpu_axi_aw_atop_unused   = cpu_axi_aw_atop;
 
     // ── External interrupt from PLIC/interrupt controller ─────────────────
     // Wire to the e1_interrupt_controller claim output when the PLIC is
@@ -412,6 +424,10 @@ module e1_soc_top (
         .axi_aw_burst   (cpu_axi_aw_burst),
         .axi_aw_lock    (cpu_axi_aw_lock),
         .axi_aw_cache   (cpu_axi_aw_cache),
+        .axi_aw_prot    (cpu_axi_aw_prot),
+        .axi_aw_qos     (cpu_axi_aw_qos),
+        .axi_aw_region  (cpu_axi_aw_region),
+        .axi_aw_atop    (cpu_axi_aw_atop),
         .axi_aw_user    (cpu_axi_aw_user),
         .axi_aw_valid   (cpu_axi_aw_valid),
         .axi_aw_ready   (cpu_axi_aw_ready),
@@ -426,6 +442,7 @@ module e1_soc_top (
         .axi_b_user     (cpu_axi_b_user),
         .axi_b_valid    (cpu_axi_b_valid),
         .axi_b_ready    (cpu_axi_b_ready),
+        .hart_id_i      (64'd0),
         // Observability
         .dbg_pc_o       (cpu_dbg_pc),
         .dbg_valid_o    (cpu_dbg_valid)

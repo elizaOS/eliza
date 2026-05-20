@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,28 @@ BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 RUNTIME = ROOT / "compiler/runtime/e1_npu_runtime.py"
 RUNTIME_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
 CLAIM_BOUNDARY = "optimization_targets_only_no_benchmark_or_product_claim"
+
+OPTIONAL_COMMANDS = (
+    "verilator",
+    "qemu-system-riscv64",
+    "renode",
+    "gem5",
+    "gem5.opt",
+    "sniper",
+    "sst",
+    "systemc-config",
+    "ramulator2",
+    "dramsim3main",
+)
+
+OPTIONAL_PYTHON_MODULES = (
+    "cocotb",
+    "cocotb_test",
+    "cocotb_bus",
+    "cocotb_coverage",
+    "pyuvm",
+    "cocotbext.axi",
+)
 
 
 def rel(path: Path) -> str:
@@ -28,6 +52,26 @@ def sha256_file(path: Path) -> str:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text())
+
+
+def command_entry(name: str) -> dict[str, str | None]:
+    resolved = shutil.which(name)
+    return {
+        "command": name,
+        "status": "PRESENT" if resolved else "MISSING",
+        "path": resolved,
+    }
+
+
+def module_entry(name: str) -> dict[str, str]:
+    try:
+        present = importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        present = False
+    return {
+        "module": name,
+        "status": "PRESENT" if present else "MISSING",
+    }
 
 
 def benchmark_targets() -> list[dict[str, Any]]:
@@ -84,16 +128,31 @@ def main() -> int:
         "source_ids": [
             "zigzag",
             "timeloop-accelergy",
+            "scale-sim",
             "dosa",
             "diffaxe",
             "gem-rtl-simulator",
             "rtlflow",
             "firesim",
+            "systemc-tlm",
+            "sst-simulator",
+            "chipyard-soc-generator",
+            "gemmini-generator",
+            "firemarshal-workloads",
+            "midas-fame-simulation-transform",
+            "verilator",
+            "qemu-riscv",
+            "renode",
+            "gem5-simulator",
+            "sniper-simulator",
+            "ramulator2",
+            "dramsim3",
             "verion-eda",
             "copra-cocotb",
             "waveform-mcp",
             "mcp-vcd-waveform",
             "vaporview-waveform",
+            "waveeye",
             "cocotb-core",
             "cocotb-test",
             "cocotb-bus",
@@ -103,8 +162,14 @@ def main() -> int:
             "autobench",
             "project-ava",
             "rtlmul",
+            "mcpat",
+            "hotspot-thermal-simulator",
         ],
         "input_artifacts": artifacts,
+        "optional_backends": {
+            "commands": [command_entry(name) for name in OPTIONAL_COMMANDS],
+            "python_modules": [module_entry(name) for name in OPTIONAL_PYTHON_MODULES],
+        },
         "targets": benchmark_targets(),
         "required_followup_gates": [
             "make npu-runtime-contract-check",
@@ -115,9 +180,12 @@ def main() -> int:
             "no calibrated latency or energy labels",
             "no real accelerator benchmark_model transcript",
             "no executed DSE backend",
+            "no pinned SCALE-Sim, McPAT, or HotSpot backend with E1 configs, activity/power inputs, output hashes, and calibration evidence",
+            "no pinned Verilator, QEMU, Renode, gem5, Sniper, SystemC/TLM, SST, Ramulator2, or DRAMsim3 revision/config/workload set with command logs, stats outputs, trace correlation, local calibration, and reviewer disposition for simulator-backed AI/DSE claims",
             "no pinned GPU/FPGA RTL simulator backend, supported-SystemVerilog subset, waveform correlation, or speedup replay",
+            "no pinned Chipyard/Gemmini/FireMarshal/MIDAS revision set, submodule manifest, generator config, generated RTL/DTS/firmware/workload hashes, simulator transcript, or platform-contract review",
             "no approved generated cocotb stub, generated testbench, mutation-test, or simulator failure-taxonomy workflow",
-            "no approved waveform-context MCP/viewer workflow with trace hashes, signal scope allowlists, prompt redaction, and simulator replay",
+            "no approved waveform-context MCP/viewer or WaveEye-style RCA workflow with trace hashes, signal scope allowlists, protocol assumptions, prompt redaction where applicable, proof JSON, and simulator replay",
             "no approved cocotb core, cocotb-test, cocotb-bus, functional-coverage, Python-UVM, or AXI VIP workflow with seed manifests, coverage database hashes, scoreboard policy, and cocotb/formal correlation",
         ],
     }

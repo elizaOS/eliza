@@ -37,7 +37,7 @@ docker run --rm -v "$PWD":/work -w /work \
     python3 scripts/run_multi_corner_sta.py \
         --run-dir pd/openlane/runs/<RUN_TAG> \
         --out-dir build/pd/multi_corner_sta/<RUN_TAG> \
-        --pdk-root /work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af
+        --pdk-root /work/external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b
 ```
 
 This image ships OpenSTA at `/nix/store/.../opensta/bin/sta` which is on

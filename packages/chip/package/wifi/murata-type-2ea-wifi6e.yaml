@@ -62,11 +62,28 @@ host_interfaces:
       - {contract: WIFI_IRQ, module_role: oob_irq, direction_at_soc: input}
 
 layout_requirements:
-  - Follow Murata reference layout for module land pattern, ground, antenna feed,
-    keepout, and matching network.
-  - Keep Wi-Fi antenna clear of cellular main/diversity antennas and top/bottom
-    metal enclosure rails.
-  - Add pi matching network and conducted test point before antenna feed.
+  module_placement:
+    - Follow Murata reference layout for module land pattern, ground, antenna feed, keepout, and matching
+      network.
+    - Place the shielded SMT module on the top RF island with a short return-stitch path to both antenna
+      matching networks.
+    - Keep PCIe/SDIO and Bluetooth UART away from cellular RF feeds and display bias switching nodes.
+  antenna_plan:
+    wifi_bt_rf0: side_plastic_or_top_edge_antenna_after_vendor_review
+    wifi_bt_rf1: spatially_separated_side_or_bottom_edge_antenna_after_vendor_review
+    matching_required: [WIFI_BT_RF0, WIFI_BT_RF1]
+    conducted_access_required_before_matching_network: true
+    minimum_isolation_targets:
+      wifi_to_cellular_main_db: supplier_defined_before_release
+      wifi0_to_wifi1_db: supplier_defined_for_2x2_mimo
+  coexistence_requirements:
+    - Define WLAN/BT PTA or coexistence pins if required by the CYW55573 firmware package.
+    - Run 2.4 GHz Wi-Fi, Bluetooth, cellular transmit, GNSS, display bias, and charger coexistence tests.
+    - Confirm country-code/regulatory-domain handling before Android Wi-Fi framework release.
+  firmware_and_regulatory:
+    - Murata/CYW55573 firmware, NVRAM/CLM blobs, and license terms must be captured before EVT1 software
+      image release.
+    - Modular approval scope must be reviewed against the final antenna gains and enclosure plastics.
 
 forbidden_claims:
   - wifi_ready

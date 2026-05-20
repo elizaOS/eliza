@@ -93,6 +93,10 @@ stages:
       - deepcircuitx
       - metrex
       - circuitnet-3
+      - verigen-codegen-verilog
+      - origen-verilog
+      - verireason-rtl-grpo
+      - deepv-verilog-rag
       - veriforge-deepseek-coder
       - llm-eda-opencores
       - hardware-verilogeval-v2-hf
@@ -117,6 +121,10 @@ stages:
       - mg-verilog
       - metrex
       - circuitnet-3
+      - verigen-codegen-verilog
+      - origen-verilog
+      - verireason-rtl-grpo
+      - deepv-verilog-rag
       - veriforge-deepseek-coder
       - llm-eda-opencores
       - hardware-verilogeval-v2-hf
@@ -145,10 +153,11 @@ stages:
     critical_review: >
       HuggingFace and GitHub now contain useful RTL models, Verilog corpora,
       repository-level RTL/PPA datasets, RTL RL/code/model artifacts,
-      constrained and signal-aware QiMeng-family RTL checkpoints, Verilog
-      syntax-repair loops, multi-HDL evaluation frameworks, multi-agent
-      gate-level generation frameworks and benchmarks, metric-reasoning
-      datasets, CircuitNet-style PD corpora, SVA datasets, and
+      Verilog-specialized checkpoints, LoRA fine-tunes, reasoning/RL models,
+      RAG-hosted Verilog generation workflows, constrained and signal-aware
+      QiMeng-family RTL checkpoints, Verilog syntax-repair loops, multi-HDL
+      evaluation frameworks, multi-agent gate-level generation frameworks and
+      benchmarks, metric-reasoning datasets, CircuitNet-style PD corpora, SVA datasets, and
       wafer-defect models. E1 should treat them as metadata-only candidates
       until exact revisions, licenses, file manifests, contamination checks,
       quarantine paths, deterministic local gates, and reviewer dispositions
@@ -164,6 +173,10 @@ stages:
       - rtllm
       - cvdp
       - protocolllm
+      - verigen-codegen-verilog
+      - origen-verilog
+      - verireason-rtl-grpo
+      - deepv-verilog-rag
       - openrtlset
       - mg-verilog
       - llm-eda-opencores
@@ -279,6 +292,10 @@ stages:
       - rtl-coder
       - rtlfixer
       - pyhdl-eval
+      - verigen-codegen-verilog
+      - origen-verilog
+      - verireason-rtl-grpo
+      - deepv-verilog-rag
       - chipcraftx-rtlgen-7b
       - chipseek
       - rtlseek
@@ -294,10 +311,11 @@ stages:
       - build/ai_eda/rtl_model_eval/validation/eval_report.json
     next_gate: make rtl-check
     critical_review: >
-      Public RTL models, repair loops, EDA-feedback RL frameworks, and
-      benchmarks are useful for candidate generation and evaluator design, but
-      generated or repaired RTL remains outside source until lint, simulation,
-      synthesis, formal where applicable, contamination checks, and review pass.
+      Public RTL models, LoRA fine-tunes, RAG workflows, reasoning/RL loops,
+      repair loops, EDA-feedback RL frameworks, and benchmarks are useful for
+      candidate generation and evaluator design, but generated or repaired RTL
+      remains outside source until lint, simulation, synthesis, formal where
+      applicable, contamination checks, and review pass.
   - id: rtl_repository_completion
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:
@@ -357,13 +375,20 @@ stages:
       - assertllm
       - assertionforge
       - codev-sva
+      - surelog-uhdm-sv-frontend
+      - uhdm-systemverilog-data-model
+      - verible-sv-tooling
+      - sv-tests-compliance
+      - slang-sv-frontend
     local_lane: p1-assertion-candidate-review
     current_artifacts:
       - verify/ai_eda/assertion_candidates/e1_npu_descriptor.yaml
     next_gate: make formal
     critical_review: >
       Assertion-generation SOTA is improving quickly, but generated SVAs can
-      check the wrong property; keep them as reviewed candidates first.
+      check the wrong property; deterministic SystemVerilog parse, lint,
+      elaboration, and frontend-qualification backends are prerequisites for
+      candidate hygiene, not evidence that the property is meaningful.
   - id: verification_debug_and_planning
     rating: READY_DRY_RUN
     source_ids:
@@ -381,6 +406,7 @@ stages:
       - stellar-sva
       - proofloop-sva
       - fvdebug
+      - assertsolver
       - veridebug
       - siliconmind-v1
       - rtlfixer
@@ -391,12 +417,18 @@ stages:
       - waveform-mcp
       - mcp-vcd-waveform
       - vaporview-waveform
+      - waveeye
       - cocotb-core
       - cocotb-test
       - cocotb-bus
       - cocotb-coverage
       - pyuvm-cocotb
       - cocotbext-axi
+      - surelog-uhdm-sv-frontend
+      - uhdm-systemverilog-data-model
+      - verible-sv-tooling
+      - sv-tests-compliance
+      - slang-sv-frontend
     local_lane: p1-verification-debug-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_verification_debug_targets.py
@@ -405,11 +437,13 @@ stages:
     critical_review: >
       Agentic verification planners, structure-guided assertion retrievers,
       solver-in-loop SVA agents, self-correcting testbench generators, UVM
-      machines, RTL debug/repair loops, and formal/debug assistants are useful
-      for triage, and waveform-context MCP servers, waveform viewers,
+      machines, RTL debug/repair loops, assertion-failure repair models, and
+      formal/debug assistants are useful for triage, and waveform-context MCP
+      servers, waveform viewers, deterministic waveform root-cause analyzers,
       cocotb core, pytest cocotb runners, bus driver/monitor libraries,
-      functional coverage libraries, Python-UVM, and AXI VIP can make simulator
-      feedback more structured. Root-cause narratives, generated testbenches,
+      functional coverage libraries, Python-UVM, AXI VIP, and deterministic
+      SystemVerilog frontend/lint/compliance tooling can make simulator and
+      assertion feedback more structured. Root-cause narratives, generated testbenches,
       generated UVM collateral, generated SVAs, coverage claims, waveform
       summaries, bug localizations, bug-type classifications, and proposed RTL
       fixes are all unsafe until tied to local waveform/coverage hashes, RTL
@@ -535,6 +569,12 @@ stages:
       - google-ml-compiler-opt
       - tvm-meta-schedule
       - ansor
+      - iree-mlir-compiler
+      - llvm-mlir
+      - apache-tvm
+      - executorch-edge-ai
+      - litert-edge-runtime
+      - xnnpack
       - autofdo
       - llvm-propeller
       - bolt
@@ -555,16 +595,18 @@ stages:
       - build/ai_eda/compiler_autotuning_targets/validation/targets_report.json
     next_gate: python3 scripts/check_compiler_versions.py
     critical_review: >
-      Compiler ML, schedule search, RVV intrinsic generation, agentic
-      accelerator-kernel optimization, optimization-memory reuse, formal
-      RISC-V semantics, and profile-guided binary optimization can directly
-      improve E1 software and NPU kernels, but they also directly change
-      shipped code and binaries. E1 needs pinned toolchains, corpus
-      provenance, target adapters, generated-kernel quarantine,
-      simulator/runtime correctness, semantic-equivalence evidence, benchmark
-      calibration, and review before generated schedules, profiles,
-      intrinsics, kernels, compiler models, optimization memories, or binaries
-      can affect source or claims.
+      Compiler ML, MLIR/IREE and edge-runtime compiler stacks, schedule search,
+      CPU fallback kernels, RVV intrinsic generation, agentic accelerator-kernel
+      optimization, optimization-memory reuse, formal RISC-V semantics, and
+      profile-guided binary optimization can directly improve E1 software and
+      NPU kernels, but they also directly change shipped code, generated
+      artifacts, runtime paths, and binaries. E1 needs pinned toolchains,
+      corpus provenance, target adapters, generated-kernel quarantine,
+      unsupported-op and CPU-fallback reports, simulator/runtime correctness,
+      semantic-equivalence evidence, benchmark calibration, and review before
+      generated schedules, profiles, intrinsics, kernels, compiler models,
+      optimization memories, runtime frontends, backend artifacts, fallback
+      paths, or binaries can affect source or claims.
   - id: reliability_resilience_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -657,6 +699,7 @@ stages:
     source_ids:
       - zigzag
       - timeloop-accelergy
+      - scale-sim
       - dosa
       - diffaxe
     local_lane: p1-zigzag-npu-dse
@@ -665,8 +708,8 @@ stages:
       - build/ai_eda/zigzag/validation/dse_report.yaml
     next_gate: make npu-runtime-contract-check
     critical_review: >
-      Analytical and learned DSE can guide simulator experiments, but estimates
-      require calibration before product claims.
+      Analytical, systolic-array, and learned DSE can guide simulator
+      experiments, but estimates require calibration before product claims.
   - id: software_bsp_and_firmware
     rating: READY_DRY_RUN
     source_ids:
@@ -686,6 +729,10 @@ stages:
       - autoos-kernel-config
       - firmhive
       - adfemu-firmware-fuzzing
+      - p2im-firmware-emulation
+      - dice-firmware-rehosting
+      - halucinator-firmware
+      - firmwire-firmware
       - opensbi
       - u-boot
       - mcp4eda
@@ -697,29 +744,46 @@ stages:
     critical_review: >
       LLM firmware validation, RISC-V kernel optimization, intrinsic
       translation, Linux driver co-evolution, kernel-config tuning, and
-      firmware security/fuzzing agents can help prioritize boot/BSP/runtime
-      experiments, but E1 lacks an RTL-equivalent Linux boot transcript, pinned
-      external firmware/BSP trees, QEMU/Renode/Verilator/Spike/Sail/DTC/
-      Buildroot evidence tied to the device tree, rootfs artifacts, ISA/profile
-      assumptions, approved config/driver patch workflows, and firmware
+      firmware security/fuzzing agents, plus firmware re-hosting baselines such
+      as P2IM, DICE, HALucinator, and FirmWire, can help prioritize
+      boot/BSP/runtime experiments, but E1 lacks an RTL-equivalent Linux boot
+      transcript, pinned external firmware/BSP trees, QEMU/Renode/Verilator/
+      Spike/Sail/DTC/Buildroot evidence tied to the device tree, rootfs
+      artifacts, ISA/profile assumptions, approved config/driver patch
+      workflows, peripheral/HAL/interrupt/DMA model manifests, and firmware
       fuzzing or security replay gates. Keep this lane as target capture until
-      generated patches are checked by static analysis, simulator transcripts,
-      BSP gates, security replay, and human review.
+      generated patches or findings are checked by static analysis, simulator
+      transcripts, BSP gates, security replay, and human review.
   - id: simulator_benchmark_optimization
     rating: READY_DRY_RUN
     source_ids:
       - zigzag
       - timeloop-accelergy
+      - scale-sim
       - dosa
       - diffaxe
       - gem-rtl-simulator
       - rtlflow
       - firesim
+      - systemc-tlm
+      - sst-simulator
+      - chipyard-soc-generator
+      - gemmini-generator
+      - firemarshal-workloads
+      - midas-fame-simulation-transform
+      - verilator
+      - qemu-riscv
+      - renode
+      - gem5-simulator
+      - sniper-simulator
+      - ramulator2
+      - dramsim3
       - verion-eda
       - copra-cocotb
       - waveform-mcp
       - mcp-vcd-waveform
       - vaporview-waveform
+      - waveeye
       - cocotb-core
       - cocotb-test
       - cocotb-bus
@@ -729,19 +793,25 @@ stages:
       - autobench
       - project-ava
       - rtlmul
+      - mcpat
+      - hotspot-thermal-simulator
     local_lane: p1-simulator-benchmark-optimization
     current_artifacts:
       - scripts/ai_eda/capture_simulator_optimization_targets.py
       - build/ai_eda/simulator_optimization/validation/targets_report.json
     next_gate: make benchmark-sim-metrics
     critical_review: >
-      AI/DSE can prioritize simulator workloads and target metrics, while GPU,
-      FPGA, typed-cocotb, pytest cocotb runners, bus-functional libraries,
-      waveform-context, functional-coverage, Python-UVM, and AXI verification
-      backends can shorten feedback loops. Benchmark, speedup, coverage,
-      generated-testbench, waveform-debug, root-cause, and product claims still
-      require executed logs, trace correlation, waveform hashes, coverage
-      database hashes, calibration, local replay, and review.
+      AI/DSE can prioritize simulator workloads and target metrics, while
+      systolic-array, Chipyard/Gemmini generator references, FireSim/MIDAS FPGA
+      acceleration, FireMarshal workload packaging, Verilator/QEMU/Renode,
+      gem5/Sniper, SystemC/TLM, SST, Ramulator/DRAMsim, architecture power,
+      thermal, GPU, typed-cocotb, pytest cocotb runners, bus-functional
+      libraries, waveform-context, functional-coverage, Python-UVM, and AXI
+      verification backends can shorten feedback loops. Benchmark, speedup,
+      energy, thermal, coverage, generated-testbench, generated-RTL, Linux boot,
+      workload, waveform-debug, root-cause, and product claims still require
+      executed logs, trace correlation, waveform hashes, coverage database
+      hashes, calibration, local replay, and review.
   - id: rtl_ppa_advisory_prediction
     rating: READY_DRY_RUN
     source_ids:
@@ -776,6 +846,8 @@ stages:
       - tapa-rapidstream
       - secda-dse
       - scalehls
+      - google-xls
+      - dynamatic-hls
       - autodse-hls
       - ai4dse-hls
       - hlspilot
@@ -793,11 +865,12 @@ stages:
       HLS and LLM-guided HLS DSE can speed accelerator experiments, but E1 must
       first capture bounded runtime/spec tasks, review any external QoR models,
       benchmark datasets, AST-guided generators, proxy reward models, HLS
-      libraries, quantized-NN HLS compilers, MLIR HLS infrastructure, baseline
-      DSE databases/frameworks, practitioner dataflow workflows, or FPGA
-      backends, and keep generated directives, HLS, IR, and RTL out of source
-      until C-sim, HLS synthesis, RTL simulation, synthesis, equivalence, QoR
-      replay/error analysis, and review evidence exist.
+      libraries, quantized-NN HLS compilers, MLIR HLS infrastructure,
+      open-source DSLX/dynamic-HLS backends, baseline DSE databases/frameworks,
+      practitioner dataflow workflows, or FPGA backends, and keep generated
+      directives, HLS, IR, and RTL out of source until C-sim, HLS synthesis,
+      RTL simulation, synthesis, equivalence, QoR replay/error analysis, and
+      review evidence exist.
   - id: timing_closure_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -829,6 +902,10 @@ stages:
     rating: READY_DRY_RUN
     source_ids:
       - align-analoglayout
+      - bag3-analog-generator
+      - openfasoc-generators
+      - laygo2
+      - magical-analog-layout
       - autockt
       - genie-asi
       - acdc-analog-llm
@@ -865,14 +942,16 @@ stages:
       Analog/AMS AI tools can help size, classify, generate, visualize, and lay
       out circuits, and the 2026 agentic/VLM wave adds stronger SPICE feedback,
       ngspice agents, deterministic ngspice/PySpice/Xyce replay foundations,
-      Verilog-A model compilation, design-equation generation, schematic
-      parsing, visual layout datasets, open SKY130/ngspice circuit corpora,
-      SPICE-generation benchmark frameworks, domain-tuned analog models, and
-      explainable optimization loops. E1 currently lacks local SPICE specs,
-      foundry pad cells, extracted models, SI/PI evidence, a quarantined
-      analog-agent harness, and reviewed schematic/netlist/layout dataset and
-      model snapshots. Keep this as target capture until deterministic analog,
-      package, simulator, dataset, model, and reviewer gates exist.
+      open generator/layout baselines such as BAG3++, OpenFASOC, laygo2, and
+      MAGICAL, Verilog-A model compilation, design-equation generation,
+      schematic parsing, visual layout datasets, open SKY130/ngspice circuit
+      corpora, SPICE-generation benchmark frameworks, domain-tuned analog
+      models, and explainable optimization loops. E1 currently lacks local
+      SPICE specs, foundry pad cells, extracted models, SI/PI evidence, a
+      quarantined analog-agent harness, and reviewed schematic/netlist/layout
+      dataset and model snapshots. Keep this as target capture until
+      deterministic analog generator, package, simulator, dataset, model, and
+      reviewer gates exist.
   - id: memory_interconnect_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -918,6 +997,8 @@ stages:
     source_ids:
       - openram
       - dffram
+      - sram22-sky130-macros
+      - vlsida-sky130-sram-macros
       - openxram
       - openrram
       - cacti
@@ -930,24 +1011,32 @@ stages:
       - topcell-llm-stdcell
       - cpcell-stdcell-dtco
       - charlib-stdcell-characterization
+      - librecell-stdcell-flow
+      - xcell-stdcell-characterization
       - nvcell-stdcell-rl
       - sram-compiler-openroad
       - sram-yield-estimation
       - openyield-sram
+      - logic-bist-mbist-repair
+      - aawo-configurable-mbist
+      - aawo-sram-fault-model
+      - autombist-wrapper-generator
     local_lane: p1-memory-macro-library-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_memory_macro_library_targets.py
       - build/ai_eda/memory_macro_library_targets/validation/targets_report.json
     next_gate: make pdk-portability-check
     critical_review: >
-      SRAM compilers, generated-memory fallbacks, cache/memory estimators,
-      emerging-memory compiler references, SRAM-based CIM compilers, standard-
-      cell layout generation/characterization, and AI yield/Vmin methods can
-      accelerate memory and library planning, but they are not signoff evidence.
-      E1 must keep every macro, standard cell, CIM architecture, Liberty, LEF,
-      GDS, timing, power, area, accuracy, yield, BIST, repair, and corner change
-      blocked until local PDK provenance, DRC/LVS/extraction, characterization,
-      STA, RTL, synthesis, OpenLane, workload accuracy replay, and reviewer
+      SRAM compilers, generated-memory fallbacks, open Sky130 macro collateral,
+      cache/memory estimators, emerging-memory compiler references, SRAM-based
+      CIM compilers, standard-cell synthesis/layout/characterization flows, and
+      AI yield/Vmin methods can accelerate memory and library planning, while
+      MBIST/BISR references and wrapper generators can shape memory-test
+      evidence contracts, but they are not signoff evidence. E1 must keep every
+      macro, standard cell, CIM architecture, Liberty, LEF, GDS, SPICE, timing,
+      power, area, accuracy, yield, BIST, repair, and corner change blocked
+      until local PDK provenance, DRC/LVS/extraction, characterization, STA,
+      RTL, synthesis, OpenLane, fault-model, memory-test replay, and reviewer
       gates exist.
   - id: dft_and_manufacturing_test
     rating: READY_DRY_RUN
@@ -958,6 +1047,9 @@ stages:
       - fault-ucb-hw-testing
       - verirag-llm4dft
       - deeptpi
+      - hightpi
+      - xai-gnn-tpi
+      - xsource-gnn-testability
       - deft-atpg
       - inf-atpg
       - lite-scan-instrumentation
@@ -967,6 +1059,10 @@ stages:
       - fan-atpg
       - quaigh-atpg-equivalence
       - nn-for-atpg
+      - logic-bist-mbist-repair
+      - aawo-configurable-mbist
+      - aawo-sram-fault-model
+      - autombist-wrapper-generator
     local_lane: p1-dft-atpg-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_dft_atpg_targets.py
@@ -976,11 +1072,14 @@ stages:
       Open DFT tooling, deterministic ATPG/fault-simulation baselines, Python
       test orchestration, and AI-assisted ATPG/testability methods can improve
       scan, pattern generation, hard-to-detect faults, testability repair, and
-      test-point ranking, including FFR/QGNN/RL-guided ATPG exploration, but E1
-      still needs a scan architecture, fault model, pinned ATPG backend,
-      DFT-rule oracle, tester interface, generated-repair quarantine, pattern
-      replay, and downstream timing/signoff evidence before any DFT insertion,
-      RTL repair, generated pattern, or fault-coverage claim.
+      test-point ranking, including hierarchical GNN, explainable GNN,
+      X-source-aware testability prediction, and FFR/QGNN/RL-guided ATPG
+      exploration, but E1 still needs a scan architecture, fault model, pinned
+      ATPG backend, DFT-rule oracle, tester interface, generated-repair
+      quarantine, pattern replay, MBIST fault-model coverage, generated-wrapper
+      quarantine, and downstream timing/signoff evidence before any DFT
+      insertion, RTL repair, generated pattern, memory-repair collateral, fault
+      waiver, or fault-coverage claim.
   - id: power_thermal_prediction
     rating: READY_DRY_RUN
     source_ids:
@@ -990,6 +1089,8 @@ stages:
       - thermal-generative-ai
       - commercial-thermal-map-dataset
       - hotgauge
+      - mcpat
+      - hotspot-thermal-simulator
       - thermedge-iredge
       - waca-unet-ir-drop
       - lmm-ir-static-ir-drop
@@ -1002,6 +1103,9 @@ stages:
       - openpdn
       - aieda
       - rtlmul
+      - opensta-power-analysis
+      - ieda-ipower
+      - trace2power
       - archpower
       - autopower
       - atompower-rtl-power
@@ -1013,11 +1117,12 @@ stages:
     critical_review: >
       TCAD/DTCO device assumptions plus ML thermal, IR-drop, PDN, and RTL power
       predictors plus measured thermal datasets, thermal characterization
-      frameworks, architecture-level CPU/AP power models, and RTL per-cycle
-      power methods can screen hotspots, static and dynamic power-integrity
-      risk, PDN template choices, and early simulator power estimates, but E1
-      still lacks approved TCAD decks, device calibration, calibrated rail
-      power traces, thermal traces, package/board thermal models,
+      frameworks, deterministic architecture power and thermal simulators,
+      architecture-level CPU/AP power models, activity extraction and power
+      analysis backends, and RTL per-cycle power methods can screen hotspots,
+      static and dynamic power-integrity risk, PDN template choices, and early
+      simulator power estimates, but E1 still lacks approved TCAD decks, device
+      calibration, calibrated rail power traces, thermal traces, package/board thermal models,
       activity-aligned power maps, static and dynamic IR-drop labels, CPU/AP
       and RTL feature mappings, and repeated PDNSim/signoff labels. Keep this
       lane as target capture until authorized process data and measured or
@@ -1057,6 +1162,10 @@ stages:
       - veriloglavd
       - hardsecbench
       - pearl-trojan-llm
+      - hal-netlist-analysis
+      - spydrnet-netlist-framework
+      - netlist-paths-query-tool
+      - naja-snl-netlist-framework
       - trojansaint
       - gnn-mff
       - securerag-rtl
@@ -1074,6 +1183,9 @@ stages:
       - trojanloc
       - harmchip
       - trojan-xai-comparison
+      - goldenfuzz
+      - mabfuzz-processor
+      - fuzzilicon
     local_lane: p1-hardware-security-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_hardware_security_targets.py
@@ -1083,12 +1195,15 @@ stages:
       AI Trojan detection, LLM/RAG vulnerability triage, CWE rule generation,
       model-based line-level CWE detection, static-analysis fusion,
       secure-generation benchmarks, data-poisoning defenses, domain-specific
-      jailbreak benchmarks, explainability methods, and adversarial
-      Trojan-generation benchmarks can help review generated or imported RTL,
-      but E1 lacks local clean/dirty labels, a pinned security taxonomy, a
-      reviewed scanner workflow, prompt isolation, and reviewer disposition
-      rules. Keep this lane as target capture until findings can be tied to RTL
-      hashes, deterministic regressions, and human security review.
+      jailbreak benchmarks, explainability methods, adversarial
+      Trojan-generation benchmarks, processor fuzzing methods, and
+      deterministic gate-level netlist analysis frameworks can help review
+      generated or imported RTL, but E1 lacks local clean/dirty labels, a
+      pinned security taxonomy, reviewed scanner and netlist-query workflows,
+      prompt isolation, and reviewer disposition rules. Keep this lane as
+      target capture until findings can be tied to RTL/netlist/library hashes,
+      generated-program/replay evidence, deterministic regressions, disclosure
+      policy, and human security review.
   - id: cdc_rdc_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -1096,6 +1211,7 @@ stages:
       - formal-cdc-msi
       - questa-cdc-rdc-assist
       - opencdc
+      - cdc-snitch
       - cdc-rdc-draft-0p5
       - veryl-clock-domain-annotation
       - arch-ai-native-hdl
@@ -1111,11 +1227,12 @@ stages:
       CDC/RDC automation is signoff-critical and distinct from ordinary RTL
       lint or STA. Accellera 1.0 standardization, typed clock/reset methodology,
       formal HDL experiments, experimental compile-time clock-domain safety,
-      and commercial ML assist show current SOTA direction, but E1 lacks
-      explicit clock/reset intent, local CDC/RDC reports, waiver policy,
-      typed-intent mapping, translated-artifact equivalence, and labeled
-      findings. Keep this lane as target capture until deterministic RTL,
-      formal, cocotb, CDC/RDC, and reviewer gates exist.
+      code-backed CDC anti-pattern lint, and commercial ML assist show current
+      SOTA direction, but E1 lacks explicit clock/reset intent, local CDC/RDC
+      reports, waiver policy, typed-intent mapping, translated-artifact
+      equivalence, false-positive triage, and labeled findings. Keep this lane
+      as target capture until deterministic RTL, formal, cocotb, CDC/RDC, and
+      reviewer gates exist.
   - id: board_package_fpga_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -1125,6 +1242,10 @@ stages:
       - pcb-bench
       - kicad-eda
       - kibot
+      - kikit
+      - interactive-html-bom
+      - kicad-stepup
+      - kicad-jlcpcb-tools
       - pcbagent
       - neurpcb
       - pcb-migrator
@@ -1154,16 +1275,17 @@ stages:
     next_gate: make package-cross-probe-check
     critical_review: >
       PCB schematic/placement/routing AI, multimodal schematic benchmarks,
-      KiCad agents, MCP tool surfaces, deterministic KiCad/KiBot replay,
-      autorouters, SI simulation preprocessors, openEMS/gerber2ems solver
-      flows, FPGA placers, FPGA CAD/fabric-generation frameworks,
-      schematic corpora, and PCB inspection models can help plan future board
-      and prototype workflows, but E1 lacks
-      release-clean package vendor data, KiCad ERC/DRC/fab evidence, SI/PI/DFM
-      review, RF/regulatory evidence, corpus-overlap reviews, pinned FPGA
-      device/fabric constraints, timing-clean bitstreams, and FPGA hardware
-      bring-up. Keep this lane as target capture until all board, package,
-      manufacturing, and FPGA gates define a safe promotion path.
+      KiCad agents, MCP tool surfaces, deterministic KiCad/KiBot/KiKit/BOM/
+      ECAD-MCAD/vendor-export replay, autorouters, SI simulation preprocessors,
+      openEMS/gerber2ems solver flows, FPGA placers, FPGA CAD/fabric-generation
+      frameworks, schematic corpora, and PCB inspection models can help plan
+      future board and prototype workflows, but E1 lacks release-clean package
+      vendor data, KiCad ERC/DRC/fab evidence, SI/PI/DFM review, assembly and
+      sourcing evidence, mechanical clearance evidence, RF/regulatory evidence,
+      corpus-overlap reviews, pinned FPGA device/fabric constraints,
+      timing-clean bitstreams, and FPGA hardware bring-up. Keep this lane as
+      target capture until all board, package, manufacturing, and FPGA gates
+      define a safe promotion path.
   - id: chiplet_3dic_package_codesign
     rating: READY_DRY_RUN
     source_ids:
@@ -1213,6 +1335,7 @@ stages:
       - abc-rl
       - boils
       - open-llm-eco
+      - logic-optimization-csat
     local_lane: p1-logic-synthesis-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_logic_synthesis_targets.py
@@ -1220,8 +1343,9 @@ stages:
     next_gate: make synth
     critical_review: >
       ML/RL/Bayesian synthesis recipe search, logic-network libraries, public
-      synthesis datasets, and agentic ABC tool evolution can improve area,
-      depth, timing, and power exploration, but they sit on the critical
+      synthesis datasets, agentic ABC tool evolution, and logic-optimization
+      SAT preprocessing can improve area, depth, timing, power, or solver
+      runtime exploration, but they sit on the critical
       correctness path. E1 must keep generated recipes, evolved synthesis-tool
       code, technology mappings, constraints, and netlists outside source until
       RTL, synthesis, equivalence/formal, cocotb, STA/OpenLane, power, and
@@ -1239,6 +1363,8 @@ stages:
       - circt-lec
       - abc
       - datapath-cec-hybrid-sweeping
+      - dynamicsat-sat-tuning
+      - logic-optimization-csat
     local_lane: p1-netlist-equivalence-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_netlist_equivalence_targets.py
@@ -1248,9 +1374,10 @@ stages:
       LEC and netlist equivalence are required before any AI-generated RTL,
       synthesis recipe, technology mapping, or netlist optimization can be
       trusted. EQY, Yosys equiv_* flows, SymbiYosys/yosys-smtbmc, SMT solver
-      backends, ABC CEC, CIRCT LEC, and current datapath CEC research provide
-      useful harness options, but E1 must first define black-box, memory, reset,
-      x-propagation, hierarchy, clocking, solver, and post-PD netlist policies.
+      backends, ABC CEC, CIRCT LEC, SAT-solver tuning, circuit-SAT
+      preprocessing, and current datapath CEC research provide useful harness
+      options, but E1 must first define black-box, memory, reset,
+      x-propagation, hierarchy, clocking, solver, witness-mapping, and post-PD netlist policies.
       Keep this lane as target capture until deterministic formal, simulation,
       synthesis, STA/OpenLane, power, and review gates accept a specific LEC or
       proof harness.
@@ -1270,6 +1397,9 @@ stages:
       - rtl-ppa-sog
       - symrtlo
       - powergear-hls-power
+      - opensta-power-analysis
+      - ieda-ipower
+      - trace2power
       - archpower
       - autopower
       - atompower-rtl-power
@@ -1289,9 +1419,10 @@ stages:
       deterministic backend anchors, but they still need pinned revisions,
       domain maps, ICG library manifests, and replay logs before any local use.
       Keep this lane as target capture until generated power intent and
-      clock-gating edits, benchmark imports, HLS power-estimator inputs, and
-      backend plugin outputs can be checked by RTL, formal, synthesis, DFT,
-      CDC/RDC, power/thermal, and physical-design gates.
+      clock-gating edits, benchmark imports, HLS power-estimator inputs,
+      VCD/FST/SAIF activity extraction, power-analysis backends, and backend
+      plugin outputs can be checked by RTL, formal, synthesis, DFT, CDC/RDC,
+      power/thermal, and physical-design gates.
       Architecture-level CPU/AP and RTL power priors from ArchPower,
       AutoPower, or AtomPower remain advisory only until E1 has feature-schema
       mapping, activity provenance, calibration labels, train/test split
@@ -1343,6 +1474,7 @@ stages:
   - id: physical_verification_automation
     rating: READY_DRY_RUN
     source_ids:
+      - autoeda-mcp
       - klayout-drc
       - magic-drc-lvs
       - netgen-lvs
@@ -1360,11 +1492,12 @@ stages:
     critical_review: >
       DRC, LVS, XOR, and antenna automation is on the release-critical physical
       signoff path. AI can help triage logs, cluster violations, study
-      generated-checker methods, and define structural script guardrails, but
-      E1 must keep generated DRC decks, layout repairs, LVS waivers, antenna
-      fixes, Tcl, and patches advisory-only until pinned rule decks, layouts,
-      netlists, reports, before/after deterministic gates, commercial/open-tool
-      correlation where applicable, and reviewer signoff exist.
+      generated-checker methods, and define structural script or MCP service
+      guardrails, but E1 must keep generated DRC decks, layout repairs, LVS
+      waivers, antenna fixes, Tcl, service calls, and patches advisory-only
+      until pinned rule decks, layouts, netlists, reports, request/response
+      logs, before/after deterministic gates, commercial/open-tool correlation
+      where applicable, and reviewer signoff exist.
   - id: post_silicon_validation_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -1382,6 +1515,9 @@ stages:
       - difuzzrtl
       - rfuzz-rtl
       - cascade-riscv-fuzzer
+      - goldenfuzz
+      - mabfuzz-processor
+      - fuzzilicon
       - openxiangshan-xfuzz
       - openxiangshan-difftest
       - feriver-riscv
@@ -1403,7 +1539,8 @@ stages:
       Post-silicon and lab automation is essential but cannot be simulated into
       existence. Verilator, Spike, Sail-RISC-V, riscv-formal, RISC-V
       compliance tests, riscv-dv, ISA coverage, generative RISC-V fuzzing,
-      coverage-guided RTL fuzzing, co-simulation,
+      golden-reference fuzzing, bandit-guided fuzzer scheduling,
+      coverage-guided RTL fuzzing, post-silicon fuzzing, co-simulation,
       FPGA-assisted CPU verification, QED-style tests, trace-debug methods,
       cross-target on-device tests, RISC-V debug/OpenOCD flows, sigrok and
       Spacely-style lab capture, ML boot-failure triage, LLM hardware-debug
@@ -1411,7 +1548,8 @@ stages:
       but E1 currently has no silicon, no lab trace corpus, no executed
       compliance/coverage suite, no pinned DUT/reference co-simulation trace
       schema, no RVFI adapter, no approved external debug corpus, and no
-      approved hardware action workflow. Keep this lane as target
+      approved hardware action workflow, and no vulnerability-disclosure
+      policy for fuzzer findings. Keep this lane as target
       capture until QEMU/Renode, FPGA, board/package, debug-policy,
       manufacturing, real-world, benchmark, corpus-governance, and lab evidence
       exists.

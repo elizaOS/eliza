@@ -45,7 +45,7 @@ sram_macros:
   source_of_truth: pd/macros/manifest.yaml
   generator: OpenRAM
   generator_pinned_commit: BLOCKED_pin_after_first_local_run
-  prebuilt_pdk_macro_root: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros
+  prebuilt_pdk_macro_root: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros
   macros:
     - name: sky130_sram_2kbyte_1rw1r_32x512_8
       kind: SRAM_1RW1R

@@ -77,7 +77,7 @@ The following tools are intentionally not vendored into the fast image:
 | --- | --- | --- |
 | Chipyard | `scripts/bootstrap_chipyard.sh` | Large recursive submodule stack |
 | Chisel/CIRCT | Chipyard plus `generators/chisel`/`generators/circt` | JVM/LLVM-heavy generator flow |
-| OpenLane/OpenROAD full PD | `scripts/bootstrap_openlane2.sh` and `make openlane` | PDK and container-specific flow |
+| OpenLane/OpenROAD full PD | `scripts/bootstrap_librelane.sh` and `make openlane` | PDK and container-specific flow |
 | SymbiYosys | local package/Nix install; `.sby` files are present | Solver packaging varies by OS; Docker carries Z3 for the Yosys fallback |
 | Renode | local install; `make renode` uses stubs | Not packaged in the fast image |
 | AOSP | future `sw/aosp-device` target | Too large for normal chip CI |

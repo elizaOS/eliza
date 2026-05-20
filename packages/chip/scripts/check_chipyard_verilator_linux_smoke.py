@@ -69,6 +69,7 @@ PROGRESS_MARKERS = (
     "SBI SRST extension detected",
     "earlycon:",
     "printk: bootconsole",
+    "Kernel panic - not syncing",
     "OF: reserved mem:",
     "Zone ranges:",
     "Early memory node ranges",
@@ -127,6 +128,7 @@ GENERATED_MODEL_FAILURE_PATTERNS = (
     ),
     re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
 )
+KERNEL_PANIC_MARKERS = ("Kernel panic - not syncing", "panic - not syncing")
 
 
 def rel(path: Path) -> str:
@@ -409,6 +411,10 @@ def has_accepted_linux_markers(text: str) -> bool:
     return has_marker_group(text, ("Linux version",), LINUX_ACCEPTANCE_MARKERS)
 
 
+def has_kernel_panic(text: str) -> bool:
+    return any(marker in text for marker in KERNEL_PANIC_MARKERS)
+
+
 def remove_path(path: Path) -> None:
     def fix_permissions_and_retry(function, path_value) -> None:
         try:
@@ -599,6 +605,7 @@ def parse_log_metadata() -> dict[str, object]:
         "lines_after_raw_transcript_end": 0,
         "fatal_errors": [],
         "exceptions": [],
+        "kernel_panics": [],
         "sim_failures": [],
         "sim_passes": [],
         "simdram_entry": None,
@@ -655,6 +662,10 @@ def parse_log_metadata() -> dict[str, object]:
             fatal_errors = metadata["fatal_errors"]
             if isinstance(fatal_errors, list):
                 fatal_errors.append(line.strip())
+        if any(marker in line for marker in KERNEL_PANIC_MARKERS):
+            kernel_panics = metadata["kernel_panics"]
+            if isinstance(kernel_panics, list):
+                kernel_panics.append(line.strip())
         if (
             "Exception in thread" in line
             or line.strip().startswith("Caused by:")
@@ -790,6 +801,14 @@ def classify_smoke_progress(
         return {
             "stage": "no_run",
             "next_step": "run scripts/run_chipyard_eliza_linux_smoke.sh with a real OpenSBI/Linux payload",
+        }
+    if has_kernel_panic(log_text):
+        return {
+            "stage": "linux_kernel_panic",
+            "next_step": (
+                "debug the generated AP Linux panic before claiming boot; inspect kernel "
+                "memory map, initramfs, and generated DTS handoff evidence"
+            ),
         }
     if has_accepted_linux_markers(log_text):
         return {
@@ -1125,6 +1144,10 @@ def main() -> int:
         if isinstance(exceptions, list):
             for exception in exceptions:
                 blockers.append(f"{rel(LOG)} records generator exception: {exception}")
+        kernel_panics = log_metadata.get("kernel_panics")
+        if isinstance(kernel_panics, list):
+            for kernel_panic in kernel_panics:
+                blockers.append(f"{rel(LOG)} records Linux kernel panic: {kernel_panic}")
         sim_failures = log_metadata.get("sim_failures")
         if isinstance(sim_failures, list):
             for sim_failure in sim_failures:

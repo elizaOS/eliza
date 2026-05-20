@@ -1,0 +1,180 @@
+{
+  "claim_boundary": "CAD-derived thermal/RF/drop/ingress validation package and lab intake template; not regulatory certification, chamber data, drop test, or ingress proof.",
+  "status": "cad_environmental_validation_ready",
+  "cases": [
+    {
+      "id": "thermal_spreader_and_skin_temp_plan",
+      "domain": "thermal",
+      "actual": {
+        "max_skin_temp_c": 43,
+        "shield_cans_present": [
+          "pmic_shield_can",
+          "radio_shield_can",
+          "soc_shield_can"
+        ],
+        "estimated_physical_mass_g": 143.4,
+        "target_mass_g": 185
+      },
+      "target": "shield cans present and CAD mass below target for thermal inertia; lab skin temperature <= target",
+      "pass": true
+    },
+    {
+      "id": "rf_keepout_and_prescan_plan",
+      "domain": "rf",
+      "actual": {
+        "cellular_keepout_mm": [
+          62.0,
+          6.0,
+          2.0
+        ],
+        "wifi_bt_keepout_mm": [
+          34.0,
+          5.0,
+          2.0
+        ],
+        "rf_keepout_check": true,
+        "candidate_us_sar_limit_w_per_kg_1g": 1.6
+      },
+      "target": "antenna keepouts present; chamber desense and SAR pre-scan required before RF release",
+      "pass": true
+    },
+    {
+      "id": "drop_retention_and_corner_energy_plan",
+      "domain": "drop",
+      "actual": {
+        "drop_height_m": 1.0,
+        "corner_radius_mm": 7.5,
+        "wall_thickness_mm": 1.15,
+        "screw_boss_count": 6,
+        "snap_hook_count": 8,
+        "screen_adhesive_present": true,
+        "screen_clearance_pass": true
+      },
+      "target": ">=1 m EVT drop plan with rounded orange PC+ABS corners, screw bosses, snap hooks, and bonded screen",
+      "pass": true
+    },
+    {
+      "id": "ingress_path_and_gasket_plan",
+      "domain": "ingress",
+      "actual": {
+        "target": "IP54 design intent only",
+        "screen_adhesive_present": true,
+        "earpiece_gasket_present": true,
+        "usb_aperture_present": true,
+        "usb_perimeter_gasket_count": 4,
+        "usb_drip_break_present": true,
+        "usb_drain_shelf_present": true,
+        "speaker_slot_count": 5,
+        "mic_port_count": 2,
+        "speaker_mesh_present": true,
+        "bottom_mic_mesh_count": 2,
+        "top_mic_mesh_present": true,
+        "handset_mesh_present": true,
+        "side_button_gaskets_present": {
+          "power": true,
+          "volume": true
+        }
+      },
+      "target": "IP54 design-intent path review; open ports need membranes or lab-accepted splash/dust result",
+      "pass": true
+    }
+  ],
+  "measurement_count": 9,
+  "measurements": [
+    {
+      "measurement_id": "max_skin_temp_video_call_c",
+      "domain": "thermal",
+      "unit": "C",
+      "min": "",
+      "max": 43,
+      "fixture": "thermal_chamber_or_skin_temp_probe",
+      "notes": "Worst-case video call or radio-active thermal soak at target ambient."
+    },
+    {
+      "measurement_id": "soc_shield_can_peak_temp_c",
+      "domain": "thermal",
+      "unit": "C",
+      "min": "",
+      "max": 85.0,
+      "fixture": "thermocouple_on_soc_shield",
+      "notes": "Peak shield-can temperature during sustained load."
+    },
+    {
+      "measurement_id": "cellular_desense_delta_db",
+      "domain": "rf",
+      "unit": "dB",
+      "min": "",
+      "max": 3.0,
+      "fixture": "rf_chamber_desense_prescan",
+      "notes": "Cellular sensitivity delta with display, camera, and USB active."
+    },
+    {
+      "measurement_id": "wifi_bt_desense_delta_db",
+      "domain": "rf",
+      "unit": "dB",
+      "min": "",
+      "max": 3.0,
+      "fixture": "rf_chamber_desense_prescan",
+      "notes": "Wi-Fi/Bluetooth sensitivity delta with phone subsystems active."
+    },
+    {
+      "measurement_id": "sar_prescan_w_per_kg_1g",
+      "domain": "rf",
+      "unit": "W/kg",
+      "min": "",
+      "max": 1.6,
+      "fixture": "accredited_sar_prescan",
+      "notes": "U.S. general-population candidate SAR pre-scan target; final limits depend on certified-region compliance plan."
+    },
+    {
+      "measurement_id": "drop_1m_functional_failures",
+      "domain": "drop",
+      "unit": "count",
+      "min": 0.0,
+      "max": 0.0,
+      "fixture": "evt_corner_edge_face_drop",
+      "notes": "Functional failures after 1 m corner/edge/face drop sequence."
+    },
+    {
+      "measurement_id": "drop_1m_crack_or_latch_release",
+      "domain": "drop",
+      "unit": "count",
+      "min": 0.0,
+      "max": 0.0,
+      "fixture": "evt_visual_and_latch_inspection",
+      "notes": "Orange shell cracks, snap release, screen lift, or glass crack after drop."
+    },
+    {
+      "measurement_id": "ip54_dust_ingress_functional_failures",
+      "domain": "ingress",
+      "unit": "count",
+      "min": 0.0,
+      "max": 0.0,
+      "fixture": "dust_ingress_screen_usb_audio_inspection",
+      "notes": "Functional failures after design-intent dust exposure."
+    },
+    {
+      "measurement_id": "ip54_splash_ingress_functional_failures",
+      "domain": "ingress",
+      "unit": "count",
+      "min": 0.0,
+      "max": 0.0,
+      "fixture": "splash_ingress_screen_usb_audio_inspection",
+      "notes": "Functional failures after design-intent splash exposure."
+    }
+  ],
+  "results_template": "mechanical/e1-phone/review/environmental-results-template.csv",
+  "regulatory_references": [
+    {
+      "id": "fcc_rf_exposure_sar_general_population",
+      "url": "https://docs.fcc.gov/public/attachments/FCC-19-126A1_Rcd.pdf",
+      "note": "FCC RF exposure rule text includes 1.6 W/kg peak spatial-average SAR over 1 g tissue for general population/uncontrolled exposure."
+    }
+  ],
+  "release_blockers": [
+    "Need routed board power map and thermal measurements with real enclosure resin.",
+    "Need RF chamber desense data, antenna tuning, and SAR pre-scan with final antennas.",
+    "Need 1 m corner/edge/face drop results on EVT molded samples.",
+    "Need dust/splash ingress results or explicit product decision to drop IP54 claim."
+  ]
+}

@@ -263,11 +263,18 @@ fi
 status=$?
 set -e
 cat "$raw_log" >>"$log_tmp"
+kernel_panic=0
+if grep -E -q 'Kernel panic - not syncing|panic - not syncing' "$raw_log"; then
+	kernel_panic=1
+fi
 
 {
 	printf 'eliza-evidence: raw_transcript_end\n'
 	printf 'eliza-evidence: exit_code=%s\n' "$status"
-	if [ "$status" -eq 0 ]; then
+	if [ "$kernel_panic" = "1" ]; then
+		printf 'eliza-evidence: kernel_panic=1\n'
+		printf 'eliza-evidence: status=BLOCKED\n'
+	elif [ "$status" -eq 0 ]; then
 		printf 'eliza-evidence: status=PASS\n'
 	else
 		printf 'eliza-evidence: status=BLOCKED\n'
@@ -277,8 +284,9 @@ mv "$log_tmp" "$log"
 
 tail -n 80 "$log"
 
-if [ "$status" -ne 0 ]; then
+if [ "$status" -ne 0 ] || [ "$kernel_panic" = "1" ]; then
 	if [ "${CHIPYARD_LINUX_SMOKE_RETRY_GENERATED:-1}" = "1" ] && [ "$attempt" = "1" ] && \
+		[ "$kernel_panic" != "1" ] && \
 		python3 "$repo_dir/scripts/check_chipyard_verilator_linux_smoke.py" \
 			--classify-generated-artifact-failure "$log"; then
 		printf 'STATUS: REPAIR chipyard.verilator_linux_smoke\n'
@@ -291,7 +299,11 @@ if [ "$status" -ne 0 ]; then
 	printf '  simulator_path: external/chipyard/sims/verilator\n'
 	printf '  log: build/chipyard/eliza_rocket/verilator-linux-smoke.log\n'
 	printf '  next_command: CHIPYARD_LINUX_SMOKE_RETRY_GENERATED=1 %s\n' "${0#"$repo_dir"/}"
-	printf '  - generated AP %s exited with status %s\n' "$run_target" "$status"
+	if [ "$kernel_panic" = "1" ]; then
+		printf '  - generated AP %s reached a Linux kernel panic\n' "$run_target"
+	else
+		printf '  - generated AP %s exited with status %s\n' "$run_target" "$status"
+	fi
 	exit 2
 fi
 

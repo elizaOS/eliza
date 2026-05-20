@@ -1,17 +1,24 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 127.51,
+  "total_estimated_mass_g": 143.39,
   "mass_by_role_g": {
+    "EMI shield": 7.01,
     "I/O": 1.77,
-    "PCB": 4.71,
-    "audio": 2.86,
-    "battery": 54.98,
+    "I/O seal": 0.02,
+    "PCB": 4.17,
+    "RF keepout": 0.0,
+    "audio": 1.75,
+    "battery": 64.92,
     "button": 0.09,
-    "camera": 0.99,
+    "button seal": 0.03,
+    "camera": 1.03,
     "connector": 0.21,
+    "haptics": 0.22,
     "molded enclosure": 22.78,
     "screen": 39.03,
-    "screen retention": 0.09
+    "screen retention": 0.09,
+    "service": 0.0,
+    "split-board interconnect": 0.28
   },
   "parts": [
     {
@@ -49,17 +56,17 @@
     {
       "name": "main_pcb",
       "role": "PCB",
-      "volume_mm3": 2547.2,
+      "volume_mm3": 2252.8,
       "density_g_per_cm3": 1.85,
-      "mass_g": 4.712,
+      "mass_g": 4.168,
       "excluded_placeholder": false
     },
     {
       "name": "battery_pouch",
       "role": "battery",
-      "volume_mm3": 20746.0,
+      "volume_mm3": 24499.2,
       "density_g_per_cm3": 2.65,
-      "mass_g": 54.977,
+      "mass_g": 64.923,
       "excluded_placeholder": false
     },
     {
@@ -77,6 +84,54 @@
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "usb_c_perimeter_gasket_top",
+      "role": "I/O seal",
+      "volume_mm3": 1.795,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.002,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_perimeter_gasket_bottom",
+      "role": "I/O seal",
+      "volume_mm3": 1.795,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.002,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_perimeter_gasket_left",
+      "role": "I/O seal",
+      "volume_mm3": 0.677,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_perimeter_gasket_right",
+      "role": "I/O seal",
+      "volume_mm3": 0.677,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_molded_drip_break_lip",
+      "role": "I/O seal",
+      "volume_mm3": 2.673,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.003,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "usb_c_internal_drain_shelf",
+      "role": "I/O seal",
+      "volume_mm3": 7.885,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.009,
+      "excluded_placeholder": false
     },
     {
       "name": "bottom_speaker_module",
@@ -122,9 +177,9 @@
       "name": "rear_camera_lens_window",
       "role": "camera",
       "volume_mm3": 28.971,
-      "density_g_per_cm3": 2.5,
-      "mass_g": 0.072,
-      "excluded_placeholder": false
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     },
     {
       "name": "front_camera_module",
@@ -138,9 +193,9 @@
       "name": "front_camera_under_glass",
       "role": "camera",
       "volume_mm3": 3.169,
-      "density_g_per_cm3": 2.5,
-      "mass_g": 0.008,
-      "excluded_placeholder": false
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     },
     {
       "name": "power_button_cap",
@@ -165,6 +220,14 @@
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "handset_acoustic_mesh",
+      "role": "audio",
+      "volume_mm3": 0.84,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
     },
     {
       "name": "bottom_speaker_grille_slot_1",
@@ -207,6 +270,54 @@
       "excluded_placeholder": true
     },
     {
+      "name": "bottom_speaker_dust_mesh",
+      "role": "audio",
+      "volume_mm3": 9.216,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.02,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_top_connector",
+      "role": "split-board interconnect",
+      "volume_mm3": 34.56,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.104,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_bottom_connector",
+      "role": "split-board interconnect",
+      "volume_mm3": 34.56,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.104,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_side_flex",
+      "role": "split-board interconnect",
+      "volume_mm3": 38.016,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.046,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_top_flex_tail",
+      "role": "split-board interconnect",
+      "volume_mm3": 4.5,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.014,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_bottom_flex_tail",
+      "role": "split-board interconnect",
+      "volume_mm3": 4.5,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.014,
+      "excluded_placeholder": false
+    },
+    {
       "name": "bottom_microphone_port_1",
       "role": "audio",
       "volume_mm3": 0.249,
@@ -215,12 +326,92 @@
       "excluded_placeholder": true
     },
     {
+      "name": "bottom_microphone_mesh_1",
+      "role": "audio",
+      "volume_mm3": 0.235,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
       "name": "bottom_microphone_port_2",
       "role": "audio",
       "volume_mm3": 0.249,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_microphone_mesh_2",
+      "role": "audio",
+      "volume_mm3": 0.235,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "top_microphone_port",
+      "role": "audio",
+      "volume_mm3": 0.249,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "top_microphone_mesh",
+      "role": "audio",
+      "volume_mm3": 0.235,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "power_button_elastomer_gasket",
+      "role": "button seal",
+      "volume_mm3": 10.075,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.012,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "power_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "volume_mm3": 0.814,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "power_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "volume_mm3": 0.814,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "volume_button_elastomer_gasket",
+      "role": "button seal",
+      "volume_mm3": 17.05,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.02,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "volume_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "volume_mm3": 0.814,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "volume_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "volume_mm3": 0.814,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
     },
     {
       "name": "screen_adhesive_top",
@@ -410,9 +601,9 @@
       "name": "bottom_speaker_acoustic_chamber",
       "role": "audio",
       "volume_mm3": 514.8,
-      "density_g_per_cm3": 2.2,
-      "mass_g": 1.133,
-      "excluded_placeholder": false
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     },
     {
       "name": "earpiece_gasket",
@@ -421,6 +612,94 @@
       "density_g_per_cm3": 1.15,
       "mass_g": 0.018,
       "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_top_antenna_keepout",
+      "role": "RF keepout",
+      "volume_mm3": 744.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "cellular_bottom_antenna_keepout",
+      "role": "RF keepout",
+      "volume_mm3": 744.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "wifi_bt_side_antenna_keepout",
+      "role": "RF keepout",
+      "volume_mm3": 340.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "soc_shield_can",
+      "role": "EMI shield",
+      "volume_mm3": 345.6,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 2.696,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "pmic_shield_can",
+      "role": "EMI shield",
+      "volume_mm3": 121.0,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 0.944,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "radio_shield_can",
+      "role": "EMI shield",
+      "volume_mm3": 432.0,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 3.37,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "haptic_lra",
+      "role": "haptics",
+      "volume_mm3": 180.0,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.216,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "sim_tray_keepout",
+      "role": "service",
+      "volume_mm3": 638.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "sim_tray_outline",
+      "role": "service",
+      "volume_mm3": 57.6,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "rear_camera_cover_glass",
+      "role": "camera",
+      "volume_mm3": 46.552,
+      "density_g_per_cm3": 2.5,
+      "mass_g": 0.116,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "service_label_recess",
+      "role": "service",
+      "volume_mm3": 72.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     }
   ]
 }

@@ -66,6 +66,22 @@ electrical_requirements:
     - Power key must be readable by always-on firmware before AP boot.
     - Volume keys must be readable by bootloader for recovery and factory modes.
 
+layout_closure_requirements:
+  side_key_flex_pin_budget:
+    required_nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, GND]
+    recommended_min_contacts: 8
+    rationale: >
+      Keep one ground beside each wake/recovery signal and leave spare contacts
+      for shield, ID, or a future camera/antenna coexistence sensor if the side
+      key flex becomes a small subassembly.
+  actuator_stack:
+    - External caps must push an enclosure rib or elastomer, not the solder joints directly.
+    - Switch centerlines must align to the molded side-button caps within the tolerance stack.
+    - Side-key flex stiffener must avoid the battery cavity and the top/bottom interconnect service loop.
+  bringup_test_access:
+    - PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, and GND must have pogo or exposed-pad access before
+      first-article firmware recovery testing.
+
 forbidden_claims:
   - side_buttons_ready
   - power_key_wake_ready

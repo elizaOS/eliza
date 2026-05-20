@@ -1,0 +1,357 @@
+schema: eliza.e1_phone_power_thermal_budget.v1
+status: blocked_power_thermal_requires_real_schematic_and_measurement
+claim_boundary: Planning power and thermal budget only. This cross-checks selected
+  package bindings, logical nets, and product targets; it is not a schematic review,
+  PI simulation, thermal simulation, or measured board result.
+source_files:
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - package/pmic/da9063.yaml
+  - package/charger/max77860.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - package/audio/v0-codec.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - docs/board/thermal-stack.md
+  - docs/board/power-tree.md
+  - docs/board/pdn-budget.md
+battery_target:
+  capacity_mah: 4500
+  nominal_voltage_v: 3.85
+  nominal_energy_wh: 17.3
+  selected_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+  public_reference_dimensions_mm:
+    width: 64.0
+    height: 87.0
+    thickness: 4.4
+  battery_window_fit_status: sourced_17p3wh_pack_matches_64x87_concept_cavity_pending_supplier_and_routed_board_evidence
+  required_missing_parts:
+    - supplier_quote_and_sample_for_selected_pack_class
+    - fuel_gauge_schematic_and_layout
+    - battery_ntc_and_pack_id
+    - battery_cavity_resize_or_custom_pack_decision
+    - safety_shipping_certification
+usb_c_power_path:
+  pd_controller: TPS65987DDH
+  charger: MAX77860
+  pd_sink_profiles:
+    - 5v_3a
+    - 9v_3a
+    - 12v_2p25a
+  max_pd_sink_power_w: 27.0
+  max_charge_current_a: 3.0
+  max_charge_power_at_cell_w: 12.6
+  estimated_input_power_for_max_charge_w: 13.7
+  charge_path_peak_efficiency_pct_min: 92
+  pd_power_margin_w: 13.3
+  passes_evt0_pd_power_margin: true
+pmic_capacity_summary:
+  pmic: DA9063L
+  buck_current_total_a: 9.0
+  ldo_current_total_a: 2.7
+  buck_peak_efficiency_pct_min_target: 88
+  rail_count: 15
+rail_budget:
+  - rail: VBUS
+    source: USB-C PD source through TPS65987
+    nominal_v: 5_to_12_evt0
+    load_or_role: charger input and dead-battery boot
+    required_nets:
+      - VBUS
+      - USB_CC1
+      - USB_CC2
+    nets_present:
+      - USB_CC1
+      - USB_CC2
+      - VBUS
+    missing_nets: []
+  - rail: VBAT
+    source: 1S Li-ion/Li-polymer pack
+    nominal_v: 3.85
+    load_or_role: charger, PMIC system path, modem bursts
+    required_nets:
+      - VBAT
+      - BAT_NTC
+      - BAT_ID
+    nets_present:
+      - BAT_ID
+      - BAT_NTC
+      - VBAT
+    missing_nets: []
+  - rail: SYS
+    source: MAX77860 charger power path
+    nominal_v: 3.6_to_4.4
+    load_or_role: PMIC input and system rail
+    required_nets:
+      - SYS
+      - VBAT
+      - VBUS
+    nets_present:
+      - SYS
+      - VBAT
+      - VBUS
+    missing_nets: []
+  - rail: AON_1V8
+    source: PMIC always-on LDO
+    nominal_v: 1.8
+    load_or_role: power key, volume keys, always-on logic
+    required_nets:
+      - AON_1V8
+      - PWR_KEY_N
+      - VOL_UP_N
+      - VOL_DOWN_N
+    nets_present:
+      - AON_1V8
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    missing_nets: []
+  - rail: IO_1V8
+    source: PMIC peripheral buck/LDO
+    nominal_v: 1.8
+    load_or_role: display touch, cameras, radios, audio control
+    required_nets:
+      - IO_1V8
+      - TOUCH_I2C_SCL
+      - CAM1_RESET_N
+      - WIFI_EN
+      - BT_EN
+    nets_present:
+      - BT_EN
+      - CAM1_RESET_N
+      - IO_1V8
+      - TOUCH_I2C_SCL
+      - WIFI_EN
+    missing_nets: []
+  - rail: RF_VBAT
+    source: battery path or dedicated RF buck
+    nominal_v: 3.3_to_4.4
+    load_or_role: cellular RedCap module and Wi-Fi/BT module
+    required_nets:
+      - RF_VBAT
+      - CELL_RESET_N
+      - WIFI_EN
+    nets_present:
+      - CELL_RESET_N
+      - RF_VBAT
+      - WIFI_EN
+    missing_nets: []
+  - rail: CAM_AVDD_2V8
+    source: PMIC camera LDO
+    nominal_v: 2.8
+    load_or_role: rear/front camera analog rails
+    required_nets:
+      - CAM_AVDD_2V8
+      - CAM0_RESET_N
+      - CAM1_RESET_N
+    nets_present:
+      - CAM0_RESET_N
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+    missing_nets: []
+  - rail: CAM_DVDD_1V2
+    source: PMIC LDO or module regulator
+    nominal_v: 1.2
+    load_or_role: camera digital core
+    required_nets:
+      - CAM_DVDD_1V2
+    nets_present:
+      - CAM_DVDD_1V2
+    missing_nets: []
+  - rail: DISP_AVDD_5V5
+    source: display bias boost
+    nominal_v: 5.5
+    load_or_role: LCD positive bias
+    required_nets:
+      - DISP_AVDD_5V5
+      - DISP_RESET_N
+      - DISP_BL_EN
+    nets_present:
+      - DISP_AVDD_5V5
+      - DISP_BL_EN
+      - DISP_RESET_N
+    missing_nets: []
+  - rail: DISP_AVEE_N5V5
+    source: display bias inverter
+    nominal_v: -5.5
+    load_or_role: LCD negative bias
+    required_nets:
+      - DISP_AVEE_N5V5
+    nets_present:
+      - DISP_AVEE_N5V5
+    missing_nets: []
+voltage_domains_present:
+  - AON_1V8
+  - AP_0V8
+  - AP_1V1
+  - CAM_AVDD_2V8
+  - CAM_DVDD_1V2
+  - DISP_AVDD_5V5
+  - DISP_AVEE_N5V5
+  - IO_1V8
+  - RF_VBAT
+  - SYS
+  - VBAT
+  - VBUS
+  - VDD_AMP_3V3
+  - VDD_AUDIO_3V3
+runtime_estimates_from_17p3wh_target:
+  video_call_hours_at_target: 5.41
+  sustained_ai_hours_at_skin_limited_budget: 4.33
+  idle_display_on_hours_at_target: 19.22
+  display_off_idle_days_at_target: 2.88
+power_targets:
+  suspend_current_ma_max: 5
+  idle_display_off_w_max: 0.25
+  idle_display_on_w_max: 0.9
+  video_call_avg_w_max: 3.2
+  sustained_ai_workload_skin_limited_w: 4.0
+  charge_path_peak_efficiency_pct_min: 92
+  buck_peak_efficiency_pct_min: 88
+  thermal_skin_limit_c: 43
+power_layout_closure:
+  high_current_paths:
+    - name: VBUS_to_charger
+      nets:
+        - VBUS
+        - GND
+        - SHIELD_GND
+      source_constraint:
+        name: VBUS_to_charger
+        max_loop_area: minimize
+        copper: wide_short_top_or_inner_plane
+      layout_rule: route as a short wide copper path from USB-C/PD protection into
+        charger input with minimized loop area
+      verification_required: post-route copper width/via count review plus first-power
+        current-limit log
+    - name: charger_to_battery_and_sys
+      nets:
+        - VBAT
+        - SYS
+        - GND
+        - BAT_NTC
+        - BAT_ID
+      source_constraint:
+        name: charger_to_battery
+        max_loop_area: minimize
+        current_limit_from_battery_vendor: true
+      layout_rule: keep charger, battery connector, current sense, NTC, and SYS bulk
+        capacitance on the shortest practical top/bottom island path
+      verification_required: pack-current scope capture and battery connector temperature
+        check during 3 A charge
+    - name: RF_VBAT_to_cellular
+      nets:
+        - RF_VBAT
+        - GND
+        - CELL_RESET_N
+        - CELL_WAKE_AP
+      source_constraint:
+        name: RF_VBAT_to_cellular
+        burst_current_from_module_datasheet_required: true
+      layout_rule: feed cellular burst current with local bulk/MLCC capacitance and
+        return stitching isolated from MIPI/USB aggressors
+      verification_required: Quectel SKU burst-current profile and conducted TX load-step
+        capture
+  decoupling_rules:
+    - each_module_power_pin_requires_local_decoupling_per_datasheet
+    - PMIC_and_SoC_decaps_must_have_via_in_pad_or_adjacent_microvias_if_package_requires
+  rail_test_points_required:
+    - VBUS
+    - VBAT
+    - SYS
+    - AON_1V8
+    - IO_1V8
+    - RF_VBAT
+    - CAM_AVDD_2V8
+    - DISP_AVDD_5V5
+  minimum_bulk_capacitance_targets:
+    VBUS: 22uF bulk plus 4x10uF MLCC near PD/charger input
+    VBAT: 100uF bulk near charger/battery connector
+    SYS: 22uF bulk plus 4x10uF MLCC at PMIC input island
+    RF_VBAT: module-vendor bulk plus high-frequency MLCC at cellular module pins
+  blocked_until:
+    - post-route PI simulation for VBUS, VBAT, SYS, RF_VBAT, AP rails, and IO_1V8
+    - fabricator stackup and copper/via current-rating confirmation
+    - supplier PMIC/charger layout review with real footprints
+thermal_management:
+  device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 9.6
+  skin_limit_c: 43
+  sustained_skin_limited_budget_w: 4.0
+  z_stack_risk: 'The stack can exceed 9.6 mm unless shield can heights, battery thickness,
+    camera z-height, and rear cover design are locked together. A STEP tolerance stack
+    is mandatory before claiming enclosure fit.
+
+    '
+  required_sensors:
+    - ntc_near_soc_ap_cluster
+    - ntc_near_pmic_or_modem_hot_zone
+    - skin_or_back_cover_ntc
+    - battery_pack_ntc
+  required_spreading_stack: &id001
+    - soc_tim
+    - graphite_spreader
+    - optional_vapor_chamber_after_simulation
+    - gap_pad_to_rear_cover
+  sensor_placement_plan:
+    ntc_near_soc_ap_cluster: top island under graphite spreader near SoC/NPU shield
+    ntc_near_pmic_or_modem_hot_zone: top island between PMIC/charger and cellular
+      shield
+    skin_or_back_cover_ntc: back-cover contact point under graphite/gap-pad stack
+    battery_pack_ntc: supplier pack thermistor on battery connector BAT_NTC
+  spreading_layout_plan:
+    top_island_heat_sources:
+      - SoC/NPU
+      - PMIC
+      - charger
+      - cellular RedCap PA bursts
+    mechanical_stack: *id001
+    board_layout_actions:
+      - keep SoC/PMIC shield cans under continuous graphite path
+      - reserve ground via stitching under hot shields without cutting RF antenna
+        keepouts
+      - keep battery pouch out of direct hot-spot pressure path
+      - add charger and modem temperature test points for EVT thermal soak
+    vapor_chamber_trigger: add vapor chamber if measured v0 sustained silicon power
+      exceeds 4 W at 43 C skin
+hotspot_sources:
+  - SoC/NPU top-center graphite path
+  - PMIC/charger top-mid and USB-C bottom edge
+  - Quectel RedCap transmit bursts near top-left RF edge
+  - display backlight/bias near top-right FPC
+  - Wi-Fi/Bluetooth coexistence region
+release_blockers:
+  - selected battery pack drawing, protection board, NTC curve, and pack ID resistor
+  - fuel gauge selection and schematic/layout integration
+  - real PMIC rail assignment, current budget, decoupling, and load-step simulation
+  - display bias converter selection and panel inrush/sequence validation
+  - modem transmit-current burst budget from selected Quectel SKU datasheet
+  - thermal simulation and 30-minute CPU/NPU/camera/modem/charger soak evidence
+  - measured USB-C PD/PPS negotiation and charge-cycle logs
+missing_required_nets_by_rail: {}
+package_power_sequence_status:
+  pmic: required_not_implemented
+  charger: required_not_implemented
+  usb_pd: required_not_implemented
+  display: required_not_implemented
+  camera: required_not_implemented
+  cellular: required_not_implemented
+  audio: required_not_implemented
+regulatory_and_measurement_evidence_required:
+  - per_rail_boot_idle_suspend_and_worst_case_scope_captures
+  - calibrated_usb_c_input_power_and_battery_current_logs
+  - pmic_regulator_efficiency_vs_load_curves_on_board
+  - 30_min_cpu_npu_modem_camera_thermal_soak
+  - thermal_hal_throttle_transcript
+must_not_claim:
+  - power_efficient
+  - thermal_closed
+  - charging_ready
+  - battery_safe
+  - skin_temperature_safe

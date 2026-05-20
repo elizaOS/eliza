@@ -303,13 +303,14 @@ sources:
 
   - id: volare
     name: Volare PDK release manager
-    url: https://github.com/efabless/volare
+    url: https://github.com/chipfoundry/volare
     kind: github_repo
-    last_checked: 2026-05-19
+    last_checked: 2026-05-20
     relevance: |
-      Pinned PDK distribution used by OpenLane 2; E1 already uses the
-      "OpenLane-compatible Sky130 Volare revision" (see
-      `docs/three-week-prototype-workstreams.md`).
+      Pinned PDK distribution used by OpenLane 2; E1 uses the OpenLane-compatible
+      Sky130 Volare revision `c6d73a35f524070e85faff4a6a9eef49553ebc2b` (2025-08-09
+      release). Upstream migrated from `efabless/volare` (dormant) to
+      `chipfoundry/volare`; see `external/pdks/pin-manifest.json`.
 
   - id: gf180mcu_pdk
     name: GlobalFoundries GF180MCU PDK

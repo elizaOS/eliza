@@ -46,6 +46,16 @@ panel_candidates:
     touch: oncell_optional
     linux_driver: vendor_init_sequence_required
     datasheet_status: supplier_request_required
+  - vendor: Alibaba OEM/ODM 5.5 inch ILI7807D class
+    part: 5p5_1080x1920_MIPI_40pin_1200nit_class
+    interface: MIPI-DSI 4-lane, 40-pin
+    resolution: 1080x1920
+    refresh_hz: 60
+    brightness_typ_cd_m2: 1200
+    driver_ic: ILI7807D
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
   - vendor: BOE
     part: TV050QDM-N00
     interface: MIPI-DSI 4-lane (subset 1–2 lane usable)

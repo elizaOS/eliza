@@ -245,10 +245,7 @@ describe("AgentGatewayRouterService phone routing", () => {
       organizationId: "owner-org",
       userId: "owner-user",
     });
-    expect(findRunningSandbox).toHaveBeenCalledWith(
-      "friend-agent",
-      "owner-org",
-    );
+    expect(findRunningSandbox).toHaveBeenCalledWith("friend-agent", "owner-org");
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
         last_contacted_at: expect.any(Date),
@@ -293,17 +290,12 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(selectCalls).toBe(2);
-    expect(findRunningSandbox).toHaveBeenCalledWith(
-      "logged-agent",
-      "owner-org",
-    );
+    expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
   });
 
   test("falls back to outbound phone message log when contact table is not migrated", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
-    const missingTable = new Error(
-      'relation "agent_phone_contacts" does not exist',
-    );
+    const missingTable = new Error('relation "agent_phone_contacts" does not exist');
     (missingTable as Error & { code?: string }).code = "42P01";
     queueSelectError(missingTable);
     queueSelectResult([
@@ -335,10 +327,7 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(selectCalls).toBe(2);
-    expect(findRunningSandbox).toHaveBeenCalledWith(
-      "logged-agent",
-      "owner-org",
-    );
+    expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
   });
 
   test("starts onboarding for phone numbers with no owner or contact relationship", async () => {
@@ -377,9 +366,7 @@ describe("AgentGatewayRouterService phone routing", () => {
   });
 
   test("starts onboarding instead of throwing when phone target resolution fails", async () => {
-    findByPhoneNumberWithOrganization.mockRejectedValue(
-      new Error("lookup failed"),
-    );
+    findByPhoneNumberWithOrganization.mockRejectedValue(new Error("lookup failed"));
     runOnboardingChat.mockResolvedValue({
       reply: "resolver fallback reply",
       session: {
@@ -480,10 +467,7 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "friend-owner-user",
     });
     expect(runOnboardingChat).not.toHaveBeenCalled();
-    expect(findRunningSandbox).toHaveBeenCalledWith(
-      "friend-agent",
-      "friend-owner-org",
-    );
+    expect(findRunningSandbox).toHaveBeenCalledWith("friend-agent", "friend-owner-org");
   });
 
   test("falls back to authenticated onboarding when the sender's own agent route throws", async () => {

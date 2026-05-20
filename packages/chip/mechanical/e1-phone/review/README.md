@@ -14,12 +14,87 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/manufacturing-readiness.md`
 - `mechanical/e1-phone/review/mass-budget.json`
 - `mechanical/e1-phone/review/mass-budget.md`
+- `mechanical/e1-phone/review/compactness-optimization.json`
+- `mechanical/e1-phone/review/compactness-optimization.md`
+- `mechanical/e1-phone/review/compactness-optimization.png`
+- `mechanical/e1-phone/review/compactness-optimization.svg`
 - `mechanical/e1-phone/review/supplier-lock.json`
 - `mechanical/e1-phone/review/supplier-lock.md`
+- `mechanical/e1-phone/review/supplier-rfq-package.json`
+- `mechanical/e1-phone/review/supplier-rfq-package.md`
+- `mechanical/e1-phone/review/supplier-response-template.csv`
+- `mechanical/e1-phone/review/supplier-response-review.json`
+- `mechanical/e1-phone/review/supplier-response-review.md`
 - `mechanical/e1-phone/review/kicad-mechanical-handoff.json`
 - `mechanical/e1-phone/review/kicad-mechanical-handoff.md`
+- `mechanical/e1-phone/review/kicad-placement-reconciliation.json`
+- `mechanical/e1-phone/review/kicad-placement-reconciliation.md`
+- `mechanical/e1-phone/review/board-step-readiness.json`
+- `mechanical/e1-phone/review/board-step-readiness.md`
+- `mechanical/e1-phone/review/engineering-validation.json`
+- `mechanical/e1-phone/review/engineering-validation.md`
+- `mechanical/e1-phone/review/interface-validation.json`
+- `mechanical/e1-phone/review/interface-validation.md`
+- `mechanical/e1-phone/review/display-validation.json`
+- `mechanical/e1-phone/review/display-validation.md`
+- `mechanical/e1-phone/review/display-results-template.csv`
+- `mechanical/e1-phone/review/display-results-review.json`
+- `mechanical/e1-phone/review/display-results-review.md`
+- `mechanical/e1-phone/review/acoustic-validation.json`
+- `mechanical/e1-phone/review/acoustic-validation.md`
+- `mechanical/e1-phone/review/acoustic-results-template.csv`
+- `mechanical/e1-phone/review/acoustic-results-review.json`
+- `mechanical/e1-phone/review/acoustic-results-review.md`
+- `mechanical/e1-phone/review/camera-validation.json`
+- `mechanical/e1-phone/review/camera-validation.md`
+- `mechanical/e1-phone/review/camera-results-template.csv`
+- `mechanical/e1-phone/review/camera-results-review.json`
+- `mechanical/e1-phone/review/camera-results-review.md`
+- `mechanical/e1-phone/review/environmental-validation.json`
+- `mechanical/e1-phone/review/environmental-validation.md`
+- `mechanical/e1-phone/review/environmental-results-template.csv`
+- `mechanical/e1-phone/review/environmental-results-review.json`
+- `mechanical/e1-phone/review/environmental-results-review.md`
+- `mechanical/e1-phone/review/evt-fixtures.json`
+- `mechanical/e1-phone/review/evt-fixtures.md`
+- `mechanical/e1-phone/review/evt-inspection-plan.json`
+- `mechanical/e1-phone/review/evt-inspection-plan.md`
+- `mechanical/e1-phone/review/evt-inspection-results-template.csv`
+- `mechanical/e1-phone/review/evt-results-review.json`
+- `mechanical/e1-phone/review/evt-results-review.md`
+- `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`
+- `mechanical/e1-phone/out/evt-fixture-manifest.json`
+- `mechanical/e1-phone/review/assembly-clearance.json`
+- `mechanical/e1-phone/review/assembly-clearance.md`
+- `mechanical/e1-phone/review/injection-molding-dfm.json`
+- `mechanical/e1-phone/review/injection-molding-dfm.md`
+- `mechanical/e1-phone/review/mold-process-window.json`
+- `mechanical/e1-phone/review/mold-process-window.md`
+- `mechanical/e1-phone/review/toolmaker-signoff-package.json`
+- `mechanical/e1-phone/review/toolmaker-signoff-package.md`
+- `mechanical/e1-phone/review/toolmaker-signoff-response-template.csv`
+- `mechanical/e1-phone/review/toolmaker-signoff-review.json`
+- `mechanical/e1-phone/review/toolmaker-signoff-review.md`
+- `mechanical/e1-phone/review/tolerance-stack.json`
+- `mechanical/e1-phone/review/tolerance-stack.md`
+- `mechanical/e1-phone/review/gdt-release-package.json`
+- `mechanical/e1-phone/review/gdt-release-package.md`
+- `mechanical/e1-phone/review/gdt-fai-template.csv`
+- `mechanical/e1-phone/review/gdt-fai-results-review.json`
+- `mechanical/e1-phone/review/gdt-fai-results-review.md`
+- `mechanical/e1-phone/review/part-review.json`
+- `mechanical/e1-phone/review/part-review.md`
+- `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/visual-decision-report.json`
+- `mechanical/e1-phone/review/visual-decision-report.md`
+- `mechanical/e1-phone/review/solid-cad-handoff.json`
+- `mechanical/e1-phone/review/solid-cad-handoff.md`
+- `mechanical/e1-phone/review/step-validation.json`
+- `mechanical/e1-phone/review/step-validation.md`
+- `mechanical/e1-phone/out/e1-phone-solid-assembly.step`
 - `mechanical/e1-phone/review/full_front_iso.png`
 - `mechanical/e1-phone/review/full_back_iso.png`
+- `mechanical/e1-phone/review/rear_feature_detail.png`
 - `mechanical/e1-phone/review/full_left_side.png`
 - `mechanical/e1-phone/review/full_bottom_port.png`
 - `mechanical/e1-phone/review/full_top_down.png`
@@ -37,15 +112,20 @@ Status: automated EVT0 concept generation, not tooling release.
 - PASS: `rounded_enclosure_geometry`
 - PASS: `mesh_integrity`
 - PASS: `usb_c_insertion_envelope`
+- PASS: `usb_c_port_seal_stack`
 - PASS: `bottom_io_acoustic_apertures`
 - PASS: `button_force_and_travel`
 - PASS: `button_pressure_support`
+- PASS: `button_ingress_seal_stack`
 - PASS: `screen_mount_and_connection`
 - PASS: `camera_speaker_behind_glass`
+- PASS: `rf_antenna_keepouts`
+- PASS: `shielding_haptics_service`
 - PASS: `pcb_battery_non_overlap`
 - PASS: `injection_molding_basics`
 - PASS: `molded_retention_features`
 - PASS: `mold_runner_gate_model`
+- PASS: `mold_ejector_cooling_model`
 - PASS: `final_assembly_excludes_tooling_markers`
 - PASS: `kicad_outline_integration`
 - PASS: `device_compactness`
@@ -60,11 +140,11 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 127.51 g.
+- Estimated CAD mass: 143.39 g.
 
 ## Design Decisions From This Pass
 
-- The envelope is widened to 78.0 mm because the selected commodity touch panel is 77.1 mm wide; a 72 mm device envelope contradicts that supplier outline unless the display anchor changes.
+- The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.
 - Front camera and earpiece are kept behind the cover glass where practical. The rear camera stays exposed through a back lens window because the available AF module stack is too tall for full under-glass placement in a 9.6 mm phone.
 - Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.
 - The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.

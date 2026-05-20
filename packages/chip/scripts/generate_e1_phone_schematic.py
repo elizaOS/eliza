@@ -12,10 +12,9 @@ import json
 import textwrap
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PHONE_DIR = ROOT / "board/kicad/e1-phone"
@@ -24,10 +23,16 @@ NETLIST = PHONE_DIR / "block-netlist.yaml"
 PROJECT = PHONE_DIR / "e1-phone.kicad_pro"
 ROOT_SCH = SCHEMATIC_DIR / "e1-phone.kicad_sch"
 
-SHEETS = {
+
+class SheetConfig(TypedDict):
+    title: str
+    blocks: list[str]
+
+
+SHEETS: dict[str, SheetConfig] = {
     "power_usb": {
         "title": "Power, Battery, Charger, USB-C",
-        "blocks": ["J_USB_C", "U_USB_PD", "U_CHARGER", "U_PMIC"],
+        "blocks": ["J_USB_C", "U_USB_PD", "U_CHARGER", "J_BATTERY", "U_PMIC"],
     },
     "compute": {
         "title": "E1 SoC, Memory, Storage",
@@ -44,6 +49,10 @@ SHEETS = {
     "audio_buttons": {
         "title": "Audio, Haptics, Power and Volume Buttons",
         "blocks": ["SW_SIDE_KEYS", "U_AUDIO_HAPTIC"],
+    },
+    "split_interconnect": {
+        "title": "Top/Bottom Split-Board Interconnect",
+        "blocks": ["J_TOP_BOTTOM_FLEX_TOP", "J_TOP_BOTTOM_FLEX_BOTTOM"],
     },
 }
 
@@ -93,10 +102,19 @@ def make_sheet(path: Path, title: str, blocks: list[dict[str, Any]]) -> str:
         "  )",
     ]
     y = 20.0
-    items.append(text_item("NON-RELEASE SCHEMATIC SKELETON: logical nets only, no ERC/fabrication claim.", 20, y, 1.8))
+    items.append(
+        text_item(
+            "NON-RELEASE SCHEMATIC SKELETON: logical nets only, no ERC/fabrication claim.",
+            20,
+            y,
+            1.8,
+        )
+    )
     y += 10.0
     for block in blocks:
-        items.append(text_item(f"{block['id']} - {block['kind']} - {block['package_binding']}", 20, y, 1.55))
+        items.append(
+            text_item(f"{block['id']} - {block['kind']} - {block['package_binding']}", 20, y, 1.55)
+        )
         y += 7.0
         for group, nets in block["nets"].items():
             joined = ", ".join(str(net) for net in nets)
@@ -124,12 +142,21 @@ def make_root(netlist: dict[str, Any]) -> str:
         "  )",
     ]
     y = 20.0
-    items.append(text_item("Root schematic scaffold. This is not ERC-clean design data or a production schematic.", 20, y, 1.8))
+    items.append(
+        text_item(
+            "Root schematic scaffold. This is not ERC-clean design data or a production schematic.",
+            20,
+            y,
+            1.8,
+        )
+    )
     y += 10.0
     items.append(text_item("Generated sheets:", 20, y, 1.5))
     y += 8.0
     for sheet_name, config in SHEETS.items():
-        items.append(text_item(f"schematic/{sheet_name}.kicad_sch - {config['title']}", 26, y, 1.25))
+        items.append(
+            text_item(f"schematic/{sheet_name}.kicad_sch - {config['title']}", 26, y, 1.25)
+        )
         y += 6.0
     y += 4.0
     domains = ", ".join(domain["name"] for domain in netlist["voltage_domains"])
@@ -141,7 +168,14 @@ def make_root(netlist: dict[str, Any]) -> str:
         for line in wrap_kicad_text(f"Required shared {group} nets: {', '.join(nets)}", width=100):
             items.append(text_item(line, 20, y, 1.2))
             y += 5.0
-    items.append(text_item("Release blocker: replace text scaffolds with reviewed symbols, exact supplier pinouts, footprints, ERC, and net classes.", 20, y + 5.0, 1.25))
+    items.append(
+        text_item(
+            "Release blocker: replace text scaffolds with reviewed symbols, exact supplier pinouts, footprints, ERC, and net classes.",
+            20,
+            y + 5.0,
+            1.25,
+        )
+    )
     items.append(")")
     return "\n".join(items) + "\n"
 
@@ -188,7 +222,11 @@ def make_project() -> str:
         },
         "pcbnew": {"last_paths": {}, "page_layout_descr_file": ""},
         "schematic": {
-            "drawing": {"default_bus_thickness": 12.0, "default_junction_size": 40.0, "default_line_thickness": 6.0},
+            "drawing": {
+                "default_bus_thickness": 12.0,
+                "default_junction_size": 40.0,
+                "default_line_thickness": 6.0,
+            },
             "legacy_lib_dir": "",
             "legacy_lib_list": [],
             "meta": {"version": 1},
@@ -213,7 +251,9 @@ def main() -> int:
     ROOT_SCH.write_text(make_root(netlist))
     for sheet_name, config in SHEETS.items():
         blocks = [blocks_by_id[block_id] for block_id in config["blocks"]]
-        (SCHEMATIC_DIR / f"{sheet_name}.kicad_sch").write_text(make_sheet(SCHEMATIC_DIR / f"{sheet_name}.kicad_sch", config["title"], blocks))
+        (SCHEMATIC_DIR / f"{sheet_name}.kicad_sch").write_text(
+            make_sheet(SCHEMATIC_DIR / f"{sheet_name}.kicad_sch", config["title"], blocks)
+        )
     PROJECT.write_text(make_project())
     print(f"generated {ROOT_SCH}")
     print(f"generated {PROJECT}")

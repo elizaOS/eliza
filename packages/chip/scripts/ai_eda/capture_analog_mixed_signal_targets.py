@@ -98,6 +98,10 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "align-analoglayout",
+            "bag3-analog-generator",
+            "openfasoc-generators",
+            "laygo2",
+            "magical-analog-layout",
             "autockt",
             "genie-asi",
             "acdc-analog-llm",
@@ -180,6 +184,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "deterministic-analog-generator-backend-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future BAG3++/OpenFASOC/laygo2/MAGICAL-style generator or layout backend use must pin revisions, technology plugins, PDK/model hashes, generator specs, generated-output hashes, SPICE replay, DRC/LVS/extraction, PVT/corner reports, and analog review",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make padframe-check",
+                    "make board-package-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "deterministic-spice-replay-backend-watch",
                 "status": "CAPTURED_NOT_SIMULATED",
                 "target": "future ngspice, PySpice, Xyce, or OpenVAF use must pin simulator/model/compiler revisions, PDK and model hashes, deck hashes, command lines, raw outputs, convergence logs, PVT/corner manifests, and reviewer disposition before accepting analog AI results",
@@ -242,6 +257,7 @@ def main() -> int:
         "blocked_by": [
             "no local analog SPICE specs or testbenches for E1",
             "no approved ngspice, PySpice, Xyce, or OpenVAF revision/model/deck replay policy for E1 analog or extracted-netlist evidence",
+            "no approved BAG3++/OpenFASOC/laygo2/MAGICAL generator or layout-backend revision with technology plugin, PDK, model, generated-output quarantine, DRC/LVS/extraction, SPICE replay, and analog-review evidence",
             "no foundry pad library selected or released",
             "no IBIS, S-parameter, package parasitic, or rail impedance model",
             "no quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition",

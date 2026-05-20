@@ -53,7 +53,7 @@ if [ -d "$repo_dir/external/oss-cad-suite/bin" ]; then
 fi
 
 OPENLANE_IMAGE="${OPENLANE_IMAGE:-ghcr.io/efabless/openlane2:2.4.0.dev1}"
-VOLARE_PDK_ROOT="${VOLARE_PDK_ROOT:-$repo_dir/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af}"
+VOLARE_PDK_ROOT="${VOLARE_PDK_ROOT:-$repo_dir/external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b}"
 ANTENNA_DECK="${ANTENNA_DECK:-$repo_dir/pd/openlane/antenna.tcl}"
 
 sha256_of_file() {

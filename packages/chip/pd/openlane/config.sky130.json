@@ -22,13 +22,13 @@
     "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
   ],
   "EXTRA_LEFS": [
-    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+    "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
   ],
   "EXTRA_LIBS": [
-    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+    "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
   ],
   "EXTRA_GDS_FILES": [
-    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+    "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
   ],
   "EXTRA_VERILOG_MODELS": [
     "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
@@ -36,21 +36,21 @@
   "MACROS": {
     "sky130_sram_2kbyte_1rw1r_32x512_8": {
       "gds": [
-        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+        "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
       ],
       "lef": [
-        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+        "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
       ],
       "lib": {
         "*": [
-          "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+          "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
         ]
       },
       "nl": [
         "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
       ],
       "spice": [
-        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
+        "dir::../../external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
       ],
       "instances": {
         "u_soc.u_weight_buffer.u_sram": {
@@ -68,7 +68,7 @@
   ],
   "PNR_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc.sdc",
-  "FP_PIN_ORDER_CFG": "dir::../pin_order.cfg",
+  "IO_PIN_ORDER_CFG": "dir::../pin_order.cfg",
   "FP_SIZING": "absolute",
   "DIE_AREA": "0 0 2900 2900",
   "CORE_AREA": "100 100 2800 2800",
@@ -91,21 +91,21 @@
   "DESIGN_REPAIR_MAX_WIRE_LENGTH": 600,
   "DESIGN_REPAIR_MAX_SLEW_PCT": 5,
   "DESIGN_REPAIR_MAX_CAP_PCT": 5,
-  "FP_PDN_VPITCH": 153.6,
-  "FP_PDN_HPITCH": 153.6,
-  "FP_PDN_VWIDTH": 3.1,
-  "FP_PDN_HWIDTH": 3.1,
-  "FP_PDN_VSPACING": 17.84,
-  "FP_PDN_HSPACING": 17.84,
-  "FP_PDN_CORE_RING": true,
-  "FP_PDN_CORE_RING_VWIDTH": 3.1,
-  "FP_PDN_CORE_RING_HWIDTH": 3.1,
-  "FP_PDN_CORE_RING_VOFFSET": 14,
-  "FP_PDN_CORE_RING_HOFFSET": 14,
-  "FP_PDN_CORE_RING_VSPACING": 1.7,
-  "FP_PDN_CORE_RING_HSPACING": 1.7,
-  "FP_PDN_VERTICAL_LAYER": "met4",
-  "FP_PDN_HORIZONTAL_LAYER": "met5",
+  "PDN_VPITCH": 153.6,
+  "PDN_HPITCH": 153.6,
+  "PDN_VWIDTH": 3.1,
+  "PDN_HWIDTH": 3.1,
+  "PDN_VSPACING": 17.84,
+  "PDN_HSPACING": 17.84,
+  "PDN_CORE_RING": true,
+  "PDN_CORE_RING_VWIDTH": 3.1,
+  "PDN_CORE_RING_HWIDTH": 3.1,
+  "PDN_CORE_RING_VOFFSET": 14,
+  "PDN_CORE_RING_HOFFSET": 14,
+  "PDN_CORE_RING_VSPACING": 1.7,
+  "PDN_CORE_RING_HSPACING": 1.7,
+  "PDN_VERTICAL_LAYER": "met4",
+  "PDN_HORIZONTAL_LAYER": "met5",
   "RUN_IRDROP_REPORT": true,
   "PSM_ENABLED": true,
   "PSM_CORNER": "nom_tt_025C_1v80",

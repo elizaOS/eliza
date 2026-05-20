@@ -89,14 +89,50 @@ package e1_cache_pkg;
                                                    SLC_BANK_W - SLC_OFFSET_W;
 
     // -----------------------------------------------------------------------
-    // MESI states (TileLink TL-C compatible naming)
+    // MOESI states (TileLink TL-C compatible naming)
+    //
+    // The cluster used to run MESI; round-8 widens the encoding to add the
+    // Owned state. Owned holds the canonical dirty copy while one or more
+    // peers hold the line in Shared. The Owner serves sharers without
+    // involving memory and writes back on eviction.
+    //
+    // Encoding is chosen so the lower two bits match the legacy MESI
+    // values: any code that still drives a 2-bit value will read as the
+    // same logical state under the widened type. The 5th state (Owned)
+    // sits at 3'b100 which has bit[2] set; legacy 2-bit decoders that
+    // only sample bits [1:0] will see Owned as Invalid, which is the
+    // safe degradation: an Owned line behaves as a writable-on-evict
+    // dirty line, but never as an exclusive writer.
+    //
+    //   MESI_I = 3'b000   Invalid
+    //   MESI_S = 3'b001   Shared (clean, may be present in multiple caches)
+    //   MESI_E = 3'b010   Exclusive (clean, single owner)
+    //   MESI_M = 3'b011   Modified (dirty, single owner, no sharers)
+    //   MESI_O = 3'b100   Owned (dirty, single owner, sharers also have line)
+    //
+    // The type name `mesi_e` is preserved so cache modules and tests do
+    // not have to be renamed in lockstep; the underlying type carries
+    // five states. The `MESI_O` name is the canonical Owned value.
     // -----------------------------------------------------------------------
-    typedef enum logic [1:0] {
-        MESI_I = 2'b00, // Invalid
-        MESI_S = 2'b01, // Shared (clean, may be present in multiple caches)
-        MESI_E = 2'b10, // Exclusive (clean, single owner)
-        MESI_M = 2'b11  // Modified (dirty, single owner)
+    typedef enum logic [2:0] {
+        MESI_I = 3'b000,
+        MESI_S = 3'b001,
+        MESI_E = 3'b010,
+        MESI_M = 3'b011,
+        MESI_O = 3'b100
     } mesi_e;
+
+    // Returns 1 if the state holds a dirty line that must be written back
+    // on eviction or invalidation.
+    function automatic logic moesi_is_dirty(input mesi_e s);
+        moesi_is_dirty = (s == MESI_M) || (s == MESI_O);
+    endfunction
+
+    // Returns 1 if the state implies the line may be present in any
+    // other cache (Shared or Owned-with-sharers).
+    function automatic logic moesi_has_sharers(input mesi_e s);
+        moesi_has_sharers = (s == MESI_S) || (s == MESI_O);
+    endfunction
 
     // -----------------------------------------------------------------------
     // QoS classes for SLC arbitration

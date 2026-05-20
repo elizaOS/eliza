@@ -11,7 +11,7 @@
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "60eaf6be3f10cd42d1ff39ff754c17cac5d4f12c877c741b86ccdb6caaa7ecf9"
+      "sha256": "7d2efa738bb30bf8e02d4850e19d015b2ff2cd93380fc95cf31599563a7bc825"
     },
     "rtl": {
       "command": "make mpki-eval-rtl",
@@ -19,7 +19,7 @@
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "aa66ebf732e4204cb6625ffbb81edda72bc6f22a0e80cb594f10fa9f79b5e360"
+      "sha256": "57d3616b8d8b86b1376817bff4b383633ba9f138e88ec5bb8ab4ed026eb03c21"
     },
     "spec2017_claim": false,
     "v8_claim": false
@@ -32,19 +32,19 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-20T03:29:58.609822+00:00",
+  "generated_at_utc": "2026-05-20T10:14:13.034613+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
-    "FTB_ENTRIES": 2048,
+    "FTB_ENTRIES": 4096,
     "FTB_WAYS": 4,
     "FTQ_ENTRIES": 64,
     "ITTAGE_ENTRIES": [
-      256,
-      256,
       512,
       512,
-      512
+      1024,
+      1024,
+      1024
     ],
     "ITTAGE_HIST_LEN": [
       4,
@@ -79,23 +79,23 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "36386b9e268f9722919277476efece0f18191e53",
+  "source_revision": "bd21824ee48d26781db4c9bb5ad2424d74688030",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "49b3dc90357c9d8c247b52217d4a5a600dc1aae938d051d64e00d9c7e56b92e1"
+      "sha256": "be8c609b43f7b3bf3abd55b7b2286be3fcb489ab3ecabd9a03cc49cbce1a5976"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
-      "sha256": "723863f89b8bf09ba5600bd14b59b3c1347ac712912e2c5ee6ad6862d11c5f11"
+      "sha256": "c26d12c683a4f0c1fda36d541b25a80efd894592efb62e85ef35924d49dff926"
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "2a06e46c7bb84b7bfcee45b8d7760dcd8c20dada4ba869de5fa2bc7e762f97fe"
+      "sha256": "3bbb09c368c5fd4e655a70de57e0258ca21bf6a2d75e151c27232bd2c328ce9a"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "002499c8935d8621d61a5f1109455677d95322b3a1378e41df95c22ae5e5db45"
+      "sha256": "526af26ea13452950c8f4e638fe34dff4006befe8f4f70c45fe5c5e2d4071d83"
     }
   },
   "status": "clean",
@@ -108,7 +108,7 @@
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "eafb50e365aae185dbb298e9ad5d1723e9ff43974a84ef482191dbcfed78f590",
+    "sha256": "a2ca589f5ca10e714dc02339d8aaaf1590ae35317cb385c850aeba894917ce7f",
     "spec2017_claim": false,
     "trace_class": "synthetic_planning_only"
   },

@@ -60,6 +60,8 @@ bindings as authoritative:
 - `package/human-interface/side-buttons.yaml` — power and volume button
   switch/flex constraints.
 - `package/charger/max77860.yaml` — Charger.
+- `package/battery/e1-phone-17p3wh-pack.yaml` — battery pack connector,
+  thermistor/ID, safety-document, and enclosure compression requirements.
 - `package/sensors/v0-sensors.yaml` — Sensors.
 - `package/audio/v0-codec.yaml` — Audio codec + amp + mics.
 - `docs/board/power-tree.md` — Rail-by-rail PDN intent.
@@ -88,6 +90,10 @@ fabrication evidence:
   power-efficiency, and connectivity targets.
 - `docs/board/e1-phone-oem-sourcing.md` — Alibaba/Made-in-China/vendor
   sourcing baseline for display, cameras, cellular, and Wi-Fi/Bluetooth.
+- `board/kicad/e1-phone/supplier-sourcing-audit.yaml` — current public
+  supplier audit for the 5.5 inch display anchor, camera module class,
+  Quectel RedCap module, and Murata Wi-Fi/Bluetooth module. It is not an AVL
+  or supplier approval.
 - `board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg` — CAD-style
   floorplan preview.
 - `board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png` — rendered
@@ -100,7 +106,9 @@ fabrication evidence:
   screenshot of the PCB-style preview.
 - `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb` — minimal
   KiCad PCB concept file with board outline, stackup placeholder, keepouts,
-  and top-side placement boxes. It is not routed fabrication data.
+  top-side placement boxes, and generated non-release placeholder footprints
+  for the major modules, test points, fiducials, and mounting holes. It is not
+  routed fabrication data.
 - `board/kicad/e1-phone/e1-phone.kicad_pro` — KiCad project scaffold.
 - `board/kicad/e1-phone/schematic/*.kicad_sch` — generated hierarchical
   schematic scaffold sheets for power/USB, compute, display/cameras, radios,
@@ -112,10 +120,45 @@ fabrication evidence:
 - `board/kicad/e1-phone/block-netlist.yaml` — logical block netlist for the
   display, cameras, USB-C, PMIC/charger, cellular, Wi-Fi/BT, buttons, and
   audio before real KiCad schematic capture.
+- `board/kicad/e1-phone/display-fit.yaml` — generated 2D display/enclosure
+  fit report for the selected 5.5 inch Chenghao-class CTP module. It enforces
+  the 78.0 x 153.6 mm device envelope used to contain the 77.1 x 151.77 mm
+  module outline with margin.
+- `board/kicad/e1-phone/enclosure-placement-closure.yaml` — generated
+  cross-check tying the concept PCB outline, display fit, mechanical overlay,
+  STEP envelope artifacts, fit report, and clearance report together. It is
+  not final enclosure release evidence because the board STEP is not from a
+  routed KiCad board with final component models.
+- `board/kicad/e1-phone/interface-closure.yaml` — generated cross-check tying
+  USB-C, side buttons, display/touch FPC, and camera FPCs to package bindings,
+  placement regions, logical nets, and release blockers.
+- `board/kicad/e1-phone/power-thermal-budget.yaml` — generated cross-check
+  tying the USB-C PD sink, charger, PMIC rails, battery target, runtime targets,
+  and thermal skin limit to the logical block netlist. It remains blocked on
+  real schematic, PI, thermal simulation, and measurements.
+- `board/kicad/e1-phone/rf-connectivity-closure.yaml` — generated cross-check
+  tying Quectel RedCap cellular, Murata Wi-Fi 6E/Bluetooth, RF matching nets,
+  antenna keepouts, enclosure RF constraints, and measurement blockers.
+- `board/kicad/e1-phone/pinout-footprint-freeze.yaml` — generated supplier
+  pinout, footprint, and mechanical-data freeze matrix for display, cameras,
+  USB-C, side buttons, cellular, battery, Wi-Fi/BT, audio, speakers, and mics.
+  It keeps the PCB blocked until exact supplier evidence exists.
+- `board/kicad/e1-phone/audio-acoustic-closure.yaml` — generated cross-check
+  for audio codec, smart amp, two PDM microphones, speaker outputs, haptic
+  actuator, bottom speaker/mic gasket constraints, top earpiece/RF separation,
+  and required acoustic measurements.
 - `board/kicad/e1-phone/routing-constraints.yaml` — impedance, length,
   keepout, RF, PI, and mechanical routing constraints for the future PCB.
+- `board/kicad/e1-phone/layout-utilization.yaml` — geometry-derived
+  utilization report from the concept KiCad PCB. It computes the 64 x 132 mm
+  outline, 64 x 87 mm full-width battery cavity, antenna keepouts, F.Fab placement
+  rectangles, and remaining route/shield/test reserve. It is intentionally
+  concept-only and must be replaced by real footprint/courtyard utilization.
 - `board/kicad/e1-phone/preliminary-bom.yaml` — preliminary sourcing/BOM
   shortlist, not an AVL or production BOM.
+- `board/kicad/e1-phone/manufacturing-closure.yaml` — fail-closed list of
+  missing fabrication, assembly, test, DFM/DFA, fab-quote, and first-article
+  evidence required before release.
 - `board/kicad/e1-phone/artifact-manifest.yaml` — fail-closed board package
   manifest defining what is present and what blocks release.
 - `board/kicad/e1-phone/preview/kicad-cli-mainboard.svg` — KiCad CLI export
@@ -130,13 +173,50 @@ fabrication evidence:
 ## Verification
 
 - `make kicad-setup` — installs host KiCad packages when root/passwordless
-  sudo is available; otherwise builds and verifies the local Docker KiCad
-  toolchain image.
+  sudo is available; otherwise installs a user-local KiCad toolchain under
+  `.tools/kicad-local`; Docker remains a fallback when local extraction is
+  unavailable.
 - `make e1-phone-schematic-scaffold` — regenerates the KiCad schematic
   scaffold from `board/kicad/e1-phone/block-netlist.yaml`.
+- `make e1-phone-layout-metrics` — regenerates
+  `board/kicad/e1-phone/layout-utilization.yaml` from the concept KiCad PCB
+  geometry.
+- `make e1-phone-pcb-footprint-scaffold` — regenerates placeholder KiCad
+  footprints, required power test points, global fiducials, and mounting-hole
+  references inside the concept PCB. These are excluded from BOM/PnP and must
+  be replaced by supplier land patterns before release.
+- `make e1-phone-display-fit` — regenerates
+  `board/kicad/e1-phone/display-fit.yaml` from the selected display binding,
+  metrics, and enclosure interface.
+- `make e1-phone-interface-closure` — regenerates
+  `board/kicad/e1-phone/interface-closure.yaml` from enclosure-facing package
+  bindings, placement regions, and the logical block netlist.
+- `make e1-phone-enclosure-placement` — regenerates
+  `board/kicad/e1-phone/enclosure-placement-closure.yaml` from the generated
+  mechanical CAD review artifacts, display fit, and KiCad mechanical overlay.
+- `make e1-phone-power-thermal` — regenerates
+  `board/kicad/e1-phone/power-thermal-budget.yaml` from the battery, USB-C,
+  charger, PMIC, display, camera, radio, audio, and thermal planning bindings.
+- `make e1-phone-rf-connectivity` — regenerates
+  `board/kicad/e1-phone/rf-connectivity-closure.yaml` from cellular/Wi-Fi
+  bindings, RF routing constraints, antenna keepouts, and enclosure rules.
+- `make e1-phone-supplier-sourcing-audit` — regenerates
+  `board/kicad/e1-phone/supplier-sourcing-audit.yaml` from the current package
+  bindings, metrics, and public sourcing evidence captured on 2026-05-20.
+- `make e1-phone-pinout-footprint-freeze` — regenerates
+  `board/kicad/e1-phone/pinout-footprint-freeze.yaml` from the BOM, placement
+  matrix, logical block netlist, and routing constraints.
+- `make e1-phone-audio-acoustic` — regenerates
+  `board/kicad/e1-phone/audio-acoustic-closure.yaml` from the audio binding,
+  enclosure constraints, routing rules, mechanical overlay, and supplier freeze
+  record.
+- `make e1-phone-manufacturing-closure` — regenerates
+  `board/kicad/e1-phone/manufacturing-closure.yaml` from the manifest, KiBot
+  skeleton, concept PCB, routing constraints, and utilization report.
 - `make e1-phone-board-package-check` — validates the manifest, sourcing
   bindings, placement matrix, preliminary BOM, optimized board dimensions,
-  schematic scaffold, concept KiCad file, and fail-closed release gates.
+  geometry-derived utilization, manufacturing closure, schematic scaffold,
+  concept KiCad file, and fail-closed release gates.
 - `make kicad-phone-render` — exports the concept PCB through KiCad CLI and
   verifies all preview PNG/SVG artifacts are nonblank and parseable.
 

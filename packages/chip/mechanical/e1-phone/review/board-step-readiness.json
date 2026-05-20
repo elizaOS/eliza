@@ -1,0 +1,101 @@
+{
+  "claim_boundary": "Mechanical intake gate for routed KiCad board STEP; concept PCB envelope does not count as routed-board evidence.",
+  "status": "blocked_concept_pcb_no_routed_step",
+  "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+  "manufacturing_closure": "board/kicad/e1-phone/manufacturing-closure.yaml",
+  "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
+  "production_step_dir": "board/kicad/e1-phone/production/step",
+  "production_step_files": [],
+  "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
+  "board_state_detected": {
+    "has_tracks": false,
+    "has_filled_zones": false,
+    "has_production_step": false,
+    "has_concept_pcb_step": true,
+    "placeholder_marker_count": 116,
+    "manufacturing_closure_status": "blocked_manufacturing_requires_routed_pcb_and_fab_outputs"
+  },
+  "concept_split_island_geometry": {
+    "cad_projected_islands": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 64.0,
+        "height": 29.0,
+        "area_mm2": 1856.0
+      },
+      {
+        "x": 0.0,
+        "y": 117.0,
+        "width": 64.0,
+        "height": 15.0,
+        "area_mm2": 960.0
+      }
+    ],
+    "kicad_edge_cut_islands": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 64.0,
+        "height": 29.0,
+        "area_mm2": 1856.0
+      },
+      {
+        "x": 0.0,
+        "y": 117.0,
+        "width": 64.0,
+        "height": 15.0,
+        "area_mm2": 960.0
+      }
+    ],
+    "matches": true
+  },
+  "cases": [
+    {
+      "id": "kicad_placement_reconciled_to_cad",
+      "pass": true,
+      "evidence": "kicad-placement-reconciliation.json"
+    },
+    {
+      "id": "solid_envelope_step_available",
+      "pass": true,
+      "evidence": "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+    },
+    {
+      "id": "concept_pcb_step_available",
+      "pass": true,
+      "evidence": "mechanical/e1-phone/out/main_pcb.step"
+    },
+    {
+      "id": "concept_split_island_geometry_matches_kicad",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/layout-utilization.yaml"
+    },
+    {
+      "id": "routed_tracks_present",
+      "pass": false,
+      "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    },
+    {
+      "id": "filled_zones_present",
+      "pass": false,
+      "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    },
+    {
+      "id": "production_board_step_present",
+      "pass": false,
+      "evidence": "board/kicad/e1-phone/production/step"
+    },
+    {
+      "id": "placeholder_footprints_replaced",
+      "pass": false,
+      "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    }
+  ],
+  "required_next_actions": [
+    "Replace E1Phone placeholder footprints with supplier land patterns and 3D models.",
+    "Route the KiCad board with clean ERC/DRC, copper zones, impedance constraints, and test access.",
+    "Export production board STEP from routed KiCad including component 3D models.",
+    "Re-import routed board STEP into the phone CAD and re-run enclosure collision, USB insertion, button, screen FPC, and acoustic checks."
+  ]
+}

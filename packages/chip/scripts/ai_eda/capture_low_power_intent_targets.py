@@ -130,6 +130,9 @@ def main() -> int:
             "rtl-ppa-sog",
             "symrtlo",
             "powergear-hls-power",
+            "opensta-power-analysis",
+            "ieda-ipower",
+            "trace2power",
             "archpower",
             "autopower",
             "atompower-rtl-power",
@@ -269,6 +272,17 @@ def main() -> int:
                     "make synth",
                 ],
             },
+            {
+                "id": "activity-power-backend-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future OpenSTA, iEDA iPower, or trace2power-style activity and power analysis requires pinned tool revisions, Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, command logs, report hashes, cross-tool correlation, and reviewer disposition before any low-power or DVFS claim",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
         ],
         "blocked_by": [
             "no E1 power-state table, always-on partition, supply-set map, or IEEE 1801 UPF source",
@@ -280,6 +294,7 @@ def main() -> int:
             "no workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation",
             "no before/after low-power PPA corpus with equivalence and signoff evidence for E1",
             "no calibrated HLS/RTL power-label corpus or held-out E1 error analysis for early-stage power estimators",
+            "no pinned OpenSTA, iEDA iPower, or trace2power revision with Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, or cross-tool correlation",
             "no CPU/AP/RTL feature mapping, VCD/activity provenance, calibration labels, or held-out E1 error analysis for architecture-level power priors",
         ],
     }

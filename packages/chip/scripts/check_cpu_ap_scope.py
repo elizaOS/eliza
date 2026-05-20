@@ -332,7 +332,7 @@ def build_report() -> dict[str, Any]:
         "missing_transcripts": evidence["missing_transcripts"],
         "invalid_transcript_problems": evidence["invalid_transcript_problems"],
         "blocked_until_real_evidence": [
-            "pinned Chipyard 1.13.0 checkout generates ElizaRocketConfig artifacts and manifest hashes",
+            "pinned Chipyard main-2026-05-20 checkout generates ElizaRocketConfig artifacts and manifest hashes",
             "generated Rocket AP Verilog, DTS, source tree, and simulator artifact exist and hash-match",
             "generated AP DTS compiles and contains CPU, memory, timer, interrupt-controller, UART, and chosen stdout nodes",
             "OpenSBI transcript proves next-stage handoff, timer, console, DRAM base, and boot hart ISA",

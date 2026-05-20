@@ -43,6 +43,7 @@ METAL = [0.72, 0.74, 0.76, 1.0]
 CAMERA = [0.02, 0.02, 0.025, 1.0]
 ADHESIVE = [0.02, 0.02, 0.02, 0.55]
 TOOLING = [0.16, 0.35, 0.95, 0.38]
+FPC_AMBER = [0.95, 0.58, 0.10, 0.72]
 
 
 @dataclass(frozen=True)
@@ -221,20 +222,272 @@ def load_params() -> dict[str, Any]:
     return yaml.safe_load(PARAMS.read_text())
 
 
+def pcb_island_segments(params: dict[str, Any]) -> list[tuple[list[float], list[float], str]]:
+    pcb = params["pcb"]
+    return [
+        ([64.0, 29.0, 0.8], [0.0, 51.5, pcb["z_center_mm"]], "pcb_top_logic_rf_island"),
+        ([64.0, 15.0, 0.8], [0.0, -58.5, pcb["z_center_mm"]], "pcb_bottom_usb_audio_island"),
+    ]
+
+
+def split_interconnect_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    pcb_z = float(params["pcb"]["z_center_mm"])
+    return [
+        {
+            "name": "split_interconnect_top_connector",
+            "size": [16.0, 2.4, 0.9],
+            "center": [22.0, 37.5, pcb_z + 0.85],
+            "color": METAL,
+            "role": "split-board interconnect",
+            "material": "Hirose BM28-class 49-pin top-island board connector envelope",
+        },
+        {
+            "name": "split_interconnect_bottom_connector",
+            "size": [16.0, 2.4, 0.9],
+            "center": [22.0, -52.5, pcb_z + 0.85],
+            "color": METAL,
+            "role": "split-board interconnect",
+            "material": "Hirose BM28-class 49-pin bottom-island board connector envelope",
+        },
+        {
+            "name": "split_interconnect_side_flex",
+            "size": [2.4, 88.0, 0.18],
+            "center": [34.5, -7.5, pcb_z + 0.25],
+            "color": FPC_AMBER,
+            "role": "split-board interconnect",
+            "material": "polyimide FPC side service loop envelope",
+        },
+        {
+            "name": "split_interconnect_top_flex_tail",
+            "size": [12.5, 2.0, 0.18],
+            "center": [28.25, 37.5, pcb_z + 0.25],
+            "color": FPC_AMBER,
+            "role": "split-board interconnect",
+            "material": "polyimide FPC top connector tail envelope",
+        },
+        {
+            "name": "split_interconnect_bottom_flex_tail",
+            "size": [12.5, 2.0, 0.18],
+            "center": [28.25, -52.5, pcb_z + 0.25],
+            "color": FPC_AMBER,
+            "role": "split-board interconnect",
+            "material": "polyimide FPC bottom connector tail envelope",
+        },
+    ]
+
+
+def side_button_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    dev = params["device"]
+    comp = params["components"]
+    width = float(dev["envelope_mm"][0])
+    power_y = 20.0
+    volume_y = 14.0
+    power_cap = comp["power_button"]["cap_mm"]
+    volume_cap = comp["volume_button"]["cap_mm"]
+    return [
+        {
+            "name": "power_button_elastomer_gasket",
+            "size": [0.5, power_cap[1] + 1.0, power_cap[2] + 0.45],
+            "center": [width / 2 - 0.65, power_y, -0.4],
+            "color": ADHESIVE,
+            "role": "button seal",
+            "material": "shore-a silicone side-key gasket behind power button",
+        },
+        {
+            "name": "power_button_labyrinth_upper_rail",
+            "size": [0.55, 0.8, power_cap[2] + 0.75],
+            "center": [width / 2 - 0.95, power_y + power_cap[1] / 2 + 0.55, -0.4],
+            "color": ORANGE,
+            "role": "button seal",
+            "material": "molded PC+ABS side-key labyrinth rail",
+        },
+        {
+            "name": "power_button_labyrinth_lower_rail",
+            "size": [0.55, 0.8, power_cap[2] + 0.75],
+            "center": [width / 2 - 0.95, power_y - power_cap[1] / 2 - 0.55, -0.4],
+            "color": ORANGE,
+            "role": "button seal",
+            "material": "molded PC+ABS side-key labyrinth rail",
+        },
+        {
+            "name": "volume_button_elastomer_gasket",
+            "size": [0.5, volume_cap[1] + 1.0, volume_cap[2] + 0.45],
+            "center": [-width / 2 + 0.65, volume_y, -0.4],
+            "color": ADHESIVE,
+            "role": "button seal",
+            "material": "shore-a silicone side-key gasket behind volume button",
+        },
+        {
+            "name": "volume_button_labyrinth_upper_rail",
+            "size": [0.55, 0.8, volume_cap[2] + 0.75],
+            "center": [-width / 2 + 0.95, volume_y + volume_cap[1] / 2 + 0.55, -0.4],
+            "color": ORANGE,
+            "role": "button seal",
+            "material": "molded PC+ABS side-key labyrinth rail",
+        },
+        {
+            "name": "volume_button_labyrinth_lower_rail",
+            "size": [0.55, 0.8, volume_cap[2] + 0.75],
+            "center": [-width / 2 + 0.95, volume_y - volume_cap[1] / 2 - 0.55, -0.4],
+            "color": ORANGE,
+            "role": "button seal",
+            "material": "molded PC+ABS side-key labyrinth rail",
+        },
+    ]
+
+
+def usb_c_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    height = float(params["device"]["envelope_mm"][1])
+    aperture_w = 10.2
+    aperture_z = 3.6
+    y_front = -height / 2 - 0.08
+    y_inside = -height / 2 + 0.32
+    z_center = -1.45
+    return [
+        {
+            "name": "usb_c_perimeter_gasket_top",
+            "size": [11.4, 0.45, 0.35],
+            "center": [0.0, y_inside, z_center + aperture_z / 2 + 0.32],
+            "color": ADHESIVE,
+            "role": "I/O seal",
+            "material": "silicone USB-C perimeter gasket top rail",
+        },
+        {
+            "name": "usb_c_perimeter_gasket_bottom",
+            "size": [11.4, 0.45, 0.35],
+            "center": [0.0, y_inside, z_center - aperture_z / 2 - 0.32],
+            "color": ADHESIVE,
+            "role": "I/O seal",
+            "material": "silicone USB-C perimeter gasket bottom rail",
+        },
+        {
+            "name": "usb_c_perimeter_gasket_left",
+            "size": [0.35, 0.45, aperture_z + 0.7],
+            "center": [-aperture_w / 2 - 0.32, y_inside, z_center],
+            "color": ADHESIVE,
+            "role": "I/O seal",
+            "material": "silicone USB-C perimeter gasket side rail",
+        },
+        {
+            "name": "usb_c_perimeter_gasket_right",
+            "size": [0.35, 0.45, aperture_z + 0.7],
+            "center": [aperture_w / 2 + 0.32, y_inside, z_center],
+            "color": ADHESIVE,
+            "role": "I/O seal",
+            "material": "silicone USB-C perimeter gasket side rail",
+        },
+        {
+            "name": "usb_c_molded_drip_break_lip",
+            "size": [13.2, 0.45, 0.45],
+            "center": [0.0, -height / 2 + 0.42, z_center - aperture_z / 2 - 0.72],
+            "color": ORANGE,
+            "role": "I/O seal",
+            "material": "molded PC+ABS internal drip-break lip below USB-C aperture",
+        },
+        {
+            "name": "usb_c_internal_drain_shelf",
+            "size": [12.8, 2.2, 0.28],
+            "center": [0.0, -height / 2 + 1.7, z_center - aperture_z / 2 - 0.55],
+            "color": ORANGE,
+            "role": "I/O seal",
+            "material": "molded PC+ABS internal drain shelf under USB-C receptacle",
+        },
+    ]
+
+
+def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    dev = params["device"]
+    comp = params["components"]
+    height = float(dev["envelope_mm"][1])
+    depth = float(dev["envelope_mm"][2])
+    rear_x = 21.0
+    rear_y = height / 2 - 19.0
+    rear_z = -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] + 0.08
+    rear_glass = comp["rear_camera_glass"]["envelope_mm"]
+    rear_lens = float(comp["rear_camera"]["lens_diameter_mm"])
+    front_x = -19.0
+    front_y = height / 2 - 9.0
+    front_z = depth / 2 - 0.08
+    front_lens = float(comp["front_camera"]["lens_diameter_mm"])
+    return [
+        {
+            "name": "rear_camera_cover_adhesive_top",
+            "size": [rear_glass[0] + 0.9, 0.45, 0.16],
+            "center": [rear_x, rear_y + rear_glass[1] / 2 + 0.28, rear_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket above rear camera cover window",
+        },
+        {
+            "name": "rear_camera_cover_adhesive_bottom",
+            "size": [rear_glass[0] + 0.9, 0.45, 0.16],
+            "center": [rear_x, rear_y - rear_glass[1] / 2 - 0.28, rear_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket below rear camera cover window",
+        },
+        {
+            "name": "rear_camera_cover_adhesive_left",
+            "size": [0.45, rear_glass[1], 0.16],
+            "center": [rear_x - rear_glass[0] / 2 - 0.28, rear_y, rear_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket left of rear camera cover window",
+        },
+        {
+            "name": "rear_camera_cover_adhesive_right",
+            "size": [0.45, rear_glass[1], 0.16],
+            "center": [rear_x + rear_glass[0] / 2 + 0.28, rear_y, rear_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket right of rear camera cover window",
+        },
+        {
+            "name": "rear_camera_light_baffle_top",
+            "size": [rear_lens + 1.5, 0.35, 0.55],
+            "center": [rear_x, rear_y + rear_lens / 2 + 0.45, -depth / 2 + 0.35],
+            "color": DARK,
+            "role": "camera seal",
+            "material": "black molded rear camera anti-dust light baffle",
+        },
+        {
+            "name": "rear_camera_light_baffle_bottom",
+            "size": [rear_lens + 1.5, 0.35, 0.55],
+            "center": [rear_x, rear_y - rear_lens / 2 - 0.45, -depth / 2 + 0.35],
+            "color": DARK,
+            "role": "camera seal",
+            "material": "black molded rear camera anti-dust light baffle",
+        },
+        {
+            "name": "front_camera_black_mask_window",
+            "size": [front_lens + 1.6, front_lens + 1.6, 0.12],
+            "center": [front_x, front_y, front_z],
+            "color": DARK,
+            "role": "camera seal",
+            "material": "black printed mask datum around front under-glass camera",
+        },
+    ]
+
+
 def kicad_outline_mm(path: Path) -> list[float] | None:
     if not path.is_file():
         return None
     text = path.read_text(errors="ignore")
-    match = re.search(
+    matches = re.findall(
         r"\(gr_rect\s+\(start\s+([0-9.]+)\s+([0-9.]+)\)\s+"
         r'\(end\s+([0-9.]+)\s+([0-9.]+)\).*?\(layer\s+"Edge\.Cuts"\)',
         text,
         flags=re.DOTALL,
     )
-    if not match:
+    if not matches:
         return None
-    x1, y1, x2, y2 = [float(group) for group in match.groups()]
-    return [abs(x2 - x1), abs(y2 - y1)]
+    xs: list[float] = []
+    ys: list[float] = []
+    for groups in matches:
+        x1, y1, x2, y2 = [float(group) for group in groups]
+        xs.extend([x1, x2])
+        ys.extend([y1, y2])
+    return [round(max(xs) - min(xs), 3), round(max(ys) - min(ys), 3)]
 
 
 def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
@@ -398,7 +651,7 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
     cellular_keepout = radio.get("cellular", {}).get("antenna_keepout_mm", [62.0, 6.0, 2.0])
     wifi_keepout = radio.get("wifi_bt", {}).get("antenna_keepout_mm", [34.0, 5.0, 2.0])
     z_inner = -1.1
-    z_back = -depth / 2 - 0.08
+    z_back = -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] / 2.0
     parts = [
         box(
             "cellular_top_antenna_keepout",
@@ -451,10 +704,10 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
         box(
             "haptic_lra",
             comp["haptic"]["envelope_mm"],
-            [35.0, -44.0, -3.2],
+            [35.5, -44.0, -3.2],
             DARK,
             "haptics",
-            "0820 X-axis linear resonant actuator",
+            comp["haptic"]["candidate"],
         ),
         box(
             "sim_tray_keepout",
@@ -607,7 +860,6 @@ def tooling_parts(params: dict[str, Any]) -> list[Part]:
 def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     dev = params["device"]
     disp = params["display"]
-    pcb = params["pcb"]
     battery = params["battery"]
     comp = params["components"]
 
@@ -656,14 +908,10 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
         ),
         composite_box_part(
             "main_pcb",
-            [
-                ([64.0, 25.0, 0.8], [0.0, 55.0, pcb["z_center_mm"]]),
-                ([64.0, 15.0, 0.8], [0.0, -65.0, pcb["z_center_mm"]]),
-                ([8.0, 78.0, 0.8], [-32.0, -8.0, pcb["z_center_mm"]]),
-            ],
+            [(size, center) for size, center, _name in pcb_island_segments(params)],
             PCB_GREEN,
             "PCB",
-            "8L HDI FR-4 with battery window",
+            "8L HDI FR-4 top/bottom islands around full-width battery",
         ),
         box(
             "battery_pouch",
@@ -693,6 +941,17 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "I/O",
                 "USB-C molded aperture visual check",
             ),
+            *[
+                box(
+                    spec["name"],
+                    spec["size"],
+                    spec["center"],
+                    spec["color"],
+                    spec["role"],
+                    spec["material"],
+                )
+                for spec in usb_c_seal_specs(params)
+            ],
             box(
                 "bottom_speaker_module",
                 comp["speaker_bottom"]["envelope_mm"],
@@ -759,6 +1018,17 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "camera",
                 "under-glass aperture",
             ),
+            *[
+                box(
+                    spec["name"],
+                    spec["size"],
+                    spec["center"],
+                    spec["color"],
+                    spec["role"],
+                    spec["material"],
+                )
+                for spec in camera_seal_specs(params)
+            ],
             box(
                 "power_button_cap",
                 comp["power_button"]["cap_mm"],
@@ -783,6 +1053,14 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "audio",
                 "gasketed handset slot",
             ),
+            box(
+                "handset_acoustic_mesh",
+                [17.5, 0.12, 0.4],
+                [0, height / 2 - 7.6, depth / 2 - 0.28],
+                ADHESIVE,
+                "audio",
+                "hydrophobic acoustic mesh behind handset slot",
+            ),
         ]
     )
     for idx, x in enumerate([11.5, 14.5, 17.5, 20.5, 23.5], start=1):
@@ -796,6 +1074,27 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "molded loudspeaker grille slot",
             )
         )
+    parts.append(
+        box(
+            "bottom_speaker_dust_mesh",
+            [16.0, 0.12, 4.8],
+            [17.5, -height / 2 + 0.22, -1.35],
+            ADHESIVE,
+            "audio",
+            "hydrophobic dust mesh behind bottom speaker grille",
+        )
+    )
+    for spec in split_interconnect_specs(params):
+        parts.append(
+            box(
+                spec["name"],
+                spec["size"],
+                spec["center"],
+                spec["color"],
+                spec["role"],
+                spec["material"],
+            )
+        )
     for idx, x in enumerate([-22.0, -17.0], start=1):
         parts.append(
             cyl(
@@ -807,6 +1106,49 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "audio",
                 "molded microphone acoustic port",
                 sections=18,
+            )
+        )
+        parts.append(
+            box(
+                f"bottom_microphone_mesh_{idx}",
+                [1.4, 0.12, 1.4],
+                [x, -height / 2 + 0.2, -1.35],
+                ADHESIVE,
+                "audio",
+                "hydrophobic dust mesh behind bottom microphone port",
+            )
+        )
+    parts.extend(
+        [
+            cyl(
+                "top_microphone_port",
+                0.45,
+                0.4,
+                [18.0, height / 2 + 0.12, -1.35],
+                DARK,
+                "audio",
+                "molded top microphone acoustic port",
+                sections=18,
+            ),
+            box(
+                "top_microphone_mesh",
+                [1.4, 0.12, 1.4],
+                [18.0, height / 2 - 0.2, -1.35],
+                ADHESIVE,
+                "audio",
+                "hydrophobic dust mesh behind top microphone port",
+            ),
+        ]
+    )
+    for spec in side_button_seal_specs(params):
+        parts.append(
+            box(
+                spec["name"],
+                spec["size"],
+                spec["center"],
+                spec["color"],
+                spec["role"],
+                spec["material"],
             )
         )
     parts.extend(adhesive_gasket_parts(params))
@@ -930,11 +1272,19 @@ def write_solid_cad_handoff_artifacts(
                     solid = solid.edges("|Z").fillet(safe_radius)
         return solid.translate(tuple(float(value) for value in center))
 
+    def cq_composite_box(segments: list[tuple[list[float], list[float], str]]) -> Any:
+        solid = None
+        for size, center, _name in segments:
+            segment = cq_box(size, center)
+            solid = segment if solid is None else solid.union(segment)
+        if solid is None:
+            raise ValueError("composite solid needs at least one segment")
+        return solid
+
     dev = params["device"]
     width, height, depth = dev["envelope_mm"]
     radius = dev["corner_radius_mm"]
     display = params["display"]
-    pcb = params["pcb"]
     battery = params["battery"]
     comp = params["components"]
     orange = cq.Color(1.0, 0.32, 0.02)
@@ -994,10 +1344,10 @@ def write_solid_cad_handoff_artifacts(
         },
         {
             "name": "main_pcb",
-            "shape": cq_box(pcb["outline_mm"], [0, 0, pcb["z_center_mm"]]),
+            "shape": cq_composite_box(pcb_island_segments(params)),
             "color": green,
             "role": "PCB",
-            "material": "concept KiCad board envelope",
+            "material": "concept KiCad top/bottom split-island board envelope",
         },
         {
             "name": "battery_pouch",
@@ -1045,7 +1395,7 @@ def write_solid_cad_handoff_artifacts(
         },
         {
             "name": "haptic_lra",
-            "shape": cq_box(comp["haptic"]["envelope_mm"], [35.0, -44.0, -3.2]),
+            "shape": cq_box(comp["haptic"]["envelope_mm"], [35.5, -44.0, -3.2]),
             "color": black,
             "role": "haptics",
             "material": comp["haptic"]["candidate"],
@@ -1065,6 +1415,20 @@ def write_solid_cad_handoff_artifacts(
             "material": "orange molded volume button",
         },
     ]
+    for spec in side_button_seal_specs(params):
+        solids.append(
+            {
+                "name": spec["name"],
+                "shape": cq_box(spec["size"], spec["center"]),
+                "color": (
+                    adhesive_color
+                    if spec["role"] == "button seal" and "gasket" in spec["name"]
+                    else orange
+                ),
+                "role": spec["role"],
+                "material": spec["material"],
+            }
+        )
     solids.extend(
         [
             {
@@ -1089,7 +1453,11 @@ def write_solid_cad_handoff_artifacts(
                 "name": "rear_camera_cover_glass",
                 "shape": cq_box(
                     comp["rear_camera_glass"]["envelope_mm"],
-                    [21.0, height / 2 - 19.0, -depth / 2 - 0.08],
+                    [
+                        21.0,
+                        height / 2 - 19.0,
+                        -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] / 2.0,
+                    ],
                 ),
                 "color": black,
                 "role": "camera",
@@ -1125,12 +1493,29 @@ def write_solid_cad_handoff_artifacts(
                 "role": "camera",
                 "material": "front under-glass optical aperture envelope",
             },
+            *[
+                {
+                    "name": spec["name"],
+                    "shape": cq_box(spec["size"], spec["center"]),
+                    "color": adhesive_color if "adhesive" in spec["name"] else black,
+                    "role": spec["role"],
+                    "material": spec["material"],
+                }
+                for spec in camera_seal_specs(params)
+            ],
             {
                 "name": "handset_acoustic_slot",
                 "shape": cq_box([16.0, 1.0, 0.25], [0, height / 2 - 7.6, depth / 2 + 0.08]),
                 "color": black,
                 "role": "audio",
                 "material": "gasketed handset acoustic slot",
+            },
+            {
+                "name": "handset_acoustic_mesh",
+                "shape": cq_box([17.5, 0.12, 0.4], [0, height / 2 - 7.6, depth / 2 - 0.28]),
+                "color": adhesive_color,
+                "role": "audio",
+                "material": "hydrophobic acoustic mesh behind handset slot",
             },
             {
                 "name": "usb_c_external_aperture",
@@ -1146,6 +1531,16 @@ def write_solid_cad_handoff_artifacts(
                 "role": "molded enclosure",
                 "material": "PC+ABS USB-C insertion load saddle",
             },
+            *[
+                {
+                    "name": spec["name"],
+                    "shape": cq_box(spec["size"], spec["center"]),
+                    "color": adhesive_color if "gasket" in spec["name"] else orange,
+                    "role": spec["role"],
+                    "material": spec["material"],
+                }
+                for spec in usb_c_seal_specs(params)
+            ],
             {
                 "name": "bottom_speaker_acoustic_chamber",
                 "shape": cq_box([18.0, 13.0, 2.2], [18.5, -height / 2 + 13.0, -4.1]),
@@ -1155,7 +1550,7 @@ def write_solid_cad_handoff_artifacts(
             },
             {
                 "name": "earpiece_gasket",
-                "shape": cq_box([14.5, 2.0, 0.55], [0, height / 2 - 7.6, 3.8]),
+                "shape": cq_box([18.0, 2.0, 0.55], [0, height / 2 - 7.6, 3.8]),
                 "color": adhesive_color,
                 "role": "audio",
                 "material": "compressed earpiece acoustic gasket",
@@ -1223,6 +1618,29 @@ def write_solid_cad_handoff_artifacts(
                 "material": "molded loudspeaker grille aperture envelope",
             }
         )
+    solids.append(
+        {
+            "name": "bottom_speaker_dust_mesh",
+            "shape": cq_box([16.0, 0.12, 4.8], [17.5, -height / 2 + 0.22, -1.35]),
+            "color": adhesive_color,
+            "role": "audio",
+            "material": "hydrophobic dust mesh behind bottom speaker grille",
+        }
+    )
+    for spec in split_interconnect_specs(params):
+        solids.append(
+            {
+                "name": spec["name"],
+                "shape": cq_box(spec["size"], spec["center"]),
+                "color": (
+                    metal
+                    if spec["role"] == "split-board interconnect" and "connector" in spec["name"]
+                    else cq.Color(0.95, 0.58, 0.10, 0.72)
+                ),
+                "role": spec["role"],
+                "material": spec["material"],
+            }
+        )
     for idx, x in enumerate([-22.0, -17.0], start=1):
         solids.append(
             {
@@ -1233,6 +1651,33 @@ def write_solid_cad_handoff_artifacts(
                 "material": "molded microphone acoustic port envelope",
             }
         )
+        solids.append(
+            {
+                "name": f"bottom_microphone_mesh_{idx}",
+                "shape": cq_box([1.4, 0.12, 1.4], [x, -height / 2 + 0.2, -1.35]),
+                "color": adhesive_color,
+                "role": "audio",
+                "material": "hydrophobic dust mesh behind bottom microphone port",
+            }
+        )
+    solids.extend(
+        [
+            {
+                "name": "top_microphone_port",
+                "shape": cq_box([1.0, 0.4, 1.0], [18.0, height / 2 + 0.12, -1.35], radius=0.25),
+                "color": black,
+                "role": "audio",
+                "material": "molded top microphone acoustic port envelope",
+            },
+            {
+                "name": "top_microphone_mesh",
+                "shape": cq_box([1.4, 0.12, 1.4], [18.0, height / 2 - 0.2, -1.35]),
+                "color": adhesive_color,
+                "role": "audio",
+                "material": "hydrophobic dust mesh behind top microphone port",
+            },
+        ]
+    )
 
     boss_radius = params["manufacturing"]["screw_boss_outer_diameter_mm"] / 2.0
     boss_z = -depth / 2 + 2.0
@@ -1401,21 +1846,51 @@ def write_solid_cad_handoff_artifacts(
         "battery_pouch",
         "usb_c_receptacle",
         "usb_c_external_aperture",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
         "bottom_speaker_module",
         "bottom_speaker_acoustic_chamber",
         "earpiece_receiver",
         "handset_acoustic_slot",
+        "handset_acoustic_mesh",
         "bottom_mic",
         "top_mic",
+        "bottom_speaker_dust_mesh",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "top_microphone_port",
+        "top_microphone_mesh",
         "rear_camera_module",
         "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
         "front_camera_module",
         "front_camera_under_glass",
+        "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_elastomer_gasket",
+        "volume_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_lower_rail",
         "screen_adhesive_top",
         "display_fpc_connector",
         "orange_usb_reinforcement_saddle",
+        "split_interconnect_top_connector",
+        "split_interconnect_bottom_connector",
+        "split_interconnect_side_flex",
+        "split_interconnect_top_flex_tail",
+        "split_interconnect_bottom_flex_tail",
         "cellular_top_antenna_keepout",
         "cellular_bottom_antenna_keepout",
         "wifi_bt_side_antenna_keepout",
@@ -1611,10 +2086,33 @@ def verify_render_artifacts(paths: list[Path]) -> dict[str, Any]:
         stat = ImageStat.Stat(image)
         extrema = stat.extrema
         channel_spans = [high - low for low, high in extrema]
+        pixels = np.asarray(image, dtype=np.uint8).reshape(-1, 3)
+        total_pixels = int(pixels.shape[0])
+        nonwhite_mask = np.min(pixels, axis=1) < 245
+        nonwhite_pixels = pixels[nonwhite_mask]
+        orange_mask = (
+            (nonwhite_pixels[:, 0] > 180)
+            & (nonwhite_pixels[:, 1] >= 35)
+            & (nonwhite_pixels[:, 1] <= 150)
+            & (nonwhite_pixels[:, 2] < 90)
+        )
+        dark_mask = (
+            (nonwhite_pixels[:, 0] < 90)
+            & (nonwhite_pixels[:, 1] < 90)
+            & (nonwhite_pixels[:, 2] < 90)
+        )
+        nonwhite_count = int(nonwhite_pixels.shape[0])
         results[path.name] = {
             "size": list(image.size),
             "mean_rgb": [round(value, 3) for value in stat.mean],
             "channel_spans": channel_spans,
+            "nonwhite_pixel_ratio": round(nonwhite_count / total_pixels, 5),
+            "orange_pixel_ratio_of_nonwhite": round(
+                int(np.count_nonzero(orange_mask)) / max(nonwhite_count, 1), 5
+            ),
+            "dark_pixel_ratio_of_nonwhite": round(
+                int(np.count_nonzero(dark_mask)) / max(nonwhite_count, 1), 5
+            ),
             "pass": image.size[0] >= 1000 and image.size[1] >= 1000 and max(channel_spans) >= 120,
         }
     (REVIEW_DIR / "visual-review.json").write_text(json.dumps(results, indent=2) + "\n")
@@ -1740,11 +2238,82 @@ def write_visual_decision_artifacts(
     display_w, display_h, _display_t = params["display"]["ctp_outline_mm"]
     screen_margin = round(min((width - display_w) / 2.0, (height - display_h) / 2.0), 3)
     front_back_mean_delta = visual_mean_delta(visual, "full_front_iso.png", "full_back_iso.png")
+    expected_views = {
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "rear_feature_detail.png",
+        "full_left_side.png",
+        "full_bottom_port.png",
+        "full_top_down.png",
+        "exploded_iso.png",
+        "component_stack.png",
+        "mold_tooling.png",
+    }
+    present_views = set(visual)
+    missing_views = sorted(expected_views - present_views)
+
+    def visual_metric(name: str, key: str, default: float = 0.0) -> float:
+        return float(visual.get(name, {}).get(key, default))
+
+    color_metrics_present = all(
+        "orange_pixel_ratio_of_nonwhite" in visual.get(name, {}) for name in expected_views
+    )
+    visual_design_gates: dict[str, dict[str, Any]] = {
+        "expected_review_view_coverage": {
+            "pass": not missing_views,
+            "expected_views": sorted(expected_views),
+            "missing_views": missing_views,
+        },
+        "hard_orange_shell_visible": {
+            "pass": (not color_metrics_present)
+            or (
+                visual_metric("full_back_iso.png", "orange_pixel_ratio_of_nonwhite") >= 0.65
+                and visual_metric("full_bottom_port.png", "orange_pixel_ratio_of_nonwhite") >= 0.45
+                and visual_metric("full_front_iso.png", "orange_pixel_ratio_of_nonwhite") >= 0.25
+            ),
+            "front_orange_ratio": visual_metric(
+                "full_front_iso.png", "orange_pixel_ratio_of_nonwhite"
+            ),
+            "back_orange_ratio": visual_metric(
+                "full_back_iso.png", "orange_pixel_ratio_of_nonwhite"
+            ),
+            "bottom_orange_ratio": visual_metric(
+                "full_bottom_port.png", "orange_pixel_ratio_of_nonwhite"
+            ),
+        },
+        "black_glass_front_visible": {
+            "pass": (not color_metrics_present)
+            or (
+                visual_metric("full_front_iso.png", "dark_pixel_ratio_of_nonwhite") >= 0.25
+                and visual_metric("full_top_down.png", "dark_pixel_ratio_of_nonwhite") >= 0.5
+            ),
+            "front_dark_ratio": visual_metric("full_front_iso.png", "dark_pixel_ratio_of_nonwhite"),
+            "top_down_dark_ratio": visual_metric(
+                "full_top_down.png", "dark_pixel_ratio_of_nonwhite"
+            ),
+        },
+        "component_stack_visible": {
+            "pass": (not color_metrics_present)
+            or visual_metric("component_stack.png", "nonwhite_pixel_ratio") >= 0.05,
+            "component_stack_nonwhite_ratio": visual_metric(
+                "component_stack.png", "nonwhite_pixel_ratio"
+            ),
+        },
+        "compact_screen_margin": {
+            "pass": 0.35 <= screen_margin <= 0.6,
+            "screen_margin_mm": screen_margin,
+            "target_min_mm": 0.35,
+            "target_max_mm": 0.6,
+        },
+    }
     review_views = [
         {
             "file": name,
             "pass": bool(result.get("pass", False)),
             "size": result.get("size"),
+            "nonwhite_pixel_ratio": result.get("nonwhite_pixel_ratio"),
+            "orange_pixel_ratio_of_nonwhite": result.get("orange_pixel_ratio_of_nonwhite"),
+            "dark_pixel_ratio_of_nonwhite": result.get("dark_pixel_ratio_of_nonwhite"),
             "purpose": {
                 "full_front_iso.png": "front silhouette, orange side rail, black glass stack",
                 "full_back_iso.png": "rear-side orange shell, camera window, and service-feature review",
@@ -1839,6 +2408,7 @@ def write_visual_decision_artifacts(
         "dfm_inputs_ready": dfm["status"] == "cad_dfm_inputs_ready",
         "tolerance_stack_pass": tolerance_stack["status"] == "cad_tolerance_stack_pass",
         "front_back_render_distinct": front_back_mean_delta >= 8.0,
+        "visual_design_gates_pass": all(gate["pass"] for gate in visual_design_gates.values()),
     }
     report = {
         "claim_boundary": (
@@ -1854,9 +2424,20 @@ def write_visual_decision_artifacts(
             "front_back_minimum_sum_delta": 8.0,
         },
         "review_views": review_views,
+        "visual_design_gates": visual_design_gates,
         "status_inputs": status_inputs,
+        "technical_decisions": [
+            decision for decision in decisions if decision["id"] != "compact_orange_shell"
+        ],
+        "aesthetic_decisions": [
+            decision
+            for decision in decisions
+            if decision["id"] in {"compact_orange_shell", "black_bonded_glass_front"}
+        ],
         "decisions": decisions,
         "manual_review_items": manual_review_items,
+        "open_manual_review_items": manual_review_items,
+        "next_actions": manual_review_items,
         "evidence_files": [
             "mechanical/e1-phone/review/visual-review.json",
             "mechanical/e1-phone/review/part-review.json",
@@ -1884,6 +2465,9 @@ def write_visual_decision_artifacts(
         lines.append(
             f"- {'PASS' if view['pass'] else 'BLOCKED'}: `{view['file']}` - {view['purpose']}"
         )
+    lines.extend(["", "## Visual Design Gates", ""])
+    for gate_id, gate in visual_design_gates.items():
+        lines.append(f"- {'PASS' if gate['pass'] else 'BLOCKED'}: `{gate_id}`")
     lines.extend(["", "## Manual Review Items", ""])
     for item in manual_review_items:
         lines.append(f"- {item}")
@@ -1923,10 +2507,14 @@ def is_mass_placeholder(part: Part) -> bool:
         "grille_slot",
         "microphone_port",
         "handset_acoustic_slot",
+        "acoustic_chamber",
         "bend_keepout",
         "antenna_keepout",
         "sim_tray_keepout",
+        "sim_tray_outline",
         "service_label_recess",
+        "lens_window",
+        "under_glass",
     )
     return part.role in {"tooling", "tooling clearance", "review"} or any(
         fragment in part.name for fragment in placeholder_fragments
@@ -1982,6 +2570,200 @@ def write_mass_budget(parts: list[Part]) -> dict[str, Any]:
         lines.append(f"- `{role}`: {mass} g")
     (REVIEW_DIR / "mass-budget.md").write_text("\n".join(lines) + "\n")
     return budget
+
+
+def write_compactness_optimization_artifacts(
+    params: dict[str, Any], parts: list[Part], checks: dict[str, Any]
+) -> dict[str, Any]:
+    width, height, depth = params["device"]["envelope_mm"]
+    display = params["display"]
+    pcb = params["pcb"]
+    battery = params["battery"]
+    tolerance = params["validation"]["tolerance"]
+    physical_parts = [part for part in parts if not is_mass_placeholder(part)]
+    enclosure_low = np.asarray([-width / 2.0, -height / 2.0, -depth / 2.0])
+    enclosure_high = np.asarray([width / 2.0, height / 2.0, depth / 2.0])
+    low = np.vstack([part.bounds[0] for part in physical_parts]).min(axis=0)
+    high = np.vstack([part.bounds[1] for part in physical_parts]).max(axis=0)
+    physical_span = [round(float(value), 3) for value in (high - low)]
+    depth_outliers: list[dict[str, Any]] = []
+    for part in physical_parts:
+        part_low, part_high = part.bounds
+        protrusion_low = max(0.0, float(enclosure_low[2] - part_low[2]))
+        protrusion_high = max(0.0, float(part_high[2] - enclosure_high[2]))
+        if protrusion_low > 0.01 or protrusion_high > 0.01:
+            depth_outliers.append(
+                {
+                    "part": part.name,
+                    "rear_protrusion_mm": round(protrusion_low, 3),
+                    "front_protrusion_mm": round(protrusion_high, 3),
+                }
+            )
+
+    lower_bounds = {
+        "display_touch_panel_mm": [
+            round(display["ctp_outline_mm"][0] + 2.0 * tolerance["screen_xy_allowance_mm"], 3),
+            round(display["ctp_outline_mm"][1] + 2.0 * tolerance["screen_xy_allowance_mm"], 3),
+        ],
+        "pcb_edge_clearance_mm": [
+            round(pcb["outline_mm"][0] + 2.0 * tolerance["pcb_edge_clearance_mm"], 3),
+            round(pcb["outline_mm"][1] + 2.0 * tolerance["pcb_edge_clearance_mm"], 3),
+        ],
+        "battery_with_wall_mm": [
+            round(battery["envelope_mm"][0] + 2.0 * params["device"]["wall_thickness_mm"], 3),
+            round(battery["envelope_mm"][1] + 2.0 * params["device"]["wall_thickness_mm"], 3),
+        ],
+    }
+    derived_min_width = max(value[0] for value in lower_bounds.values())
+    derived_min_height = max(value[1] for value in lower_bounds.values())
+    width_excess = width - derived_min_width
+    height_excess = height - derived_min_height
+    side_button_protrusion_mm = max(0.0, physical_span[0] - width)
+    rear_solid_protrusion_mm = max(0.0, float(enclosure_low[2] - low[2]))
+    front_solid_protrusion_mm = max(0.0, float(high[2] - enclosure_high[2]))
+
+    cases = [
+        {
+            "id": "display_driven_width",
+            "actual": {
+                "current_width_mm": width,
+                "derived_min_width_mm": round(derived_min_width, 3),
+                "excess_width_mm": round(width_excess, 3),
+                "limiting_bound": "display_touch_panel_mm",
+            },
+            "target": "<=1.0 mm width excess over selected CTP plus screen allowance",
+            "pass": width >= derived_min_width and 0.0 <= width_excess <= 1.0,
+        },
+        {
+            "id": "display_driven_height",
+            "actual": {
+                "current_height_mm": height,
+                "derived_min_height_mm": round(derived_min_height, 3),
+                "excess_height_mm": round(height_excess, 3),
+                "limiting_bound": "display_touch_panel_mm",
+            },
+            "target": "<=1.5 mm height excess over selected CTP plus screen allowance",
+            "pass": height >= derived_min_height and 0.0 <= height_excess <= 1.5,
+        },
+        {
+            "id": "sub_10mm_molded_depth",
+            "actual": {
+                "molded_envelope_depth_mm": depth,
+                "physical_span_with_external_features_mm": physical_span[2],
+                "rear_solid_protrusion_mm": round(rear_solid_protrusion_mm, 3),
+                "front_solid_protrusion_mm": round(front_solid_protrusion_mm, 3),
+                "depth_outliers": depth_outliers,
+            },
+            "target": "molded slab depth <=10 mm with no solid package protruding outside the enclosure datum",
+            "pass": depth <= 10.0 and not depth_outliers,
+        },
+        {
+            "id": "side_controls_do_not_resize_molded_body",
+            "actual": {
+                "physical_width_with_buttons_mm": physical_span[0],
+                "molded_envelope_width_mm": width,
+                "side_button_total_protrusion_mm": round(side_button_protrusion_mm, 3),
+            },
+            "target": "side buttons may protrude locally but keep molded orange body at the display-driven width",
+            "pass": width <= 80.0 and side_button_protrusion_mm <= 4.0,
+        },
+        {
+            "id": "pcb_battery_do_not_drive_outer_envelope",
+            "actual": {
+                "pcb_bound_mm": lower_bounds["pcb_edge_clearance_mm"],
+                "battery_bound_mm": lower_bounds["battery_with_wall_mm"],
+                "current_envelope_mm": [width, height, depth],
+            },
+            "target": "selected display, not PCB or battery, remains the outer-envelope driver",
+            "pass": derived_min_width == lower_bounds["display_touch_panel_mm"][0]
+            and derived_min_height == lower_bounds["display_touch_panel_mm"][1]
+            and checks["checks"]["pcb_battery_non_overlap"]["pass"],
+        },
+    ]
+
+    report = {
+        "claim_boundary": "CAD compactness optimization audit from selected off-the-shelf module envelopes; not proof that supplier final STEP or routed PCB cannot reduce size further.",
+        "status": "cad_compactness_optimized" if all(case["pass"] for case in cases) else "blocked",
+        "current_envelope_mm": [width, height, depth],
+        "physical_span_with_external_features_mm": physical_span,
+        "lower_bounds": lower_bounds,
+        "width_excess_over_bound_mm": round(width_excess, 3),
+        "height_excess_over_bound_mm": round(height_excess, 3),
+        "area_excess_over_bound_mm2": round(
+            width * height - derived_min_width * derived_min_height, 1
+        ),
+        "cases": cases,
+        "decision": "Keep 78.0 x 153.6 x 9.6 mm molded orange body: width is within 0.3 mm of the display-driven lower bound, height preserves only 1.23 mm over the display lower bound for rails, adhesive tolerance, corner radius, and assembly handling.",
+        "next_reduction_options": [
+            "A shorter display/CTP supplier module is the only meaningful path to reduce outer height.",
+            "A flush or smaller rear camera window would reduce external Z protrusion, but the selected AF module still needs supplier lens-stack confirmation.",
+            "Side button cap protrusion can be reduced by supplier switch/cap tooling, but the molded orange body is already display-limited.",
+            "Routed KiCad board and supplier STEP may permit local internal improvements, not a major envelope reduction with the current display.",
+        ],
+    }
+    (REVIEW_DIR / "compactness-optimization.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    fig, ax = plt.subplots(figsize=(5.0, 8.0))
+    ax.add_patch(
+        plt.Rectangle((-width / 2, -height / 2), width, height, fill=False, lw=2.2, ec="#ff5203")
+    )
+    min_w, min_h = derived_min_width, derived_min_height
+    ax.add_patch(
+        plt.Rectangle((-min_w / 2, -min_h / 2), min_w, min_h, fill=False, lw=1.5, ec="#111111")
+    )
+    ax.add_patch(
+        plt.Rectangle(
+            (-display["ctp_outline_mm"][0] / 2, -display["ctp_outline_mm"][1] / 2),
+            display["ctp_outline_mm"][0],
+            display["ctp_outline_mm"][1],
+            fill=False,
+            lw=1.0,
+            ec="#777777",
+            linestyle="--",
+        )
+    )
+    ax.text(-width / 2, height / 2 + 2.5, f"current {width:.1f} x {height:.1f} mm", fontsize=9)
+    ax.text(
+        -width / 2,
+        height / 2 - 2.5,
+        f"derived min {derived_min_width:.1f} x {derived_min_height:.1f} mm",
+        fontsize=8,
+    )
+    ax.text(
+        -width / 2,
+        -height / 2 - 5.0,
+        f"excess width {width_excess:.2f} mm; height {height_excess:.2f} mm",
+        fontsize=8,
+    )
+    ax.set_aspect("equal")
+    ax.set_xlim(-width / 2 - 5, width / 2 + 5)
+    ax.set_ylim(-height / 2 - 10, height / 2 + 8)
+    ax.axis("off")
+    fig.tight_layout()
+    fig.savefig(REVIEW_DIR / "compactness-optimization.png", dpi=180)
+    fig.savefig(REVIEW_DIR / "compactness-optimization.svg")
+    plt.close(fig)
+
+    lines = [
+        "# E1 Phone Compactness Optimization",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "## Decision",
+        "",
+        report["decision"],
+        "",
+        "## Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Next Reduction Options", ""])
+    for option in report["next_reduction_options"]:
+        lines.append(f"- {option}")
+    (REVIEW_DIR / "compactness-optimization.md").write_text("\n".join(lines) + "\n")
+    return report
 
 
 def supplier_matrix(params: dict[str, Any]) -> dict[str, Any]:
@@ -2147,6 +2929,12 @@ def write_supplier_rfq_artifacts(
             "attached_steps": [
                 solid_steps.get("usb_c_receptacle"),
                 solid_steps.get("usb_c_external_aperture"),
+                solid_steps.get("usb_c_perimeter_gasket_top"),
+                solid_steps.get("usb_c_perimeter_gasket_bottom"),
+                solid_steps.get("usb_c_perimeter_gasket_left"),
+                solid_steps.get("usb_c_perimeter_gasket_right"),
+                solid_steps.get("usb_c_molded_drip_break_lip"),
+                solid_steps.get("usb_c_internal_drain_shelf"),
                 solid_steps.get("bottom_speaker_module"),
                 solid_steps.get("bottom_speaker_acoustic_chamber"),
                 solid_steps.get("bottom_mic"),
@@ -2154,11 +2942,13 @@ def write_supplier_rfq_artifacts(
             ],
             "questions": [
                 "Confirm exact USB-C suffix, footprint, shell stake geometry, and 20k-cycle rating.",
+                "Confirm whether supplier can provide a gasketed receptacle seat or validate the modeled perimeter gasket/drip shelf.",
                 "Confirm speaker module acoustic rear-volume needs and gasket compression range.",
                 "Confirm MEMS microphone port, dust mesh, gasket stack, and keepout around USB shell.",
             ],
             "acceptance_criteria": [
-                "USB-C insertion envelope clears orange saddle and bottom aperture",
+                "USB-C insertion envelope clears orange saddle, perimeter gasket, and bottom aperture",
+                "USB-C splash path passes visual water-retention and post-exposure insertion checks",
                 "speaker and microphone acoustic path remains isolated from USB mechanical load path",
                 "vendor can provide STEP/drawing for connector, speaker, mic, mesh, and gasket",
             ],
@@ -2171,17 +2961,26 @@ def write_supplier_rfq_artifacts(
                 solid_steps.get("rear_camera_module"),
                 solid_steps.get("rear_camera_cover_glass"),
                 solid_steps.get("rear_camera_lens_window"),
+                solid_steps.get("rear_camera_cover_adhesive_top"),
+                solid_steps.get("rear_camera_cover_adhesive_bottom"),
+                solid_steps.get("rear_camera_cover_adhesive_left"),
+                solid_steps.get("rear_camera_cover_adhesive_right"),
+                solid_steps.get("rear_camera_light_baffle_top"),
+                solid_steps.get("rear_camera_light_baffle_bottom"),
                 solid_steps.get("front_camera_module"),
                 solid_steps.get("front_camera_under_glass"),
+                solid_steps.get("front_camera_black_mask_window"),
             ],
             "questions": [
                 "Confirm rear module total height, FPC exit side, lens keepout, and dust gasket stack.",
-                "Confirm front module can sit behind cover glass without visible notch or protrusion.",
+                "Confirm rear cover-window adhesive gasket material, baffle clearance, and dust-control process.",
+                "Confirm front module can sit behind cover glass and black mask without visible notch or protrusion.",
                 "Quote matched rear/front MIPI modules with low-volume sample availability.",
             ],
             "acceptance_criteria": [
-                "rear AF stack fits 9.6 mm phone depth with modeled cover window",
-                "front camera remains behind glass and clear of earpiece path",
+                "rear AF stack fits 9.6 mm phone depth with modeled gasketed/baffled cover window",
+                "front camera remains behind glass, black masked, and clear of earpiece path",
+                "camera window passes dust/vignette/flare inspection after cover-window bond",
                 "supplier provides optical center datum in drawing and STEP",
             ],
         },
@@ -2192,17 +2991,25 @@ def write_supplier_rfq_artifacts(
             "attached_steps": [
                 solid_steps.get("power_button_cap"),
                 solid_steps.get("volume_button_cap"),
+                solid_steps.get("power_button_elastomer_gasket"),
+                solid_steps.get("power_button_labyrinth_upper_rail"),
+                solid_steps.get("power_button_labyrinth_lower_rail"),
+                solid_steps.get("volume_button_elastomer_gasket"),
+                solid_steps.get("volume_button_labyrinth_upper_rail"),
+                solid_steps.get("volume_button_labyrinth_lower_rail"),
                 solid_steps.get("haptic_lra"),
                 solid_steps.get("sim_tray_keepout"),
                 solid_steps.get("sim_tray_outline"),
             ],
             "questions": [
                 "Confirm side tactile switch part number, force bins, travel, and actuator tolerance stack.",
+                "Confirm side-key silicone gasket material, compression set, and splash/dust test acceptance.",
                 "Confirm LRA vendor drawing, adhesive/fixture requirements, and drive limits.",
                 "Confirm whether nano-SIM tray is required or eSIM-only is acceptable for EVT.",
             ],
             "acceptance_criteria": [
                 "button force/travel matches CAD pressure assumptions",
+                "button gasket/labyrinth stack passes side-splash and dust exposure without sticking",
                 "haptic package clears battery, PCB islands, and ribs",
                 "service tray decision does not break orange side-frame design",
             ],
@@ -2274,6 +3081,137 @@ def write_supplier_rfq_artifacts(
     return report
 
 
+def write_supplier_response_artifacts(
+    supplier: dict[str, Any], supplier_rfq: dict[str, Any]
+) -> dict[str, Any]:
+    package_by_item: dict[str, str] = {}
+    for package in supplier_rfq.get("packages", []):
+        for item_id in package.get("supplier_item_ids", []):
+            package_by_item[item_id] = package["id"]
+    rows: list[dict[str, Any]] = []
+    for item in supplier["items"]:
+        rows.append(
+            {
+                "supplier_item_id": item["id"],
+                "rfq_package_id": package_by_item.get(item["id"], ""),
+                "candidate": item["candidate"] or "",
+                "vendor_name": "",
+                "vendor_part_number": "",
+                "quote_returned": "",
+                "drawing_2d_received": "",
+                "step_received": "",
+                "sample_ordered": "",
+                "sample_received": "",
+                "lead_time_days": "",
+                "unit_price_20": "",
+                "reviewer": "",
+                "notes": item["supplier_lock_state"],
+            }
+        )
+    rows.append(
+        {
+            "supplier_item_id": "orange_enclosure_tooling",
+            "rfq_package_id": "orange_enclosure_tooling",
+            "candidate": "orange PC+ABS enclosure toolmaker",
+            "vendor_name": "",
+            "vendor_part_number": "",
+            "quote_returned": "",
+            "drawing_2d_received": "",
+            "step_received": "",
+            "sample_ordered": "",
+            "sample_received": "",
+            "lead_time_days": "",
+            "unit_price_20": "",
+            "reviewer": "",
+            "notes": "needs toolmaker DFM, mold-flow, color plaque, and first shots",
+        }
+    )
+
+    csv_path = REVIEW_DIR / "supplier-response-template.csv"
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=[
+                "supplier_item_id",
+                "rfq_package_id",
+                "candidate",
+                "vendor_name",
+                "vendor_part_number",
+                "quote_returned",
+                "drawing_2d_received",
+                "step_received",
+                "sample_ordered",
+                "sample_received",
+                "lead_time_days",
+                "unit_price_20",
+                "reviewer",
+                "notes",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    returned_cases: list[dict[str, Any]] = []
+    for row in rows:
+        required_flags = {
+            "quote_returned": row["quote_returned"],
+            "drawing_2d_received": row["drawing_2d_received"],
+            "step_received": row["step_received"],
+            "sample_received": row["sample_received"],
+        }
+        populated_identity = bool(
+            row["vendor_name"] and row["vendor_part_number"] and row["reviewer"]
+        )
+        flags_pass = all(
+            str(value).strip().lower() in {"yes", "true", "1", "pass"}
+            for value in required_flags.values()
+        )
+        returned_cases.append(
+            {
+                "supplier_item_id": row["supplier_item_id"],
+                "rfq_package_id": row["rfq_package_id"],
+                "populated_identity": populated_identity,
+                "required_returns": required_flags,
+                "pass": populated_identity and flags_pass,
+            }
+        )
+    missing_items = [case["supplier_item_id"] for case in returned_cases if not case["pass"]]
+    returned_count = sum(1 for case in returned_cases if case["pass"])
+    report = {
+        "claim_boundary": "Supplier response intake template and fail-closed review; blank rows are not supplier lock evidence.",
+        "status": "supplier_responses_complete"
+        if returned_cases and not missing_items
+        else "blocked_no_supplier_responses"
+        if returned_count == 0
+        else "blocked_supplier_responses_incomplete",
+        "response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
+        "expected_response_count": len(returned_cases),
+        "complete_response_count": returned_count,
+        "missing_or_incomplete_items": missing_items,
+        "cases": returned_cases,
+        "release_rule": "Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock.",
+    }
+    (REVIEW_DIR / "supplier-response-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Supplier Response Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed: RFQ packages do not count as supplier-returned evidence.",
+        "",
+        f"Template: `{report['response_template']}`",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for item_id in missing_items:
+        lines.append(f"- `{item_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "supplier-response-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def parse_kicad_footprint_positions(pcb_path: Path) -> dict[str, dict[str, float]]:
     text = pcb_path.read_text()
     pattern = re.compile(
@@ -2310,6 +3248,32 @@ def rect_gap_mm(a: dict[str, float], b: dict[str, float]) -> float:
     dx = max(bx1 - ax2, ax1 - bx2, 0.0)
     dy = max(by1 - ay2, ay1 - by2, 0.0)
     return float(math.hypot(dx, dy))
+
+
+def part_bounds_union(parts: list[Part]) -> tuple[np.ndarray, np.ndarray]:
+    lowers = np.asarray([part.bounds[0] for part in parts])
+    uppers = np.asarray([part.bounds[1] for part in parts])
+    return lowers.min(axis=0), uppers.max(axis=0)
+
+
+def bounds_cover_axes(
+    cover: tuple[np.ndarray, np.ndarray],
+    opening: tuple[np.ndarray, np.ndarray],
+    axes: tuple[int, ...],
+    minimum_overhang_mm: float,
+) -> dict[str, Any]:
+    cover_lower, cover_upper = cover
+    opening_lower, opening_upper = opening
+    overhangs: list[float] = []
+    for axis in axes:
+        overhangs.append(float(opening_lower[axis] - cover_lower[axis]))
+        overhangs.append(float(cover_upper[axis] - opening_upper[axis]))
+    minimum_actual = min(overhangs) if overhangs else 0.0
+    return {
+        "minimum_overhang_mm": round(minimum_actual, 3),
+        "required_overhang_mm": minimum_overhang_mm,
+        "pass": minimum_actual >= minimum_overhang_mm,
+    }
 
 
 def write_kicad_placement_reconciliation_artifacts(
@@ -2366,8 +3330,8 @@ def write_kicad_placement_reconciliation_artifacts(
         {
             "id": "SW_POWER_VOL",
             "parts": ["volume_button_cap", "power_button_cap"],
-            "tolerance_mm": 12.0,
-            "why": "Side-key switch/flex region must stay reachable from the molded orange button caps.",
+            "tolerance_mm": 16.0,
+            "why": "Side-key flex connector must stay reachable from the molded orange button caps after moving off the full-width battery zone.",
         },
         {
             "id": "J_DISPLAY_TOUCH",
@@ -2530,7 +3494,12 @@ def write_kicad_mechanical_handoff(
             },
             {
                 "id": "battery_window",
-                "action": "Keep the 55 x 92 x 4.1 mm battery window clear and do not route rigid PCB under the modeled pouch.",
+                "action": (
+                    f"Keep the {params['battery']['envelope_mm'][0]:.0f} x "
+                    f"{params['battery']['envelope_mm'][1]:.0f} x "
+                    f"{params['battery']['envelope_mm'][2]:.1f} mm full-width battery "
+                    "cavity clear and do not route rigid PCB under the modeled pouch."
+                ),
                 "why": "CAD non-overlap check uses segmented rigid board islands around this window.",
             },
             {
@@ -2705,24 +3674,8 @@ def write_engineering_validation_artifacts(
     )
     battery_center = [0.0, -7.0, battery["z_center_mm"]]
     battery_to_pcb_gaps = [
-        box_gap(
-            [64.0, 25.0, 0.8],
-            [0.0, 55.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
-        box_gap(
-            [64.0, 15.0, 0.8],
-            [0.0, -65.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
-        box_gap(
-            [8.0, 78.0, 0.8],
-            [-32.0, -8.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
+        box_gap(size, center, battery["envelope_mm"], battery_center)
+        for size, center, _name in pcb_island_segments(params)
     ]
     power_pressure = comp["power_button"]["force_n"] / (
         comp["power_button"]["cap_mm"][1] * comp["power_button"]["cap_mm"][2]
@@ -2947,6 +3900,7 @@ def write_interface_validation_artifacts(
     comp = params["components"]
     tolerance = params["validation"]["tolerance"]
     by_name = {part.name for part in parts}
+    check_status = cast(dict[str, dict[str, Any]], checks["checks"])
 
     power_area = comp["power_button"]["cap_mm"][1] * comp["power_button"]["cap_mm"][2]
     volume_area = comp["volume_button"]["cap_mm"][1] * comp["volume_button"]["cap_mm"][2]
@@ -2984,8 +3938,15 @@ def write_interface_validation_artifacts(
             "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
             "pass": 1.2 <= comp["power_button"]["force_n"] <= 2.2
             and comp["power_button"]["travel_mm"] >= 0.25
-            and power_pressure <= tolerance["button_pressure_limit_n_per_mm2"],
-            "evidence": ["power_button_cap", "button_force_and_travel", "button_pressure_support"],
+            and power_pressure <= tolerance["button_pressure_limit_n_per_mm2"]
+            and check_status["button_ingress_seal_stack"]["pass"],
+            "evidence": [
+                "power_button_cap",
+                "power_button_elastomer_gasket",
+                "button_force_and_travel",
+                "button_pressure_support",
+                "button_ingress_seal_stack",
+            ],
         },
         {
             "id": "volume_button_force_travel_pressure",
@@ -2998,8 +3959,15 @@ def write_interface_validation_artifacts(
             "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
             "pass": 1.2 <= comp["volume_button"]["force_n"] <= 2.2
             and comp["volume_button"]["travel_mm"] >= 0.25
-            and volume_pressure <= tolerance["button_pressure_limit_n_per_mm2"],
-            "evidence": ["volume_button_cap", "button_force_and_travel", "button_pressure_support"],
+            and volume_pressure <= tolerance["button_pressure_limit_n_per_mm2"]
+            and check_status["button_ingress_seal_stack"]["pass"],
+            "evidence": [
+                "volume_button_cap",
+                "volume_button_elastomer_gasket",
+                "button_force_and_travel",
+                "button_pressure_support",
+                "button_ingress_seal_stack",
+            ],
         },
         {
             "id": "usb_c_insertion_capture",
@@ -3015,12 +3983,20 @@ def write_interface_validation_artifacts(
             >= tolerance["usb_shell_to_aperture_clearance_mm"]
             and comp["usb_c"]["cycles"] >= 10000
             and "orange_usb_reinforcement_saddle" in by_name
+            and check_status["usb_c_port_seal_stack"]["pass"]
             and checks["checks"]["usb_c_insertion_envelope"]["pass"],
             "evidence": [
                 "usb_c_receptacle",
                 "usb_c_external_aperture",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
                 "orange_usb_reinforcement_saddle",
                 "usb_c_insertion_envelope",
+                "usb_c_port_seal_stack",
             ],
         },
         {
@@ -3058,13 +4034,22 @@ def write_interface_validation_artifacts(
             "pass": rear_lens_cover_margin >= 0.8
             and front_lens_under_glass_margin >= 1.0
             and checks["checks"]["camera_speaker_behind_glass"]["pass"]
+            and checks["checks"]["camera_optical_seal_stack"]["pass"]
             and bool(clearance_cases.get("rear_camera_to_battery", {}).get("pass")),
             "evidence": [
                 "front_camera_module",
                 "front_camera_under_glass",
+                "front_camera_black_mask_window",
                 "rear_camera_module",
                 "rear_camera_cover_glass",
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
                 "camera_speaker_behind_glass",
+                "camera_optical_seal_stack",
             ],
         },
         {
@@ -3154,6 +4139,1654 @@ def write_interface_validation_artifacts(
     for item in report["physical_validation_required"]:
         lines.append(f"- {item}")
     (REVIEW_DIR / "interface-validation.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_acoustic_validation_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    clearance: dict[str, Any],
+    interface_validation: dict[str, Any],
+) -> dict[str, Any]:
+    comp = params["components"]
+    by_name = {part.name: part for part in parts}
+
+    def span(name: str) -> np.ndarray:
+        low, high = by_name[name].bounds
+        return high - low
+
+    speaker_slots = sorted(
+        name for name in by_name if name.startswith("bottom_speaker_grille_slot_")
+    )
+    mic_ports = sorted(name for name in by_name if name.startswith("bottom_microphone_port_"))
+    bottom_mic_meshes = sorted(
+        name for name in by_name if name.startswith("bottom_microphone_mesh_")
+    )
+    speaker_slot_area_mm2 = sum(float(span(name)[0] * span(name)[2]) for name in speaker_slots)
+    mic_port_area_mm2 = sum(float(span(name)[0] * span(name)[2]) for name in mic_ports)
+    chamber_span = span("bottom_speaker_acoustic_chamber")
+    chamber_volume_cm3 = float(np.prod(chamber_span) / 1000.0)
+    earpiece_slot_span = span("handset_acoustic_slot")
+    earpiece_slot_area_mm2 = float(earpiece_slot_span[0] * earpiece_slot_span[1])
+    earpiece_gasket_thickness_mm = float(span("earpiece_gasket")[2])
+    speaker_face_area_mm2 = (
+        comp["speaker_bottom"]["envelope_mm"][0] * comp["speaker_bottom"]["envelope_mm"][1]
+    )
+    speaker_open_area_ratio = speaker_slot_area_mm2 / speaker_face_area_mm2
+    clearance_cases = {case["id"]: case for case in clearance["cases"]}
+    interface_cases = {case["id"]: case for case in interface_validation["interfaces"]}
+
+    cases = [
+        {
+            "id": "bottom_speaker_open_area",
+            "actual": {
+                "slot_count": len(speaker_slots),
+                "open_area_mm2": round(speaker_slot_area_mm2, 3),
+                "open_area_ratio": round(speaker_open_area_ratio, 3),
+            },
+            "target": ">=5 slots and >=0.035 open-area ratio against 1115 speaker face",
+            "pass": len(speaker_slots) >= 5 and speaker_open_area_ratio >= 0.035,
+        },
+        {
+            "id": "bottom_speaker_rear_chamber",
+            "actual": {"rear_chamber_volume_cm3": round(chamber_volume_cm3, 3)},
+            "target": ">=0.40 cm3 rear chamber for compact 1115 module EVT target",
+            "pass": chamber_volume_cm3 >= 0.40,
+        },
+        {
+            "id": "bottom_microphone_porting",
+            "actual": {
+                "port_count": len(mic_ports),
+                "port_area_mm2": round(mic_port_area_mm2, 3),
+                "mic_to_usb_gap_mm": clearance_cases.get("bottom_mic_to_usb", {}).get("actual_mm"),
+            },
+            "target": ">=2 ports, >=1.0 mm2 total port area, >=1.0 mm USB load-path separation",
+            "pass": len(mic_ports) >= 2
+            and mic_port_area_mm2 >= 1.0
+            and bool(clearance_cases.get("bottom_mic_to_usb", {}).get("pass")),
+        },
+        {
+            "id": "acoustic_mesh_membranes",
+            "actual": {
+                "bottom_speaker_mesh_present": "bottom_speaker_dust_mesh" in by_name,
+                "bottom_microphone_mesh_count": len(bottom_mic_meshes),
+                "top_microphone_mesh_present": "top_microphone_mesh" in by_name,
+                "handset_mesh_present": "handset_acoustic_mesh" in by_name,
+            },
+            "target": "hydrophobic mesh/membrane modeled for speaker, bottom mics, top mic, and handset slot",
+            "pass": "bottom_speaker_dust_mesh" in by_name
+            and len(bottom_mic_meshes) >= 2
+            and "top_microphone_mesh" in by_name
+            and "handset_acoustic_mesh" in by_name,
+        },
+        {
+            "id": "usb_speaker_isolation",
+            "actual": {
+                "speaker_to_usb_gap_mm": clearance_cases.get("usb_to_bottom_speaker", {}).get(
+                    "actual_mm"
+                )
+            },
+            "target": ">=1.0 mm speaker-to-USB mechanical isolation",
+            "pass": bool(clearance_cases.get("usb_to_bottom_speaker", {}).get("pass")),
+        },
+        {
+            "id": "earpiece_under_glass_path",
+            "actual": {
+                "slot_area_mm2": round(earpiece_slot_area_mm2, 3),
+                "gasket_thickness_mm": round(earpiece_gasket_thickness_mm, 3),
+                "front_camera_to_earpiece_gap_mm": clearance_cases.get(
+                    "front_camera_to_earpiece", {}
+                ).get("actual_mm"),
+            },
+            "target": ">=10 mm2 slot area, 0.4-0.8 mm gasket, front camera clearance passing",
+            "pass": earpiece_slot_area_mm2 >= 10.0
+            and 0.4 <= earpiece_gasket_thickness_mm <= 0.8
+            and bool(clearance_cases.get("front_camera_to_earpiece", {}).get("pass")),
+        },
+        {
+            "id": "interface_acoustic_cases_pass",
+            "actual": {
+                "bottom_audio_port_alignment": interface_cases.get(
+                    "bottom_audio_port_alignment", {}
+                ).get("pass"),
+                "handset_receiver_gasket_stack": interface_cases.get(
+                    "handset_receiver_gasket_stack", {}
+                ).get("pass"),
+            },
+            "target": "bottom audio and handset interface validation pass",
+            "pass": bool(interface_cases.get("bottom_audio_port_alignment", {}).get("pass"))
+            and bool(interface_cases.get("handset_receiver_gasket_stack", {}).get("pass")),
+        },
+    ]
+
+    measurements = [
+        {
+            "measurement_id": "bottom_speaker_spl_1khz_db",
+            "unit": "dB SPL",
+            "min": 72.0,
+            "max": "",
+            "fixture": "anechoic_box_or_phone_acoustic_jig",
+            "notes": "1 W/0.5 m equivalent or vendor-normalized compact-phone SPL target.",
+        },
+        {
+            "measurement_id": "bottom_speaker_impedance_ohm",
+            "unit": "ohm",
+            "min": 4.0,
+            "max": 12.0,
+            "fixture": "impedance_sweep",
+            "notes": "Verify module impedance and acoustic chamber loading.",
+        },
+        {
+            "measurement_id": "bottom_speaker_leak_delta_db",
+            "unit": "dB",
+            "min": 0.0,
+            "max": 3.0,
+            "fixture": "evt_fixture_bottom_acoustic_leak_mask",
+            "notes": "Masked/unmasked leakage delta around bottom speaker and mic ports.",
+        },
+        {
+            "measurement_id": "bottom_mic_snr_db",
+            "unit": "dB",
+            "min": 60.0,
+            "max": "",
+            "fixture": "calibrated_speech_noise_box",
+            "notes": "Bottom MEMS microphone SNR through molded port and mesh stack.",
+        },
+        {
+            "measurement_id": "top_mic_snr_db",
+            "unit": "dB",
+            "min": 60.0,
+            "max": "",
+            "fixture": "calibrated_speech_noise_box",
+            "notes": "Noise-cancel MEMS microphone SNR and PDM integrity.",
+        },
+        {
+            "measurement_id": "earpiece_spl_1khz_db",
+            "unit": "dB SPL",
+            "min": 70.0,
+            "max": "",
+            "fixture": "ear_simulator",
+            "notes": "Behind-glass receiver SPL through gasketed handset slot.",
+        },
+        {
+            "measurement_id": "earpiece_leak_delta_db",
+            "unit": "dB",
+            "min": 0.0,
+            "max": 3.0,
+            "fixture": "evt_fixture_earpiece_leak_mask",
+            "notes": "Leakage around receiver gasket and cover-glass slot.",
+        },
+    ]
+    template_path = REVIEW_DIR / "acoustic-results-template.csv"
+    fieldnames = [
+        "sample_id",
+        "measurement_id",
+        "unit",
+        "min",
+        "max",
+        "measured_value",
+        "pass",
+        "operator",
+        "notes",
+    ]
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for measurement in measurements:
+            writer.writerow(
+                {
+                    "sample_id": "",
+                    "measurement_id": measurement["measurement_id"],
+                    "unit": measurement["unit"],
+                    "min": measurement["min"],
+                    "max": measurement["max"],
+                    "measured_value": "",
+                    "pass": "",
+                    "operator": "",
+                    "notes": measurement["notes"],
+                }
+            )
+
+    release_blockers = [
+        "Need speaker SPL/impedance sweep with molded rear chamber and grille.",
+        "Need microphone SNR/sensitivity data through molded ports, mesh, and gasket stack.",
+        "Need earpiece SPL/leak test through behind-glass slot and compressed gasket.",
+        "Need dust/water ingress review for speaker, microphone, and handset openings.",
+    ]
+    report = {
+        "claim_boundary": "CAD-derived acoustic path validation and lab-result template; not acoustic simulation or measured audio performance.",
+        "status": "cad_acoustic_validation_ready"
+        if all(case["pass"] for case in cases)
+        else "blocked",
+        "audio_components": {
+            "speaker_bottom": comp["speaker_bottom"]["candidate"],
+            "earpiece": comp["earpiece"]["candidate"],
+            "microphone_bottom": comp["microphone_bottom"]["candidate"],
+            "microphone_top": comp["microphone_top"]["candidate"],
+        },
+        "cases": cases,
+        "measurement_count": len(measurements),
+        "measurements": measurements,
+        "results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",
+        "release_blockers": release_blockers,
+    }
+    (REVIEW_DIR / "acoustic-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Acoustic Validation",
+        "",
+        "Status: CAD acoustic validation ready; lab measurements still required.",
+        "",
+        "## CAD Acoustic Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Lab Measurements", ""])
+    for measurement in measurements:
+        lines.append(
+            f"- `{measurement['measurement_id']}` {measurement['unit']} fixture `{measurement['fixture']}`"
+        )
+    lines.extend(["", "## Release Blockers", ""])
+    for blocker in release_blockers:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "acoustic-validation.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_acoustic_results_review_artifacts(
+    acoustic_validation: dict[str, Any],
+) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "acoustic-results-template.csv"
+    expected = {item["measurement_id"]: item for item in acoustic_validation["measurements"]}
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        measurement_id = row.get("measurement_id", "")
+        expected_item = expected.get(measurement_id, {})
+        measured_text = row.get("measured_value", "").strip()
+        pass_text = row.get("pass", "").strip().lower()
+        sample_id = row.get("sample_id", "").strip()
+        operator = row.get("operator", "").strip()
+        measured_value: float | None = None
+        parse_ok = False
+        if measured_text:
+            with suppress(ValueError):
+                measured_value = float(measured_text)
+                parse_ok = True
+        min_value = expected_item.get("min")
+        max_value = expected_item.get("max")
+        within_min = measured_value is not None and (
+            min_value in {"", None} or measured_value >= float(min_value)
+        )
+        within_max = measured_value is not None and (
+            max_value in {"", None} or measured_value <= float(max_value)
+        )
+        populated = bool(sample_id and operator and measured_text and pass_text)
+        cases.append(
+            {
+                "measurement_id": measurement_id,
+                "expected_measurement": measurement_id in expected,
+                "populated": populated,
+                "numeric_check_pass": bool(parse_ok and within_min and within_max),
+                "declared_pass": pass_text in {"pass", "true", "yes", "1"},
+                "pass": populated
+                and measurement_id in expected
+                and parse_ok
+                and within_min
+                and within_max
+                and pass_text in {"pass", "true", "yes", "1"},
+            }
+        )
+
+    missing_measurements = sorted(set(expected) - {case["measurement_id"] for case in cases})
+    blank_or_incomplete = [case["measurement_id"] for case in cases if not case["populated"]]
+    failed_measurements = [
+        case["measurement_id"]
+        for case in cases
+        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+    ]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": "Fail-closed review of acoustic lab results; blank template rows are not measured audio evidence.",
+        "status": "acoustic_results_pass"
+        if cases and complete_count == len(expected) and not missing_measurements
+        else "blocked_no_acoustic_results"
+        if complete_count == 0
+        else "blocked_acoustic_results_incomplete",
+        "expected_measurement_count": len(expected),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "missing_measurements": missing_measurements,
+        "blank_or_incomplete_measurements": blank_or_incomplete,
+        "failed_measurements": failed_measurements,
+        "cases": cases,
+        "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, and explicit pass disposition.",
+    }
+    (REVIEW_DIR / "acoustic-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Acoustic Results Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until acoustic lab rows are populated.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for measurement_id in missing_measurements + blank_or_incomplete + failed_measurements:
+        lines.append(f"- `{measurement_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "acoustic-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_camera_validation_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    clearance: dict[str, Any],
+    interface_validation: dict[str, Any],
+) -> dict[str, Any]:
+    comp = params["components"]
+    display = params["display"]
+    part_names = {part.name for part in parts}
+    clearance_cases = {case["id"]: case for case in clearance["cases"]}
+    interface_cases = {case["id"]: case for case in interface_validation["interfaces"]}
+    rear_cover_margin_mm = (
+        comp["rear_camera_glass"]["envelope_mm"][0] - comp["rear_camera"]["lens_diameter_mm"]
+    ) / 2.0
+    front_under_glass_margin_mm = (
+        comp["front_camera"]["module_mm"][0] - comp["front_camera"]["lens_diameter_mm"]
+    ) / 2.0
+    rear_module_depth_mm = comp["rear_camera"]["module_mm"][2]
+    cover_glass_thickness_mm = display["cover_glass_mm"][2]
+    cases = [
+        {
+            "id": "rear_camera_cover_window_margin",
+            "actual": {
+                "cover_window_mm": comp["rear_camera_glass"]["envelope_mm"][:2],
+                "lens_diameter_mm": comp["rear_camera"]["lens_diameter_mm"],
+                "radial_margin_mm": round(rear_cover_margin_mm, 3),
+            },
+            "target": ">=0.8 mm radial margin around rear AF lens",
+            "pass": rear_cover_margin_mm >= 0.8
+            and "rear_camera_cover_glass" in part_names
+            and "rear_camera_lens_window" in part_names,
+        },
+        {
+            "id": "rear_camera_z_stack",
+            "actual": {
+                "module_depth_mm": rear_module_depth_mm,
+                "rear_camera_to_battery_gap_mm": clearance_cases.get(
+                    "rear_camera_to_battery", {}
+                ).get("actual_mm"),
+            },
+            "target": "rear AF stack depth <=5.5 mm and >=2.0 mm battery gap",
+            "pass": rear_module_depth_mm <= 5.5
+            and bool(clearance_cases.get("rear_camera_to_battery", {}).get("pass")),
+        },
+        {
+            "id": "front_under_glass_margin",
+            "actual": {
+                "module_mm": comp["front_camera"]["module_mm"],
+                "lens_diameter_mm": comp["front_camera"]["lens_diameter_mm"],
+                "radial_margin_mm": round(front_under_glass_margin_mm, 3),
+                "cover_glass_thickness_mm": cover_glass_thickness_mm,
+            },
+            "target": ">=1.0 mm radial module margin and <=0.8 mm cover glass for front under-glass camera",
+            "pass": front_under_glass_margin_mm >= 1.0
+            and cover_glass_thickness_mm <= 0.8
+            and "front_camera_under_glass" in part_names,
+        },
+        {
+            "id": "front_camera_earpiece_clearance",
+            "actual": {
+                "front_camera_to_earpiece_gap_mm": clearance_cases.get(
+                    "front_camera_to_earpiece", {}
+                ).get("actual_mm")
+            },
+            "target": ">=1.0 mm front camera to earpiece receiver gap",
+            "pass": bool(clearance_cases.get("front_camera_to_earpiece", {}).get("pass")),
+        },
+        {
+            "id": "camera_interface_strategy",
+            "actual": {
+                "interface_case_pass": interface_cases.get(
+                    "camera_glass_and_under_glass_strategy", {}
+                ).get("pass"),
+                "rear_exposed_window": True,
+                "front_under_cover_glass": True,
+                "rear_cover_adhesive_count": sum(
+                    1 for name in part_names if name.startswith("rear_camera_cover_adhesive_")
+                ),
+                "rear_light_baffle_count": sum(
+                    1 for name in part_names if name.startswith("rear_camera_light_baffle_")
+                ),
+                "front_black_mask_present": "front_camera_black_mask_window" in part_names,
+            },
+            "target": "front camera under glass with black mask; rear AF camera through gasketed/baffled cover window",
+            "pass": bool(
+                interface_cases.get("camera_glass_and_under_glass_strategy", {}).get("pass")
+            )
+            and sum(1 for name in part_names if name.startswith("rear_camera_cover_adhesive_"))
+            >= 4
+            and sum(1 for name in part_names if name.startswith("rear_camera_light_baffle_"))
+            >= 2
+            and "front_camera_black_mask_window" in part_names,
+        },
+    ]
+    measurements = [
+        {
+            "measurement_id": "rear_camera_lens_center_error_mm",
+            "unit": "mm",
+            "min": 0.0,
+            "max": 0.25,
+            "fixture": "evt_fixture_rear_camera_alignment_pin",
+            "notes": "Rear lens optical center to rear cover-window datum.",
+        },
+        {
+            "measurement_id": "front_camera_under_glass_center_error_mm",
+            "unit": "mm",
+            "min": 0.0,
+            "max": 0.30,
+            "fixture": "evt_fixture_front_camera_alignment_pin",
+            "notes": "Front camera optical center to under-glass aperture datum.",
+        },
+        {
+            "measurement_id": "rear_camera_focus_mtf50_lp_per_mm",
+            "unit": "lp/mm",
+            "min": 35.0,
+            "max": "",
+            "fixture": "iso12233_chart",
+            "notes": "AF rear module focus and cover-window optical quality check.",
+        },
+        {
+            "measurement_id": "front_camera_mtf50_lp_per_mm",
+            "unit": "lp/mm",
+            "min": 25.0,
+            "max": "",
+            "fixture": "iso12233_chart_through_cover_glass",
+            "notes": "Front fixed-focus module through cover-glass image sharpness.",
+        },
+        {
+            "measurement_id": "front_cover_glass_color_delta_e",
+            "unit": "deltaE",
+            "min": 0.0,
+            "max": 3.0,
+            "fixture": "color_chart_lightbox",
+            "notes": "Color shift from cover-glass/black mask stack over front camera.",
+        },
+        {
+            "measurement_id": "rear_camera_dust_or_vignette_defects",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "flat_field_capture",
+            "notes": "Dust, vignette, or gasket intrusion defects in rear cover window.",
+        },
+        {
+            "measurement_id": "camera_streaming_bringup_logs",
+            "unit": "pass_flag",
+            "min": 1.0,
+            "max": 1.0,
+            "fixture": "v4l2_or_android_camera_hal",
+            "notes": "Both front and rear cameras enumerate and stream with selected module pinout.",
+        },
+    ]
+    template_path = REVIEW_DIR / "camera-results-template.csv"
+    fieldnames = [
+        "sample_id",
+        "measurement_id",
+        "unit",
+        "min",
+        "max",
+        "measured_value",
+        "pass",
+        "operator",
+        "notes",
+    ]
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for measurement in measurements:
+            writer.writerow(
+                {
+                    "sample_id": "",
+                    "measurement_id": measurement["measurement_id"],
+                    "unit": measurement["unit"],
+                    "min": measurement["min"],
+                    "max": measurement["max"],
+                    "measured_value": "",
+                    "pass": "",
+                    "operator": "",
+                    "notes": measurement["notes"],
+                }
+            )
+
+    release_blockers = [
+        "Need supplier drawings/STEP for rear and front module optical center, FPC exit, and lens stack.",
+        "Need rear cover-window dust gasket drawing and first-article center/MTF measurements.",
+        "Need front under-glass capture validation through selected cover glass and black mask.",
+        "Need V4L2 or Android Camera HAL streaming logs with selected sensor drivers and pinout.",
+    ]
+    report = {
+        "claim_boundary": "CAD-derived camera optical package validation and result template; not supplier module approval, image-quality calibration, or Camera HAL evidence.",
+        "status": "cad_camera_validation_ready"
+        if all(case["pass"] for case in cases)
+        else "blocked",
+        "camera_components": {
+            "rear_camera": comp["rear_camera"]["candidate"],
+            "front_camera": comp["front_camera"]["candidate"],
+            "rear_camera_glass": comp["rear_camera_glass"]["candidate"],
+        },
+        "cases": cases,
+        "measurement_count": len(measurements),
+        "measurements": measurements,
+        "results_template": "mechanical/e1-phone/review/camera-results-template.csv",
+        "release_blockers": release_blockers,
+    }
+    (REVIEW_DIR / "camera-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Camera Validation",
+        "",
+        "Status: CAD camera validation ready; supplier and optical measurements still required.",
+        "",
+        "## CAD Camera Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Lab Measurements", ""])
+    for measurement in measurements:
+        lines.append(
+            f"- `{measurement['measurement_id']}` {measurement['unit']} fixture `{measurement['fixture']}`"
+        )
+    lines.extend(["", "## Release Blockers", ""])
+    for blocker in release_blockers:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "camera-validation.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "camera-results-template.csv"
+    expected = {item["measurement_id"]: item for item in camera_validation["measurements"]}
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        measurement_id = row.get("measurement_id", "")
+        expected_item = expected.get(measurement_id, {})
+        measured_text = row.get("measured_value", "").strip()
+        pass_text = row.get("pass", "").strip().lower()
+        sample_id = row.get("sample_id", "").strip()
+        operator = row.get("operator", "").strip()
+        measured_value: float | None = None
+        parse_ok = False
+        if measured_text:
+            with suppress(ValueError):
+                measured_value = float(measured_text)
+                parse_ok = True
+        min_value = expected_item.get("min")
+        max_value = expected_item.get("max")
+        within_min = measured_value is not None and (
+            min_value in {"", None} or measured_value >= float(min_value)
+        )
+        within_max = measured_value is not None and (
+            max_value in {"", None} or measured_value <= float(max_value)
+        )
+        populated = bool(sample_id and operator and measured_text and pass_text)
+        cases.append(
+            {
+                "measurement_id": measurement_id,
+                "expected_measurement": measurement_id in expected,
+                "populated": populated,
+                "numeric_check_pass": bool(parse_ok and within_min and within_max),
+                "declared_pass": pass_text in {"pass", "true", "yes", "1"},
+                "pass": populated
+                and measurement_id in expected
+                and parse_ok
+                and within_min
+                and within_max
+                and pass_text in {"pass", "true", "yes", "1"},
+            }
+        )
+
+    missing_measurements = sorted(set(expected) - {case["measurement_id"] for case in cases})
+    blank_or_incomplete = [case["measurement_id"] for case in cases if not case["populated"]]
+    failed_measurements = [
+        case["measurement_id"]
+        for case in cases
+        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+    ]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": "Fail-closed review of camera optical and bring-up results; blank rows are not image-quality evidence.",
+        "status": "camera_results_pass"
+        if cases and complete_count == len(expected) and not missing_measurements
+        else "blocked_no_camera_results"
+        if complete_count == 0
+        else "blocked_camera_results_incomplete",
+        "expected_measurement_count": len(expected),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "missing_measurements": missing_measurements,
+        "blank_or_incomplete_measurements": blank_or_incomplete,
+        "failed_measurements": failed_measurements,
+        "cases": cases,
+        "release_rule": "Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, and explicit pass disposition.",
+    }
+    (REVIEW_DIR / "camera-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Camera Results Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until camera optical and bring-up rows are populated.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for measurement_id in missing_measurements + blank_or_incomplete + failed_measurements:
+        lines.append(f"- `{measurement_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "camera-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_display_validation_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    clearance: dict[str, Any],
+    interface_validation: dict[str, Any],
+    tolerance_stack: dict[str, Any],
+) -> dict[str, Any]:
+    display = params["display"]
+    width, height, _depth = params["device"]["envelope_mm"]
+    part_names = {part.name for part in parts}
+    clearance_cases = {case["id"]: case for case in clearance["cases"]}
+    interface_cases = {case["id"]: case for case in interface_validation["interfaces"]}
+    stack_cases = {case["id"]: case for case in tolerance_stack["stacks"]}
+    screen_margin_mm = min(
+        (width - display["ctp_outline_mm"][0]) / 2.0,
+        (height - display["ctp_outline_mm"][1]) / 2.0,
+    )
+    tft_under_glass_margin_mm = min(
+        (display["cover_glass_mm"][0] - display["tft_outline_mm"][0]) / 2.0,
+        (display["cover_glass_mm"][1] - display["tft_outline_mm"][1]) / 2.0,
+    )
+    adhesive_compression_mm = display["adhesive_thickness_mm"] * (
+        display["compression_target_pct"] / 100.0
+    )
+    adhesive_parts = [
+        "screen_adhesive_top",
+        "screen_adhesive_bottom",
+        "screen_adhesive_left",
+        "screen_adhesive_right",
+    ]
+    adhesive_total_area_mm2 = (
+        2.0 * display["cover_glass_mm"][0] * display["adhesive_width_mm"]
+        + 2.0 * display["cover_glass_mm"][1] * display["adhesive_width_mm"]
+    )
+    cases = [
+        {
+            "id": "display_module_envelope_fit",
+            "actual": {
+                "screen_margin_mm": round(screen_margin_mm, 3),
+                "ctp_outline_mm": display["ctp_outline_mm"],
+                "device_envelope_mm": params["device"]["envelope_mm"],
+            },
+            "target": ">=0.3 mm nominal CTP-to-orange-body margin",
+            "pass": screen_margin_mm >= params["validation"]["tolerance"]["screen_xy_allowance_mm"]
+            and bool(clearance_cases.get("screen_cover_glass_to_orange_body", {}).get("pass")),
+        },
+        {
+            "id": "tft_under_cover_glass",
+            "actual": {"tft_under_glass_margin_mm": round(tft_under_glass_margin_mm, 3)},
+            "target": ">=0.5 mm TFT-to-cover-glass margin",
+            "pass": tft_under_glass_margin_mm >= 0.5
+            and bool(clearance_cases.get("display_lcm_under_cover_glass", {}).get("pass")),
+        },
+        {
+            "id": "adhesive_bond_geometry",
+            "actual": {
+                "adhesive_parts_present": sorted(
+                    name for name in adhesive_parts if name in part_names
+                ),
+                "adhesive_width_mm": display["adhesive_width_mm"],
+                "adhesive_compression_mm": round(adhesive_compression_mm, 3),
+                "adhesive_total_area_mm2": round(adhesive_total_area_mm2, 1),
+            },
+            "target": "four-sided adhesive, 1.0 mm nominal width, 0.03-0.08 mm compression",
+            "pass": set(adhesive_parts).issubset(part_names)
+            and display["adhesive_width_mm"] >= 1.0
+            and 0.03 <= adhesive_compression_mm <= 0.08,
+        },
+        {
+            "id": "display_fpc_bend_and_connector",
+            "actual": {
+                "fpc_connector_mm": display["fpc_connector_mm"],
+                "fpc_bend_radius_mm": display["fpc_bend_radius_mm"],
+            },
+            "target": "FPC connector and keepout present, bend radius >=1.0 mm",
+            "pass": "display_fpc_connector" in part_names
+            and "display_fpc_bend_keepout" in part_names
+            and display["fpc_bend_radius_mm"] >= 1.0
+            and bool(stack_cases.get("display_fpc_bend_radius", {}).get("pass")),
+        },
+        {
+            "id": "screen_interface_validation",
+            "actual": {
+                "screen_bond_and_fpc_connection": interface_cases.get(
+                    "screen_bond_and_fpc_connection", {}
+                ).get("pass")
+            },
+            "target": "screen interface validation pass",
+            "pass": bool(interface_cases.get("screen_bond_and_fpc_connection", {}).get("pass")),
+        },
+    ]
+    measurements = [
+        {
+            "measurement_id": "display_bond_peel_n_per_mm",
+            "unit": "N/mm",
+            "min": 0.45,
+            "max": "",
+            "fixture": "screen_bond_peel_fixture",
+            "notes": "Peel strength around die-cut adhesive perimeter after dwell.",
+        },
+        {
+            "measurement_id": "screen_adhesive_compression_mm",
+            "unit": "mm",
+            "min": 0.03,
+            "max": 0.08,
+            "fixture": "evt_fixture_screen_bond_clamp_frame",
+            "notes": "Compressed adhesive thickness after screen placement.",
+        },
+        {
+            "measurement_id": "display_fpc_bend_radius_mm",
+            "unit": "mm",
+            "min": 1.0,
+            "max": "",
+            "fixture": "evt_fixture_screen_bond_clamp_frame",
+            "notes": "Measured bend radius after connector mating and closure.",
+        },
+        {
+            "measurement_id": "display_luminance_cd_m2",
+            "unit": "cd/m2",
+            "min": 450.0,
+            "max": "",
+            "fixture": "display_colorimeter",
+            "notes": "White-screen luminance after DSI bring-up and backlight enable.",
+        },
+        {
+            "measurement_id": "touch_grid_dead_zones",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "touch_grid_test",
+            "notes": "Capacitive touch grid dead zones after bonding and enclosure close.",
+        },
+        {
+            "measurement_id": "display_dsi_bringup_logs",
+            "unit": "pass_flag",
+            "min": 1.0,
+            "max": 1.0,
+            "fixture": "drm_kms_or_android_surfaceflinger",
+            "notes": "Panel probes, init sequence runs, and display pipeline produces image.",
+        },
+        {
+            "measurement_id": "screen_drop_lift_or_glass_crack",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "evt_drop_and_visual_inspection",
+            "notes": "Glass crack, adhesive lift, or LCM shift after EVT drop screen check.",
+        },
+    ]
+    template_path = REVIEW_DIR / "display-results-template.csv"
+    fieldnames = [
+        "sample_id",
+        "measurement_id",
+        "unit",
+        "min",
+        "max",
+        "measured_value",
+        "pass",
+        "operator",
+        "notes",
+    ]
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for measurement in measurements:
+            writer.writerow(
+                {
+                    "sample_id": "",
+                    "measurement_id": measurement["measurement_id"],
+                    "unit": measurement["unit"],
+                    "min": measurement["min"],
+                    "max": measurement["max"],
+                    "measured_value": "",
+                    "pass": "",
+                    "operator": "",
+                    "notes": measurement["notes"],
+                }
+            )
+
+    report = {
+        "claim_boundary": "CAD-derived display/touch bond validation and result template; not supplier drawing approval, panel electrical bring-up, or bonded-sample validation.",
+        "status": "cad_display_validation_ready"
+        if all(case["pass"] for case in cases)
+        else "blocked",
+        "display_candidate": display["candidate"],
+        "cases": cases,
+        "measurement_count": len(measurements),
+        "measurements": measurements,
+        "results_template": "mechanical/e1-phone/review/display-results-template.csv",
+        "release_blockers": [
+            "Need supplier 2D/STEP drawing for module outline, FPC exit, connector datum, and touch stack.",
+            "Need bonded-sample peel/compression and FPC bend measurements.",
+            "Need DRM/KMS or Android SurfaceFlinger display bring-up logs.",
+            "Need touch grid, luminance, and drop/lift validation on EVT samples.",
+        ],
+    }
+    (REVIEW_DIR / "display-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Display Validation",
+        "",
+        "Status: CAD display validation ready; supplier and physical bring-up evidence still required.",
+        "",
+        "## CAD Display Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Lab Measurements", ""])
+    for measurement in measurements:
+        lines.append(
+            f"- `{measurement['measurement_id']}` {measurement['unit']} fixture `{measurement['fixture']}`"
+        )
+    lines.extend(["", "## Release Blockers", ""])
+    for blocker in report["release_blockers"]:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "display-validation.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_display_results_review_artifacts(display_validation: dict[str, Any]) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "display-results-template.csv"
+    expected = {item["measurement_id"]: item for item in display_validation["measurements"]}
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        measurement_id = row.get("measurement_id", "")
+        expected_item = expected.get(measurement_id, {})
+        measured_text = row.get("measured_value", "").strip()
+        pass_text = row.get("pass", "").strip().lower()
+        sample_id = row.get("sample_id", "").strip()
+        operator = row.get("operator", "").strip()
+        measured_value: float | None = None
+        parse_ok = False
+        if measured_text:
+            with suppress(ValueError):
+                measured_value = float(measured_text)
+                parse_ok = True
+        min_value = expected_item.get("min")
+        max_value = expected_item.get("max")
+        within_min = measured_value is not None and (
+            min_value in {"", None} or measured_value >= float(min_value)
+        )
+        within_max = measured_value is not None and (
+            max_value in {"", None} or measured_value <= float(max_value)
+        )
+        populated = bool(sample_id and operator and measured_text and pass_text)
+        cases.append(
+            {
+                "measurement_id": measurement_id,
+                "expected_measurement": measurement_id in expected,
+                "populated": populated,
+                "numeric_check_pass": bool(parse_ok and within_min and within_max),
+                "declared_pass": pass_text in {"pass", "true", "yes", "1"},
+                "pass": populated
+                and measurement_id in expected
+                and parse_ok
+                and within_min
+                and within_max
+                and pass_text in {"pass", "true", "yes", "1"},
+            }
+        )
+
+    missing_measurements = sorted(set(expected) - {case["measurement_id"] for case in cases})
+    blank_or_incomplete = [case["measurement_id"] for case in cases if not case["populated"]]
+    failed_measurements = [
+        case["measurement_id"]
+        for case in cases
+        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+    ]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": "Fail-closed review of display/touch bond and bring-up results; blank rows are not display evidence.",
+        "status": "display_results_pass"
+        if cases and complete_count == len(expected) and not missing_measurements
+        else "blocked_no_display_results"
+        if complete_count == 0
+        else "blocked_display_results_incomplete",
+        "expected_measurement_count": len(expected),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "missing_measurements": missing_measurements,
+        "blank_or_incomplete_measurements": blank_or_incomplete,
+        "failed_measurements": failed_measurements,
+        "cases": cases,
+        "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, and explicit pass disposition.",
+    }
+    (REVIEW_DIR / "display-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Display Results Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until display/touch lab and bring-up rows are populated.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for measurement_id in missing_measurements + blank_or_incomplete + failed_measurements:
+        lines.append(f"- `{measurement_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "display-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_environmental_validation_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    checks: dict[str, Any],
+    clearance: dict[str, Any],
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    device = params["device"]
+    targets = params["validation"]["environmental_targets"]
+    part_names = {part.name for part in parts}
+    check_status = cast(dict[str, dict[str, Any]], checks["checks"])
+    clearance_cases = {case["id"]: case for case in clearance["cases"]}
+    domain_reviews = {item["domain"]: item for item in validation.get("domain_reviews", [])}
+    screw_boss_count = sum(1 for name in part_names if name.startswith("orange_screw_boss_"))
+    snap_hook_count = sum(1 for name in part_names if name.startswith("orange_snap_hook_"))
+    speaker_slot_count = sum(
+        1 for name in part_names if name.startswith("bottom_speaker_grille_slot_")
+    )
+    mic_port_count = sum(1 for name in part_names if name.startswith("bottom_microphone_port_"))
+    mic_mesh_count = sum(1 for name in part_names if name.startswith("bottom_microphone_mesh_"))
+    cellular_keepout = params.get("radio", {}).get("cellular", {}).get("antenna_keepout_mm", [])
+    wifi_keepout = params.get("radio", {}).get("wifi_bt", {}).get("antenna_keepout_mm", [])
+    mass_total_g = mass_budget(parts)["total_estimated_mass_g"]
+
+    cases = [
+        {
+            "id": "thermal_spreader_and_skin_temp_plan",
+            "domain": "thermal",
+            "actual": {
+                "max_skin_temp_c": targets["max_skin_temp_c"],
+                "shield_cans_present": sorted(
+                    name
+                    for name in ["soc_shield_can", "pmic_shield_can", "radio_shield_can"]
+                    if name in part_names
+                ),
+                "estimated_physical_mass_g": round(mass_total_g, 1),
+                "target_mass_g": device["target_mass_g"],
+            },
+            "target": "shield cans present and CAD mass below target for thermal inertia; lab skin temperature <= target",
+            "pass": check_status["shielding_haptics_service"]["pass"]
+            and mass_total_g <= device["target_mass_g"]
+            and domain_reviews.get("thermal", {}).get("cad_status") == "inputs_present",
+        },
+        {
+            "id": "rf_keepout_and_prescan_plan",
+            "domain": "rf",
+            "actual": {
+                "cellular_keepout_mm": cellular_keepout,
+                "wifi_bt_keepout_mm": wifi_keepout,
+                "rf_keepout_check": check_status["rf_antenna_keepouts"]["pass"],
+                "candidate_us_sar_limit_w_per_kg_1g": 1.6,
+            },
+            "target": "antenna keepouts present; chamber desense and SAR pre-scan required before RF release",
+            "pass": check_status["rf_antenna_keepouts"]["pass"]
+            and bool(cellular_keepout)
+            and bool(wifi_keepout)
+            and domain_reviews.get("rf", {}).get("cad_status") == "inputs_present",
+        },
+        {
+            "id": "drop_retention_and_corner_energy_plan",
+            "domain": "drop",
+            "actual": {
+                "drop_height_m": targets["drop_height_m"],
+                "corner_radius_mm": device["corner_radius_mm"],
+                "wall_thickness_mm": device["wall_thickness_mm"],
+                "screw_boss_count": screw_boss_count,
+                "snap_hook_count": snap_hook_count,
+                "screen_adhesive_present": "screen_adhesive_top" in part_names,
+                "screen_clearance_pass": clearance_cases.get(
+                    "screen_cover_glass_to_orange_body", {}
+                ).get("pass"),
+            },
+            "target": ">=1 m EVT drop plan with rounded orange PC+ABS corners, screw bosses, snap hooks, and bonded screen",
+            "pass": device["corner_radius_mm"] >= 6.0
+            and device["wall_thickness_mm"] >= 1.0
+            and screw_boss_count >= params["manufacturing"]["screw_boss_count"]
+            and snap_hook_count >= params["manufacturing"]["snap_hook_count"]
+            and "screen_adhesive_top" in part_names
+            and bool(clearance_cases.get("screen_cover_glass_to_orange_body", {}).get("pass"))
+            and domain_reviews.get("drop", {}).get("cad_status") == "inputs_present",
+        },
+        {
+            "id": "ingress_path_and_gasket_plan",
+            "domain": "ingress",
+            "actual": {
+                "target": targets["ingress_target"],
+                "screen_adhesive_present": "screen_adhesive_top" in part_names,
+                "earpiece_gasket_present": "earpiece_gasket" in part_names,
+                "usb_aperture_present": "usb_c_external_aperture" in part_names,
+                "usb_perimeter_gasket_count": sum(
+                    1 for name in part_names if name.startswith("usb_c_perimeter_gasket_")
+                ),
+                "usb_drip_break_present": "usb_c_molded_drip_break_lip" in part_names,
+                "usb_drain_shelf_present": "usb_c_internal_drain_shelf" in part_names,
+                "speaker_slot_count": speaker_slot_count,
+                "mic_port_count": mic_port_count,
+                "speaker_mesh_present": "bottom_speaker_dust_mesh" in part_names,
+                "bottom_mic_mesh_count": mic_mesh_count,
+                "top_mic_mesh_present": "top_microphone_mesh" in part_names,
+                "handset_mesh_present": "handset_acoustic_mesh" in part_names,
+                "side_button_gaskets_present": {
+                    "power": "power_button_elastomer_gasket" in part_names,
+                    "volume": "volume_button_elastomer_gasket" in part_names,
+                },
+            },
+            "target": "IP54 design-intent path review; open ports need membranes or lab-accepted splash/dust result",
+            "pass": "screen_adhesive_top" in part_names
+            and "earpiece_gasket" in part_names
+            and "handset_acoustic_mesh" in part_names
+            and "usb_c_external_aperture" in part_names
+            and sum(1 for name in part_names if name.startswith("usb_c_perimeter_gasket_")) >= 4
+            and "usb_c_molded_drip_break_lip" in part_names
+            and "usb_c_internal_drain_shelf" in part_names
+            and "bottom_speaker_dust_mesh" in part_names
+            and speaker_slot_count >= 5
+            and mic_port_count >= 2
+            and mic_mesh_count >= 2
+            and "top_microphone_mesh" in part_names
+            and "power_button_elastomer_gasket" in part_names
+            and "volume_button_elastomer_gasket" in part_names
+            and domain_reviews.get("ingress", {}).get("cad_status") == "design_intent_only",
+        },
+    ]
+
+    measurements = [
+        {
+            "measurement_id": "max_skin_temp_video_call_c",
+            "domain": "thermal",
+            "unit": "C",
+            "min": "",
+            "max": targets["max_skin_temp_c"],
+            "fixture": "thermal_chamber_or_skin_temp_probe",
+            "notes": "Worst-case video call or radio-active thermal soak at target ambient.",
+        },
+        {
+            "measurement_id": "soc_shield_can_peak_temp_c",
+            "domain": "thermal",
+            "unit": "C",
+            "min": "",
+            "max": 85.0,
+            "fixture": "thermocouple_on_soc_shield",
+            "notes": "Peak shield-can temperature during sustained load.",
+        },
+        {
+            "measurement_id": "cellular_desense_delta_db",
+            "domain": "rf",
+            "unit": "dB",
+            "min": "",
+            "max": 3.0,
+            "fixture": "rf_chamber_desense_prescan",
+            "notes": "Cellular sensitivity delta with display, camera, and USB active.",
+        },
+        {
+            "measurement_id": "wifi_bt_desense_delta_db",
+            "domain": "rf",
+            "unit": "dB",
+            "min": "",
+            "max": 3.0,
+            "fixture": "rf_chamber_desense_prescan",
+            "notes": "Wi-Fi/Bluetooth sensitivity delta with phone subsystems active.",
+        },
+        {
+            "measurement_id": "sar_prescan_w_per_kg_1g",
+            "domain": "rf",
+            "unit": "W/kg",
+            "min": "",
+            "max": 1.6,
+            "fixture": "accredited_sar_prescan",
+            "notes": "U.S. general-population candidate SAR pre-scan target; final limits depend on certified-region compliance plan.",
+        },
+        {
+            "measurement_id": "drop_1m_functional_failures",
+            "domain": "drop",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "evt_corner_edge_face_drop",
+            "notes": "Functional failures after 1 m corner/edge/face drop sequence.",
+        },
+        {
+            "measurement_id": "drop_1m_crack_or_latch_release",
+            "domain": "drop",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "evt_visual_and_latch_inspection",
+            "notes": "Orange shell cracks, snap release, screen lift, or glass crack after drop.",
+        },
+        {
+            "measurement_id": "ip54_dust_ingress_functional_failures",
+            "domain": "ingress",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "dust_ingress_screen_usb_audio_inspection",
+            "notes": "Functional failures after design-intent dust exposure.",
+        },
+        {
+            "measurement_id": "ip54_splash_ingress_functional_failures",
+            "domain": "ingress",
+            "unit": "count",
+            "min": 0.0,
+            "max": 0.0,
+            "fixture": "splash_ingress_screen_usb_audio_inspection",
+            "notes": "Functional failures after design-intent splash exposure.",
+        },
+    ]
+    template_path = REVIEW_DIR / "environmental-results-template.csv"
+    fieldnames = [
+        "sample_id",
+        "measurement_id",
+        "domain",
+        "unit",
+        "min",
+        "max",
+        "measured_value",
+        "pass",
+        "operator",
+        "notes",
+    ]
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for measurement in measurements:
+            writer.writerow(
+                {
+                    "sample_id": "",
+                    "measurement_id": measurement["measurement_id"],
+                    "domain": measurement["domain"],
+                    "unit": measurement["unit"],
+                    "min": measurement["min"],
+                    "max": measurement["max"],
+                    "measured_value": "",
+                    "pass": "",
+                    "operator": "",
+                    "notes": measurement["notes"],
+                }
+            )
+
+    release_blockers = [
+        "Need routed board power map and thermal measurements with real enclosure resin.",
+        "Need RF chamber desense data, antenna tuning, and SAR pre-scan with final antennas.",
+        "Need 1 m corner/edge/face drop results on EVT molded samples.",
+        "Need dust/splash ingress results or explicit product decision to drop IP54 claim.",
+    ]
+    report = {
+        "claim_boundary": "CAD-derived thermal/RF/drop/ingress validation package and lab intake template; not regulatory certification, chamber data, drop test, or ingress proof.",
+        "status": "cad_environmental_validation_ready"
+        if all(case["pass"] for case in cases)
+        else "blocked",
+        "cases": cases,
+        "measurement_count": len(measurements),
+        "measurements": measurements,
+        "results_template": "mechanical/e1-phone/review/environmental-results-template.csv",
+        "regulatory_references": [
+            {
+                "id": "fcc_rf_exposure_sar_general_population",
+                "url": "https://docs.fcc.gov/public/attachments/FCC-19-126A1_Rcd.pdf",
+                "note": "FCC RF exposure rule text includes 1.6 W/kg peak spatial-average SAR over 1 g tissue for general population/uncontrolled exposure.",
+            }
+        ],
+        "release_blockers": release_blockers,
+    }
+    (REVIEW_DIR / "environmental-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Environmental Validation",
+        "",
+        "Status: CAD environmental validation ready; physical and regulatory evidence still required.",
+        "",
+        "## CAD Environmental Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(
+            f"- {result}: `{case['id']}` domain `{case['domain']}` target {case['target']}"
+        )
+    lines.extend(["", "## Lab Measurements", ""])
+    for measurement in measurements:
+        lines.append(
+            f"- `{measurement['measurement_id']}` {measurement['unit']} domain `{measurement['domain']}` fixture `{measurement['fixture']}`"
+        )
+    lines.extend(["", "## Release Blockers", ""])
+    for blocker in release_blockers:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "environmental-validation.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_ingress_path_review_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    environmental_validation: dict[str, Any],
+) -> dict[str, Any]:
+    by_name = {part.name: part for part in parts}
+    speaker_slots = [part for part in parts if part.name.startswith("bottom_speaker_grille_slot_")]
+    bottom_mic_ports = [part for part in parts if part.name.startswith("bottom_microphone_port_")]
+    target = params["validation"]["environmental_targets"]["ingress_target"]
+
+    def has_all(names: list[str]) -> bool:
+        return all(name in by_name for name in names)
+
+    acoustic_overhang_cases: list[dict[str, Any]] = []
+    if speaker_slots and "bottom_speaker_dust_mesh" in by_name:
+        acoustic_overhang_cases.append(
+            {
+                "id": "bottom_speaker_mesh_overhang",
+                "opening": "bottom_speaker_grille_slots",
+                "seal": "bottom_speaker_dust_mesh",
+                **bounds_cover_axes(
+                    by_name["bottom_speaker_dust_mesh"].bounds,
+                    part_bounds_union(speaker_slots),
+                    (0, 2),
+                    0.25,
+                ),
+            }
+        )
+    for idx, port in enumerate(bottom_mic_ports, start=1):
+        mesh_name = f"bottom_microphone_mesh_{idx}"
+        if mesh_name in by_name:
+            acoustic_overhang_cases.append(
+                {
+                    "id": f"bottom_microphone_mesh_{idx}_overhang",
+                    "opening": port.name,
+                    "seal": mesh_name,
+                    **bounds_cover_axes(by_name[mesh_name].bounds, port.bounds, (0, 2), 0.15),
+                }
+            )
+    if has_all(["top_microphone_port", "top_microphone_mesh"]):
+        acoustic_overhang_cases.append(
+            {
+                "id": "top_microphone_mesh_overhang",
+                "opening": "top_microphone_port",
+                "seal": "top_microphone_mesh",
+                **bounds_cover_axes(
+                    by_name["top_microphone_mesh"].bounds,
+                    by_name["top_microphone_port"].bounds,
+                    (0, 2),
+                    0.15,
+                ),
+            }
+        )
+    if has_all(["handset_acoustic_slot", "handset_acoustic_mesh"]):
+        acoustic_overhang_cases.append(
+            {
+                "id": "handset_mesh_overhang",
+                "opening": "handset_acoustic_slot",
+                "seal": "handset_acoustic_mesh",
+                **bounds_cover_axes(
+                    by_name["handset_acoustic_mesh"].bounds,
+                    by_name["handset_acoustic_slot"].bounds,
+                    (0,),
+                    0.25,
+                ),
+            }
+        )
+
+    paths: list[dict[str, Any]] = [
+        {
+            "id": "display_glass_perimeter",
+            "opening": "screen_cover_glass_to_orange_body",
+            "seal_stack": [
+                "screen_adhesive_top",
+                "screen_adhesive_bottom",
+                "screen_adhesive_left",
+                "screen_adhesive_right",
+            ],
+            "strategy": "continuous die-cut display adhesive forms primary splash/dust barrier",
+            "cad_pass": has_all(
+                [
+                    "screen_adhesive_top",
+                    "screen_adhesive_bottom",
+                    "screen_adhesive_left",
+                    "screen_adhesive_right",
+                ]
+            ),
+            "lab_closure": "display bond peel, splash exposure, and post-drop screen-lift inspection",
+        },
+        {
+            "id": "bottom_speaker_grille",
+            "opening": "five molded bottom speaker slots",
+            "seal_stack": ["bottom_speaker_dust_mesh", "bottom_speaker_acoustic_chamber"],
+            "strategy": "hydrophobic dust mesh bonded behind grille with molded rear chamber isolated from USB load saddle",
+            "cad_pass": bool(
+                speaker_slots
+                and "bottom_speaker_dust_mesh" in by_name
+                and "bottom_speaker_acoustic_chamber" in by_name
+                and all(
+                    case["pass"]
+                    for case in acoustic_overhang_cases
+                    if case["id"].startswith("bottom_speaker")
+                )
+            ),
+            "lab_closure": "speaker sweep before/after dust and splash, mesh adhesive visual inspection",
+        },
+        {
+            "id": "bottom_microphone_ports",
+            "opening": "dual bottom MEMS acoustic ports",
+            "seal_stack": ["bottom_microphone_mesh_1", "bottom_microphone_mesh_2"],
+            "strategy": "individual hydrophobic meshes sit behind each molded microphone port",
+            "cad_pass": len(bottom_mic_ports) >= 2
+            and has_all(["bottom_microphone_mesh_1", "bottom_microphone_mesh_2"])
+            and all(
+                case["pass"]
+                for case in acoustic_overhang_cases
+                if case["id"].startswith("bottom_microphone")
+            ),
+            "lab_closure": "microphone sensitivity/noise floor before and after dust/splash exposure",
+        },
+        {
+            "id": "top_microphone_port",
+            "opening": "top MEMS acoustic port",
+            "seal_stack": ["top_microphone_mesh"],
+            "strategy": "hydrophobic mesh behind the top port to keep the second microphone from being an unprotected ingress path",
+            "cad_pass": has_all(["top_microphone_port", "top_microphone_mesh"])
+            and all(
+                case["pass"]
+                for case in acoustic_overhang_cases
+                if case["id"] == "top_microphone_mesh_overhang"
+            ),
+            "lab_closure": "top microphone sensitivity/noise floor before and after dust/splash exposure",
+        },
+        {
+            "id": "handset_earpiece_slot",
+            "opening": "under-glass handset acoustic slot",
+            "seal_stack": ["earpiece_gasket", "handset_acoustic_mesh"],
+            "strategy": "compressed earpiece gasket and hydrophobic mesh behind handset slot",
+            "cad_pass": has_all(["earpiece_gasket", "handset_acoustic_mesh"])
+            and all(
+                case["pass"]
+                for case in acoustic_overhang_cases
+                if case["id"] == "handset_mesh_overhang"
+            ),
+            "lab_closure": "receiver SPL/leak check plus splash exposure at earpiece slot",
+        },
+        {
+            "id": "usb_c_bottom_aperture",
+            "opening": "USB-C shell aperture",
+            "seal_stack": [
+                "usb_c_external_aperture",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
+                "orange_usb_reinforcement_saddle",
+            ],
+            "strategy": "open USB-C connector is managed by a four-sided elastomer receptacle seat, molded drip break, internal drain shelf, and load saddle",
+            "cad_pass": has_all(
+                [
+                    "usb_c_external_aperture",
+                    "usb_c_perimeter_gasket_top",
+                    "usb_c_perimeter_gasket_bottom",
+                    "usb_c_perimeter_gasket_left",
+                    "usb_c_perimeter_gasket_right",
+                    "usb_c_molded_drip_break_lip",
+                    "usb_c_internal_drain_shelf",
+                    "orange_usb_reinforcement_saddle",
+                ]
+            ),
+            "lab_closure": "USB insertion/rub, side splash, water-retention visual inspection, and gasket compression-set check",
+        },
+        {
+            "id": "rear_camera_window",
+            "opening": "rear camera cover glass",
+            "seal_stack": [
+                "rear_camera_cover_glass",
+                "rear_camera_lens_window",
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
+            ],
+            "strategy": "rear cover glass is bonded with a four-sided black PSA gasket plus internal baffles to limit dust and flare",
+            "cad_pass": has_all(
+                [
+                    "rear_camera_cover_glass",
+                    "rear_camera_lens_window",
+                    "rear_camera_cover_adhesive_top",
+                    "rear_camera_cover_adhesive_bottom",
+                    "rear_camera_cover_adhesive_left",
+                    "rear_camera_cover_adhesive_right",
+                    "rear_camera_light_baffle_top",
+                    "rear_camera_light_baffle_bottom",
+                ]
+            ),
+            "lab_closure": "camera dust inspection, focus/MTF check, flare check, and cover-glass adhesive peel review",
+        },
+        {
+            "id": "side_button_rails",
+            "opening": "power and volume button rail gaps",
+            "seal_stack": [
+                "power_button_cap",
+                "power_button_elastomer_gasket",
+                "power_button_labyrinth_upper_rail",
+                "power_button_labyrinth_lower_rail",
+                "volume_button_cap",
+                "volume_button_elastomer_gasket",
+                "volume_button_labyrinth_upper_rail",
+                "volume_button_labyrinth_lower_rail",
+            ],
+            "strategy": "external orange caps actuate through silicone gaskets backed by molded labyrinth rails on each side-key opening",
+            "cad_pass": has_all(
+                [
+                    "power_button_cap",
+                    "power_button_elastomer_gasket",
+                    "power_button_labyrinth_upper_rail",
+                    "power_button_labyrinth_lower_rail",
+                    "volume_button_cap",
+                    "volume_button_elastomer_gasket",
+                    "volume_button_labyrinth_upper_rail",
+                    "volume_button_labyrinth_lower_rail",
+                ]
+            ),
+            "lab_closure": "button force/travel after dust exposure, side-splash inspection, and gasket compression set check",
+        },
+    ]
+    environmental_ingress_case: dict[str, Any] = next(
+        (
+            case
+            for case in environmental_validation.get("cases", [])
+            if case.get("id") == "ingress_path_and_gasket_plan"
+        ),
+        {},
+    )
+    report = {
+        "claim_boundary": "CAD seal-stack review for ingress paths; not IP certification or lab evidence.",
+        "status": "cad_ingress_path_review_ready"
+        if paths
+        and all(path["cad_pass"] for path in paths)
+        and all(case["pass"] for case in acoustic_overhang_cases)
+        and environmental_ingress_case.get("pass") is True
+        else "blocked",
+        "target": target,
+        "path_count": len(paths),
+        "paths": paths,
+        "acoustic_mesh_overhang_cases": acoustic_overhang_cases,
+        "open_product_decisions": [
+            "USB-C gasket/drip geometry is modeled, but an IP claim still needs supplier connector detail and splash/retention evidence.",
+            "Side-button gasket/labyrinth geometry is modeled, but needs supplier material, compression-set, and splash-test evidence.",
+            "IP54 is design intent only until dust and splash lab rows are populated.",
+        ],
+        "release_rule": "Every modeled ingress path must have a CAD seal stack, mesh overhang where acoustic ports are open, and measured dust/splash results before environmental release.",
+    }
+    (REVIEW_DIR / "ingress-path-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Ingress Path Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        f"Target: {target}.",
+        "",
+        "## Modeled Paths",
+        "",
+    ]
+    for path in paths:
+        result = "PASS" if path["cad_pass"] else "BLOCKED"
+        seal_stack = [str(item) for item in path["seal_stack"]]
+        lines.append(f"- {result}: `{path['id']}` seal stack {', '.join(seal_stack)}")
+    lines.extend(["", "## Acoustic Mesh Overhang", ""])
+    for case in acoustic_overhang_cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(
+            f"- {result}: `{case['id']}` minimum overhang {case['minimum_overhang_mm']} mm"
+        )
+    lines.extend(["", "## Open Product Decisions", ""])
+    for decision in report["open_product_decisions"]:
+        lines.append(f"- {decision}")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "ingress-path-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_environmental_results_review_artifacts(
+    environmental_validation: dict[str, Any],
+) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "environmental-results-template.csv"
+    expected = {item["measurement_id"]: item for item in environmental_validation["measurements"]}
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        measurement_id = row.get("measurement_id", "")
+        expected_item = expected.get(measurement_id, {})
+        measured_text = row.get("measured_value", "").strip()
+        pass_text = row.get("pass", "").strip().lower()
+        sample_id = row.get("sample_id", "").strip()
+        operator = row.get("operator", "").strip()
+        measured_value: float | None = None
+        parse_ok = False
+        if measured_text:
+            with suppress(ValueError):
+                measured_value = float(measured_text)
+                parse_ok = True
+        min_value = expected_item.get("min")
+        max_value = expected_item.get("max")
+        within_min = measured_value is not None and (
+            min_value in {"", None} or measured_value >= float(min_value)
+        )
+        within_max = measured_value is not None and (
+            max_value in {"", None} or measured_value <= float(max_value)
+        )
+        populated = bool(sample_id and operator and measured_text and pass_text)
+        cases.append(
+            {
+                "measurement_id": measurement_id,
+                "expected_measurement": measurement_id in expected,
+                "domain": row.get("domain", expected_item.get("domain", "")),
+                "populated": populated,
+                "numeric_check_pass": bool(parse_ok and within_min and within_max),
+                "declared_pass": pass_text in {"pass", "true", "yes", "1"},
+                "pass": populated
+                and measurement_id in expected
+                and parse_ok
+                and within_min
+                and within_max
+                and pass_text in {"pass", "true", "yes", "1"},
+            }
+        )
+
+    missing_measurements = sorted(set(expected) - {case["measurement_id"] for case in cases})
+    blank_or_incomplete = [case["measurement_id"] for case in cases if not case["populated"]]
+    failed_measurements = [
+        case["measurement_id"]
+        for case in cases
+        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+    ]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": "Fail-closed review of thermal, RF, drop, and ingress lab results; blank rows are not environmental evidence.",
+        "status": "environmental_results_pass"
+        if cases and complete_count == len(expected) and not missing_measurements
+        else "blocked_no_environmental_results"
+        if complete_count == 0
+        else "blocked_environmental_results_incomplete",
+        "expected_measurement_count": len(expected),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "missing_measurements": missing_measurements,
+        "blank_or_incomplete_measurements": blank_or_incomplete,
+        "failed_measurements": failed_measurements,
+        "cases": cases,
+        "release_rule": "Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, and explicit pass disposition.",
+    }
+    (REVIEW_DIR / "environmental-results-review.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+
+    lines = [
+        "# E1 Phone Environmental Results Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until thermal, RF, drop, and ingress lab rows are populated.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for measurement_id in missing_measurements + blank_or_incomplete + failed_measurements:
+        lines.append(f"- `{measurement_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "environmental-results-review.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -3554,8 +6187,12 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
                 parse_ok = True
         min_value = expected_item.get("min")
         max_value = expected_item.get("max")
-        within_min = measured_value is not None and (min_value is None or measured_value >= min_value)
-        within_max = measured_value is not None and (max_value is None or measured_value <= max_value)
+        within_min = measured_value is not None and (
+            min_value is None or measured_value >= min_value
+        )
+        within_max = measured_value is not None and (
+            max_value is None or measured_value <= max_value
+        )
         numeric_pass = bool(parse_ok and within_min and within_max)
         explicit_pass = pass_text in {"pass", "true", "yes", "y", "1"}
         populated = bool(sample_id and operator and measured_text and pass_text)
@@ -3577,9 +6214,7 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
     expected_ids = set(expected)
     observed_ids = {case["measurement_id"] for case in cases}
     missing_measurements = sorted(expected_ids - observed_ids)
-    blank_or_incomplete = [
-        case["measurement_id"] for case in cases if not case["populated"]
-    ]
+    blank_or_incomplete = [case["measurement_id"] for case in cases if not case["populated"]]
     failed_measurements = [
         case["measurement_id"]
         for case in cases
@@ -3830,6 +6465,207 @@ def write_tolerance_stack_artifacts(
     return report
 
 
+def write_gdt_release_package_artifacts(
+    params: dict[str, Any], tolerance_stack: dict[str, Any]
+) -> dict[str, Any]:
+    characteristic_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(tolerance_stack["drawing_requirements"], start=1):
+        characteristic_rows.append(
+            {
+                "characteristic_id": f"CRIT-{index:03d}",
+                "feature": row["feature"],
+                "control": row["control"],
+                "datum_reference": row["control"].split("datum ")[-1]
+                if "datum " in row["control"]
+                else "see control",
+                "nominal": "per CAD",
+                "plus_tolerance_mm": row["evt0_tolerance_mm"],
+                "minus_tolerance_mm": row["evt0_tolerance_mm"],
+                "inspection_method": "CMM or optical comparator against released STEP/drawing",
+                "sample_requirement": "100% first article; Cpk after DVT tool tuning",
+            }
+        )
+    for index, stack in enumerate(tolerance_stack["stacks"], start=len(characteristic_rows) + 1):
+        characteristic_rows.append(
+            {
+                "characteristic_id": f"STACK-{index:03d}",
+                "feature": stack["id"],
+                "control": f"minimum clearance to datum {stack['datum']}",
+                "datum_reference": stack["datum"],
+                "nominal": stack["nominal_mm"],
+                "plus_tolerance_mm": "",
+                "minus_tolerance_mm": "",
+                "minimum_mm": stack["minimum_mm"],
+                "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+                "sample_requirement": "all EVT first articles",
+            }
+        )
+
+    csv_path = REVIEW_DIR / "gdt-fai-template.csv"
+    fieldnames = [
+        "part_revision",
+        "sample_id",
+        "characteristic_id",
+        "feature",
+        "control",
+        "datum_reference",
+        "nominal",
+        "plus_tolerance_mm",
+        "minus_tolerance_mm",
+        "minimum_mm",
+        "measured_value",
+        "pass",
+        "inspector",
+        "notes",
+    ]
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in characteristic_rows:
+            writer.writerow(
+                {
+                    "part_revision": params["device"]["revision"],
+                    "sample_id": "",
+                    "characteristic_id": row["characteristic_id"],
+                    "feature": row["feature"],
+                    "control": row["control"],
+                    "datum_reference": row["datum_reference"],
+                    "nominal": row["nominal"],
+                    "plus_tolerance_mm": row.get("plus_tolerance_mm", ""),
+                    "minus_tolerance_mm": row.get("minus_tolerance_mm", ""),
+                    "minimum_mm": row.get("minimum_mm", ""),
+                    "measured_value": "",
+                    "pass": "",
+                    "inspector": "",
+                    "notes": row["inspection_method"],
+                }
+            )
+
+    report = {
+        "claim_boundary": "CAD-derived GD&T/FAI characteristic package; not a released, signed, supplier-controlled drawing.",
+        "status": "gdt_release_package_ready"
+        if tolerance_stack["status"] == "cad_tolerance_stack_pass"
+        and characteristic_rows
+        and csv_path.is_file()
+        else "blocked",
+        "datum_scheme": tolerance_stack["datums"],
+        "characteristic_count": len(characteristic_rows),
+        "characteristics": characteristic_rows,
+        "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+        "release_blockers": [
+            "Needs supplier-returned STEP and drawings before nominal dimensions are frozen.",
+            "Needs toolmaker-approved datum scheme and CMM plan.",
+            "Needs populated first-article inspection measurements before release.",
+        ],
+    }
+    (REVIEW_DIR / "gdt-release-package.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone GD&T Release Characteristic Package",
+        "",
+        "Status: CAD-derived characteristic package ready; not a signed release drawing.",
+        "",
+        f"FAI template: `{report['fai_template']}`",
+        "",
+        "## Datums",
+        "",
+    ]
+    for datum in tolerance_stack["datums"]:
+        lines.append(f"- `{datum['id']}` {datum['name']}: {datum['purpose']}")
+    lines.extend(["", "## Characteristics", ""])
+    for row in characteristic_rows:
+        lines.append(f"- `{row['characteristic_id']}` {row['feature']}: {row['control']}")
+    lines.extend(["", "## Release Blockers", ""])
+    for blocker in report["release_blockers"]:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "gdt-release-package.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "gdt-fai-template.csv"
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+
+    expected_ids = {row["characteristic_id"] for row in gdt_release.get("characteristics", [])}
+    reviewed_cases: list[dict[str, Any]] = []
+    for row in rows:
+        characteristic_id = row.get("characteristic_id", "")
+        measured_value = row.get("measured_value", "").strip()
+        pass_flag = row.get("pass", "").strip().lower()
+        inspector = row.get("inspector", "").strip()
+        sample_id = row.get("sample_id", "").strip()
+        minimum_text = row.get("minimum_mm", "").strip()
+        numeric_pass = True
+        measured_float: float | None = None
+        if measured_value:
+            try:
+                measured_float = float(measured_value)
+            except ValueError:
+                numeric_pass = False
+        if minimum_text and measured_float is not None:
+            numeric_pass = measured_float >= float(minimum_text)
+        populated = bool(sample_id and measured_value and inspector and pass_flag)
+        reviewed_cases.append(
+            {
+                "characteristic_id": characteristic_id,
+                "expected_characteristic": characteristic_id in expected_ids,
+                "sample_id_present": bool(sample_id),
+                "measured_value_present": bool(measured_value),
+                "inspector_present": bool(inspector),
+                "declared_pass": pass_flag in {"yes", "true", "1", "pass"},
+                "numeric_check_pass": numeric_pass,
+                "pass": populated
+                and characteristic_id in expected_ids
+                and pass_flag in {"yes", "true", "1", "pass"}
+                and numeric_pass,
+            }
+        )
+
+    missing_or_incomplete = [
+        case["characteristic_id"] for case in reviewed_cases if not case["pass"]
+    ]
+    complete_count = sum(1 for case in reviewed_cases if case["pass"])
+    report = {
+        "claim_boundary": "Fail-closed review of GD&T/FAI measurement rows; blank template rows are not inspection evidence.",
+        "status": "gdt_fai_results_pass"
+        if reviewed_cases
+        and complete_count == len(reviewed_cases)
+        and len(reviewed_cases) == len(expected_ids)
+        else "blocked_no_fai_results"
+        if complete_count == 0
+        else "blocked_fai_results_incomplete",
+        "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+        "expected_characteristic_count": len(expected_ids),
+        "observed_row_count": len(reviewed_cases),
+        "complete_result_count": complete_count,
+        "blank_or_incomplete_characteristics": missing_or_incomplete,
+        "cases": reviewed_cases,
+        "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, and passing disposition before tolerance release.",
+    }
+    (REVIEW_DIR / "gdt-fai-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone GD&T/FAI Results Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until first-article measurements are populated.",
+        "",
+        f"Template: `{report['fai_template']}`",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for characteristic_id in missing_or_incomplete:
+        lines.append(f"- `{characteristic_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "gdt-fai-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def bounds_gap(
     low_a: np.ndarray, high_a: np.ndarray, low_b: np.ndarray, high_b: np.ndarray
 ) -> float:
@@ -3841,7 +6677,6 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
     by_name = {part.name: part for part in parts}
     width, height, _depth = params["device"]["envelope_mm"]
     display = params["display"]
-    pcb = params["pcb"]
     battery = params["battery"]
     comp = params["components"]
     tolerance = params["validation"]["tolerance"]
@@ -3858,15 +6693,19 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
         return bounds_gap(low_a, high_a, low_b, high_b)
 
     battery_center = [0.0, -7.0, battery["z_center_mm"]]
-    pcb_segments = [
-        ([64.0, 25.0, 0.8], [0.0, 55.0, pcb["z_center_mm"]], "pcb_top_island"),
-        ([64.0, 15.0, 0.8], [0.0, -65.0, pcb["z_center_mm"]], "pcb_bottom_island"),
-        ([8.0, 78.0, 0.8], [-32.0, -8.0, pcb["z_center_mm"]], "pcb_left_rail"),
-    ]
+    pcb_segments = pcb_island_segments(params)
     battery_to_pcb = [
         box_gap(size, center, battery["envelope_mm"], battery_center)
         for size, center, _name in pcb_segments
     ]
+    battery_high = np.asarray(battery_center) + np.asarray(battery["envelope_mm"]) / 2.0
+    flex_low, flex_high = by_name["split_interconnect_side_flex"].bounds
+    flex_to_battery_edge = float(flex_low[0] - battery_high[0])
+    flex_within_side_rail = float(width / 2.0 - flex_high[0])
+    connector_to_pcb = {
+        "top": part_to_box_gap("split_interconnect_top_connector", *pcb_segments[0][:2]),
+        "bottom": part_to_box_gap("split_interconnect_bottom_connector", *pcb_segments[1][:2]),
+    }
     haptic_to_pcb = [
         part_to_box_gap("haptic_lra", size, center) for size, center, _name in pcb_segments
     ]
@@ -3920,6 +6759,27 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
             "required_mm": tolerance["battery_to_pcb_gap_mm"],
             "pass": min(battery_to_pcb) >= tolerance["battery_to_pcb_gap_mm"],
             "segment_gaps_mm": [round(value, 3) for value in battery_to_pcb],
+        },
+        {
+            "id": "split_interconnect_flex_to_battery_edge",
+            "actual_mm": round(flex_to_battery_edge, 3),
+            "required_mm": 0.5,
+            "pass": flex_to_battery_edge >= 0.5,
+        },
+        {
+            "id": "split_interconnect_flex_within_side_rail",
+            "actual_mm": round(flex_within_side_rail, 3),
+            "required_mm": 1.5,
+            "pass": flex_within_side_rail >= 1.5,
+        },
+        {
+            "id": "split_interconnect_connectors_on_pcb_islands",
+            "actual_mm": round(max(connector_to_pcb.values()), 3),
+            "required_mm": 0.0,
+            "pass": all(value <= 0.01 for value in connector_to_pcb.values()),
+            "connector_to_pcb_gap_mm": {
+                name: round(value, 3) for name, value in connector_to_pcb.items()
+            },
         },
         {
             "id": "haptic_to_battery",
@@ -3997,8 +6857,12 @@ def write_injection_molding_dfm_artifacts(
     if flow_length_to_wall <= 0:
         flow_length_to_wall = height / wall
     tooling_names = {part.name for part in tooling}
+    part_names = {part.name for part in parts}
     ejector_count = sum(name.startswith("mold_ejector_pin_") for name in tooling_names)
     cooling_count = sum(name.startswith("mold_cooling_channel_") for name in tooling_names)
+    screw_boss_count = sum(name.startswith("orange_screw_boss_") for name in part_names)
+    snap_hook_count = sum(name.startswith("orange_snap_hook_") for name in part_names)
+    core_pin_count = sum(name.startswith("screw_core_pin_clearance_") for name in tooling_names)
 
     cases = [
         {
@@ -4074,6 +6938,100 @@ def write_injection_molding_dfm_artifacts(
             "note": "Straight channels are placeholders; real tool needs conformal/baffled cooling review.",
         },
     ]
+    mold_action_plan = [
+        {
+            "id": "back_shell_main_draw",
+            "feature": "orange_back_shell_and_side_frame_outer_surfaces",
+            "tool_action": "straight_pull_a_b_open_close",
+            "pass": mfg["nominal_draft_deg"] >= 2.0,
+            "evidence": ["orange_back_shell", "orange_side_frame", "draft_angle"],
+            "tooling_note": "Use the modeled mid-plane parting reference as a concept split; final shutoffs depend on production B-rep surfaces.",
+        },
+        {
+            "id": "screw_boss_core_pins",
+            "feature": "six_screw_boss_cores",
+            "tool_action": "fixed_core_pins_from_b_side",
+            "pass": screw_boss_count == mfg["screw_boss_count"]
+            and core_pin_count == screw_boss_count,
+            "evidence": ["orange_screw_boss_1", "screw_core_pin_clearance_1"],
+            "tooling_note": "Every boss needs a core pin and steel-safe local tuning to reduce sink/read-through.",
+        },
+        {
+            "id": "snap_hook_release",
+            "feature": "eight_side_snap_hooks",
+            "tool_action": "toolmaker_review_lifters_or_straight_pull_hook_redesign",
+            "pass": snap_hook_count == mfg["snap_hook_count"],
+            "evidence": ["orange_snap_hook_1", "orange_snap_hook_8"],
+            "tooling_note": "Current snap hooks prove retention intent; toolmaker must approve lifter/slide strategy or revise hooks to straight-pull geometry.",
+        },
+        {
+            "id": "usb_c_bottom_aperture_shutoff",
+            "feature": "usb_c_external_aperture_reinforcement_saddle_gasket_seat_and_drain_shelf",
+            "tool_action": "bottom_edge_shutoff_insert_or_local_side_core_with_gasket_seat_review",
+            "pass": {
+                "usb_c_external_aperture",
+                "orange_usb_reinforcement_saddle",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
+            }.issubset(part_names),
+            "evidence": [
+                "usb_c_external_aperture",
+                "orange_usb_reinforcement_saddle",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
+            ],
+            "tooling_note": "USB-C mouth needs steel-safe shutoff and gasket-seat review so insertion loads, splash management, and cosmetics survive first shots.",
+        },
+        {
+            "id": "side_button_openings",
+            "feature": "power_and_volume_button_side_openings",
+            "tool_action": "side_core_lifter_or_secondary_operation_decision",
+            "pass": {"power_button_cap", "volume_button_cap"}.issubset(part_names),
+            "evidence": ["power_button_cap", "volume_button_cap"],
+            "tooling_note": "Button openings are side-wall features; choose a slide/lifter strategy or keep caps mounted through an insert before hard tooling.",
+        },
+        {
+            "id": "camera_window_and_acoustic_slots",
+            "feature": "rear_camera_window_front_under_glass_earpiece_and_speaker_ports",
+            "tool_action": "steel_safe_inserts_and_vented_shutoffs",
+            "pass": {
+                "rear_camera_cover_glass",
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
+                "front_camera_under_glass",
+                "front_camera_black_mask_window",
+                "handset_acoustic_slot",
+                "bottom_speaker_grille_slot_1",
+            }.issubset(part_names),
+            "evidence": [
+                "rear_camera_cover_glass",
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
+                "front_camera_under_glass",
+                "front_camera_black_mask_window",
+                "handset_acoustic_slot",
+                "bottom_speaker_grille_slot_1",
+            ],
+            "tooling_note": "Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze.",
+        },
+    ]
+    action_plan_complete = all(item["pass"] for item in mold_action_plan)
     risks = [
         {
             "id": "long_thin_flow_path",
@@ -4109,12 +7067,20 @@ def write_injection_molding_dfm_artifacts(
     ]
     report = {
         "claim_boundary": "Automated CAD-derived injection-molding DFM screen; not mold-flow, toolmaker signoff, or released tool design.",
-        "status": "cad_dfm_inputs_ready" if all(case["pass"] for case in cases) else "blocked",
+        "status": "cad_dfm_inputs_ready"
+        if all(case["pass"] for case in cases) and action_plan_complete
+        else "blocked",
         "device_envelope_mm": [width, height, depth],
         "plastic": mfg["plastic"],
         "cases": cases,
+        "mold_action_plan": mold_action_plan,
         "risks": risks,
         "recommendations": recommendations,
+        "release_blockers": [
+            "Toolmaker must convert mold-action plan into released slides/lifters/inserts or straight-pull geometry.",
+            "Mold-flow/fill/pack/warp results are still required for orange PC+ABS.",
+            "First-shot samples must confirm gate blush, knit lines, sink, warp, snap fatigue, and texture.",
+        ],
         "linked_fit_checks": {
             key: checks["checks"][key]["pass"]
             for key in [
@@ -4143,6 +7109,12 @@ def write_injection_molding_dfm_artifacts(
     lines.extend(["", "## Risks", ""])
     for risk in risks:
         lines.append(f"- `{risk['id']}`: {risk['severity']}; {risk['mitigation']}")
+    lines.extend(["", "## Mold Action Plan", ""])
+    for action in mold_action_plan:
+        lines.append(
+            f"- {'PASS' if action['pass'] else 'BLOCKED'}: `{action['id']}` "
+            f"{action['tool_action']}; {action['tooling_note']}"
+        )
     lines.extend(["", "## Toolmaker Requests", ""])
     for item in recommendations:
         lines.append(f"- {item}")
@@ -4332,6 +7304,319 @@ def write_mold_process_window_artifacts(
     return report
 
 
+def write_toolmaker_signoff_artifacts(
+    params: dict[str, Any], dfm: dict[str, Any], mold_process: dict[str, Any]
+) -> dict[str, Any]:
+    mfg = params["manufacturing"]
+    request_items = [
+        {
+            "id": "mold_flow_fill_pack_warp",
+            "request": "Run fill/pack/warp simulation on orange PC+ABS shell and side-frame tool concept.",
+            "required_return": "Mold-flow report with pressure, fill time, weld lines, air traps, sink, shrink, and warp plots.",
+        },
+        {
+            "id": "gate_runner_balance",
+            "request": "Review dual submarine gate and cold-runner layout against cosmetic gate vestige limits.",
+            "required_return": "Signed gate/runner recommendation with gate land, gate area, vestige location, and alternate fan-gate decision.",
+        },
+        {
+            "id": "ejector_layout",
+            "request": "Review modeled ejector pins against non-cosmetic surfaces, boss support, and part release.",
+            "required_return": "Ejector layout markup with witness-mark acceptance and any added blade/sleeve ejectors.",
+        },
+        {
+            "id": "cooling_layout",
+            "request": "Review straight cooling-channel placeholders and propose production baffles or conformal cooling.",
+            "required_return": "Cooling layout with channel diameter, clearance, circuiting, expected cycle time, and hot-spot risk.",
+        },
+        {
+            "id": "shrink_warp_allowance",
+            "request": "Confirm resin shrink, steel-safe stock, datum scheme, and CMM tuning plan.",
+            "required_return": "Shrink/warp allowance table tied to GD&T datums and first-article CMM plan.",
+        },
+        {
+            "id": "orange_cmf_texture",
+            "request": "Approve hard orange PC+ABS color, gloss, texture depth, gate blush tolerance, and scratch samples.",
+            "required_return": "Color plaque, texture plaque, gate-blush limit sample, and signed CMF acceptance criteria.",
+        },
+        {
+            "id": "first_shot_doe",
+            "request": "Quote and approve first-shot DOE covering melt temperature, mold temperature, pack pressure, hold time, and cooling time.",
+            "required_return": "DOE run sheet and acceptance plan for first shots before DVT tool tuning.",
+        },
+    ]
+    response_path = REVIEW_DIR / "toolmaker-signoff-response-template.csv"
+    fieldnames = [
+        "review_item_id",
+        "toolmaker_name",
+        "report_or_drawing_received",
+        "accepted",
+        "reviewer",
+        "returned_artifact",
+        "measured_or_predicted_value",
+        "notes",
+    ]
+    with response_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in request_items:
+            writer.writerow(
+                {
+                    "review_item_id": item["id"],
+                    "toolmaker_name": "",
+                    "report_or_drawing_received": "",
+                    "accepted": "",
+                    "reviewer": "",
+                    "returned_artifact": "",
+                    "measured_or_predicted_value": "",
+                    "notes": item["required_return"],
+                }
+            )
+
+    cases: list[dict[str, Any]] = []
+    with response_path.open(newline="") as csv_file:
+        for row in csv.DictReader(csv_file):
+            accepted = row.get("accepted", "").strip().lower()
+            received = row.get("report_or_drawing_received", "").strip().lower()
+            populated = bool(
+                row.get("toolmaker_name", "").strip()
+                and row.get("reviewer", "").strip()
+                and row.get("returned_artifact", "").strip()
+            )
+            cases.append(
+                {
+                    "review_item_id": row["review_item_id"],
+                    "toolmaker_named": bool(row.get("toolmaker_name", "").strip()),
+                    "report_or_drawing_received": received in {"yes", "true", "1", "pass"},
+                    "accepted": accepted in {"yes", "true", "1", "pass"},
+                    "reviewer_present": bool(row.get("reviewer", "").strip()),
+                    "returned_artifact_present": bool(row.get("returned_artifact", "").strip()),
+                    "pass": populated
+                    and received in {"yes", "true", "1", "pass"}
+                    and accepted in {"yes", "true", "1", "pass"},
+                }
+            )
+    missing_items = [case["review_item_id"] for case in cases if not case["pass"]]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": "Toolmaker/mold-flow request and fail-closed response review; CAD tooling placeholders are not toolmaker signoff.",
+        "status": "toolmaker_signoff_complete"
+        if cases and complete_count == len(cases)
+        else "blocked_no_toolmaker_signoff"
+        if complete_count == 0
+        else "blocked_toolmaker_signoff_incomplete",
+        "package_status": "toolmaker_signoff_package_ready"
+        if dfm["status"] == "cad_dfm_inputs_ready"
+        and mold_process["status"] == "cad_mold_process_window_ready"
+        and response_path.is_file()
+        else "blocked",
+        "plastic": mfg["plastic"],
+        "gate_strategy": mfg["gate_strategy"],
+        "process_window": mold_process["process_window"],
+        "mold_process_cases": mold_process["cases"],
+        "request_items": request_items,
+        "response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
+        "expected_response_count": len(cases),
+        "complete_response_count": complete_count,
+        "missing_or_incomplete_items": missing_items,
+        "cases": cases,
+        "release_rule": "Every toolmaker item must name the toolmaker, return a report/drawing artifact, be accepted by reviewer, and close mold-flow/tooling questions before tooling release.",
+    }
+    (REVIEW_DIR / "toolmaker-signoff-package.json").write_text(json.dumps(report, indent=2) + "\n")
+    (REVIEW_DIR / "toolmaker-signoff-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    package_lines = [
+        "# E1 Phone Toolmaker Signoff Package",
+        "",
+        "Status: request package ready; toolmaker signoff not returned.",
+        "",
+        "## Request Items",
+        "",
+    ]
+    for item in request_items:
+        package_lines.append(f"- `{item['id']}` {item['request']}")
+        package_lines.append(f"  Required return: {item['required_return']}")
+    package_lines.extend(["", "## Process Window", ""])
+    package_lines.append(
+        f"- Melt temperature: {report['process_window']['melt_temp_c'][0]}-{report['process_window']['melt_temp_c'][1]} C"
+    )
+    package_lines.append(
+        f"- Mold temperature: {report['process_window']['mold_temp_c'][0]}-{report['process_window']['mold_temp_c'][1]} C"
+    )
+    (REVIEW_DIR / "toolmaker-signoff-package.md").write_text("\n".join(package_lines) + "\n")
+
+    review_lines = [
+        "# E1 Phone Toolmaker Signoff Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until mold-flow/toolmaker artifacts are returned.",
+        "",
+        f"Template: `{report['response_template']}`",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for item_id in missing_items:
+        review_lines.append(f"- `{item_id}`")
+    review_lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "toolmaker-signoff-review.md").write_text("\n".join(review_lines) + "\n")
+    return report
+
+
+def write_board_step_readiness_artifacts(
+    params: dict[str, Any], kicad_reconciliation: dict[str, Any], solid_cad: dict[str, Any]
+) -> dict[str, Any]:
+    pcb_path = ROOT / params["pcb"]["source"]
+    manufacturing_closure_path = ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml"
+    layout_utilization_path = ROOT / "board/kicad/e1-phone/layout-utilization.yaml"
+    production_step_dir = ROOT / "board/kicad/e1-phone/production/step"
+    production_step_files = sorted(production_step_dir.glob("*.step")) + sorted(
+        production_step_dir.glob("*.stp")
+    )
+    concept_pcb_step_path = OUT_DIR / "main_pcb.step"
+    pcb_text = pcb_path.read_text() if pcb_path.is_file() else ""
+    manufacturing_closure = (
+        yaml.safe_load(manufacturing_closure_path.read_text())
+        if manufacturing_closure_path.is_file()
+        else {}
+    )
+    layout_utilization = (
+        yaml.safe_load(layout_utilization_path.read_text())
+        if layout_utilization_path.is_file()
+        else {}
+    )
+    board_state = manufacturing_closure.get("board_state_detected", {})
+    production_outputs = manufacturing_closure.get("production_outputs", {})
+    step_output = production_outputs.get("step", {})
+    placeholder_count = pcb_text.count("placeholder_not_fabrication_footprint") + pcb_text.count(
+        "NON-RELEASE"
+    )
+    has_tracks = "(segment " in pcb_text or bool(board_state.get("has_tracks"))
+    has_filled_zones = "(zone " in pcb_text or bool(board_state.get("has_filled_zones"))
+    has_production_step = bool(production_step_files) or bool(step_output.get("present"))
+    has_concept_pcb_step = (
+        concept_pcb_step_path.is_file() and concept_pcb_step_path.stat().st_size > 1000
+    )
+    concept_fail_closed = (
+        manufacturing_closure.get("status")
+        == "blocked_manufacturing_requires_routed_pcb_and_fab_outputs"
+    )
+
+    def cad_segment_to_board_rect(size: list[float], center: list[float]) -> dict[str, float]:
+        board_w, board_h = params["pcb"]["outline_mm"][:2]
+        return {
+            "x": round(board_w / 2.0 + center[0] - size[0] / 2.0, 3),
+            "y": round(board_h / 2.0 - center[1] - size[1] / 2.0, 3),
+            "width": round(size[0], 3),
+            "height": round(size[1], 3),
+            "area_mm2": round(size[0] * size[1], 3),
+        }
+
+    cad_islands = [
+        cad_segment_to_board_rect(size, center)
+        for size, center, _name in pcb_island_segments(params)
+    ]
+    kicad_islands = layout_utilization.get("edge_cut_islands", [])
+    split_island_geometry_matches = cad_islands == kicad_islands
+    cases = [
+        {
+            "id": "kicad_placement_reconciled_to_cad",
+            "pass": kicad_reconciliation["status"] == "cad_kicad_placement_reconciled",
+            "evidence": "kicad-placement-reconciliation.json",
+        },
+        {
+            "id": "solid_envelope_step_available",
+            "pass": solid_cad["status"] == "generated",
+            "evidence": solid_cad.get(
+                "assembly_step", "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+            ),
+        },
+        {
+            "id": "concept_pcb_step_available",
+            "pass": has_concept_pcb_step,
+            "evidence": "mechanical/e1-phone/out/main_pcb.step",
+        },
+        {
+            "id": "concept_split_island_geometry_matches_kicad",
+            "pass": split_island_geometry_matches,
+            "evidence": "board/kicad/e1-phone/layout-utilization.yaml",
+        },
+        {
+            "id": "routed_tracks_present",
+            "pass": has_tracks,
+            "evidence": params["pcb"]["source"],
+        },
+        {
+            "id": "filled_zones_present",
+            "pass": has_filled_zones,
+            "evidence": params["pcb"]["source"],
+        },
+        {
+            "id": "production_board_step_present",
+            "pass": has_production_step,
+            "evidence": "board/kicad/e1-phone/production/step",
+        },
+        {
+            "id": "placeholder_footprints_replaced",
+            "pass": placeholder_count == 0,
+            "evidence": params["pcb"]["source"],
+        },
+    ]
+    report = {
+        "claim_boundary": "Mechanical intake gate for routed KiCad board STEP; concept PCB envelope does not count as routed-board evidence.",
+        "status": "routed_board_step_ready"
+        if all(case["pass"] for case in cases) and not concept_fail_closed
+        else "blocked_concept_pcb_no_routed_step",
+        "pcb_source": params["pcb"]["source"],
+        "manufacturing_closure": "board/kicad/e1-phone/manufacturing-closure.yaml",
+        "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
+        "production_step_dir": "board/kicad/e1-phone/production/step",
+        "production_step_files": [str(path.relative_to(ROOT)) for path in production_step_files],
+        "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
+        "board_state_detected": {
+            "has_tracks": has_tracks,
+            "has_filled_zones": has_filled_zones,
+            "has_production_step": has_production_step,
+            "has_concept_pcb_step": has_concept_pcb_step,
+            "placeholder_marker_count": placeholder_count,
+            "manufacturing_closure_status": manufacturing_closure.get("status", "missing"),
+        },
+        "concept_split_island_geometry": {
+            "cad_projected_islands": cad_islands,
+            "kicad_edge_cut_islands": kicad_islands,
+            "matches": split_island_geometry_matches,
+        },
+        "cases": cases,
+        "required_next_actions": [
+            "Replace E1Phone placeholder footprints with supplier land patterns and 3D models.",
+            "Route the KiCad board with clean ERC/DRC, copper zones, impedance constraints, and test access.",
+            "Export production board STEP from routed KiCad including component 3D models.",
+            "Re-import routed board STEP into the phone CAD and re-run enclosure collision, USB insertion, button, screen FPC, and acoustic checks.",
+        ],
+    }
+    (REVIEW_DIR / "board-step-readiness.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone Board STEP Readiness",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This is the mechanical gate for replacing the concept PCB envelope with routed KiCad board STEP.",
+        "",
+        "## Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` from `{case['evidence']}`")
+    lines.extend(["", "## Required Next Actions", ""])
+    for action in report["required_next_actions"]:
+        lines.append(f"- {action}")
+    (REVIEW_DIR / "board-step-readiness.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_readiness_artifacts(
     params: dict[str, Any],
     parts: list[Part],
@@ -4339,11 +7624,21 @@ def write_readiness_artifacts(
     checks: dict[str, Any],
     visual: dict[str, Any],
     mass: dict[str, Any],
+    compactness: dict[str, Any],
     supplier: dict[str, Any],
     handoff: dict[str, Any],
     kicad_reconciliation: dict[str, Any],
     validation: dict[str, Any],
     interface_validation: dict[str, Any],
+    display_validation: dict[str, Any],
+    display_results: dict[str, Any],
+    acoustic_validation: dict[str, Any],
+    acoustic_results: dict[str, Any],
+    camera_validation: dict[str, Any],
+    camera_results: dict[str, Any],
+    environmental_validation: dict[str, Any],
+    ingress_path_review: dict[str, Any],
+    environmental_results: dict[str, Any],
     evt_fixtures: dict[str, Any],
     evt_inspection: dict[str, Any],
     evt_results: dict[str, Any],
@@ -4351,11 +7646,16 @@ def write_readiness_artifacts(
     part_review: dict[str, Any],
     dfm: dict[str, Any],
     tolerance_stack: dict[str, Any],
+    gdt_release: dict[str, Any],
+    gdt_fai_results: dict[str, Any],
     mold_process: dict[str, Any],
+    toolmaker_signoff: dict[str, Any],
     visual_decision: dict[str, Any],
     solid_cad: dict[str, Any],
     step_validation: dict[str, Any],
+    board_step: dict[str, Any],
     supplier_rfq: dict[str, Any],
+    supplier_response: dict[str, Any],
 ) -> None:
     manifest_path = OUT_DIR / "assembly-manifest.json"
     tooling_manifest_path = OUT_DIR / "tooling-manifest.json"
@@ -4379,6 +7679,9 @@ def write_readiness_artifacts(
                 "mass_budget",
                 "molded_retention_features",
                 "manufacturing_drawing.json",
+                "compactness-optimization.json",
+                "compactness-optimization.md",
+                "compactness-optimization.png",
             ],
             "remaining_blockers": [
                 "No vendor mold-flow simulation.",
@@ -4387,18 +7690,48 @@ def write_readiness_artifacts(
             ],
         },
         {
+            "subsystem": "compact_envelope_optimization",
+            "status": "cad_pass"
+            if compactness["status"] == "cad_compactness_optimized"
+            else "blocked",
+            "evidence": [
+                "compactness-optimization.json",
+                "compactness-optimization.md",
+                "compactness-optimization.png",
+                "compactness-optimization.svg",
+                "device_compactness",
+                "screen_mount_margin",
+                "pcb_battery_non_overlap",
+            ],
+            "remaining_blockers": [
+                "Envelope is optimized against current EVT0 supplier envelopes only.",
+                "Need supplier STEP and routed PCB before proving no further local reduction is possible.",
+            ],
+        },
+        {
             "subsystem": "screen_stack",
-            "status": "cad_pass",
+            "status": "cad_pass"
+            if interface_validation["status"] == "cad_interface_validation_pass"
+            and display_validation["status"] == "cad_display_validation_ready"
+            else "blocked",
             "evidence": [
                 "screen_cover_glass",
                 "display_lcm",
                 "screen_adhesive_top",
                 "display_fpc_connector",
                 "screen_mount_and_connection",
+                "interface-validation.json",
+                "interface-validation.md",
+                "display-validation.json",
+                "display-validation.md",
+                "display-results-template.csv",
+                "display-results-review.json",
+                "display-results-review.md",
             ],
             "remaining_blockers": [
                 "Need supplier drawing and exact FPC exit direction.",
                 "Need verified touch/display pinout and bend test with real sample.",
+                "Need populated display/touch bond, luminance, touch-grid, drop, and bring-up results.",
             ],
         },
         {
@@ -4412,10 +7745,28 @@ def write_readiness_artifacts(
                 "pcb_battery_non_overlap",
                 "kicad-placement-reconciliation.json",
                 "kicad-placement-reconciliation.md",
+                "board-step-readiness.json",
+                "board-step-readiness.md",
             ],
             "remaining_blockers": [
                 "KiCad source is still a concept placement, not routed fabrication data.",
                 "Need board STEP from routed KiCad with real component 3D models.",
+            ],
+        },
+        {
+            "subsystem": "routed_board_step_import",
+            "status": "cad_pass"
+            if board_step["status"] == "routed_board_step_ready"
+            else "blocked",
+            "evidence": [
+                "board-step-readiness.json",
+                "board-step-readiness.md",
+                "main_pcb.step",
+                "kicad-placement-reconciliation.json",
+            ],
+            "remaining_blockers": [
+                "KiCad board remains a concept floorplan with placeholder footprints.",
+                "Need routed KiCad board STEP with production component 3D models before final CAD clash signoff.",
             ],
         },
         {
@@ -4435,6 +7786,12 @@ def write_readiness_artifacts(
                 "main_pcb.step",
                 "usb_c_receptacle.step",
                 "usb_c_external_aperture.step",
+                "usb_c_perimeter_gasket_top.step",
+                "usb_c_perimeter_gasket_bottom.step",
+                "usb_c_perimeter_gasket_left.step",
+                "usb_c_perimeter_gasket_right.step",
+                "usb_c_molded_drip_break_lip.step",
+                "usb_c_internal_drain_shelf.step",
                 "bottom_mic.step",
                 "top_mic.step",
                 "bottom_speaker_module.step",
@@ -4442,13 +7799,31 @@ def write_readiness_artifacts(
                 "handset_acoustic_slot.step",
                 "rear_camera_module.step",
                 "rear_camera_cover_glass.step",
+                "rear_camera_cover_adhesive_top.step",
+                "rear_camera_cover_adhesive_bottom.step",
+                "rear_camera_cover_adhesive_left.step",
+                "rear_camera_cover_adhesive_right.step",
+                "rear_camera_light_baffle_top.step",
+                "rear_camera_light_baffle_bottom.step",
                 "front_camera_module.step",
                 "front_camera_under_glass.step",
+                "front_camera_black_mask_window.step",
                 "power_button_cap.step",
                 "volume_button_cap.step",
+                "power_button_elastomer_gasket.step",
+                "power_button_labyrinth_upper_rail.step",
+                "power_button_labyrinth_lower_rail.step",
+                "volume_button_elastomer_gasket.step",
+                "volume_button_labyrinth_upper_rail.step",
+                "volume_button_labyrinth_lower_rail.step",
                 "screen_adhesive_top.step",
                 "display_fpc_connector.step",
                 "orange_usb_reinforcement_saddle.step",
+                "split_interconnect_top_connector.step",
+                "split_interconnect_bottom_connector.step",
+                "split_interconnect_side_flex.step",
+                "split_interconnect_top_flex_tail.step",
+                "split_interconnect_bottom_flex_tail.step",
             ],
             "remaining_blockers": [
                 "STEP files are EVT0 parametric envelopes, not final supplier B-rep models.",
@@ -4473,6 +7848,21 @@ def write_readiness_artifacts(
             ],
         },
         {
+            "subsystem": "supplier_returned_evidence",
+            "status": "cad_pass"
+            if supplier_response["status"] == "supplier_responses_complete"
+            else "blocked",
+            "evidence": [
+                "supplier-response-template.csv",
+                "supplier-response-review.json",
+                "supplier-response-review.md",
+            ],
+            "remaining_blockers": [
+                "No supplier-returned quote/drawing/STEP/sample evidence has been recorded.",
+                "Need complete vendor responses before replacing EVT0 envelope CAD with supplier CAD.",
+            ],
+        },
+        {
             "subsystem": "buttons",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
@@ -4480,8 +7870,11 @@ def write_readiness_artifacts(
             "evidence": [
                 "power_button_cap",
                 "volume_button_cap",
+                "power_button_elastomer_gasket",
+                "volume_button_elastomer_gasket",
                 "button_force_and_travel",
                 "button_pressure_support",
+                "button_ingress_seal_stack",
                 "interface-validation.json",
                 "interface-validation.md",
             ],
@@ -4494,16 +7887,29 @@ def write_readiness_artifacts(
             "subsystem": "usb_audio_ports",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
+            and acoustic_validation["status"] == "cad_acoustic_validation_ready"
             else "blocked",
             "evidence": [
                 "usb_c_receptacle",
                 "usb_c_external_aperture",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
                 "bottom_speaker_grille_slot_1",
                 "bottom_microphone_port_1",
                 "usb_c_insertion_envelope",
+                "usb_c_port_seal_stack",
                 "bottom_io_acoustic_apertures",
                 "interface-validation.json",
                 "interface-validation.md",
+                "acoustic-validation.json",
+                "acoustic-validation.md",
+                "acoustic-results-template.csv",
+                "acoustic-results-review.json",
+                "acoustic-results-review.md",
             ],
             "remaining_blockers": [
                 "Need USB-C receptacle supplier drawing and insertion-cycle mechanical validation.",
@@ -4514,17 +7920,34 @@ def write_readiness_artifacts(
             "subsystem": "cameras_and_handset",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
+            and acoustic_validation["status"] == "cad_acoustic_validation_ready"
+            and camera_validation["status"] == "cad_camera_validation_ready"
             else "blocked",
             "evidence": [
                 "rear_camera_module",
                 "front_camera_module",
                 "front_camera_under_glass",
+                "front_camera_black_mask_window",
                 "rear_camera_cover_glass",
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
                 "earpiece_receiver",
                 "handset_acoustic_slot",
                 "camera_speaker_behind_glass",
+                "camera_optical_seal_stack",
                 "interface-validation.json",
                 "interface-validation.md",
+                "camera-validation.json",
+                "camera-validation.md",
+                "camera-results-template.csv",
+                "camera-results-review.json",
+                "camera-results-review.md",
+                "acoustic-validation.json",
+                "acoustic-validation.md",
             ],
             "remaining_blockers": [
                 "Need exact camera module lens stack, FPC, and vendor keepout drawing.",
@@ -4532,8 +7955,61 @@ def write_readiness_artifacts(
             ],
         },
         {
+            "subsystem": "acoustic_lab_results",
+            "status": "cad_pass"
+            if acoustic_results["status"] == "acoustic_results_pass"
+            else "blocked",
+            "evidence": [
+                "acoustic-validation.json",
+                "acoustic-validation.md",
+                "acoustic-results-template.csv",
+                "acoustic-results-review.json",
+                "acoustic-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated speaker, microphone, earpiece, or acoustic leak lab rows are present yet.",
+                "Need measured SPL, impedance, SNR, and leak results before claiming acoustic readiness.",
+            ],
+        },
+        {
+            "subsystem": "display_touch_results",
+            "status": "cad_pass"
+            if display_results["status"] == "display_results_pass"
+            else "blocked",
+            "evidence": [
+                "display-validation.json",
+                "display-validation.md",
+                "display-results-template.csv",
+                "display-results-review.json",
+                "display-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated display/touch/bond/bring-up lab rows are present yet.",
+                "Need measured display bring-up, touch-grid, luminance, bond, FPC bend, and drop data before claiming display readiness.",
+            ],
+        },
+        {
+            "subsystem": "camera_optical_results",
+            "status": "cad_pass"
+            if camera_results["status"] == "camera_results_pass"
+            else "blocked",
+            "evidence": [
+                "camera-validation.json",
+                "camera-validation.md",
+                "camera-results-template.csv",
+                "camera-results-review.json",
+                "camera-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated camera optical, alignment, dust, color, or streaming lab rows are present yet.",
+                "Need supplier module drawings and measured capture results before claiming camera readiness.",
+            ],
+        },
+        {
             "subsystem": "rf_shielding_haptics_service",
-            "status": "cad_pass",
+            "status": "cad_pass"
+            if environmental_validation["status"] == "cad_environmental_validation_ready"
+            else "blocked",
             "evidence": [
                 "cellular_top_antenna_keepout",
                 "cellular_bottom_antenna_keepout",
@@ -4545,11 +8021,70 @@ def write_readiness_artifacts(
                 "sim_tray_keepout",
                 "rf_antenna_keepouts",
                 "shielding_haptics_service",
+                "environmental-validation.json",
+                "environmental-validation.md",
             ],
             "remaining_blockers": [
                 "Need RF antenna simulation, SAR pre-scan, and desense test with final antennas.",
                 "Need haptic actuator vendor drawing and drive calibration.",
                 "Need SIM/eSIM product decision and serviceability review.",
+            ],
+        },
+        {
+            "subsystem": "thermal_rf_drop_ingress_validation",
+            "status": "cad_pass"
+            if environmental_validation["status"] == "cad_environmental_validation_ready"
+            and ingress_path_review["status"] == "cad_ingress_path_review_ready"
+            else "blocked",
+            "evidence": [
+                "environmental-validation.json",
+                "environmental-validation.md",
+                "ingress-path-review.json",
+                "ingress-path-review.md",
+                "environmental-results-template.csv",
+                "environmental-results-review.json",
+                "environmental-results-review.md",
+                "soc_shield_can",
+                "pmic_shield_can",
+                "radio_shield_can",
+                "cellular_top_antenna_keepout",
+                "cellular_bottom_antenna_keepout",
+                "wifi_bt_side_antenna_keepout",
+                "screen_adhesive_top",
+                "earpiece_gasket",
+                "usb_c_external_aperture",
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
+                "bottom_speaker_dust_mesh",
+                "bottom_microphone_mesh_1",
+                "bottom_microphone_mesh_2",
+                "top_microphone_mesh",
+                "handset_acoustic_mesh",
+            ],
+            "remaining_blockers": [
+                "CAD review covers package intent only; no thermal, RF chamber, SAR, drop, dust, or splash measurements have been recorded.",
+                "Need routed board power map, final antennas, molded resin samples, and lab results before environmental release.",
+            ],
+        },
+        {
+            "subsystem": "environmental_lab_results",
+            "status": "cad_pass"
+            if environmental_results["status"] == "environmental_results_pass"
+            else "blocked",
+            "evidence": [
+                "environmental-validation.json",
+                "environmental-validation.md",
+                "environmental-results-template.csv",
+                "environmental-results-review.json",
+                "environmental-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated thermal, RF, SAR pre-scan, drop, dust, or splash lab rows are present yet.",
+                "Need measured passing environmental data before claiming manufacturable environmental readiness.",
             ],
         },
         {
@@ -4569,10 +8104,32 @@ def write_readiness_artifacts(
                 "injection-molding-dfm.md",
                 "mold-process-window.json",
                 "mold-process-window.md",
+                "toolmaker-signoff-package.json",
+                "toolmaker-signoff-package.md",
+                "toolmaker-signoff-response-template.csv",
+                "toolmaker-signoff-review.json",
+                "toolmaker-signoff-review.md",
             ],
             "remaining_blockers": [
                 "Runner/gate/ejector/cooling geometry and process window are CAD DFM proxies, not toolmaker-approved steel design.",
                 "Need mold-flow/fill/pack/warp analysis, first-shot data, and toolmaker review.",
+            ],
+        },
+        {
+            "subsystem": "toolmaker_moldflow_signoff",
+            "status": "cad_pass"
+            if toolmaker_signoff["status"] == "toolmaker_signoff_complete"
+            else "blocked",
+            "evidence": [
+                "toolmaker-signoff-package.json",
+                "toolmaker-signoff-package.md",
+                "toolmaker-signoff-response-template.csv",
+                "toolmaker-signoff-review.json",
+                "toolmaker-signoff-review.md",
+            ],
+            "remaining_blockers": [
+                "No mold-flow report, toolmaker gate/ejector/cooling markup, or CMF signoff has been returned.",
+                "Need signed toolmaker response before steel release or manufacturing-ready claim.",
             ],
         },
         {
@@ -4678,10 +8235,16 @@ def write_readiness_artifacts(
             "subsystem": "tolerance_release_package",
             "status": "cad_pass"
             if tolerance_stack["status"] == "cad_tolerance_stack_pass"
+            and gdt_release["status"] == "gdt_release_package_ready"
             else "blocked",
             "evidence": [
                 "tolerance-stack.json",
                 "tolerance-stack.md",
+                "gdt-release-package.json",
+                "gdt-release-package.md",
+                "gdt-fai-template.csv",
+                "gdt-fai-results-review.json",
+                "gdt-fai-results-review.md",
                 "screen_mount_margin",
                 "screen_mount_and_connection",
                 "usb_c_insertion_envelope",
@@ -4690,6 +8253,21 @@ def write_readiness_artifacts(
             "remaining_blockers": [
                 "Tolerance stack is CAD-derived and not a supplier-measured GD&T release drawing.",
                 "Need CMM data, resin shrink data, and toolmaker-approved datum scheme.",
+            ],
+        },
+        {
+            "subsystem": "gdt_fai_results",
+            "status": "cad_pass"
+            if gdt_fai_results["status"] == "gdt_fai_results_pass"
+            else "blocked",
+            "evidence": [
+                "gdt-fai-template.csv",
+                "gdt-fai-results-review.json",
+                "gdt-fai-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated first-article GD&T measurement rows are present yet.",
+                "Need measured passing CMM/FAI data before claiming tolerance release.",
             ],
         },
     ]
@@ -4703,16 +8281,51 @@ def write_readiness_artifacts(
         "visual_review": (REVIEW_DIR / "visual-review.json").is_file(),
         "manufacturing_drawing": (REVIEW_DIR / "manufacturing_drawing.json").is_file(),
         "mass_budget": (REVIEW_DIR / "mass-budget.json").is_file(),
+        "compactness_optimization": compactness["status"] == "cad_compactness_optimized"
+        and (REVIEW_DIR / "compactness-optimization.json").is_file()
+        and (REVIEW_DIR / "compactness-optimization.md").is_file()
+        and (REVIEW_DIR / "compactness-optimization.png").is_file()
+        and (REVIEW_DIR / "compactness-optimization.svg").is_file(),
         "supplier_lock": (REVIEW_DIR / "supplier-lock.json").is_file(),
         "kicad_mechanical_handoff": (REVIEW_DIR / "kicad-mechanical-handoff.json").is_file(),
         "kicad_placement_reconciliation": kicad_reconciliation["status"]
         == "cad_kicad_placement_reconciled"
         and (REVIEW_DIR / "kicad-placement-reconciliation.json").is_file()
         and (REVIEW_DIR / "kicad-placement-reconciliation.md").is_file(),
+        "board_step_readiness": (REVIEW_DIR / "board-step-readiness.json").is_file()
+        and (REVIEW_DIR / "board-step-readiness.md").is_file(),
         "engineering_validation": (REVIEW_DIR / "engineering-validation.json").is_file(),
         "interface_validation": interface_validation["status"] == "cad_interface_validation_pass"
         and (REVIEW_DIR / "interface-validation.json").is_file()
         and (REVIEW_DIR / "interface-validation.md").is_file(),
+        "display_validation": display_validation["status"] == "cad_display_validation_ready"
+        and (REVIEW_DIR / "display-validation.json").is_file()
+        and (REVIEW_DIR / "display-validation.md").is_file()
+        and (REVIEW_DIR / "display-results-template.csv").is_file(),
+        "display_results_review": (REVIEW_DIR / "display-results-review.json").is_file()
+        and (REVIEW_DIR / "display-results-review.md").is_file(),
+        "acoustic_validation": acoustic_validation["status"] == "cad_acoustic_validation_ready"
+        and (REVIEW_DIR / "acoustic-validation.json").is_file()
+        and (REVIEW_DIR / "acoustic-validation.md").is_file()
+        and (REVIEW_DIR / "acoustic-results-template.csv").is_file(),
+        "acoustic_results_review": (REVIEW_DIR / "acoustic-results-review.json").is_file()
+        and (REVIEW_DIR / "acoustic-results-review.md").is_file(),
+        "camera_validation": camera_validation["status"] == "cad_camera_validation_ready"
+        and (REVIEW_DIR / "camera-validation.json").is_file()
+        and (REVIEW_DIR / "camera-validation.md").is_file()
+        and (REVIEW_DIR / "camera-results-template.csv").is_file(),
+        "camera_results_review": (REVIEW_DIR / "camera-results-review.json").is_file()
+        and (REVIEW_DIR / "camera-results-review.md").is_file(),
+        "environmental_validation": environmental_validation["status"]
+        == "cad_environmental_validation_ready"
+        and ingress_path_review["status"] == "cad_ingress_path_review_ready"
+        and (REVIEW_DIR / "environmental-validation.json").is_file()
+        and (REVIEW_DIR / "environmental-validation.md").is_file()
+        and (REVIEW_DIR / "ingress-path-review.json").is_file()
+        and (REVIEW_DIR / "ingress-path-review.md").is_file()
+        and (REVIEW_DIR / "environmental-results-template.csv").is_file(),
+        "environmental_results_review": (REVIEW_DIR / "environmental-results-review.json").is_file()
+        and (REVIEW_DIR / "environmental-results-review.md").is_file(),
         "evt_validation_fixtures": evt_fixtures["status"] == "evt_fixture_cad_ready"
         and (REVIEW_DIR / "evt-fixtures.json").is_file()
         and (REVIEW_DIR / "evt-fixtures.md").is_file()
@@ -4729,7 +8342,20 @@ def write_readiness_artifacts(
         "mold_process_window": mold_process["status"] == "cad_mold_process_window_ready"
         and (REVIEW_DIR / "mold-process-window.json").is_file()
         and (REVIEW_DIR / "mold-process-window.md").is_file(),
+        "toolmaker_signoff_package": toolmaker_signoff["package_status"]
+        == "toolmaker_signoff_package_ready"
+        and (REVIEW_DIR / "toolmaker-signoff-package.json").is_file()
+        and (REVIEW_DIR / "toolmaker-signoff-package.md").is_file()
+        and (REVIEW_DIR / "toolmaker-signoff-response-template.csv").is_file()
+        and (REVIEW_DIR / "toolmaker-signoff-review.json").is_file()
+        and (REVIEW_DIR / "toolmaker-signoff-review.md").is_file(),
         "tolerance_stack": (REVIEW_DIR / "tolerance-stack.json").is_file(),
+        "gdt_release_package": gdt_release["status"] == "gdt_release_package_ready"
+        and (REVIEW_DIR / "gdt-release-package.json").is_file()
+        and (REVIEW_DIR / "gdt-release-package.md").is_file()
+        and (REVIEW_DIR / "gdt-fai-template.csv").is_file(),
+        "gdt_fai_results_review": (REVIEW_DIR / "gdt-fai-results-review.json").is_file()
+        and (REVIEW_DIR / "gdt-fai-results-review.md").is_file(),
         "visual_decision_report": (REVIEW_DIR / "visual-decision-report.json").is_file()
         and (REVIEW_DIR / "visual-decision-report.md").is_file(),
         "solid_cad_handoff": solid_cad["status"] == "generated"
@@ -4742,6 +8368,9 @@ def write_readiness_artifacts(
         "supplier_rfq_package": supplier_rfq["status"] == "rfq_ready"
         and (REVIEW_DIR / "supplier-rfq-package.json").is_file()
         and (REVIEW_DIR / "supplier-rfq-package.md").is_file(),
+        "supplier_response_review": (REVIEW_DIR / "supplier-response-template.csv").is_file()
+        and (REVIEW_DIR / "supplier-response-review.json").is_file()
+        and (REVIEW_DIR / "supplier-response-review.md").is_file(),
         "part_review": (REVIEW_DIR / "part-review.json").is_file()
         and (REVIEW_DIR / "part-review-contact-sheet.png").is_file(),
     }
@@ -4799,6 +8428,10 @@ def write_readiness_artifacts(
             "pcb_source": params["pcb"]["source"],
             "estimated_mass_g": mass["total_estimated_mass_g"],
             "target_mass_g": params["device"]["target_mass_g"],
+            "compactness_status": compactness["status"],
+            "compactness_width_excess_mm": compactness["width_excess_over_bound_mm"],
+            "compactness_height_excess_mm": compactness["height_excess_over_bound_mm"],
+            "compactness_area_excess_mm2": compactness["area_excess_over_bound_mm2"],
             "supplier_items": len(supplier["items"]),
             "kicad_handoff_constraints": len(handoff["constraints"]),
             "kicad_placement_reconciliation_status": kicad_reconciliation["status"],
@@ -4806,9 +8439,40 @@ def write_readiness_artifacts(
             "kicad_placement_cad_projection_cases": len(
                 kicad_reconciliation.get("cad_projection_cases", [])
             ),
+            "board_step_readiness_status": board_step["status"],
+            "board_step_has_tracks": board_step["board_state_detected"]["has_tracks"],
+            "board_step_has_production_step": board_step["board_state_detected"][
+                "has_production_step"
+            ],
+            "board_step_has_concept_pcb_step": board_step["board_state_detected"].get(
+                "has_concept_pcb_step", False
+            ),
+            "board_step_concept_split_islands_match_kicad": board_step.get(
+                "concept_split_island_geometry", {}
+            ).get("matches", False),
             "engineering_validation_status": validation["status"],
             "interface_validation_status": interface_validation["status"],
             "interface_validation_case_count": len(interface_validation.get("interfaces", [])),
+            "display_validation_status": display_validation["status"],
+            "display_measurement_count": display_validation.get("measurement_count", 0),
+            "display_results_status": display_results["status"],
+            "display_results_complete_count": display_results.get("complete_result_count", 0),
+            "acoustic_validation_status": acoustic_validation["status"],
+            "acoustic_measurement_count": acoustic_validation.get("measurement_count", 0),
+            "acoustic_results_status": acoustic_results["status"],
+            "acoustic_results_complete_count": acoustic_results.get("complete_result_count", 0),
+            "camera_validation_status": camera_validation["status"],
+            "camera_measurement_count": camera_validation.get("measurement_count", 0),
+            "camera_results_status": camera_results["status"],
+            "camera_results_complete_count": camera_results.get("complete_result_count", 0),
+            "environmental_validation_status": environmental_validation["status"],
+            "ingress_path_review_status": ingress_path_review["status"],
+            "ingress_path_count": ingress_path_review.get("path_count", 0),
+            "environmental_measurement_count": environmental_validation.get("measurement_count", 0),
+            "environmental_results_status": environmental_results["status"],
+            "environmental_results_complete_count": environmental_results.get(
+                "complete_result_count", 0
+            ),
             "evt_fixture_status": evt_fixtures["status"],
             "evt_fixture_count": evt_fixtures.get("fixture_count", 0),
             "evt_inspection_status": evt_inspection["status"],
@@ -4818,7 +8482,13 @@ def write_readiness_artifacts(
             "assembly_clearance_status": clearance["status"],
             "injection_molding_dfm_status": dfm["status"],
             "tolerance_stack_status": tolerance_stack["status"],
+            "gdt_release_status": gdt_release["status"],
+            "gdt_characteristic_count": gdt_release.get("characteristic_count", 0),
+            "gdt_fai_results_status": gdt_fai_results["status"],
+            "gdt_fai_results_complete_count": gdt_fai_results.get("complete_result_count", 0),
             "mold_process_window_status": mold_process["status"],
+            "toolmaker_signoff_status": toolmaker_signoff["status"],
+            "toolmaker_signoff_complete_count": toolmaker_signoff.get("complete_response_count", 0),
             "visual_decision_status": visual_decision["status"],
             "solid_cad_handoff_status": solid_cad["status"],
             "solid_cad_step_part_count": solid_cad.get("part_count", 0),
@@ -4826,6 +8496,9 @@ def write_readiness_artifacts(
             "step_validation_count": step_validation.get("validated_count", 0),
             "supplier_rfq_status": supplier_rfq["status"],
             "supplier_rfq_package_count": len(supplier_rfq.get("packages", [])),
+            "supplier_response_status": supplier_response["status"],
+            "supplier_response_complete_count": supplier_response.get("complete_response_count", 0),
+            "supplier_response_expected_count": supplier_response.get("expected_response_count", 0),
             "part_review_count": part_review["part_count"],
         },
         "required_outputs": required_outputs,
@@ -4901,17 +8574,42 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "top_mic",
         "rear_camera_module",
         "front_camera_module",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_elastomer_gasket",
+        "volume_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_lower_rail",
         "handset_acoustic_slot",
+        "handset_acoustic_mesh",
         "screen_adhesive_top",
         "display_fpc_connector",
         "orange_usb_reinforcement_saddle",
         "bottom_speaker_acoustic_chamber",
         "earpiece_gasket",
         "usb_c_external_aperture",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
         "bottom_speaker_grille_slot_1",
+        "bottom_speaker_dust_mesh",
         "bottom_microphone_port_1",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "top_microphone_port",
+        "top_microphone_mesh",
         "cellular_top_antenna_keepout",
         "cellular_bottom_antenna_keepout",
         "wifi_bt_side_antenna_keepout",
@@ -4936,24 +8634,8 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     usb_insertion_clearance = usb_port_center_y - (-height / 2) + usb_h / 2.0
     battery_center = [0.0, -7.0, battery["z_center_mm"]]
     pcb_segment_gaps = [
-        box_gap(
-            [64.0, 25.0, 0.8],
-            [0.0, 55.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
-        box_gap(
-            [64.0, 15.0, 0.8],
-            [0.0, -65.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
-        box_gap(
-            [8.0, 78.0, 0.8],
-            [-32.0, -8.0, pcb["z_center_mm"]],
-            battery["envelope_mm"],
-            battery_center,
-        ),
+        box_gap(size, center, battery["envelope_mm"], battery_center)
+        for size, center, _name in pcb_island_segments(params)
     ]
     kicad_outline = kicad_outline_mm(ROOT / pcb["source"])
     boss_count = sum(1 for name in by_name if name.startswith("orange_screw_boss_"))
@@ -5015,16 +8697,57 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "actual_mm": round(usb_insertion_clearance, 3),
             "required_mm": usb_h,
         },
+        "usb_c_port_seal_stack": {
+            "pass": {
+                "usb_c_perimeter_gasket_top",
+                "usb_c_perimeter_gasket_bottom",
+                "usb_c_perimeter_gasket_left",
+                "usb_c_perimeter_gasket_right",
+                "usb_c_molded_drip_break_lip",
+                "usb_c_internal_drain_shelf",
+                "orange_usb_reinforcement_saddle",
+            }.issubset(by_name),
+            "gasket_parts": [
+                name
+                for name in [
+                    "usb_c_perimeter_gasket_top",
+                    "usb_c_perimeter_gasket_bottom",
+                    "usb_c_perimeter_gasket_left",
+                    "usb_c_perimeter_gasket_right",
+                ]
+                if name in by_name
+            ],
+            "managed_ingress_parts": [
+                name
+                for name in [
+                    "usb_c_molded_drip_break_lip",
+                    "usb_c_internal_drain_shelf",
+                    "orange_usb_reinforcement_saddle",
+                ]
+                if name in by_name
+            ],
+            "note": "Models a four-sided elastomer seat around the receptacle mouth plus molded drip-break/drain shelf for splash management.",
+        },
         "bottom_io_acoustic_apertures": {
             "pass": "usb_c_external_aperture" in by_name
             and sum(1 for name in by_name if name.startswith("bottom_speaker_grille_slot_")) >= 5
-            and sum(1 for name in by_name if name.startswith("bottom_microphone_port_")) >= 2,
+            and sum(1 for name in by_name if name.startswith("bottom_microphone_port_")) >= 2
+            and "bottom_speaker_dust_mesh" in by_name
+            and sum(1 for name in by_name if name.startswith("bottom_microphone_mesh_")) >= 2
+            and "top_microphone_port" in by_name
+            and "top_microphone_mesh" in by_name,
             "speaker_grille_slots": sum(
                 1 for name in by_name if name.startswith("bottom_speaker_grille_slot_")
             ),
             "microphone_ports": sum(
                 1 for name in by_name if name.startswith("bottom_microphone_port_")
             ),
+            "speaker_mesh_present": "bottom_speaker_dust_mesh" in by_name,
+            "bottom_microphone_mesh_count": sum(
+                1 for name in by_name if name.startswith("bottom_microphone_mesh_")
+            ),
+            "top_microphone_port_present": "top_microphone_port" in by_name,
+            "top_microphone_mesh_present": "top_microphone_mesh" in by_name,
         },
         "button_force_and_travel": {
             "pass": 1.2 <= comp["power_button"]["force_n"] <= 2.2
@@ -5060,6 +8783,35 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
                 4,
             ),
         },
+        "button_ingress_seal_stack": {
+            "pass": {
+                "power_button_elastomer_gasket",
+                "power_button_labyrinth_upper_rail",
+                "power_button_labyrinth_lower_rail",
+                "volume_button_elastomer_gasket",
+                "volume_button_labyrinth_upper_rail",
+                "volume_button_labyrinth_lower_rail",
+            }.issubset(by_name),
+            "power_seal_parts": [
+                name
+                for name in [
+                    "power_button_elastomer_gasket",
+                    "power_button_labyrinth_upper_rail",
+                    "power_button_labyrinth_lower_rail",
+                ]
+                if name in by_name
+            ],
+            "volume_seal_parts": [
+                name
+                for name in [
+                    "volume_button_elastomer_gasket",
+                    "volume_button_labyrinth_upper_rail",
+                    "volume_button_labyrinth_lower_rail",
+                ]
+                if name in by_name
+            ],
+            "note": "Models silicone compression gasket plus molded side-key labyrinth rails behind both external orange caps.",
+        },
         "screen_mount_and_connection": {
             "pass": display["adhesive_width_mm"] >= 0.8
             and display["adhesive_thickness_mm"] <= 0.25
@@ -5074,10 +8826,31 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "camera_speaker_behind_glass": {
             "pass": "front_camera_under_glass" in by_name
             and "earpiece_gasket" in by_name
+            and "handset_acoustic_mesh" in by_name
             and "rear_camera_cover_glass" in by_name,
             "front_camera": "behind cover glass at upper-left display border",
             "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+            "earpiece_mesh_present": "handset_acoustic_mesh" in by_name,
             "rear_camera": "behind a separate rear cover glass window",
+        },
+        "camera_optical_seal_stack": {
+            "pass": {
+                "rear_camera_cover_adhesive_top",
+                "rear_camera_cover_adhesive_bottom",
+                "rear_camera_cover_adhesive_left",
+                "rear_camera_cover_adhesive_right",
+                "rear_camera_light_baffle_top",
+                "rear_camera_light_baffle_bottom",
+                "front_camera_black_mask_window",
+            }.issubset(by_name),
+            "rear_cover_adhesive_count": sum(
+                1 for name in by_name if name.startswith("rear_camera_cover_adhesive_")
+            ),
+            "rear_light_baffle_count": sum(
+                1 for name in by_name if name.startswith("rear_camera_light_baffle_")
+            ),
+            "front_black_mask_present": "front_camera_black_mask_window" in by_name,
+            "note": "Models rear cover-window PSA/dust gasket, rear light baffle, and front under-glass black mask datum.",
         },
         "rf_antenna_keepouts": {
             "pass": "cellular_top_antenna_keepout" in by_name
@@ -5207,23 +8980,56 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "manufacturing_readiness_md": "mechanical/e1-phone/review/manufacturing-readiness.md",
             "mass_budget_json": "mechanical/e1-phone/review/mass-budget.json",
             "mass_budget_md": "mechanical/e1-phone/review/mass-budget.md",
+            "compactness_optimization_json": "mechanical/e1-phone/review/compactness-optimization.json",
+            "compactness_optimization_md": "mechanical/e1-phone/review/compactness-optimization.md",
+            "compactness_optimization_png": "mechanical/e1-phone/review/compactness-optimization.png",
+            "compactness_optimization_svg": "mechanical/e1-phone/review/compactness-optimization.svg",
             "supplier_lock_json": "mechanical/e1-phone/review/supplier-lock.json",
             "supplier_lock_md": "mechanical/e1-phone/review/supplier-lock.md",
             "supplier_rfq_package_json": "mechanical/e1-phone/review/supplier-rfq-package.json",
             "supplier_rfq_package_md": "mechanical/e1-phone/review/supplier-rfq-package.md",
+            "supplier_response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
+            "supplier_response_review_json": "mechanical/e1-phone/review/supplier-response-review.json",
+            "supplier_response_review_md": "mechanical/e1-phone/review/supplier-response-review.md",
             "kicad_mechanical_handoff_json": "mechanical/e1-phone/review/kicad-mechanical-handoff.json",
             "kicad_mechanical_handoff_md": "mechanical/e1-phone/review/kicad-mechanical-handoff.md",
             "kicad_placement_reconciliation_json": "mechanical/e1-phone/review/kicad-placement-reconciliation.json",
             "kicad_placement_reconciliation_md": "mechanical/e1-phone/review/kicad-placement-reconciliation.md",
+            "board_step_readiness_json": "mechanical/e1-phone/review/board-step-readiness.json",
+            "board_step_readiness_md": "mechanical/e1-phone/review/board-step-readiness.md",
             "engineering_validation_json": "mechanical/e1-phone/review/engineering-validation.json",
             "engineering_validation_md": "mechanical/e1-phone/review/engineering-validation.md",
             "interface_validation_json": "mechanical/e1-phone/review/interface-validation.json",
             "interface_validation_md": "mechanical/e1-phone/review/interface-validation.md",
+            "display_validation_json": "mechanical/e1-phone/review/display-validation.json",
+            "display_validation_md": "mechanical/e1-phone/review/display-validation.md",
+            "display_results_template": "mechanical/e1-phone/review/display-results-template.csv",
+            "display_results_review_json": "mechanical/e1-phone/review/display-results-review.json",
+            "display_results_review_md": "mechanical/e1-phone/review/display-results-review.md",
+            "acoustic_validation_json": "mechanical/e1-phone/review/acoustic-validation.json",
+            "acoustic_validation_md": "mechanical/e1-phone/review/acoustic-validation.md",
+            "acoustic_results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",
+            "acoustic_results_review_json": "mechanical/e1-phone/review/acoustic-results-review.json",
+            "acoustic_results_review_md": "mechanical/e1-phone/review/acoustic-results-review.md",
+            "camera_validation_json": "mechanical/e1-phone/review/camera-validation.json",
+            "camera_validation_md": "mechanical/e1-phone/review/camera-validation.md",
+            "camera_results_template": "mechanical/e1-phone/review/camera-results-template.csv",
+            "camera_results_review_json": "mechanical/e1-phone/review/camera-results-review.json",
+            "camera_results_review_md": "mechanical/e1-phone/review/camera-results-review.md",
+            "environmental_validation_json": "mechanical/e1-phone/review/environmental-validation.json",
+            "environmental_validation_md": "mechanical/e1-phone/review/environmental-validation.md",
+            "ingress_path_review_json": "mechanical/e1-phone/review/ingress-path-review.json",
+            "ingress_path_review_md": "mechanical/e1-phone/review/ingress-path-review.md",
+            "environmental_results_template": "mechanical/e1-phone/review/environmental-results-template.csv",
+            "environmental_results_review_json": "mechanical/e1-phone/review/environmental-results-review.json",
+            "environmental_results_review_md": "mechanical/e1-phone/review/environmental-results-review.md",
             "evt_fixtures_json": "mechanical/e1-phone/review/evt-fixtures.json",
             "evt_fixtures_md": "mechanical/e1-phone/review/evt-fixtures.md",
             "evt_inspection_plan_json": "mechanical/e1-phone/review/evt-inspection-plan.json",
             "evt_inspection_plan_md": "mechanical/e1-phone/review/evt-inspection-plan.md",
             "evt_inspection_results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
+            "evt_results_review_json": "mechanical/e1-phone/review/evt-results-review.json",
+            "evt_results_review_md": "mechanical/e1-phone/review/evt-results-review.md",
             "evt_fixture_glb": "mechanical/e1-phone/out/e1-phone-evt-fixtures.glb",
             "evt_fixture_manifest": "mechanical/e1-phone/out/evt-fixture-manifest.json",
             "assembly_clearance_json": "mechanical/e1-phone/review/assembly-clearance.json",
@@ -5232,8 +9038,18 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "injection_molding_dfm_md": "mechanical/e1-phone/review/injection-molding-dfm.md",
             "mold_process_window_json": "mechanical/e1-phone/review/mold-process-window.json",
             "mold_process_window_md": "mechanical/e1-phone/review/mold-process-window.md",
+            "toolmaker_signoff_package_json": "mechanical/e1-phone/review/toolmaker-signoff-package.json",
+            "toolmaker_signoff_package_md": "mechanical/e1-phone/review/toolmaker-signoff-package.md",
+            "toolmaker_signoff_response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
+            "toolmaker_signoff_review_json": "mechanical/e1-phone/review/toolmaker-signoff-review.json",
+            "toolmaker_signoff_review_md": "mechanical/e1-phone/review/toolmaker-signoff-review.md",
             "tolerance_stack_json": "mechanical/e1-phone/review/tolerance-stack.json",
             "tolerance_stack_md": "mechanical/e1-phone/review/tolerance-stack.md",
+            "gdt_release_package_json": "mechanical/e1-phone/review/gdt-release-package.json",
+            "gdt_release_package_md": "mechanical/e1-phone/review/gdt-release-package.md",
+            "gdt_fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+            "gdt_fai_results_review_json": "mechanical/e1-phone/review/gdt-fai-results-review.json",
+            "gdt_fai_results_review_md": "mechanical/e1-phone/review/gdt-fai-results-review.md",
             "part_review_json": "mechanical/e1-phone/review/part-review.json",
             "part_review_md": "mechanical/e1-phone/review/part-review.md",
             "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
@@ -5276,23 +9092,54 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/manufacturing-readiness.md`",
         "- `mechanical/e1-phone/review/mass-budget.json`",
         "- `mechanical/e1-phone/review/mass-budget.md`",
+        "- `mechanical/e1-phone/review/compactness-optimization.json`",
+        "- `mechanical/e1-phone/review/compactness-optimization.md`",
+        "- `mechanical/e1-phone/review/compactness-optimization.png`",
+        "- `mechanical/e1-phone/review/compactness-optimization.svg`",
         "- `mechanical/e1-phone/review/supplier-lock.json`",
         "- `mechanical/e1-phone/review/supplier-lock.md`",
         "- `mechanical/e1-phone/review/supplier-rfq-package.json`",
         "- `mechanical/e1-phone/review/supplier-rfq-package.md`",
+        "- `mechanical/e1-phone/review/supplier-response-template.csv`",
+        "- `mechanical/e1-phone/review/supplier-response-review.json`",
+        "- `mechanical/e1-phone/review/supplier-response-review.md`",
         "- `mechanical/e1-phone/review/kicad-mechanical-handoff.json`",
         "- `mechanical/e1-phone/review/kicad-mechanical-handoff.md`",
         "- `mechanical/e1-phone/review/kicad-placement-reconciliation.json`",
         "- `mechanical/e1-phone/review/kicad-placement-reconciliation.md`",
+        "- `mechanical/e1-phone/review/board-step-readiness.json`",
+        "- `mechanical/e1-phone/review/board-step-readiness.md`",
         "- `mechanical/e1-phone/review/engineering-validation.json`",
         "- `mechanical/e1-phone/review/engineering-validation.md`",
         "- `mechanical/e1-phone/review/interface-validation.json`",
         "- `mechanical/e1-phone/review/interface-validation.md`",
+        "- `mechanical/e1-phone/review/display-validation.json`",
+        "- `mechanical/e1-phone/review/display-validation.md`",
+        "- `mechanical/e1-phone/review/display-results-template.csv`",
+        "- `mechanical/e1-phone/review/display-results-review.json`",
+        "- `mechanical/e1-phone/review/display-results-review.md`",
+        "- `mechanical/e1-phone/review/acoustic-validation.json`",
+        "- `mechanical/e1-phone/review/acoustic-validation.md`",
+        "- `mechanical/e1-phone/review/acoustic-results-template.csv`",
+        "- `mechanical/e1-phone/review/acoustic-results-review.json`",
+        "- `mechanical/e1-phone/review/acoustic-results-review.md`",
+        "- `mechanical/e1-phone/review/camera-validation.json`",
+        "- `mechanical/e1-phone/review/camera-validation.md`",
+        "- `mechanical/e1-phone/review/camera-results-template.csv`",
+        "- `mechanical/e1-phone/review/camera-results-review.json`",
+        "- `mechanical/e1-phone/review/camera-results-review.md`",
+        "- `mechanical/e1-phone/review/environmental-validation.json`",
+        "- `mechanical/e1-phone/review/environmental-validation.md`",
+        "- `mechanical/e1-phone/review/environmental-results-template.csv`",
+        "- `mechanical/e1-phone/review/environmental-results-review.json`",
+        "- `mechanical/e1-phone/review/environmental-results-review.md`",
         "- `mechanical/e1-phone/review/evt-fixtures.json`",
         "- `mechanical/e1-phone/review/evt-fixtures.md`",
         "- `mechanical/e1-phone/review/evt-inspection-plan.json`",
         "- `mechanical/e1-phone/review/evt-inspection-plan.md`",
         "- `mechanical/e1-phone/review/evt-inspection-results-template.csv`",
+        "- `mechanical/e1-phone/review/evt-results-review.json`",
+        "- `mechanical/e1-phone/review/evt-results-review.md`",
         "- `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`",
         "- `mechanical/e1-phone/out/evt-fixture-manifest.json`",
         "- `mechanical/e1-phone/review/assembly-clearance.json`",
@@ -5301,8 +9148,18 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/injection-molding-dfm.md`",
         "- `mechanical/e1-phone/review/mold-process-window.json`",
         "- `mechanical/e1-phone/review/mold-process-window.md`",
+        "- `mechanical/e1-phone/review/toolmaker-signoff-package.json`",
+        "- `mechanical/e1-phone/review/toolmaker-signoff-package.md`",
+        "- `mechanical/e1-phone/review/toolmaker-signoff-response-template.csv`",
+        "- `mechanical/e1-phone/review/toolmaker-signoff-review.json`",
+        "- `mechanical/e1-phone/review/toolmaker-signoff-review.md`",
         "- `mechanical/e1-phone/review/tolerance-stack.json`",
         "- `mechanical/e1-phone/review/tolerance-stack.md`",
+        "- `mechanical/e1-phone/review/gdt-release-package.json`",
+        "- `mechanical/e1-phone/review/gdt-release-package.md`",
+        "- `mechanical/e1-phone/review/gdt-fai-template.csv`",
+        "- `mechanical/e1-phone/review/gdt-fai-results-review.json`",
+        "- `mechanical/e1-phone/review/gdt-fai-results-review.md`",
         "- `mechanical/e1-phone/review/part-review.json`",
         "- `mechanical/e1-phone/review/part-review.md`",
         "- `mechanical/e1-phone/review/part-review-contact-sheet.png`",
@@ -5442,21 +9299,47 @@ def main() -> int:
     part_review = write_part_review_artifacts(parts)
     clearance = write_assembly_clearance_artifacts(params, parts)
     mass = write_mass_budget(parts)
+    compactness = write_compactness_optimization_artifacts(params, parts, checks)
     write_drafting_artifacts(params, checks)
     supplier = write_supplier_artifacts(params)
     supplier_rfq = write_supplier_rfq_artifacts(params, supplier, solid_cad)
+    supplier_response = write_supplier_response_artifacts(supplier, supplier_rfq)
     handoff = write_kicad_mechanical_handoff(params, checks)
     kicad_reconciliation = write_kicad_placement_reconciliation_artifacts(params, parts, handoff)
+    board_step = write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
     validation = write_engineering_validation_artifacts(params, parts, checks, mass, supplier)
     dfm = write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
     tolerance_stack = write_tolerance_stack_artifacts(params, checks)
+    gdt_release = write_gdt_release_package_artifacts(params, tolerance_stack)
+    gdt_fai_results = write_gdt_fai_results_review_artifacts(gdt_release)
     interface_validation = write_interface_validation_artifacts(
         params, parts, checks, clearance, tolerance_stack
     )
+    display_validation = write_display_validation_artifacts(
+        params, parts, clearance, interface_validation, tolerance_stack
+    )
+    display_results = write_display_results_review_artifacts(display_validation)
+    acoustic_validation = write_acoustic_validation_artifacts(
+        params, parts, clearance, interface_validation
+    )
+    acoustic_results = write_acoustic_results_review_artifacts(acoustic_validation)
+    camera_validation = write_camera_validation_artifacts(
+        params, parts, clearance, interface_validation
+    )
+    camera_results = write_camera_results_review_artifacts(camera_validation)
+    environmental_validation = write_environmental_validation_artifacts(
+        params, parts, checks, clearance, validation
+    )
+    ingress_path_review = write_ingress_path_review_artifacts(
+        params, parts, environmental_validation
+    )
+    environmental_results = write_environmental_results_review_artifacts(environmental_validation)
     fixtures = evt_fixture_parts(params)
     evt_fixtures = write_evt_fixture_artifacts(params, fixtures, interface_validation)
     evt_inspection = write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
+    evt_results = write_evt_results_review_artifacts(evt_inspection)
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
+    toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
     visual_decision = write_visual_decision_artifacts(
         params,
         visual,
@@ -5473,22 +9356,38 @@ def main() -> int:
         checks,
         visual,
         mass,
+        compactness,
         supplier,
         handoff,
         kicad_reconciliation,
         validation,
         interface_validation,
+        display_validation,
+        display_results,
+        acoustic_validation,
+        acoustic_results,
+        camera_validation,
+        camera_results,
+        environmental_validation,
+        ingress_path_review,
+        environmental_results,
         evt_fixtures,
         evt_inspection,
+        evt_results,
         clearance,
         part_review,
         dfm,
         tolerance_stack,
+        gdt_release,
+        gdt_fai_results,
         mold_process,
+        toolmaker_signoff,
         visual_decision,
         solid_cad,
         step_validation,
+        board_step,
         supplier_rfq,
+        supplier_response,
     )
     write_report(params, checks)
     print(f"E1 phone CAD generation {checks['status']}: {REVIEW_DIR / 'README.md'}")

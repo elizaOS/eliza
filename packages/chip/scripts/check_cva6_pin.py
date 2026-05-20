@@ -70,11 +70,11 @@ def main() -> int:
         )
         return 0
 
-    # Wrapper API drift check. With the wrapper re-targeted to the v5.3.0
-    # API (`config_pkg::cva6_cfg_t` + `noc_req_t`/`noc_resp_t`) the manifest
-    # marks the drift `RESOLVED`. We still cross-check that the wrapper
-    # does NOT regress by introducing the deprecated symbols, and that the
-    # standalone checkout's HEAD matches the pinned commit.
+    # Wrapper API drift check. With the wrapper re-targeted to the current
+    # master API (`config_pkg::cva6_cfg_t` + `noc_req_t`/`noc_resp_t`) the
+    # manifest marks the drift `RESOLVED`. We still cross-check that the
+    # wrapper does NOT regress by introducing the deprecated symbols, and
+    # that the standalone checkout's HEAD matches the pinned commit.
     drift = manifest.get("wrapper_api_drift")
     if standalone_present and drift:
         wrapper_path = drift.get("wrapper_path", "rtl/cpu/e1_cva6_wrapper.sv")
@@ -121,7 +121,7 @@ def main() -> int:
                 print(
                     "STATUS: FAIL cpu.cva6_pin.standalone_pin - "
                     f"external/cva6/cva6 HEAD={head[:7]} does not match "
-                    f"pin target={pin_commit[:7]} (v5.3.0)"
+                    f"pin target={pin_commit[:7]} (master HEAD)"
                 )
                 return 1
 

@@ -105,6 +105,20 @@ emit_status "PASS" "iree.build"
 
 "$repo_dir/$BUILD_DIR/install/bin/iree-compile" --version | tee "$REPORT_DIR/iree-version.txt"
 
+# Default iree-compile flag set for elizanpu+RVV downstream invocations.
+# Persisted here so the build report records what every downstream caller
+# should pass; the build itself does not consume these flags.
+#   --iree-llvmcpu-enable-inner-tiled : enables inner-tiled vector contract
+#     dispatch on LLVMCPU (merged upstream via iree-org/iree#24219). Required
+#     to pick up the RVV widening i8 ukernel path from PR #23734 once
+#     compiler/iree-eliza-npu/patches/001-riscv-rvv-int8-vcontract.patch is
+#     applied.
+IREE_COMPILE_DEFAULT_FLAGS=(
+    --iree-llvmcpu-enable-inner-tiled
+)
+printf '%s\n' "${IREE_COMPILE_DEFAULT_FLAGS[@]}" \
+    > "$REPORT_DIR/iree-compile-default-flags.txt"
+
 "$repo_dir/$BUILD_DIR/install/bin/elizanpu-opt" \
     --verify-roundtrip \
     "$repo_dir/compiler/iree-eliza-npu/tests/roundtrip.mlir" \

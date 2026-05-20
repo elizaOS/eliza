@@ -1,0 +1,77 @@
+{
+  "claim_boundary": "Fail-closed review of acoustic lab results; blank template rows are not measured audio evidence.",
+  "status": "blocked_no_acoustic_results",
+  "expected_measurement_count": 7,
+  "observed_row_count": 7,
+  "complete_result_count": 0,
+  "missing_measurements": [],
+  "blank_or_incomplete_measurements": [
+    "bottom_speaker_spl_1khz_db",
+    "bottom_speaker_impedance_ohm",
+    "bottom_speaker_leak_delta_db",
+    "bottom_mic_snr_db",
+    "top_mic_snr_db",
+    "earpiece_spl_1khz_db",
+    "earpiece_leak_delta_db"
+  ],
+  "failed_measurements": [],
+  "cases": [
+    {
+      "measurement_id": "bottom_speaker_spl_1khz_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "bottom_speaker_impedance_ohm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "bottom_speaker_leak_delta_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "bottom_mic_snr_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "top_mic_snr_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "earpiece_spl_1khz_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "earpiece_leak_delta_db",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, and explicit pass disposition."
+}

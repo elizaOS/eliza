@@ -46,6 +46,8 @@ required = [
     "board/fpga/e1_demo_fpga.yaml",
     "board/fpga/constraints/e1_demo_ulx3s.lpf",
     "board/kicad/e1-demo/artifact-manifest.yaml",
+    "board/kicad/e1-phone/artifact-manifest.yaml",
+    "board/kicad/e1-phone/routed-release-plan.yaml",
     "docs/board/kicad/e1-demo/fab-notes.md",
     "docs/fw/board-smoke/tests/smoke_plan.md",
     "docs/manufacturing/e1-demo-checklist.md",

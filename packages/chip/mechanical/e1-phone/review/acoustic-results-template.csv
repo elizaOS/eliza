@@ -1,0 +1,8 @@
+sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes
+,bottom_speaker_spl_1khz_db,dB SPL,72.0,,,,,1 W/0.5 m equivalent or vendor-normalized compact-phone SPL target.
+,bottom_speaker_impedance_ohm,ohm,4.0,12.0,,,,Verify module impedance and acoustic chamber loading.
+,bottom_speaker_leak_delta_db,dB,0.0,3.0,,,,Masked/unmasked leakage delta around bottom speaker and mic ports.
+,bottom_mic_snr_db,dB,60.0,,,,,Bottom MEMS microphone SNR through molded port and mesh stack.
+,top_mic_snr_db,dB,60.0,,,,,Noise-cancel MEMS microphone SNR and PDM integrity.
+,earpiece_spl_1khz_db,dB SPL,70.0,,,,,Behind-glass receiver SPL through gasketed handset slot.
+,earpiece_leak_delta_db,dB,0.0,3.0,,,,Leakage around receiver gasket and cover-glass slot.

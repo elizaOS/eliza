@@ -12,6 +12,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from benchmarks.sim.scalesim_v3_driver import (  # noqa: E402
+    SCALESIM_V3_AVAILABLE,
+    SCALESIM_V3_UNAVAILABLE_REASON,
+    run_scalesim_v3_workload,
+)
 from compiler.runtime.e1_npu_scale_model import (  # noqa: E402
     MIN_REAL_V1,
     OPEN_2028_FIRST,
@@ -268,10 +273,40 @@ def run_timeloop_energy(config_name: str) -> dict | None:
         return None
 
 
+def _scalesim_v3_elizanpu_gemm_shapes() -> list:
+    """Return upstream-compatible shapes for the elizanpu.gemm_s8 datapath.
+
+    elizanpu.gemm_s8 supports M=N=3, K<=7. We sample three points across that
+    envelope so the v3 sidecar exercises the full supported K range rather
+    than a single shape.
+    """
+    from benchmarks.sim.scalesim_v3_driver import GemmShape  # noqa: PLC0415
+
+    return [
+        GemmShape(name="elizanpu_gemm_s8_3x3x3", m=3, n=3, k=3),
+        GemmShape(name="elizanpu_gemm_s8_3x3x5", m=3, n=3, k=5),
+        GemmShape(name="elizanpu_gemm_s8_3x3x7", m=3, n=3, k=7),
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run deterministic NPU architecture scale model")
     parser.add_argument("--config", choices=sorted(CONFIGS), default=OPEN_2028_FIRST.name)
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--engine",
+        choices=("v1", "v3"),
+        default="v3",
+        help=(
+            "Which scale model to drive. 'v1' = hand-rolled architecture "
+            "scale model in compiler/runtime/e1_npu_scale_model.py (canonical "
+            "for eliza.npu_scale_sim.v1). 'v3' additionally drives upstream "
+            "scale-sim-v2 v3.0.0 over elizanpu.gemm_s8 and attaches the "
+            "result as a sidecar block (eliza.npu_scale_sim.scalesim_v3.v1) "
+            "without changing the v1 schema body. Falls back to v1-only when "
+            "the upstream package is not importable."
+        ),
+    )
     parser.add_argument(
         "--with-timeloop-energy",
         action="store_true",
@@ -359,6 +394,28 @@ def main() -> int:
             "process_corner_claim_boundary": "modeled_derates_only_not_14a_pdk_or_signoff_evidence",
         },
     }
+    if args.engine == "v3":
+        if SCALESIM_V3_AVAILABLE:
+            from benchmarks.sim.scalesim_v3_driver import result_to_evidence_block  # noqa: PLC0415
+
+            v3_result = run_scalesim_v3_workload(
+                _scalesim_v3_elizanpu_gemm_shapes(),
+                array_h=3,
+                array_w=3,
+                run_name=f"elizanpu_gemm_s8_{config.name}",
+            )
+            report["scalesim_v3"] = result_to_evidence_block(v3_result)
+        else:
+            report["scalesim_v3"] = {
+                "schema": "eliza.npu_scale_sim.scalesim_v3.v1",
+                "status": "blocked",
+                "claim_boundary": (
+                    "Sidecar feed only; v1 hand-rolled model remains the source of "
+                    "truth for the eliza.npu_scale_sim.v1 schema."
+                ),
+                "reason": SCALESIM_V3_UNAVAILABLE_REASON or "scalesim package not importable",
+            }
+
     if args.with_timeloop_energy:
         energy_report = run_timeloop_energy(config.name)
         if energy_report is None:

@@ -187,6 +187,8 @@ def main() -> int:
             "circt-lec",
             "abc",
             "datapath-cec-hybrid-sweeping",
+            "dynamicsat-sat-tuning",
+            "logic-optimization-csat",
         ],
         "policy": {
             "changes_rtl": False,
@@ -272,11 +274,23 @@ def main() -> int:
                     "make synth",
                 ],
             },
+            {
+                "id": "sat-solver-preprocessing-and-tuning-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future DynamicSAT-style solver tuning or logic-optimization CSAT preprocessing must pin miter/CNF/SMT inputs, preprocessing outputs, solver options, baseline logs, tuned logs, witness or counterexample replay, and reviewer disposition before any formal, LEC, or ATPG runtime claim",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no dedicated E1 EQY, Yosys equiv_*, CIRCT LEC, or ABC CEC harness is accepted for RTL-to-netlist or post-PD netlist comparisons",
             "no pinned equivalence specification for black boxes, memories, resets, x-propagation, unmapped cells, clocking assumptions, and hierarchy matching",
             "no accepted SymbiYosys/yosys-smtbmc proof replay policy with solver revisions, SMT input hashes, bound/depth settings, witnesses, counterexamples, and cross-solver triage",
+            "no approved DynamicSAT or logic-optimization CSAT workflow with solver-patch provenance, SAT instance hashes, preprocessing-output hashes, baseline/tuned logs, witness replay, and timeout policy",
             "no release policy allowing AI-generated netlists, miters, equivalence scripts, waivers, or proof logs to bypass RTL, formal, cocotb, synthesis, STA/OpenLane, power, and review gates",
         ],
     }

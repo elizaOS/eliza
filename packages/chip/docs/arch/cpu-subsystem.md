@@ -36,7 +36,7 @@ The focused simulation wrapper `verify/cocotb/e1_tiny_cpu_contract_tb.sv` resets
 
 | Contract item | Target |
 | --- | --- |
-| Generator | Chipyard `1.13.0` commit `69eba860a352343e4ac6b6df0f3638a79a86ec78` |
+| Generator | Chipyard `main-2026-05-20` commit `48f904aefbb3903dce6efa7901982642853ae6a7` (previous: `1.13.0` / `69eba860a352343e4ac6b6df0f3638a79a86ec78`) |
 | Config | `ElizaRocketConfig` |
 | Core | Single Rocket application hart for first integration only |
 | ISA | RV64GC application hart, plus platform-defined management hart if needed |

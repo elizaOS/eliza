@@ -78,18 +78,18 @@
   {
     "name": "main_pcb",
     "role": "PCB",
-    "material": "8L HDI FR-4 with battery window",
+    "material": "8L HDI FR-4 top/bottom islands around full-width battery",
     "obj": "mechanical/e1-phone/out/main_pcb.obj",
     "stl": "mechanical/e1-phone/out/main_pcb.stl",
     "bounds_mm": [
       [
-        -36.0,
-        -72.5,
+        -32.0,
+        -66.0,
         -2.5
       ],
       [
         32.0,
-        67.5,
+        66.0,
         -1.7
       ]
     ]
@@ -102,14 +102,14 @@
     "stl": "mechanical/e1-phone/out/battery_pouch.stl",
     "bounds_mm": [
       [
-        -27.5,
-        -53.0,
-        -5.5
+        -32.0,
+        -50.5,
+        -4.7
       ],
       [
-        27.5,
-        39.0,
-        -1.4
+        32.0,
+        36.5,
+        -0.3
       ]
     ]
   },
@@ -148,6 +148,120 @@
         5.1,
         -76.705,
         0.35
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_perimeter_gasket_top",
+    "role": "I/O seal",
+    "material": "silicone USB-C perimeter gasket top rail",
+    "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.stl",
+    "bounds_mm": [
+      [
+        -5.7,
+        -76.705,
+        0.495
+      ],
+      [
+        5.7,
+        -76.255,
+        0.845
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_perimeter_gasket_bottom",
+    "role": "I/O seal",
+    "material": "silicone USB-C perimeter gasket bottom rail",
+    "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.stl",
+    "bounds_mm": [
+      [
+        -5.7,
+        -76.705,
+        -3.745
+      ],
+      [
+        5.7,
+        -76.255,
+        -3.395
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_perimeter_gasket_left",
+    "role": "I/O seal",
+    "material": "silicone USB-C perimeter gasket side rail",
+    "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.stl",
+    "bounds_mm": [
+      [
+        -5.595,
+        -76.705,
+        -3.6
+      ],
+      [
+        -5.245,
+        -76.255,
+        0.7
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_perimeter_gasket_right",
+    "role": "I/O seal",
+    "material": "silicone USB-C perimeter gasket side rail",
+    "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.stl",
+    "bounds_mm": [
+      [
+        5.245,
+        -76.705,
+        -3.6
+      ],
+      [
+        5.595,
+        -76.255,
+        0.7
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_molded_drip_break_lip",
+    "role": "I/O seal",
+    "material": "molded PC+ABS internal drip-break lip below USB-C aperture",
+    "obj": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.stl",
+    "bounds_mm": [
+      [
+        -6.6,
+        -76.605,
+        -4.195
+      ],
+      [
+        6.6,
+        -76.155,
+        -3.745
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_internal_drain_shelf",
+    "role": "I/O seal",
+    "material": "molded PC+ABS internal drain shelf under USB-C receptacle",
+    "obj": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.stl",
+    "bounds_mm": [
+      [
+        -6.4,
+        -76.2,
+        -3.94
+      ],
+      [
+        6.4,
+        -74.0,
+        -3.66
       ]
     ]
   },
@@ -361,6 +475,25 @@
     ]
   },
   {
+    "name": "handset_acoustic_mesh",
+    "role": "audio",
+    "material": "hydrophobic acoustic mesh behind handset slot",
+    "obj": "mechanical/e1-phone/out/handset_acoustic_mesh.obj",
+    "stl": "mechanical/e1-phone/out/handset_acoustic_mesh.stl",
+    "bounds_mm": [
+      [
+        -8.75,
+        69.14,
+        4.32
+      ],
+      [
+        8.75,
+        69.26,
+        4.72
+      ]
+    ]
+  },
+  {
     "name": "bottom_speaker_grille_slot_1",
     "role": "audio",
     "material": "molded loudspeaker grille slot",
@@ -456,6 +589,120 @@
     ]
   },
   {
+    "name": "bottom_speaker_dust_mesh",
+    "role": "audio",
+    "material": "hydrophobic dust mesh behind bottom speaker grille",
+    "obj": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.obj",
+    "stl": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.stl",
+    "bounds_mm": [
+      [
+        9.5,
+        -76.64,
+        -3.75
+      ],
+      [
+        25.5,
+        -76.52,
+        1.05
+      ]
+    ]
+  },
+  {
+    "name": "split_interconnect_top_connector",
+    "role": "split-board interconnect",
+    "material": "Hirose BM28-class 49-pin top-island board connector envelope",
+    "obj": "mechanical/e1-phone/out/split_interconnect_top_connector.obj",
+    "stl": "mechanical/e1-phone/out/split_interconnect_top_connector.stl",
+    "bounds_mm": [
+      [
+        14.0,
+        36.3,
+        -1.7
+      ],
+      [
+        30.0,
+        38.7,
+        -0.8
+      ]
+    ]
+  },
+  {
+    "name": "split_interconnect_bottom_connector",
+    "role": "split-board interconnect",
+    "material": "Hirose BM28-class 49-pin bottom-island board connector envelope",
+    "obj": "mechanical/e1-phone/out/split_interconnect_bottom_connector.obj",
+    "stl": "mechanical/e1-phone/out/split_interconnect_bottom_connector.stl",
+    "bounds_mm": [
+      [
+        14.0,
+        -53.7,
+        -1.7
+      ],
+      [
+        30.0,
+        -51.3,
+        -0.8
+      ]
+    ]
+  },
+  {
+    "name": "split_interconnect_side_flex",
+    "role": "split-board interconnect",
+    "material": "polyimide FPC side service loop envelope",
+    "obj": "mechanical/e1-phone/out/split_interconnect_side_flex.obj",
+    "stl": "mechanical/e1-phone/out/split_interconnect_side_flex.stl",
+    "bounds_mm": [
+      [
+        33.3,
+        -51.5,
+        -1.94
+      ],
+      [
+        35.7,
+        36.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "split_interconnect_top_flex_tail",
+    "role": "split-board interconnect",
+    "material": "polyimide FPC top connector tail envelope",
+    "obj": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.obj",
+    "stl": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.stl",
+    "bounds_mm": [
+      [
+        22.0,
+        36.5,
+        -1.94
+      ],
+      [
+        34.5,
+        38.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "split_interconnect_bottom_flex_tail",
+    "role": "split-board interconnect",
+    "material": "polyimide FPC bottom connector tail envelope",
+    "obj": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.obj",
+    "stl": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.stl",
+    "bounds_mm": [
+      [
+        22.0,
+        -53.5,
+        -1.94
+      ],
+      [
+        34.5,
+        -51.5,
+        -1.76
+      ]
+    ]
+  },
+  {
     "name": "bottom_microphone_port_1",
     "role": "audio",
     "material": "molded microphone acoustic port",
@@ -475,6 +722,25 @@
     ]
   },
   {
+    "name": "bottom_microphone_mesh_1",
+    "role": "audio",
+    "material": "hydrophobic dust mesh behind bottom microphone port",
+    "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_1.obj",
+    "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_1.stl",
+    "bounds_mm": [
+      [
+        -22.7,
+        -76.66,
+        -2.05
+      ],
+      [
+        -21.3,
+        -76.54,
+        -0.65
+      ]
+    ]
+  },
+  {
     "name": "bottom_microphone_port_2",
     "role": "audio",
     "material": "molded microphone acoustic port",
@@ -490,6 +756,177 @@
         -16.55,
         -76.72,
         -0.907
+      ]
+    ]
+  },
+  {
+    "name": "bottom_microphone_mesh_2",
+    "role": "audio",
+    "material": "hydrophobic dust mesh behind bottom microphone port",
+    "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_2.obj",
+    "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_2.stl",
+    "bounds_mm": [
+      [
+        -17.7,
+        -76.66,
+        -2.05
+      ],
+      [
+        -16.3,
+        -76.54,
+        -0.65
+      ]
+    ]
+  },
+  {
+    "name": "top_microphone_port",
+    "role": "audio",
+    "material": "molded top microphone acoustic port",
+    "obj": "mechanical/e1-phone/out/top_microphone_port.obj",
+    "stl": "mechanical/e1-phone/out/top_microphone_port.stl",
+    "bounds_mm": [
+      [
+        17.55,
+        76.72,
+        -1.793
+      ],
+      [
+        18.45,
+        77.12,
+        -0.907
+      ]
+    ]
+  },
+  {
+    "name": "top_microphone_mesh",
+    "role": "audio",
+    "material": "hydrophobic dust mesh behind top microphone port",
+    "obj": "mechanical/e1-phone/out/top_microphone_mesh.obj",
+    "stl": "mechanical/e1-phone/out/top_microphone_mesh.stl",
+    "bounds_mm": [
+      [
+        17.3,
+        76.54,
+        -2.05
+      ],
+      [
+        18.7,
+        76.66,
+        -0.65
+      ]
+    ]
+  },
+  {
+    "name": "power_button_elastomer_gasket",
+    "role": "button seal",
+    "material": "shore-a silicone side-key gasket behind power button",
+    "obj": "mechanical/e1-phone/out/power_button_elastomer_gasket.obj",
+    "stl": "mechanical/e1-phone/out/power_button_elastomer_gasket.stl",
+    "bounds_mm": [
+      [
+        38.1,
+        13.5,
+        -1.175
+      ],
+      [
+        38.6,
+        26.5,
+        0.375
+      ]
+    ]
+  },
+  {
+    "name": "power_button_labyrinth_upper_rail",
+    "role": "button seal",
+    "material": "molded PC+ABS side-key labyrinth rail",
+    "obj": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.obj",
+    "stl": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.stl",
+    "bounds_mm": [
+      [
+        37.775,
+        26.15,
+        -1.325
+      ],
+      [
+        38.325,
+        26.95,
+        0.525
+      ]
+    ]
+  },
+  {
+    "name": "power_button_labyrinth_lower_rail",
+    "role": "button seal",
+    "material": "molded PC+ABS side-key labyrinth rail",
+    "obj": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.obj",
+    "stl": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.stl",
+    "bounds_mm": [
+      [
+        37.775,
+        13.05,
+        -1.325
+      ],
+      [
+        38.325,
+        13.85,
+        0.525
+      ]
+    ]
+  },
+  {
+    "name": "volume_button_elastomer_gasket",
+    "role": "button seal",
+    "material": "shore-a silicone side-key gasket behind volume button",
+    "obj": "mechanical/e1-phone/out/volume_button_elastomer_gasket.obj",
+    "stl": "mechanical/e1-phone/out/volume_button_elastomer_gasket.stl",
+    "bounds_mm": [
+      [
+        -38.6,
+        3.0,
+        -1.175
+      ],
+      [
+        -38.1,
+        25.0,
+        0.375
+      ]
+    ]
+  },
+  {
+    "name": "volume_button_labyrinth_upper_rail",
+    "role": "button seal",
+    "material": "molded PC+ABS side-key labyrinth rail",
+    "obj": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.obj",
+    "stl": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.stl",
+    "bounds_mm": [
+      [
+        -38.325,
+        24.65,
+        -1.325
+      ],
+      [
+        -37.775,
+        25.45,
+        0.525
+      ]
+    ]
+  },
+  {
+    "name": "volume_button_labyrinth_lower_rail",
+    "role": "button seal",
+    "material": "molded PC+ABS side-key labyrinth rail",
+    "obj": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.obj",
+    "stl": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.stl",
+    "bounds_mm": [
+      [
+        -38.325,
+        2.55,
+        -1.325
+      ],
+      [
+        -37.775,
+        3.35,
+        0.525
       ]
     ]
   },
@@ -965,6 +1402,215 @@
         7.25,
         70.2,
         4.075
+      ]
+    ]
+  },
+  {
+    "name": "cellular_top_antenna_keepout",
+    "role": "RF keepout",
+    "material": "top plastic antenna keepout volume",
+    "obj": "mechanical/e1-phone/out/cellular_top_antenna_keepout.obj",
+    "stl": "mechanical/e1-phone/out/cellular_top_antenna_keepout.stl",
+    "bounds_mm": [
+      [
+        -31.0,
+        68.4,
+        -2.1
+      ],
+      [
+        31.0,
+        74.4,
+        -0.1
+      ]
+    ]
+  },
+  {
+    "name": "cellular_bottom_antenna_keepout",
+    "role": "RF keepout",
+    "material": "bottom plastic antenna keepout volume",
+    "obj": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.obj",
+    "stl": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.stl",
+    "bounds_mm": [
+      [
+        -31.0,
+        -74.4,
+        -2.1
+      ],
+      [
+        31.0,
+        -68.4,
+        -0.1
+      ]
+    ]
+  },
+  {
+    "name": "wifi_bt_side_antenna_keepout",
+    "role": "RF keepout",
+    "material": "side Wi-Fi/Bluetooth antenna keepout volume",
+    "obj": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.obj",
+    "stl": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.stl",
+    "bounds_mm": [
+      [
+        4.0,
+        40.5,
+        -2.1
+      ],
+      [
+        38.0,
+        45.5,
+        -0.1
+      ]
+    ]
+  },
+  {
+    "name": "soc_shield_can",
+    "role": "EMI shield",
+    "material": "stamped RF/SoC shield can",
+    "obj": "mechanical/e1-phone/out/soc_shield_can.obj",
+    "stl": "mechanical/e1-phone/out/soc_shield_can.stl",
+    "bounds_mm": [
+      [
+        -16.0,
+        47.0,
+        -1.5
+      ],
+      [
+        2.0,
+        63.0,
+        -0.3
+      ]
+    ]
+  },
+  {
+    "name": "pmic_shield_can",
+    "role": "EMI shield",
+    "material": "stamped PMIC shield can",
+    "obj": "mechanical/e1-phone/out/pmic_shield_can.obj",
+    "stl": "mechanical/e1-phone/out/pmic_shield_can.stl",
+    "bounds_mm": [
+      [
+        7.0,
+        50.0,
+        -1.5
+      ],
+      [
+        18.0,
+        60.0,
+        -0.4
+      ]
+    ]
+  },
+  {
+    "name": "radio_shield_can",
+    "role": "EMI shield",
+    "material": "stamped radio shield can",
+    "obj": "mechanical/e1-phone/out/radio_shield_can.obj",
+    "stl": "mechanical/e1-phone/out/radio_shield_can.stl",
+    "bounds_mm": [
+      [
+        -31.0,
+        40.0,
+        -1.5
+      ],
+      [
+        -13.0,
+        60.0,
+        -0.3
+      ]
+    ]
+  },
+  {
+    "name": "haptic_lra",
+    "role": "haptics",
+    "material": "compact 0612 X-axis linear resonant actuator",
+    "obj": "mechanical/e1-phone/out/haptic_lra.obj",
+    "stl": "mechanical/e1-phone/out/haptic_lra.stl",
+    "bounds_mm": [
+      [
+        32.5,
+        -50.0,
+        -4.45
+      ],
+      [
+        38.5,
+        -38.0,
+        -1.95
+      ]
+    ]
+  },
+  {
+    "name": "sim_tray_keepout",
+    "role": "service",
+    "material": "side SIM tray keepout",
+    "obj": "mechanical/e1-phone/out/sim_tray_keepout.obj",
+    "stl": "mechanical/e1-phone/out/sim_tray_keepout.stl",
+    "bounds_mm": [
+      [
+        24.55,
+        -29.0,
+        -1.8
+      ],
+      [
+        39.05,
+        -7.0,
+        0.2
+      ]
+    ]
+  },
+  {
+    "name": "sim_tray_outline",
+    "role": "service",
+    "material": "orange side service tray outline",
+    "obj": "mechanical/e1-phone/out/sim_tray_outline.obj",
+    "stl": "mechanical/e1-phone/out/sim_tray_outline.stl",
+    "bounds_mm": [
+      [
+        38.45,
+        -27.0,
+        -2.8
+      ],
+      [
+        39.25,
+        -9.0,
+        1.2
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_cover_glass",
+    "role": "camera",
+    "material": "rear camera cover glass",
+    "obj": "mechanical/e1-phone/out/rear_camera_cover_glass.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_cover_glass.stl",
+    "bounds_mm": [
+      [
+        16.4,
+        53.2,
+        -4.8
+      ],
+      [
+        25.6,
+        62.4,
+        -4.25
+      ]
+    ]
+  },
+  {
+    "name": "service_label_recess",
+    "role": "service",
+    "material": "recessed regulatory/service label pad",
+    "obj": "mechanical/e1-phone/out/service_label_recess.obj",
+    "stl": "mechanical/e1-phone/out/service_label_recess.stl",
+    "bounds_mm": [
+      [
+        -16.0,
+        -56.3,
+        -4.65
+      ],
+      [
+        16.0,
+        -47.3,
+        -4.4
       ]
     ]
   }

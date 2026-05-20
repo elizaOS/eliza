@@ -75,6 +75,14 @@ def main() -> int:
     side_key_support_count = pcb_text.count('(footprint "E1Phone:SIDE_KEY_ESD"') + pcb_text.count(
         '(footprint "E1Phone:SIDE_KEY_COND_'
     )
+    display_support_count = pcb_text.count('(footprint "E1Phone:DISPLAY_')
+    camera_support_count = pcb_text.count('(footprint "E1Phone:CAMERA_')
+    audio_support_count = pcb_text.count('(footprint "E1Phone:AUDIO_')
+    haptic_support_count = pcb_text.count('(footprint "E1Phone:HAPTIC_')
+    power_management_support_count = pcb_text.count('(footprint "E1Phone:POWER_')
+    compute_storage_support_count = pcb_text.count('(footprint "E1Phone:COMPUTE_')
+    identity_sensor_support_count = pcb_text.count('(footprint "E1Phone:PHONE_IDENTITY_')
+    split_interconnect_placeholder_count = pcb_text.count('(footprint "E1Phone:J_TOP_BOTTOM_FLEX_')
     generated_net_class_count = pcb_text.count('(net_class "E1Phone_')
     declared_nets = [
         line.split('"', 2)[1]
@@ -101,6 +109,14 @@ def main() -> int:
         - usb_protection_count
         - usb_signal_test_count
         - side_key_support_count
+        - display_support_count
+        - camera_support_count
+        - audio_support_count
+        - haptic_support_count
+        - power_management_support_count
+        - compute_storage_support_count
+        - identity_sensor_support_count
+        - split_interconnect_placeholder_count
     )
     required_rf_nets = [item["net"] for item in routing["rf_layout"]["matching_networks_required"]]
     rf_matching_nets_assigned = [
@@ -120,6 +136,196 @@ def main() -> int:
             or net in {"USB_DP", "USB_DN"}
         )
     ]
+    display_support_nets_assigned = [
+        net
+        for net in [
+            "DSI_CLK_P",
+            "DSI_D0_P",
+            "DISP_AVDD_5V5",
+            "DISP_AVEE_N5V5",
+            "DISP_BL_EN",
+            "DISP_BL_PWM",
+            "DISP_RESET_N",
+            "TOUCH_I2C_SCL",
+            "TOUCH_I2C_SDA",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    camera_support_nets_assigned = [
+        net
+        for net in [
+            "CAM0_CSI_CLK_P",
+            "CAM1_CSI_CLK_P",
+            "CAM_AVDD_2V8",
+            "CAM_DVDD_1V2",
+            "CAM0_RESET_N",
+            "CAM1_RESET_N",
+            "CAM0_PWDN",
+            "CAM0_I2C_SCL",
+            "CAM1_I2C_SCL",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    audio_support_nets_assigned = [
+        net
+        for net in [
+            "I2S_BCLK",
+            "I2S_LRCLK",
+            "I2S_DOUT",
+            "I2S_DIN",
+            "PDM_CLK",
+            "PDM_DAT",
+            "AUDIO_I2C_SCL",
+            "AUDIO_I2C_SDA",
+            "CODEC_INT",
+            "AMP_INT",
+            "SPK_P",
+            "SPK_N",
+            "VDD_AUDIO_3V3",
+            "VDD_AMP_3V3",
+            "SYS",
+            "IO_1V8",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    haptic_support_nets_assigned = [
+        net for net in ["HAPTIC_OUT", "SYS", "IO_1V8"] if f'"{net}")' in pcb_text
+    ]
+    power_management_support_nets_assigned = [
+        net
+        for net in [
+            "VBUS",
+            "VBAT",
+            "SYS",
+            "VIN_3V3",
+            "AON_1V8",
+            "AP_0V8",
+            "AP_1V1",
+            "IO_1V8",
+            "RF_VBAT",
+            "CAM_AVDD_2V8",
+            "CAM_DVDD_1V2",
+            "DISP_AVDD_5V5",
+            "DISP_AVEE_N5V5",
+            "BAT_NTC",
+            "BAT_ID",
+            "PMIC_I2C_SCL",
+            "PMIC_I2C_SDA",
+            "PMIC_IRQ_N",
+            "PMIC_RESET_N",
+            "CHG_I2C_SCL",
+            "CHG_I2C_SDA",
+            "CHG_IRQ_N",
+            "USBPD_I2C_SCL",
+            "USBPD_I2C_SDA",
+            "USBPD_IRQ_N",
+            "USBPD_RESET",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    compute_storage_support_nets_assigned = [
+        net
+        for net in [
+            "LPDDR_CK_P",
+            "LPDDR_CK_N",
+            "LPDDR_CA0",
+            "LPDDR_CA1",
+            "LPDDR_CA2",
+            "LPDDR_CA3",
+            "LPDDR_DQ0",
+            "LPDDR_DQ1",
+            "LPDDR_DQ2",
+            "LPDDR_DQ3",
+            "LPDDR_DQS_P",
+            "LPDDR_DQS_N",
+            "LPDDR_RESET_N",
+            "LPDDR_ZQ",
+            "UFS_REFCLK_P",
+            "UFS_REFCLK_N",
+            "UFS_TX_P",
+            "UFS_TX_N",
+            "UFS_RX_P",
+            "UFS_RX_N",
+            "UFS_RESET_N",
+            "JTAG_TCK",
+            "JTAG_TMS",
+            "JTAG_TDI",
+            "JTAG_TDO",
+            "JTAG_TRST_N",
+            "BOOT_MODE0",
+            "BOOT_MODE1",
+            "BOOT_MODE2",
+            "SOC_RESET_N",
+            "AP_0V8",
+            "AP_1V1",
+            "IO_1V8",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    identity_sensor_support_nets_assigned = [
+        net
+        for net in [
+            "USIM_VCC",
+            "USIM_CLK",
+            "USIM_RST",
+            "USIM_IO",
+            "USIM_DET",
+            "ESIM_VCC",
+            "ESIM_CLK",
+            "ESIM_RST",
+            "ESIM_IO",
+            "CELL_GNSS_RF",
+            "NFC_I2C_SCL",
+            "NFC_I2C_SDA",
+            "NFC_IRQ_N",
+            "NFC_EN",
+            "NFC_RF_P",
+            "NFC_RF_N",
+            "SENSOR_I2C_SCL",
+            "SENSOR_I2C_SDA",
+            "IMU_INT",
+            "ALS_PROX_INT",
+            "BARO_INT",
+            "MAG_INT",
+            "AON_1V8",
+            "IO_1V8",
+            "RF_VBAT",
+        ]
+        if f'"{net}")' in pcb_text
+    ]
+    split_interconnect_nets_assigned = [
+        net
+        for net in [
+            "USB_DP",
+            "USB_DN",
+            "USB_CC1",
+            "USB_CC2",
+            "VBUS",
+            "SHIELD_GND",
+            "SYS",
+            "AON_1V8",
+            "IO_1V8",
+            "VDD_AUDIO_3V3",
+            "VDD_AMP_3V3",
+            "VBAT",
+            "RF_VBAT",
+            "I2S_BCLK",
+            "I2S_LRCLK",
+            "I2S_DOUT",
+            "I2S_DIN",
+            "PDM_CLK",
+            "PDM_DAT",
+            "AUDIO_I2C_SCL",
+            "AUDIO_I2C_SDA",
+            "CODEC_INT",
+            "AMP_INT",
+            "HAPTIC_OUT",
+            "GND",
+        ]
+        if f'"{net}")' in pcb_text
+        and '(footprint "E1Phone:J_TOP_BOTTOM_FLEX_TOP"' in pcb_text
+        and '(footprint "E1Phone:J_TOP_BOTTOM_FLEX_BOTTOM"' in pcb_text
+    ]
     out = {
         "schema": "eliza.e1_phone_manufacturing_closure.v1",
         "status": "blocked_manufacturing_requires_routed_pcb_and_fab_outputs",
@@ -136,6 +342,8 @@ def main() -> int:
             "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
             "board/kicad/e1-phone/routing-constraints.yaml",
             "board/kicad/e1-phone/layout-utilization.yaml",
+            "board/kicad/e1-phone/production-readiness.yaml",
+            "board/kicad/e1-phone/procurement-readiness.yaml",
         ],
         "board_state_detected": {
             "has_kicad_footprints": "(footprint " in pcb_text,
@@ -160,6 +368,22 @@ def main() -> int:
             "usb_c_signal_test_placeholders": usb_signal_test_count,
             "side_key_support_placeholders": side_key_support_count,
             "usb_c_support_nets_assigned": usb_support_nets_assigned,
+            "display_support_placeholders": display_support_count,
+            "camera_support_placeholders": camera_support_count,
+            "display_support_nets_assigned": display_support_nets_assigned,
+            "camera_support_nets_assigned": camera_support_nets_assigned,
+            "audio_support_placeholders": audio_support_count,
+            "haptic_support_placeholders": haptic_support_count,
+            "power_management_support_placeholders": power_management_support_count,
+            "compute_storage_support_placeholders": compute_storage_support_count,
+            "identity_sensor_support_placeholders": identity_sensor_support_count,
+            "split_interconnect_placeholders": split_interconnect_placeholder_count,
+            "audio_support_nets_assigned": audio_support_nets_assigned,
+            "haptic_support_nets_assigned": haptic_support_nets_assigned,
+            "power_management_support_nets_assigned": power_management_support_nets_assigned,
+            "compute_storage_support_nets_assigned": compute_storage_support_nets_assigned,
+            "identity_sensor_support_nets_assigned": identity_sensor_support_nets_assigned,
+            "split_interconnect_nets_assigned": split_interconnect_nets_assigned,
             "declared_net_count": len(declared_nets),
             "generated_net_class_count": generated_net_class_count,
             "assigned_pad_net_count": assigned_pad_net_count,
@@ -197,6 +421,7 @@ def main() -> int:
             "fab quote tied to layer count, impedance stackup, finish, HDI, and tolerance assumptions",
             "stencil, reflow, AOI, X-ray, and cleaning requirements",
             "bed-of-nails or flying-probe test plan with power-rail, USB-C, radio, display, camera, audio, and button coverage",
+            "split-board interconnect inspection and continuity coverage across top and bottom mating connectors",
             "first-article limits for impedance coupons, rail power-up, thermal, RF conducted checks, and functional smoke",
         ],
         "release_blockers": [
@@ -209,6 +434,7 @@ def main() -> int:
             "DFM/DFA",
             "fab quote",
             "first article",
+            "split-board interconnect continuity and assembly inspection",
         ],
         "forbidden_claims": [
             "manufacturing_ready",

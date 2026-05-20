@@ -10,8 +10,8 @@ claim_boundary: >
 design_target:
   display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
   board_bbox_mm: {width: 64.0, height: 132.0}
-  device_envelope_mm: {width: 72.0, height: 148.0, max_thickness: 9.5}
-  battery_window_mm: {width: 45.0, height: 72.0}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  battery_window_mm: {width: 64.0, height: 87.0}
   usb_c_ports: 1
   side_buttons: [power, volume_up, volume_down]
   radios: [5g_redcap_cellular, wifi_6e, bluetooth_5_3, gnss_optional, nfc_optional]
@@ -23,9 +23,26 @@ current_artifacts:
     - docs/board/e1-phone-oem-sourcing.md
     - docs/board/e1-phone-enclosure-interface.yaml
     - board/kicad/e1-phone/block-netlist.yaml
+    - board/kicad/e1-phone/display-fit.yaml
+    - board/kicad/e1-phone/enclosure-placement-closure.yaml
+    - board/kicad/e1-phone/interface-closure.yaml
+    - board/kicad/e1-phone/layout-utilization.yaml
     - board/kicad/e1-phone/placement-interface-matrix.yaml
+    - board/kicad/e1-phone/power-thermal-budget.yaml
     - board/kicad/e1-phone/preliminary-bom.yaml
+    - board/kicad/e1-phone/battery-layout-options.yaml
+    - board/kicad/e1-phone/board-topology-decision.yaml
+    - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+    - board/kicad/e1-phone/audio-acoustic-closure.yaml
+    - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+    - board/kicad/e1-phone/rf-connectivity-closure.yaml
     - board/kicad/e1-phone/routing-constraints.yaml
+    - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+    - board/kicad/e1-phone/manufacturing-closure.yaml
+    - board/kicad/e1-phone/production-readiness.yaml
+    - board/kicad/e1-phone/procurement-readiness.yaml
+    - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/mechanical-overlay.yaml
   package_bindings:
     - package/display/v0-dsi-720x1280.yaml
     - package/camera/oem-mipi-csi-modules.yaml
@@ -35,8 +52,10 @@ current_artifacts:
     - package/human-interface/side-buttons.yaml
     - package/usb-pd/tps65987.yaml
     - package/charger/max77860.yaml
+    - package/battery/e1-phone-17p3wh-pack.yaml
     - package/pmic/da9063.yaml
     - package/audio/v0-codec.yaml
+    - package/interconnect/e1-phone-top-bottom-flex.yaml
   schematic_scaffold:
     - board/kicad/e1-phone/e1-phone.kicad_pro
     - board/kicad/e1-phone/schematic/e1-phone.kicad_sch
@@ -45,6 +64,7 @@ current_artifacts:
     - board/kicad/e1-phone/schematic/display_camera.kicad_sch
     - board/kicad/e1-phone/schematic/radios.kicad_sch
     - board/kicad/e1-phone/schematic/audio_buttons.kicad_sch
+    - board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
     - board/kicad/e1-phone/preview/schematic/e1-phone.svg
     - board/kicad/e1-phone/preview/schematic/e1-phone.png
   kicad_concept:
@@ -53,6 +73,7 @@ current_artifacts:
     - board/kicad/e1-phone/preview/kicad-cli-mainboard.png
   preview_artifacts:
     - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.html
     - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png
     - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.svg
     - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.png
@@ -73,18 +94,22 @@ release_gates:
   routed_pcb:
     status: missing
     required_evidence:
+      - Routed release output manifest in board/kicad/e1-phone/routed-release-plan.yaml
+        closed with every release-required output present.
       - Routed KiCad PCB with footprints, nets, differential-pair constraints,
         keepouts, copper pours, test points, fiducials, and mounting features.
       - Routing constraints in board/kicad/e1-phone/routing-constraints.yaml
         assigned to KiCad net classes and verified after route.
       - DRC clean or justified waivers.
-      - Computed board utilization from component courtyards and no-route zones.
+      - Computed board utilization from real component courtyards and no-route
+        zones, replacing the concept-only gr_rect report in
+        board/kicad/e1-phone/layout-utilization.yaml.
   enclosure:
     status: missing
     required_evidence:
       - STEP assembly with board, display, battery, camera modules, USB-C,
         side buttons, speaker chambers, antennas, and midframe/rear cover.
-      - Tolerance stack proving the 9.5 mm thickness target.
+      - Tolerance stack proving the 9.6 mm thickness target.
       - USB-C insertion load and side-button load path review.
   power_thermal:
     status: missing

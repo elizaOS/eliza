@@ -45,13 +45,16 @@ mock.module("@ai-sdk/openai", () => ({
   openai: mock(() => "mock-openai-model"),
 }));
 
+class MockAPICallError extends Error {}
+class MockRetryError extends Error {}
+
 mock.module("ai", () => ({
-  APICallError: class APICallError extends Error {},
+  APICallError: MockAPICallError,
   Output: {
     json: mock(() => ({})),
     object: mock((value: unknown) => value),
   },
-  RetryError: class RetryError extends Error {},
+  RetryError: MockRetryError,
   convertToModelMessages: mock((messages: unknown) => messages),
   embed: mock(async () => ({ embedding: [] })),
   embedMany: mock(async () => ({ embeddings: [] })),
@@ -179,9 +182,7 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
 
-    expect(
-      result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`),
-    ).toBe(true);
+    expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
     expect(result.reply).not.toContain(`${result.loginUrl}**`);
   });
 
@@ -213,9 +214,7 @@ describe("runOnboardingChat", () => {
       },
     });
 
-    expect(result.reply).toBe(
-      "Open <https://elizacloud.ai/dashboard/containers>.",
-    );
+    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {
@@ -225,20 +224,17 @@ describe("runOnboardingChat", () => {
       body: unknown;
       authorization: string | null;
     }> = [];
-    globalThis.fetch = mock(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        rememberRequests.push({
-          url: String(input),
-          body: init?.body ? JSON.parse(String(init.body)) : null,
-          authorization:
-            init?.headers instanceof Headers
-              ? init.headers.get("authorization")
-              : ((init?.headers as Record<string, string> | undefined)
-                  ?.Authorization ?? null),
-        });
-        return new Response("{}", { status: 200 });
-      },
-    ) as typeof fetch;
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      rememberRequests.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+        authorization:
+          init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : ((init?.headers as Record<string, string> | undefined)?.Authorization ?? null),
+      });
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
 
     try {
       findOrCreateByPhone.mockResolvedValue({
@@ -287,9 +283,7 @@ describe("runOnboardingChat", () => {
         userId: "user-1",
       });
       expect(rememberRequests).toHaveLength(1);
-      expect(rememberRequests[0]?.url).toBe(
-        "https://agent-1.example/api/memory/remember",
-      );
+      expect(rememberRequests[0]?.url).toBe("https://agent-1.example/api/memory/remember");
       expect(rememberRequests[0]?.authorization).toBe("Bearer agent-token");
       expect((rememberRequests[0]?.body as { text: string }).text).toContain(
         "Onboarding conversation transcript copied from Eliza Cloud.",

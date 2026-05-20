@@ -3,13 +3,17 @@
   "status": "selected_not_generated",
   "chipyard": {
     "repo": "https://github.com/ucb-bar/chipyard.git",
-    "tag": "1.13.0",
-    "commit": "69eba860a352343e4ac6b6df0f3638a79a86ec78"
+    "tag": "main-2026-05-20",
+    "commit": "48f904aefbb3903dce6efa7901982642853ae6a7",
+    "previous_tag": "1.13.0",
+    "previous_commit": "69eba860a352343e4ac6b6df0f3638a79a86ec78",
+    "last_audited": "2026-05-20",
+    "bump_rationale": "661 commits since 1.13.0; Saturn RVV1.0 OoO vector unit, modularisation (separate generator submodules), Chisel 7 experimental, Spike RVV/Zicbom/Zacas bumps, Tacit branch-predictor / instr tracing, SRAM depth/width-list support (PR #2303), BOOM v3 RoCC fix, CTC chip-to-chip bridge work."
   },
   "selected_path": {
     "generator": "Chipyard",
-    "chipyard_tag": "1.13.0",
-    "chipyard_release_commit": "69eba86",
+    "chipyard_tag": "main-2026-05-20",
+    "chipyard_release_commit": "48f904ae",
     "core": "Rocket",
     "isa": "RV64GC",
     "harts": 1,

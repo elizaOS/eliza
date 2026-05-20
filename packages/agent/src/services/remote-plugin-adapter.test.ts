@@ -2489,8 +2489,9 @@ describe("remote plugin adapter", () => {
         null) as IAgentRuntime["getService"],
       hasService: (serviceType) => services.has(serviceType),
       registerService: async (ServiceClass) => {
-        const service =
-          new (ServiceClass as typeof RemoteCapabilityRouterService)(runtime);
+        const service = new (
+          ServiceClass as typeof RemoteCapabilityRouterService
+        )(runtime);
         services.set(ServiceClass.serviceType, service);
       },
       getServiceLoadPromise: async (serviceType) => {
@@ -2634,8 +2635,9 @@ describe("remote plugin adapter", () => {
           null) as IAgentRuntime["getService"],
         hasService: (serviceType) => services.has(serviceType),
         registerService: async (ServiceClass) => {
-          const service =
-            new (ServiceClass as typeof RemoteCapabilityRouterService)(runtime);
+          const service = new (
+            ServiceClass as typeof RemoteCapabilityRouterService
+          )(runtime);
           services.set(ServiceClass.serviceType, service);
         },
         getServiceLoadPromise: async (serviceType) => {
@@ -4995,8 +4997,9 @@ function makeProductConnectRuntime(): IAgentRuntime {
       null) as IAgentRuntime["getService"],
     hasService: (serviceType) => services.has(serviceType),
     registerService: async (ServiceClass) => {
-      const service =
-        new (ServiceClass as typeof RemoteCapabilityRouterService)(runtime);
+      const service = new (
+        ServiceClass as typeof RemoteCapabilityRouterService
+      )(runtime);
       services.set(ServiceClass.serviceType, [service]);
     },
     getServiceLoadPromise: async (serviceType) => {

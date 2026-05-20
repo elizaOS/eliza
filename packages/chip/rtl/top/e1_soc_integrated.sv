@@ -908,6 +908,23 @@ module e1_soc_integrated
     logic                             slot0_b_ready;
     logic                             slot0_r_ready;
 
+    // Downstream-side AXI4 response signals (driven by the slot-0 memory
+    // model below).  Declared as wires so the converter's `dn_*_ready` /
+    // `dn_r_data` / `dn_b_*` inputs see the memory's outputs.
+    logic                             slot0_aw_ready;
+    logic                             slot0_w_ready;
+    logic [CVA6_AXI_ID_W-1:0]         slot0_b_id;
+    logic [1:0]                       slot0_b_resp;
+    logic [CVA6_AXI_USER_W-1:0]       slot0_b_user;
+    logic                             slot0_b_valid;
+    logic                             slot0_ar_ready;
+    logic [CVA6_AXI_ID_W-1:0]         slot0_r_id;
+    logic [127:0]                     slot0_r_data;
+    logic [1:0]                       slot0_r_resp;
+    logic                             slot0_r_last;
+    logic [CVA6_AXI_USER_W-1:0]       slot0_r_user;
+    logic                             slot0_r_valid;
+
     e1_axi4_width_converter #(
         .UPSTREAM_DATA_W  (CVA6_AXI_DATA_W),  // 64
         .DOWNSTREAM_DATA_W(128),
@@ -964,7 +981,15 @@ module e1_soc_integrated
         .up_r_user  (cva6_r_user_wire),
         .up_r_valid (cva6_r_valid_wire),
         .up_r_ready (cva6_r_ready),
-        // Downstream 128-bit slot-0 net
+        // Downstream 128-bit slot-0 net.  In production this would land on
+        // the cluster's slot-0 per-core AXI4 input ports.  Until the
+        // cluster's per-core wrappers ship (see `e1_cluster_top.sv` lite
+        // tie-off), we attach a thin AXI4-slave memory model directly on
+        // the downstream net so cocotb can exercise the end-to-end
+        // CVA6 → wrapper → adapter → width converter → memory loop.  The
+        // memory serves the same boot-ROM + DRAM contract as the
+        // standalone `e1_cva6_unit_tb.sv`, but at the 128-bit downstream
+        // width (so the test exercises the actual converter beats).
         .dn_aw_id   (slot0_aw_id),
         .dn_aw_addr (slot0_aw_addr),
         .dn_aw_len  (slot0_aw_len),
@@ -978,17 +1003,17 @@ module e1_soc_integrated
         .dn_aw_atop (slot0_aw_atop),
         .dn_aw_user (slot0_aw_user),
         .dn_aw_valid(slot0_aw_valid),
-        .dn_aw_ready(1'b0),  // quiet sink: cluster slot-0 receiver not yet active
+        .dn_aw_ready(slot0_aw_ready),
         .dn_w_data  (slot0_w_data),
         .dn_w_strb  (slot0_w_strb),
         .dn_w_last  (slot0_w_last),
         .dn_w_user  (slot0_w_user),
         .dn_w_valid (slot0_w_valid),
-        .dn_w_ready (1'b0),
-        .dn_b_id    ('0),
-        .dn_b_resp  (2'b00),
-        .dn_b_user  ('0),
-        .dn_b_valid (1'b0),
+        .dn_w_ready (slot0_w_ready),
+        .dn_b_id    (slot0_b_id),
+        .dn_b_resp  (slot0_b_resp),
+        .dn_b_user  (slot0_b_user),
+        .dn_b_valid (slot0_b_valid),
         .dn_b_ready (slot0_b_ready),
         .dn_ar_id   (slot0_ar_id),
         .dn_ar_addr (slot0_ar_addr),
@@ -1002,32 +1027,257 @@ module e1_soc_integrated
         .dn_ar_region(slot0_ar_region),
         .dn_ar_user (slot0_ar_user),
         .dn_ar_valid(slot0_ar_valid),
-        .dn_ar_ready(1'b0),
-        .dn_r_id    ('0),
-        .dn_r_data  (128'h0),
-        .dn_r_resp  (2'b00),
-        .dn_r_last  (1'b0),
-        .dn_r_user  ('0),
-        .dn_r_valid (1'b0),
+        .dn_ar_ready(slot0_ar_ready),
+        .dn_r_id    (slot0_r_id),
+        .dn_r_data  (slot0_r_data),
+        .dn_r_resp  (slot0_r_resp),
+        .dn_r_last  (slot0_r_last),
+        .dn_r_user  (slot0_r_user),
+        .dn_r_valid (slot0_r_valid),
         .dn_r_ready (slot0_r_ready)
     );
+
+    // ── Slot-0 memory model + AXI4 traffic counters (128-bit downstream) ──
+    //
+    // Serves the same ROM @ 0x1_0000 / DRAM @ 0x8000_0000 contract as the
+    // standalone `e1_cva6_unit_tb`, but at the 128-bit downstream width so
+    // the in-band SoC test exercises the CVA6 → wrapper → adapter → width
+    // converter → memory chain end-to-end.  Preloaded via `$readmemh` from
+    // a hex file written by the cocotb test at module-import time (same
+    // mechanism + same `boot_rom.hex` filename as the standalone TB), and
+    // the first three 128-bit words are mirrored to top-level flat ports so
+    // the test can assert the preload landed before releasing reset.
+    //
+    // The model is a simple single-inflight FSM mirroring the standalone
+    // TB's read/write handling.  CVA6 cv64a6 issues at most one outstanding
+    // AR/AW; the width converter is single-inflight, so a single-FSM model
+    // matches the actual traffic shape.
+    localparam int unsigned SLOT0_ROM_BYTES = 4096;   // 4 KiB
+    localparam int unsigned SLOT0_DRAM_BYTES = 16384; // 16 KiB
+    localparam int unsigned SLOT0_ROM_WORDS_128  = SLOT0_ROM_BYTES / 16;
+    localparam int unsigned SLOT0_DRAM_WORDS_128 = SLOT0_DRAM_BYTES / 16;
+    localparam logic [CVA6_AXI_ADDR_W-1:0] SLOT0_ROM_BASE  =
+        64'h0000_0000_0001_0000;
+    localparam logic [CVA6_AXI_ADDR_W-1:0] SLOT0_DRAM_BASE =
+        64'h0000_0000_8000_0000;
+
+    logic [127:0] slot0_rom  [0:SLOT0_ROM_WORDS_128-1];
+    logic [127:0] slot0_dram [0:SLOT0_DRAM_WORDS_128-1];
+
+    // `$readmemh` reads big-endian-by-default; the cocotb hex writer must
+    // emit one 128-bit word per line (32 hex chars).  Path is taken from
+    // the `SLOT0_BOOT_ROM_HEX` plusarg (default `boot_rom.hex` relative to
+    // the simulator cwd) — same default as the standalone TB so a single
+    // file shared between tests works in the common case.
+    initial begin : init_slot0_mem
+        string rom_path;
+        for (int i = 0; i < SLOT0_ROM_WORDS_128;  i++) slot0_rom[i]  = 128'h0;
+        for (int i = 0; i < SLOT0_DRAM_WORDS_128; i++) slot0_dram[i] = 128'h0;
+        if (!$value$plusargs("SLOT0_BOOT_ROM_HEX=%s", rom_path)) begin
+            rom_path = "boot_rom.hex";
+        end
+        $readmemh(rom_path, slot0_rom);
+    end
+
+    assign cva6_slot0_rom_word0_o = slot0_rom[0];
+    assign cva6_slot0_rom_word1_o = slot0_rom[1];
+    assign cva6_slot0_rom_word2_o = slot0_rom[2];
+
+    function automatic logic slot0_is_rom_addr(input logic [CVA6_AXI_ADDR_W-1:0] addr);
+        return (addr >= SLOT0_ROM_BASE) &&
+               (addr <  (SLOT0_ROM_BASE + SLOT0_ROM_BYTES));
+    endfunction
+    function automatic logic slot0_is_dram_addr(input logic [CVA6_AXI_ADDR_W-1:0] addr);
+        return (addr >= SLOT0_DRAM_BASE) &&
+               (addr <  (SLOT0_DRAM_BASE + SLOT0_DRAM_BYTES));
+    endfunction
+
+    // Read FSM
+    typedef enum logic [1:0] {SLOT0_R_IDLE, SLOT0_R_RESPOND} slot0_read_state_t;
+    slot0_read_state_t       slot0_r_state;
+    logic [CVA6_AXI_ID_W-1:0]   slot0_r_pending_id;
+    logic [CVA6_AXI_ADDR_W-1:0] slot0_r_pending_addr;
+    logic [7:0]                 slot0_r_pending_beats;
+    logic [7:0]                 slot0_r_beat_idx;
+
+    assign slot0_ar_ready = (slot0_r_state == SLOT0_R_IDLE);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            slot0_r_state         <= SLOT0_R_IDLE;
+            slot0_r_pending_id    <= '0;
+            slot0_r_pending_addr  <= '0;
+            slot0_r_pending_beats <= '0;
+            slot0_r_beat_idx      <= '0;
+            slot0_r_valid         <= 1'b0;
+            slot0_r_id            <= '0;
+            slot0_r_data          <= '0;
+            slot0_r_resp          <= 2'b00;
+            slot0_r_last          <= 1'b0;
+            slot0_r_user          <= '0;
+        end else begin
+            unique case (slot0_r_state)
+                SLOT0_R_IDLE: begin
+                    slot0_r_valid <= 1'b0;
+                    slot0_r_last  <= 1'b0;
+                    if (slot0_ar_valid && slot0_ar_ready) begin
+                        slot0_r_state         <= SLOT0_R_RESPOND;
+                        slot0_r_pending_id    <= slot0_ar_id;
+                        slot0_r_pending_addr  <= slot0_ar_addr;
+                        slot0_r_pending_beats <= slot0_ar_len;
+                        slot0_r_beat_idx      <= 8'd0;
+                    end
+                end
+                SLOT0_R_RESPOND: begin
+                    slot0_r_valid <= 1'b1;
+                    slot0_r_id    <= slot0_r_pending_id;
+                    if (slot0_is_rom_addr(slot0_r_pending_addr +
+                            ({56'h0, slot0_r_beat_idx} * 16))) begin
+                        slot0_r_data <= slot0_rom[
+                            ((slot0_r_pending_addr - SLOT0_ROM_BASE) >> 4) +
+                            slot0_r_beat_idx];
+                        slot0_r_resp <= 2'b00;
+                    end else if (slot0_is_dram_addr(slot0_r_pending_addr +
+                            ({56'h0, slot0_r_beat_idx} * 16))) begin
+                        slot0_r_data <= slot0_dram[
+                            ((slot0_r_pending_addr - SLOT0_DRAM_BASE) >> 4) +
+                            slot0_r_beat_idx];
+                        slot0_r_resp <= 2'b00;
+                    end else begin
+                        slot0_r_data <= 128'h0;
+                        slot0_r_resp <= 2'b11; // DECERR for unmapped
+                    end
+                    slot0_r_last <= (slot0_r_beat_idx == slot0_r_pending_beats);
+                    if (slot0_r_valid && slot0_r_ready) begin
+                        if (slot0_r_beat_idx == slot0_r_pending_beats) begin
+                            slot0_r_state <= SLOT0_R_IDLE;
+                            slot0_r_valid <= 1'b0;
+                            slot0_r_last  <= 1'b0;
+                        end else begin
+                            slot0_r_beat_idx <= slot0_r_beat_idx + 8'd1;
+                        end
+                    end
+                end
+                default: slot0_r_state <= SLOT0_R_IDLE;
+            endcase
+        end
+    end
+
+    // Write FSM
+    typedef enum logic [1:0] {SLOT0_W_IDLE, SLOT0_W_DATA, SLOT0_W_RESP}
+        slot0_write_state_t;
+    slot0_write_state_t      slot0_w_state;
+    logic [CVA6_AXI_ID_W-1:0]   slot0_w_pending_id;
+    logic [CVA6_AXI_ADDR_W-1:0] slot0_w_pending_addr;
+    logic [7:0]                 slot0_w_pending_beats;
+    logic [7:0]                 slot0_w_beat_idx;
+
+    assign slot0_aw_ready = (slot0_w_state == SLOT0_W_IDLE);
+    assign slot0_w_ready  = (slot0_w_state == SLOT0_W_DATA);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            slot0_w_state         <= SLOT0_W_IDLE;
+            slot0_w_pending_id    <= '0;
+            slot0_w_pending_addr  <= '0;
+            slot0_w_pending_beats <= '0;
+            slot0_w_beat_idx      <= '0;
+            slot0_b_valid         <= 1'b0;
+            slot0_b_id            <= '0;
+            slot0_b_resp          <= 2'b00;
+            slot0_b_user          <= '0;
+        end else begin
+            unique case (slot0_w_state)
+                SLOT0_W_IDLE: begin
+                    slot0_b_valid <= 1'b0;
+                    if (slot0_aw_valid && slot0_aw_ready) begin
+                        slot0_w_state         <= SLOT0_W_DATA;
+                        slot0_w_pending_id    <= slot0_aw_id;
+                        slot0_w_pending_addr  <= slot0_aw_addr;
+                        slot0_w_pending_beats <= slot0_aw_len;
+                        slot0_w_beat_idx      <= 8'd0;
+                    end
+                end
+                SLOT0_W_DATA: begin
+                    if (slot0_w_valid && slot0_w_ready) begin
+                        if (slot0_is_dram_addr(slot0_w_pending_addr +
+                                ({56'h0, slot0_w_beat_idx} * 16))) begin
+                            slot0_dram[
+                                ((slot0_w_pending_addr - SLOT0_DRAM_BASE) >> 4) +
+                                slot0_w_beat_idx] <= slot0_w_data;
+                        end
+                        // ROM writes are silently dropped (tests should not
+                        // target the ROM with writes; the SoC contract is
+                        // read-only for the boot-vector region).
+                        if (slot0_w_last) begin
+                            slot0_w_state <= SLOT0_W_RESP;
+                            slot0_b_id    <= slot0_w_pending_id;
+                            slot0_b_resp  <= 2'b00;
+                            slot0_b_valid <= 1'b1;
+                        end else begin
+                            slot0_w_beat_idx <= slot0_w_beat_idx + 8'd1;
+                        end
+                    end
+                end
+                SLOT0_W_RESP: begin
+                    if (slot0_b_valid && slot0_b_ready) begin
+                        slot0_w_state <= SLOT0_W_IDLE;
+                        slot0_b_valid <= 1'b0;
+                    end
+                end
+                default: slot0_w_state <= SLOT0_W_IDLE;
+            endcase
+        end
+    end
+
+    // AXI4 traffic counters at the 128-bit downstream side.
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            cva6_slot0_ar_xfers_o <= '0;
+            cva6_slot0_aw_xfers_o <= '0;
+            cva6_slot0_w_xfers_o  <= '0;
+            cva6_slot0_r_xfers_o  <= '0;
+            cva6_slot0_b_xfers_o  <= '0;
+        end else begin
+            if (slot0_ar_valid && slot0_ar_ready)
+                cva6_slot0_ar_xfers_o <= cva6_slot0_ar_xfers_o + 32'd1;
+            if (slot0_aw_valid && slot0_aw_ready)
+                cva6_slot0_aw_xfers_o <= cva6_slot0_aw_xfers_o + 32'd1;
+            if (slot0_w_valid && slot0_w_ready)
+                cva6_slot0_w_xfers_o  <= cva6_slot0_w_xfers_o + 32'd1;
+            if (slot0_r_valid && slot0_r_ready)
+                cva6_slot0_r_xfers_o  <= cva6_slot0_r_xfers_o + 32'd1;
+            if (slot0_b_valid && slot0_b_ready)
+                cva6_slot0_b_xfers_o  <= cva6_slot0_b_xfers_o + 32'd1;
+        end
+    end
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_cva6_slot0_outs;
     assign unused_cva6_slot0_outs = ^{
-        slot0_ar_id, slot0_ar_addr, slot0_ar_len, slot0_ar_size,
-        slot0_ar_burst, slot0_ar_lock, slot0_ar_cache, slot0_ar_prot,
-        slot0_ar_qos, slot0_ar_region, slot0_ar_user, slot0_ar_valid,
-        slot0_r_ready,
-        slot0_aw_id, slot0_aw_addr, slot0_aw_len, slot0_aw_size,
-        slot0_aw_burst, slot0_aw_lock, slot0_aw_cache, slot0_aw_prot,
-        slot0_aw_qos, slot0_aw_region, slot0_aw_atop, slot0_aw_user,
-        slot0_aw_valid,
-        slot0_w_data, slot0_w_strb, slot0_w_last, slot0_w_user, slot0_w_valid,
-        slot0_b_ready
+        slot0_b_user, slot0_r_user, slot0_b_id, slot0_b_resp, slot0_r_id,
+        slot0_r_resp, slot0_r_last,
+        slot0_aw_lock, slot0_aw_cache, slot0_aw_prot, slot0_aw_qos,
+        slot0_aw_region, slot0_aw_atop, slot0_aw_user, slot0_aw_size,
+        slot0_aw_burst, slot0_ar_lock, slot0_ar_cache, slot0_ar_prot,
+        slot0_ar_qos, slot0_ar_region, slot0_ar_user, slot0_ar_size,
+        slot0_ar_burst
     };
     /* verilator lint_on UNUSEDSIGNAL */
 `endif // E1_CLUSTER_SLOT0_CVA6
+
+`ifndef E1_CLUSTER_SLOT0_CVA6
+    // Stub the CVA6 slot-0 observability ports to zero so the SoC top has a
+    // single elaboration shape regardless of the define.
+    assign cva6_slot0_ar_xfers_o   = 32'h0;
+    assign cva6_slot0_aw_xfers_o   = 32'h0;
+    assign cva6_slot0_w_xfers_o    = 32'h0;
+    assign cva6_slot0_r_xfers_o    = 32'h0;
+    assign cva6_slot0_b_xfers_o    = 32'h0;
+    assign cva6_slot0_rom_word0_o  = 128'h0;
+    assign cva6_slot0_rom_word1_o  = 128'h0;
+    assign cva6_slot0_rom_word2_o  = 128'h0;
+`endif // !E1_CLUSTER_SLOT0_CVA6
 
     // ----------------------------------------------------------------------
     // SLC → line shim → CHI → AXI4 cache south-side path.  Demonstrates

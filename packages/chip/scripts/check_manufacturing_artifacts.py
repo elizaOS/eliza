@@ -13,6 +13,7 @@ DEFAULT_MANIFESTS = [
     "docs/manufacturing/artifact-manifest.yaml",
     "package/artifact-manifest.yaml",
     "board/kicad/e1-demo/artifact-manifest.yaml",
+    "board/kicad/e1-phone/artifact-manifest.yaml",
     "board/fpga/artifact-manifest.yaml",
 ]
 ALLOWED_STATUS = {"missing", "draft", "complete"}
@@ -310,8 +311,40 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
             continue
 
         groups_out: list[dict] = []
+        if data.get("schema") == "eliza.e1_phone_board_artifact_manifest.v1":
+            groups = data.get("current_artifacts", {})
+            if isinstance(groups, dict):
+                for group_name in sorted(str(name) for name in groups):
+                    paths = as_list(groups[group_name])
+                    artifacts_out = []
+                    for rel_path in paths:
+                        path_obj = repo_path(rel_path)
+                        files = []
+                        if path_obj.is_file():
+                            files.append(
+                                {
+                                    "path": rel_path,
+                                    "sha256": file_sha256(path_obj),
+                                    "size_bytes": path_obj.stat().st_size,
+                                }
+                            )
+                        artifacts_out.append(
+                            {
+                                "name": rel_path,
+                                "status": "draft" if files else "missing",
+                                "globs": [rel_path],
+                                "files": files,
+                            }
+                        )
+                    groups_out.append(
+                        {
+                            "name": group_name,
+                            "status": "draft",
+                            "artifacts": artifacts_out,
+                        }
+                    )
         groups = data.get("artifact_groups", {})
-        if isinstance(groups, dict):
+        if not groups_out and isinstance(groups, dict):
             for group_name in sorted(str(name) for name in groups):
                 group = groups[group_name]
                 if not isinstance(group, dict):
@@ -366,6 +399,137 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
     }
 
 
+def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
+    failures: list[str] = []
+    rel_manifest = path.relative_to(ROOT).as_posix()
+    try:
+        manifest = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as exc:
+        return [f"{rel_manifest}: invalid YAML: {exc}"]
+    if not isinstance(manifest, dict):
+        return [f"{rel_manifest}: manifest must be a mapping"]
+    if manifest.get("schema") != "eliza.e1_phone_board_artifact_manifest.v1":
+        failures.append(f"{rel_manifest}: unexpected phone manifest schema")
+    status = manifest.get("status")
+    if status != "blocked_not_fabrication_ready":
+        failures.append(f"{rel_manifest}: phone manifest must remain blocked, got {status}")
+    if release:
+        failures.append(
+            f"{rel_manifest}: release requires routed/fabrication/enclosure evidence, got {status}"
+        )
+
+    target = manifest.get("design_target", {})
+    expected_target = {
+        "usb_c_ports": 1,
+        "side_buttons": ["power", "volume_up", "volume_down"],
+        "board_bbox_mm": {"width": 64.0, "height": 132.0},
+        "battery_window_mm": {"width": 64.0, "height": 87.0},
+    }
+    if not isinstance(target, dict):
+        failures.append(f"{rel_manifest}: missing design_target")
+        target = {}
+    for key, expected in expected_target.items():
+        if target.get(key) != expected:
+            failures.append(f"{rel_manifest}: design_target.{key} expected {expected}, got {target.get(key)}")
+    radios = target.get("radios", [])
+    for radio in ["5g_redcap_cellular", "wifi_6e", "bluetooth_5_3"]:
+        if radio not in radios:
+            failures.append(f"{rel_manifest}: design target missing radio {radio}")
+
+    groups = manifest.get("current_artifacts")
+    if not isinstance(groups, dict):
+        failures.append(f"{rel_manifest}: missing current_artifacts")
+        groups = {}
+    required_groups = {
+        "planning",
+        "package_bindings",
+        "schematic_scaffold",
+        "kicad_concept",
+        "preview_artifacts",
+    }
+    missing_groups = sorted(required_groups - set(groups))
+    if missing_groups:
+        failures.append(f"{rel_manifest}: missing current_artifacts groups: {', '.join(missing_groups)}")
+    required_paths = {
+        "board/kicad/e1-phone/routed-release-plan.yaml",
+        "board/kicad/e1-phone/manufacturing-closure.yaml",
+        "board/kicad/e1-phone/production-readiness.yaml",
+        "board/kicad/e1-phone/procurement-readiness.yaml",
+        "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+        "board/kicad/e1-phone/preview/kicad-cli-mainboard.svg",
+        "board/kicad/e1-phone/preview/kicad-cli-mainboard.png",
+    }
+    all_paths = {item for paths in groups.values() for item in as_list(paths)}
+    for required in sorted(required_paths):
+        if required not in all_paths:
+            failures.append(f"{rel_manifest}: current_artifacts missing {required}")
+    for rel_path in sorted(all_paths):
+        path_obj = repo_path(rel_path)
+        if not path_obj.is_file():
+            failures.append(f"{rel_manifest}: current artifact file is missing: {rel_path}")
+            continue
+        if path_obj.suffix in {".yaml", ".yml"}:
+            try:
+                yaml.safe_load(path_obj.read_text())
+            except yaml.YAMLError as exc:
+                failures.append(f"{rel_manifest}: current artifact YAML invalid {rel_path}: {exc}")
+
+    gates = manifest.get("release_gates", {})
+    if not isinstance(gates, dict):
+        failures.append(f"{rel_manifest}: release_gates must be a mapping")
+        gates = {}
+    required_gates = {"schematic", "routed_pcb", "enclosure", "power_thermal", "rf_si", "manufacturing"}
+    missing_gates = sorted(required_gates - set(gates))
+    if missing_gates:
+        failures.append(f"{rel_manifest}: missing release gates: {', '.join(missing_gates)}")
+    for gate_name, gate in gates.items():
+        if not isinstance(gate, dict):
+            failures.append(f"{rel_manifest}.release_gates.{gate_name}: gate must be a mapping")
+            continue
+        if gate.get("status") != "missing":
+            failures.append(
+                f"{rel_manifest}.release_gates.{gate_name}: expected missing, got {gate.get('status')}"
+            )
+        evidence = gate.get("required_evidence", [])
+        if not as_list(evidence):
+            failures.append(f"{rel_manifest}.release_gates.{gate_name}: missing required_evidence")
+        if release:
+            failures.append(f"{rel_manifest}.release_gates.{gate_name}: release gate remains missing")
+
+    routed_plan_path = repo_path("board/kicad/e1-phone/routed-release-plan.yaml")
+    if routed_plan_path.is_file():
+        routed_plan = yaml.safe_load(routed_plan_path.read_text())
+        if routed_plan.get("status") != "blocked_routed_release_requires_real_route_and_supplier_outputs":
+            failures.append(f"{rel_manifest}: routed release plan status is not fail-closed")
+        outputs = routed_plan.get("required_release_output_manifest", {})
+        if not isinstance(outputs, dict) or len(outputs) < 20:
+            failures.append(f"{rel_manifest}: routed release plan must track at least 20 release outputs")
+        else:
+            for output_name, output in outputs.items():
+                if not isinstance(output, dict):
+                    failures.append(f"{rel_manifest}: routed output {output_name} must be a mapping")
+                    continue
+                if output.get("present") is not False or output.get("release_required") is not True:
+                    failures.append(f"{rel_manifest}: routed output {output_name} must be blocked and required")
+                if release:
+                    failures.append(f"{rel_manifest}: release output remains missing: {output_name}")
+    else:
+        failures.append(f"{rel_manifest}: routed release plan is missing")
+
+    forbidden = manifest.get("forbidden_claims_while_status_blocked", [])
+    for claim in [
+        "board_fabrication_ready",
+        "enclosure_ready",
+        "production_bom_ready",
+        "rf_ready",
+        "power_thermal_ready",
+        "end_to_end_phone_ready",
+    ]:
+        if claim not in forbidden:
+            failures.append(f"{rel_manifest}: missing forbidden claim {claim}")
+    return failures
+
+
 def validate_manifest(path: Path, release: bool) -> list[str]:
     failures: list[str] = []
     try:
@@ -374,6 +538,8 @@ def validate_manifest(path: Path, release: bool) -> list[str]:
         return [f"{path.relative_to(ROOT)}: invalid YAML: {exc}"]
     if not isinstance(manifest, dict):
         return [f"{path.relative_to(ROOT)}: manifest must be a mapping"]
+    if manifest.get("schema") == "eliza.e1_phone_board_artifact_manifest.v1":
+        return validate_e1_phone_manifest(path, release)
 
     manifest_name = str(manifest.get("manifest") or path.relative_to(ROOT))
     release_gate = manifest.get("release_gate")

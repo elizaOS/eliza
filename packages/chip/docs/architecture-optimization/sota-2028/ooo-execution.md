@@ -28,7 +28,7 @@ Reference rows: D9500 (C1-Ultra 4.21 / Premium 3.5 / Pro 2.7 GHz), S8 Elite Gen 
 
 - `rtl/cpu/e1_cpu_subsystem_stub.sv` — tiny in-order RV64 fetch/execute: 32-bit AXI-Lite manager, 32 archregs as 64-bit, supports JAL/JALR/BEQ/BNE/LUI/AUIPC/ADDI/ADD/SUB/LW/SW, halts on ECALL/EBREAK/illegal/AXI error. Not Linux-capable. No CSR, privilege, MMU, traps, atomics, compressed, float, vector.
 - `rtl/cpu/e1_cva6_wrapper.sv` — drop-in wrapper for OpenHW CVA6 (`ArianeDefaultConfig`, RV64IMAFDC + S-mode + Sv39), guarded by `+define+E1_HAVE_CVA6`. CVA6 = 6-stage single-issue in-order with limited speculation. Closest commercial peer: Cortex-A55-class. Expected SPEC2017 int IPC: ~1.5-1.8 on RTL, ~10× behind Cortex-X925.
-- Chipyard Rocket (selected per `eliza-rocket-manifest.json`, commit `69eba860`): 5-stage in-order, single-issue, RV64GC. SPEC2017 int IPC ~1.0-1.5.
+- Chipyard Rocket (selected per `eliza-rocket-manifest.json`, commit `48f904ae`): 5-stage in-order, single-issue, RV64GC. SPEC2017 int IPC ~1.0-1.5.
 - Modeled CPU planning point (`benchmarks/results/simulator-arch-metrics-sota.json`): 2-core, 3.8 GHz, modeled IPC 2.42, 2.76 W package. Architecture target only — `cpu_ap_evidence_blocked`.
 - All flagship-class claims fail-closed blocked until `make cpu-ap-completion-gate`.
 

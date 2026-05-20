@@ -3,6 +3,13 @@ set -euo pipefail
 
 IMAGE="${ELIZA_KICAD_IMAGE:-eliza-chip-kicad-tools:local}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCAL_KICAD="${ELIZA_KICAD_LOCAL_ROOT:-$ROOT/.tools/kicad-local}"
+
+if [ "$#" -gt 0 ] && [ -x "$LOCAL_KICAD/usr/bin/$1" ]; then
+  export PATH="$LOCAL_KICAD/usr/bin:$PATH"
+  export LD_LIBRARY_PATH="$LOCAL_KICAD/usr/lib/x86_64-linux-gnu:$LOCAL_KICAD/usr/lib:${LD_LIBRARY_PATH:-}"
+  exec "$@"
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker is required when host kicad-cli is unavailable" >&2

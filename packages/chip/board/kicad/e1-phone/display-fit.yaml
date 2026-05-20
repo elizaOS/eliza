@@ -1,0 +1,87 @@
+schema: eliza.e1_phone_display_fit.v1
+status: mechanical_fit_baseline_not_step_not_fabrication_ready
+source_files:
+  - package/display/v0-dsi-720x1280.yaml
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+claim_boundary: Checks 2D display/module/envelope fit only. This is not a STEP model,
+  tolerance stack, FPC bend validation, camera stack validation, or enclosure release.
+selected_primary_display:
+  vendor: Chenghao Optoelectronic
+  part: CH550FH01A-CT
+  outline_source: module_outline_mm
+  outline_mm:
+    width: 77.1
+    height: 151.77
+    thickness: 3.39
+  active_area_mm:
+    width: 68.04
+    height: 120.96
+current_device_envelope_mm:
+  width: 78.0
+  height: 153.6
+  max_thickness: 9.6
+minimum_envelope_for_primary_with_margin_mm:
+  width: 77.7
+  height: 153.57
+  side_margin_each_mm: 0.3
+  top_bottom_margin_each_mm: 0.9
+primary_clearance_in_current_envelope_mm:
+  width_clearance_mm: 0.9
+  height_clearance_mm: 1.83
+primary_fits_current_envelope: true
+board_fit_behind_primary_display:
+  board_width_mm: 64.0
+  board_height_mm: 132.0
+  width_margin_from_display_outline_mm: 13.1
+  height_margin_from_display_outline_mm: 19.77
+  interpretation: The rigid board remains narrower than the selected display assembly;
+    the earlier 72 x 148 mm device envelope was the inconsistent item.
+candidate_fit_summary:
+  - vendor: Chenghao Optoelectronic
+    part: CH550FH01A-CT
+    outline_source: module_outline_mm
+    outline_mm:
+      width: 77.1
+      height: 151.77
+      thickness: 3.39
+    clearance_in_current_envelope_mm:
+      width_clearance_mm: 0.9
+      height_clearance_mm: 1.83
+    fits_current_envelope: true
+    board_width_margin_behind_outline_mm: 13.1
+  - vendor: META Display / OEM 055WU01 class
+    part: 055WU01
+    status: missing_mechanical_outline
+  - vendor: Forfuture / FET
+    part: E549-HCO1 or pin-compatible AMOLED class
+    outline_source: outline_mm
+    outline_mm:
+      width: 70.66
+      height: 128.36
+      thickness: 0.82
+    clearance_in_current_envelope_mm:
+      width_clearance_mm: 7.34
+      height_clearance_mm: 25.24
+    fits_current_envelope: true
+    board_width_margin_behind_outline_mm: 6.66
+  - vendor: BOE
+    part: TV050QDM-N00
+    status: missing_mechanical_outline
+  - vendor: Truly
+    part: TFT3P1761E
+    status: missing_mechanical_outline
+  - vendor: PineDio reference
+    part: PinePhone Pro display assembly (LCM)
+    status: missing_mechanical_outline
+recommended_device_envelope_mm:
+  width: 78.0
+  height: 153.6
+  max_thickness: 9.6
+  basis: primary 5.5 inch Chenghao-class CTP module plus compact CAD rail margin
+required_next_evidence:
+  - supplier 2D drawing with display FPC exit and connector datum
+  - cover-lens/touch-stack decision if using CTP module wider than 72 mm
+  - STEP assembly for display, board, battery, camera, USB-C, side buttons, and midframe
+  - FPC bend-radius and adhesive/tolerance stack review
+  - camera bump and top speaker clearance against the selected display module

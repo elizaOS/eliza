@@ -91,12 +91,12 @@ e1-phone-board-package-check:
 	@$(PYTHON) scripts/check_e1_phone_board_package.py
 
 kicad-phone-render: kicad-tools-check
-	@scripts/kicad_run.sh kicad-cli pcb export svg --output board/kicad/e1-phone/preview/kicad-cli-mainboard.svg --layers F.Cu,B.Cu,F.SilkS,F.Fab,Dwgs.User,Edge.Cuts --page-size-mode 2 --exclude-drawing-sheet --black-and-white board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
-	@scripts/kicad_run.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/kicad-cli-mainboard.png board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
+	@scripts/kicad_docker.sh kicad-cli pcb export svg --output board/kicad/e1-phone/preview/kicad-cli-mainboard.svg --layers F.Cu,B.Cu,F.SilkS,F.Fab,Dwgs.User,Edge.Cuts --page-size-mode 2 --exclude-drawing-sheet --black-and-white board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+	@scripts/kicad_docker.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/kicad-cli-mainboard.png board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
 	@mkdir -p board/kicad/e1-phone/preview/schematic
-	@scripts/kicad_run.sh kicad-cli sch export svg --output board/kicad/e1-phone/preview/schematic --black-and-white --exclude-drawing-sheet board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+	@scripts/kicad_docker.sh kicad-cli sch export svg --output board/kicad/e1-phone/preview/schematic --black-and-white --exclude-drawing-sheet board/kicad/e1-phone/schematic/e1-phone.kicad_sch
 	@perl -pi -e 's/[ \t]+$$//' board/kicad/e1-phone/preview/kicad-cli-mainboard.svg board/kicad/e1-phone/preview/schematic/e1-phone.svg
-	@scripts/kicad_run.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/schematic/e1-phone.png board/kicad/e1-phone/preview/schematic/e1-phone.svg
+	@scripts/kicad_docker.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/schematic/e1-phone.png board/kicad/e1-phone/preview/schematic/e1-phone.svg
 	@$(PYTHON) board/kicad/e1-phone/preview/verify-preview-assets.py
 
 kicad-phone-preview-check:

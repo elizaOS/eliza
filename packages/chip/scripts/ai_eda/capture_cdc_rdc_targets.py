@@ -106,6 +106,7 @@ def main() -> int:
             "formal-cdc-msi",
             "questa-cdc-rdc-assist",
             "opencdc",
+            "cdc-snitch",
             "cdc-rdc-draft-0p5",
             "veryl-clock-domain-annotation",
             "arch-ai-native-hdl",
@@ -133,6 +134,18 @@ def main() -> int:
             "python_modules": [module_entry(name) for name in OPTIONAL_PYTHON_MODULES],
         },
         "candidate_tasks": [
+            {
+                "id": "open-cdc-lint-backend-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future cdc_snitch or similar open CDC lint runs must remain advisory until revision, license, parser coverage, clock/reset-domain intent, report hashes, false-positive policy, waiver disposition, and local formal/cocotb follow-up are reviewed",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_cdc_rdc_targets.py --run-id validation",
+                    "make rtl-check",
+                    "make formal",
+                    "make cocotb-contract",
+                ],
+            },
             {
                 "id": "clock-reset-domain-inventory",
                 "status": "CAPTURED_NOT_ANALYZED",
@@ -186,6 +199,7 @@ def main() -> int:
         "blocked_by": [
             "no local CDC/RDC structural analysis report",
             "no explicit E1 clock-domain and reset-domain intent manifest",
+            "no pinned cdc_snitch revision, dependency/license review, parser support proof, false-positive policy, waiver disposition workflow, or report comparison against local E1 reset/formal/cocotb evidence",
             "no approved typed clock/reset intent schema or equivalence flow for Veryl, Arch, Sparkle, SKALP, or other AI-native HDL experiments",
             "no approved Sparkle/Lean HDL subset mapping, translated-artifact quarantine, proof log policy, or RTL/cocotb equivalence replay",
             "no approved Veryl or SKALP subset mapping, generated SystemVerilog/netlist quarantine, ML pass-ordering provenance, or CDC/RDC report comparison flow",

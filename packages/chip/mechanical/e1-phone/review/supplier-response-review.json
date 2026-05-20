@@ -1,0 +1,116 @@
+{
+  "claim_boundary": "Supplier response intake template and fail-closed review; blank rows are not supplier lock evidence.",
+  "status": "blocked_no_supplier_responses",
+  "response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
+  "expected_response_count": 8,
+  "complete_response_count": 0,
+  "missing_or_incomplete_items": [
+    "display_lcm_ctp",
+    "usb_c",
+    "side_buttons",
+    "cellular_redcap",
+    "wifi_bt",
+    "rear_camera",
+    "front_camera",
+    "orange_enclosure_tooling"
+  ],
+  "cases": [
+    {
+      "supplier_item_id": "display_lcm_ctp",
+      "rfq_package_id": "display_touch_stack",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "usb_c",
+      "rfq_package_id": "usb_c_and_bottom_audio",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "side_buttons",
+      "rfq_package_id": "buttons_haptics_service",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "cellular_redcap",
+      "rfq_package_id": "",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "wifi_bt",
+      "rfq_package_id": "",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "rear_camera",
+      "rfq_package_id": "camera_stack",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "front_camera",
+      "rfq_package_id": "camera_stack",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    },
+    {
+      "supplier_item_id": "orange_enclosure_tooling",
+      "rfq_package_id": "orange_enclosure_tooling",
+      "populated_identity": false,
+      "required_returns": {
+        "quote_returned": "",
+        "drawing_2d_received": "",
+        "step_received": "",
+        "sample_received": ""
+      },
+      "pass": false
+    }
+  ],
+  "release_rule": "Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock."
+}

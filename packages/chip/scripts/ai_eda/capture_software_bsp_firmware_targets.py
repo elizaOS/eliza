@@ -130,6 +130,10 @@ def main() -> int:
             "autoos-kernel-config",
             "firmhive",
             "adfemu-firmware-fuzzing",
+            "p2im-firmware-emulation",
+            "dice-firmware-rehosting",
+            "halucinator-firmware",
+            "firmwire-firmware",
             "opensbi",
             "u-boot",
             "mcp4eda",
@@ -252,6 +256,18 @@ def main() -> int:
                     "make no-hardware-action-check",
                 ],
             },
+            {
+                "id": "firmware-rehosting-backend-watch",
+                "status": "CAPTURED_NOT_REHOSTED",
+                "target": "future P2IM/DICE/HALucinator/FirmWire-style firmware re-hosting requires pinned code, firmware-image provenance, HAL/peripheral/interrupt/DMA model manifests, seed/corpus hashes, emulator traces, crash triage, QEMU/Renode or RTL-equivalent replay, and security reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "make software-bsp-check",
+                    "make qemu-check",
+                    "make renode-check",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no executable E1 Linux boot transcript through RTL-equivalent simulator",
@@ -265,6 +281,7 @@ def main() -> int:
             "no license-reviewed Linux driver co-evolution benchmark or agent workflow with generated patch quarantine, E1 driver tests, and platform-contract replay",
             "no approved Linux kernel configuration tuning workflow with pinned kernel revision, baseline/generated config hashes, workload logs, power evidence, and reviewer disposition",
             "no approved firmware security/fuzzing workflow with firmware corpus license review, peripheral/DMA model, crash triage, replay logs, and security reviewer disposition",
+            "no approved P2IM/DICE/HALucinator/FirmWire-style re-hosting workflow with firmware-image provenance, HAL/peripheral/interrupt/DMA model manifests, seed/corpus hashes, crash replay, QEMU/Renode or RTL-equivalent confirmation, and security reviewer disposition",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

@@ -135,6 +135,7 @@ def main() -> int:
             "abc-rl",
             "boils",
             "open-llm-eco",
+            "logic-optimization-csat",
         ],
         "policy": {
             "changes_rtl": False,
@@ -208,6 +209,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "logic-optimization-sat-preprocessing-watch",
+                "status": "CAPTURED_NOT_PREPROCESSED",
+                "target": "future logic-optimization-as-SAT-preprocessing experiments must keep transformed SAT/circuit instances outside source until preprocessing hashes, baseline SAT logs, witness mapping, equivalence replay, and review are archived",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "netlist-debug-and-hotspot-watch",
                 "status": "CAPTURED_NOT_MODIFIED",
                 "target": "future AI netlist, high-fanout, critical-path, or mapping diagnostics may triage logs but cannot edit source or constraints without reviewed diffs and deterministic gates",
@@ -223,6 +234,7 @@ def main() -> int:
             "no accepted E1 synthesis optimization corpus with pinned RTL, scripts, Liberty, SDC, netlist, log, STA, and OpenLane artifact hashes",
             "current make synth is blocked until the local synthesis source list includes every referenced module and generated macro wrapper intentionally",
             "no local equivalence policy for accepting alternative ABC/Yosys recipes or gate-level transformations",
+            "no approved circuit-SAT preprocessing workflow with instance hashes, transformed-instance hashes, solver logs, witness mapping, and equivalence replay",
             "no license-reviewed external synthesis optimizer, evolved ABC codebase, dataset, model, or RL environment with pinned revisions and replay manifests",
             "no release gate allowing AI-generated synthesis scripts, technology mappings, netlists, constraints, or QoR claims to bypass RTL, formal, cocotb, synthesis, OpenLane, STA, power, and review gates",
         ],

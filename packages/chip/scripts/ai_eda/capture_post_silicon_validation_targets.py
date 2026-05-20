@@ -134,6 +134,9 @@ def main() -> int:
             "difuzzrtl",
             "rfuzz-rtl",
             "cascade-riscv-fuzzer",
+            "goldenfuzz",
+            "mabfuzz-processor",
+            "fuzzilicon",
             "openxiangshan-xfuzz",
             "openxiangshan-difftest",
             "feriver-riscv",
@@ -177,7 +180,7 @@ def main() -> int:
             {
                 "id": "riscv-compliance-and-random-validation-watch",
                 "status": "CAPTURED_NOT_RUN",
-                "target": "future Verilator, Spike, Sail-RISC-V, riscv-formal, RISCOF, riscv-arch-test, riscv-dv, riscvISACOV, Lyra, DifuzzRTL, RFUZZ, Cascade, XFUZZ, DiffTest, or FERIVer use must be pinned and tied to a buildable E1-compatible DUT, ISS/reference, result signatures, coverage, and replayable logs",
+                "target": "future Verilator, Spike, Sail-RISC-V, riscv-formal, RISCOF, riscv-arch-test, riscv-dv, riscvISACOV, Lyra, DifuzzRTL, RFUZZ, Cascade, GoldenFuzz, MABFuzz, Fuzzilicon, XFUZZ, DiffTest, or FERIVer use must be pinned and tied to a buildable E1-compatible DUT, ISS/reference, result signatures, coverage, disclosure policy where relevant, and replayable logs",
                 "acceptance_gates": [
                     "make platform-contract-check",
                     "make qemu-check",
@@ -197,7 +200,7 @@ def main() -> int:
             {
                 "id": "isa-coverage-and-fpga-fuzz-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
-                "target": "future ISA coverage, generative RISC-V fuzzing, coverage-guided RTL fuzzing, co-simulation, or FPGA-assisted differential checking requires pinned profiles, generator/model/toolchain manifests, RVVI or trace adapters, DUT/reference revisions, instrumentation hashes, bitstream hashes where applicable, coverage logs, mismatch checkpoints, and reviewer disposition",
+                "target": "future ISA coverage, generative RISC-V fuzzing, bandit-guided fuzzer scheduling, golden-reference fuzzing, coverage-guided RTL fuzzing, co-simulation, post-silicon fuzzing, or FPGA-assisted differential checking requires pinned profiles, generator/model/toolchain manifests, RVVI or trace adapters, DUT/reference revisions, instrumentation hashes, bitstream or lab-hardware hashes where applicable, coverage logs, mismatch checkpoints, disclosure handling, and reviewer disposition",
                 "acceptance_gates": [
                     "make qemu-check",
                     "make fpga-check",
@@ -273,12 +276,13 @@ def main() -> int:
             "no pinned Verilator, Spike, Sail-RISC-V, or riscv-formal replay tied to E1 CPU wrappers, RVFI/trace adapters, ISA profile, CSR map, memory map, signatures, and reviewer disposition",
             "no RISC-V ISA compliance, random-instruction, or ISS co-simulation evidence tied to E1 CPU wrappers",
             "no pinned riscvISACOV/RVVI trace adapter, ISA coverage database, or coverage-gap disposition for E1",
-            "no Lyra/FERIVer/DifuzzRTL/RFUZZ/Cascade/XFUZZ/DiffTest asset, generator seed/model/toolchain manifest, FPGA bitstream where applicable, ISS co-simulation checkpoint, differential failure log, or coverage replay evidence",
+            "no Lyra/FERIVer/DifuzzRTL/RFUZZ/Cascade/GoldenFuzz/MABFuzz/Fuzzilicon/XFUZZ/DiffTest asset, generator seed/model/toolchain manifest, FPGA bitstream or lab authorization where applicable, ISS co-simulation checkpoint, differential failure log, vulnerability replay, or coverage replay evidence",
             "no trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations",
             "no pinned OpenOCD board configuration, RISC-V debug module transcript, probe inventory, or sigrok acquisition profile",
             "no approved Spacely-style lab config, instrument inventory, waveform-to-stimulus transform, command log, raw capture hash, or hardware-action authorization",
             "no labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage",
             "no approved LLM hardware-debug dataset or benchmark import with pinned revisions, licenses, task manifests, non-overlap review, replay logs, and reviewer disposition",
+            "no approved processor-fuzzing security workflow with fuzzer backend revision, bandit/generator policy, DUT/reference mapping, lab authorization where applicable, coverage logs, mismatch replay, disclosure policy, and security reviewer disposition",
             "no approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions",
         ],
     }
