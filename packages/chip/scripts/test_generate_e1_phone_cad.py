@@ -51,6 +51,7 @@ def test_evt0_phone_cad_checks_pass() -> None:
     assert report["checks"]["button_ingress_seal_stack"]["pass"]
     assert report["checks"]["screen_mount_and_connection"]["pass"]
     assert report["checks"]["camera_speaker_behind_glass"]["pass"]
+    assert report["checks"]["camera_optical_seal_stack"]["pass"]
     assert report["checks"]["rf_antenna_keepouts"]["pass"]
     assert report["checks"]["shielding_haptics_service"]["pass"]
     assert report["checks"]["injection_molding_basics"]["pass"]
@@ -76,6 +77,13 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "earpiece_receiver",
         "rear_camera_module",
         "front_camera_module",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
         "power_button_elastomer_gasket",
@@ -553,6 +561,10 @@ def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
         "front_camera_earpiece_clearance",
         "camera_interface_strategy",
     }.issubset(case_ids)
+    strategy = next(item for item in camera["cases"] if item["id"] == "camera_interface_strategy")
+    assert strategy["actual"]["rear_cover_adhesive_count"] >= 4
+    assert strategy["actual"]["rear_light_baffle_count"] >= 2
+    assert strategy["actual"]["front_black_mask_present"]
     assert {
         "rear_camera_lens_center_error_mm",
         "front_camera_under_glass_center_error_mm",
@@ -627,6 +639,16 @@ def test_evt0_phone_environmental_validation_covers_thermal_rf_drop_ingress(
         "usb_c_bottom_aperture",
         "side_button_rails",
     }.issubset({path["id"] for path in ingress["paths"]})
+    camera_path = next(path for path in ingress["paths"] if path["id"] == "rear_camera_window")
+    assert camera_path["cad_pass"]
+    assert {
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+    }.issubset(set(camera_path["seal_stack"]))
     usb_path = next(path for path in ingress["paths"] if path["id"] == "usb_c_bottom_aperture")
     assert usb_path["cad_pass"]
     assert {
@@ -1092,8 +1114,15 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "top_microphone_mesh.step",
         "rear_camera_module.step",
         "rear_camera_cover_glass.step",
+        "rear_camera_cover_adhesive_top.step",
+        "rear_camera_cover_adhesive_bottom.step",
+        "rear_camera_cover_adhesive_left.step",
+        "rear_camera_cover_adhesive_right.step",
+        "rear_camera_light_baffle_top.step",
+        "rear_camera_light_baffle_bottom.step",
         "front_camera_module.step",
         "front_camera_under_glass.step",
+        "front_camera_black_mask_window.step",
         "power_button_cap.step",
         "volume_button_cap.step",
         "power_button_elastomer_gasket.step",

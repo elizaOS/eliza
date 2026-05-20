@@ -105,11 +105,15 @@ module e1_l3_cache
     endfunction
 
     // Per-bank storage. Per-line directory: which L2s hold it and the
-    // aggregated state.
+    // aggregated state. Under MOESI the directory additionally tracks a
+    // single owner_id: the L2 that holds the canonical dirty copy when
+    // the line is in MESI_M or MESI_O. The owner_id is only meaningful
+    // when state_array is M or O; otherwise it is reset to 0.
     logic [TAG_W-1:0]      tag_array  [BANKS][WAYS][SETS_PER_BANK];
     mesi_e                 state_array [BANKS][WAYS][SETS_PER_BANK];
     logic [LINE_BITS-1:0]  data_array [BANKS][WAYS][SETS_PER_BANK];
     logic [NUM_L2-1:0]     sharers    [BANKS][WAYS][SETS_PER_BANK];
+    logic [SRC_W-1:0]      owner_id   [BANKS][WAYS][SETS_PER_BANK];
     logic [WAYS-2:0]       plru       [BANKS][SETS_PER_BANK];
 
     // 2-bit RRPV per way per set for DRRIP / RRIP-class policies.
@@ -124,6 +128,7 @@ module e1_l3_cache
         logic [LINE_BITS-1:0]   line;
         mesi_e                  state;
         logic [NUM_L2-1:0]      sharers;
+        logic [SRC_W-1:0]       owner;
     } l3_lookup_t;
 
     function automatic l3_lookup_t do_lookup(input logic [PADDR_W-1:0] paddr);
@@ -139,6 +144,7 @@ module e1_l3_cache
                 r.line    = data_array[b][w][s];
                 r.state   = state_array[b][w][s];
                 r.sharers = sharers[b][w][s];
+                r.owner   = owner_id[b][w][s];
             end
         end
         return r;
@@ -208,6 +214,7 @@ module e1_l3_cache
                         state_array[b][w][s] <= MESI_I;
                         data_array[b][w][s]  <= '0;
                         sharers[b][w][s]     <= '0;
+                        owner_id[b][w][s]    <= '0;
                         rrpv[b][w][s]        <= 2'b11;
                     end
             for (int b = 0; b < BANKS; b++)
